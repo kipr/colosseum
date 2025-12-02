@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scoresheet - Colosseum</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <h1>🏛️ Colosseum</h1>
+                </div>
+                <div class="nav-menu">
+                    <button class="nav-item" onclick="window.location.href='/judge.html'">← Back to Templates</button>
+                    <button class="nav-item theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                        <span class="theme-icon">🌙</span>
+                        <span class="theme-label">Dark</span>
+                    </button>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="container">
+            <div id="loadingMessage">
+                <p>Loading scoresheet...</p>
+            </div>
+            <div id="errorMessage" style="display: none;">
+                <p style="color: var(--danger-color);">Failed to load scoresheet. Please try again.</p>
+                <a href="/judge.html" class="btn btn-secondary">Back to Templates</a>
+            </div>
+            <div id="scoresheetContainer" style="display: none;"></div>
+        </main>
+    </div>
+
+    <script src="/js/theme.js"></script>
+    <script src="/js/scoresheet-page.js"></script>
+</body>
+</html>
+

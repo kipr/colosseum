@@ -1,0 +1,122 @@
+.navbar {
+    background-color: var(--nav-bg);
+    box-shadow: var(--shadow);
+    padding: 1rem 0;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    transition: background-color 0.3s;
+}
+
+.nav-container {
+    padding: 0 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.nav-brand h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.nav-menu {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.user-info {
+    margin-left: 1rem;
+    color: var(--text-color);
+}
+
+/* Navbar item component */
+.nav-item {
+    height: 40px;
+    min-height: 40px;
+    padding: 0 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    font-weight: 500;
+    font-family: inherit;
+    border-radius: 0.375rem;
+    border: none;
+    background: none;
+    color: var(--text-color);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-sizing: border-box;
+    line-height: 1.2;
+    vertical-align: middle;
+}
+
+.nav-item > * {
+    line-height: 1;
+}
+
+.nav-item:hover {
+    background-color: var(--bg-color);
+}
+
+.nav-item.active {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.nav-item.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.nav-item.btn-primary:hover {
+    background-color: #1d4ed8;
+}
+
+.nav-item.btn-secondary {
+    background-color: var(--secondary-color);
+    color: white;
+}
+
+.nav-item.btn-secondary:hover {
+    background-color: #475569;
+}
+
+.nav-item.theme-toggle {
+    border: 1px solid var(--border-color);
+}
+
+[data-theme="light"] .nav-item.theme-toggle,
+:root:not([data-theme]) .nav-item.theme-toggle {
+    background-color: #1e293b;
+    color: #e2e8f0;
+}
+
+[data-theme="light"] .nav-item.theme-toggle:hover,
+:root:not([data-theme]) .nav-item.theme-toggle:hover {
+    background-color: #0f172a;
+    border-color: #475569;
+}
+
+[data-theme="dark"] .nav-item.theme-toggle {
+    background-color: #ffffff;
+    color: #1e293b;
+}
+
+[data-theme="dark"] .nav-item.theme-toggle:hover {
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.theme-icon {
+    font-size: 1.1rem;
+}
+
+.theme-label {
+    font-weight: 500;
+}
+

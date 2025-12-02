@@ -1,0 +1,314 @@
+/* Scoresheet specific styles */
+.scoresheet-form {
+    background-color: var(--card-bg);
+    border-radius: 0.5rem;
+    padding: 2rem;
+    box-shadow: var(--shadow);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.scoresheet-title {
+    text-align: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.scoresheet-header-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.scoresheet-header-fields .score-field {
+    border-bottom: none;
+    padding: 0.5rem 0;
+    grid-template-columns: 150px 1fr;
+}
+
+.scoresheet-header-fields .score-field.compact {
+    grid-template-columns: 150px auto;
+}
+
+.scoresheet-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-top: 1.5rem;
+}
+
+.scoresheet-column {
+    border: 1px solid var(--border-color);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    background-color: #fafafa;
+}
+
+[data-theme="dark"] .scoresheet-column {
+    background-color: #0f172a;
+}
+
+.section-header {
+    background-color: var(--text-color);
+    color: var(--card-bg);
+    padding: 0.75rem 1rem;
+    font-weight: 700;
+    font-size: 1.1rem;
+    text-align: center;
+    margin: -1rem -1rem 1rem -1rem;
+    border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.group-header {
+    background-color: var(--secondary-color);
+    color: white;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin: 1rem -1rem 0.5rem -1rem;
+    border-left: 4px solid var(--primary-color);
+}
+
+.score-field {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+.score-field.compact {
+    grid-template-columns: 1fr auto;
+}
+
+[data-theme="dark"] .score-field {
+    border-bottom-color: #334155;
+}
+
+.score-field:hover {
+    background-color: #f0f0f0;
+}
+
+[data-theme="dark"] .score-field:hover {
+    background-color: #334155;
+}
+
+.score-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.score-label .multiplier {
+    color: var(--secondary-color);
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-left: 0.25rem;
+}
+
+.score-input {
+    padding: 0.35rem 0.5rem;
+    border: 1px solid var(--border-color);
+    border-radius: 0.25rem;
+    font-size: 0.9rem;
+    background-color: var(--card-bg);
+    color: var(--text-color);
+}
+
+.score-input[type="number"] {
+    width: 70px;
+    text-align: center;
+}
+
+.score-input[type="text"],
+.score-input:not([type]) {
+    width: 100%;
+    max-width: 100%;
+    text-align: left;
+}
+
+.score-input[type="text"]:disabled {
+    background-color: var(--bg-color);
+    cursor: not-allowed;
+    opacity: 0.8;
+}
+
+select.score-input {
+    min-width: 150px;
+}
+
+.score-input.compact {
+    width: 70px;
+}
+
+.score-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1);
+}
+
+.score-input:invalid {
+    border-color: var(--danger-color);
+}
+
+.score-input:invalid:focus {
+    box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.1);
+}
+
+.score-button-group {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.score-option-button {
+    padding: 0.35rem 0.75rem;
+    border: 1px solid var(--border-color);
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    border-radius: 0.25rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.score-option-button:hover {
+    border-color: var(--primary-color);
+    background-color: #f0f7ff;
+}
+
+[data-theme="dark"] .score-option-button:hover {
+    background-color: #1e3a5f;
+}
+
+.score-option-button.selected {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+    font-weight: 600;
+}
+
+.calculated-value {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--primary-color);
+    min-width: 80px;
+    width: 80px;
+    text-align: center;
+    padding: 0.35rem 0.5rem;
+    background-color: var(--bg-color);
+    border-radius: 0.25rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.multiplier-field {
+    background-color: #eff6ff;
+    border-left: 3px solid var(--primary-color);
+}
+
+[data-theme="dark"] .multiplier-field {
+    background-color: #1e3a5f;
+}
+
+.multiplier-label {
+    color: var(--primary-color);
+    font-weight: 700;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    margin-right: 0.25rem;
+}
+
+.subtotal-field {
+    background-color: #f1f5f9;
+    margin-top: 0.5rem;
+    padding: 0.6rem 0.5rem !important;
+    border-top: 2px solid #cbd5e1;
+    border-bottom: 2px solid #cbd5e1;
+}
+
+[data-theme="dark"] .subtotal-field {
+    background-color: #1e293b;
+    border-top-color: #475569;
+    border-bottom-color: #475569;
+}
+
+.total-field {
+    background-color: #dbeafe;
+    margin-top: 1rem;
+    padding: 0.8rem 0.5rem !important;
+    border-top: 3px solid var(--primary-color);
+    border-bottom: 3px solid var(--primary-color);
+}
+
+[data-theme="dark"] .total-field {
+    background-color: #1e3a5f;
+    border-top-color: #3b82f6;
+    border-bottom-color: #3b82f6;
+}
+
+.total-field .score-label {
+    font-weight: 700;
+    font-size: 1rem;
+}
+
+.total-field .calculated-value {
+    font-size: 1.2rem;
+    font-weight: 700;
+    min-width: 100px;
+    width: 100px;
+}
+
+.grand-total-field {
+    background-color: #dbeafe;
+    padding: 1rem !important;
+    border: 4px solid var(--primary-color);
+    margin: 1.5rem 0;
+    border-radius: 0.5rem;
+}
+
+[data-theme="dark"] .grand-total-field {
+    background-color: #1e3a5f;
+    border-color: #3b82f6;
+}
+
+.grand-total-field .score-label {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+.grand-total-field .calculated-value {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    min-width: 120px;
+    width: 120px;
+}
+
+.scoresheet-footer {
+    margin-top: 2rem;
+    padding-top: 1.5rem;
+    border-top: 2px solid var(--border-color);
+    text-align: center;
+}
+
+@media (max-width: 768px) {
+    .scoresheet-columns {
+        grid-template-columns: 1fr;
+        gap: 1rem;
+    }
+    
+    .scoresheet-header-fields {
+        grid-template-columns: 1fr;
+    }
+    
+    .scoresheet-form {
+        padding: 1rem;
+    }
+}
+

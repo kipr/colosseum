@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - Colosseum</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <h1>🏛️ Colosseum Admin</h1>
+                </div>
+                <div class="nav-menu">
+                    <button class="nav-item" onclick="window.location.href='/'">Home</button>
+                    <button class="nav-item active" onclick="window.location.href='/admin.html'">Admin</button>
+                    <button class="nav-item theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                        <span class="theme-icon">🌙</span>
+                        <span class="theme-label">Dark</span>
+                    </button>
+                    <button id="logoutBtn" class="nav-item btn-secondary">Logout</button>
+                    <span id="userInfo" style="margin-left: 1rem;"></span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="container full-width">
+            <div class="admin-layout">
+                <!-- Sidebar -->
+                <aside class="admin-sidebar">
+                    <div class="sidebar-menu">
+                        <button class="sidebar-item active" data-tab="spreadsheets">
+                            📊 Spreadsheets
+                        </button>
+                        <button class="sidebar-item" data-tab="templates">
+                            📝 Templates
+                        </button>
+                        <button class="sidebar-item" data-tab="history">
+                            📜 Score History
+                        </button>
+                    </div>
+                </aside>
+
+                <!-- Content Area -->
+                <div class="admin-content">
+                    <!-- Spreadsheets Tab -->
+                    <div id="spreadsheetsTab" class="tab-content active">
+                        <h2>Google Spreadsheet Configuration</h2>
+                        
+                        <div class="card">
+                            <h3>Linked Spreadsheets</h3>
+                            <div id="linkedSpreadsheets"></div>
+                        </div>
+
+                        <div class="card">
+                            <h3>Link New Spreadsheet</h3>
+                            <button class="btn btn-primary" id="browseSpreadsheets">
+                                Browse My Google Drive
+                            </button>
+                            <div id="spreadsheetList" style="margin-top: 1rem;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Templates Tab -->
+                    <div id="templatesTab" class="tab-content">
+                        <h2>Score Sheet Templates</h2>
+                        
+                        <div class="card">
+                            <button class="btn btn-primary" id="createTemplateBtn">
+                                + Create New Template
+                            </button>
+                            <div id="templatesList" style="margin-top: 1rem;"></div>
+                        </div>
+
+                        <!-- Template Editor Modal -->
+                        <div id="templateEditorModal" class="modal">
+                            <div class="modal-content">
+                                <span class="close" onclick="closeTemplateModal()">&times;</span>
+                                <h3>Create/Edit Template</h3>
+                                <form id="templateForm">
+                                    <div class="form-group">
+                                        <label>Template Name</label>
+                                        <input type="text" id="templateName" required>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Description</label>
+                                        <textarea id="templateDescription" rows="3"></textarea>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Access Code <span style="color: var(--danger-color);">*</span></label>
+                                        <input type="text" id="templateAccessCode" required placeholder="Enter code for judges to use">
+                                        <small>Judges will need this code to access the scoresheet</small>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Template Schema (JSON)</label>
+                                        <textarea id="templateSchema" rows="12" required></textarea>
+                                        <small>Define fields, types, and options in JSON format</small>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary">Save Template</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        <!-- Sheet Selection Modal -->
+                        <div id="sheetSelectionModal" class="modal">
+                            <div class="modal-content" style="max-width: 500px;">
+                                <span class="close" onclick="closeSheetModal()">&times;</span>
+                                <h3>Select Sheet</h3>
+                                <p id="selectedSpreadsheetName" style="color: var(--secondary-color); margin-bottom: 1.5rem;"></p>
+                                <div class="form-group">
+                                    <label>Choose a sheet from the spreadsheet:</label>
+                                    <select id="sheetNameSelect" class="field-input" required>
+                                        <option value="">Loading sheets...</option>
+                                    </select>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                                    <button class="btn btn-secondary" onclick="closeSheetModal()">Cancel</button>
+                                    <button class="btn btn-primary" onclick="confirmSheetSelection()">Link Spreadsheet</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Template Preview Modal -->
+                        <div id="templatePreviewModal" class="modal">
+                            <div class="modal-content" style="max-width: 95%; max-height: 95vh; overflow-y: auto;">
+                                <span class="close" onclick="closePreviewModal()">&times;</span>
+                                <h3 style="margin-bottom: 1rem;">Template Preview</h3>
+                                <div id="previewContainer" style="background: #f5f5f5; padding: 1rem; border-radius: 0.5rem;"></div>
+                                <div style="text-align: center; margin-top: 1rem;">
+                                    <button class="btn btn-secondary" onclick="closePreviewModal()">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- History Tab -->
+                    <div id="historyTab" class="tab-content">
+                        <h2>Score Submission History</h2>
+                        <div id="scoreHistory"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/js/theme.js"></script>
+    <script src="/js/admin.js"></script>
+</body>
+</html>
+

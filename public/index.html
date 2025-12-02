@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Colosseum - Score Sheet App</title>
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-container">
+                <div class="nav-brand">
+                    <h1>🏛️ Colosseum</h1>
+                </div>
+                <div class="nav-menu">
+                    <button class="nav-item" onclick="window.location.href='/'">Home</button>
+                    <button class="nav-item" id="adminLink" onclick="window.location.href='/admin.html'" style="display: none;">Admin</button>
+                    <button class="nav-item theme-toggle" id="themeToggle" aria-label="Toggle theme">
+                        <span class="theme-icon">🌙</span>
+                        <span class="theme-label">Dark</span>
+                    </button>
+                    <button id="loginBtn" class="nav-item btn-primary">Login with Google</button>
+                    <button id="logoutBtn" class="nav-item btn-secondary" style="display: none;">Logout</button>
+                    <span id="userInfo" style="display: none; margin-left: 1rem;"></span>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="container">
+            <!-- Welcome Screen -->
+            <div id="welcomeScreen">
+                <div class="hero">
+                    <h2>Welcome to Colosseum</h2>
+                    <p>A powerful scoring application with Google Sheets integration</p>
+                </div>
+                
+                <div class="role-selection">
+                    <div class="role-card">
+                        <div class="role-icon">
+                            <img src="/static/images/botguy-red-trans-small.png" alt="Judge Icon">
+                        </div>
+                        <h3>Judge / Scorer</h3>
+                        <p>Access scoresheets to evaluate and score participants in competitions or events.</p>
+                        <ul class="role-features">
+                            <li>✓ Fill out digital scoresheets</li>
+                            <li>✓ Submit scores directly to spreadsheets</li>
+                            <li>✓ Multiple scoresheet templates</li>
+                            <li>✓ Real-time scoring</li>
+                        </ul>
+                        <a href="/judge.html" class="btn btn-primary btn-large" style="display: inline-block; text-decoration: none; text-align: center;">
+                            Enter as Judge
+                        </a>
+                    </div>
+                    
+                    <div class="role-card">
+                        <div class="role-icon">
+                            <img src="/static/images/KIPR-Logo-bk-tiny.jpg" alt="Admin Icon">
+                        </div>
+                        <h3>Administrator</h3>
+                        <p>Manage spreadsheets, create scoresheet templates, and configure the application.</p>
+                        <ul class="role-features">
+                            <li>✓ Link Google Spreadsheets</li>
+                            <li>✓ Create custom templates</li>
+                            <li>✓ View submission history</li>
+                            <li>✓ Manage configurations</li>
+                        </ul>
+                        <button class="btn btn-secondary btn-large" onclick="loginAsAdmin()">
+                            Login as Admin
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script src="/js/theme.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
+
