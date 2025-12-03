@@ -5,6 +5,7 @@ interface SpreadsheetConfig {
   id: number;
   spreadsheet_name: string;
   sheet_name: string;
+  sheet_purpose: string;
   is_active: boolean;
 }
 
@@ -74,8 +75,9 @@ export default function SpreadsheetsTab() {
           <table>
             <thead>
               <tr>
-                <th>Name</th>
+                <th>Spreadsheet</th>
                 <th>Sheet</th>
+                <th>Purpose</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -85,6 +87,17 @@ export default function SpreadsheetsTab() {
                 <tr key={sheet.id}>
                   <td>{sheet.spreadsheet_name}</td>
                   <td>{sheet.sheet_name}</td>
+                  <td>
+                    <span className={`badge ${
+                      sheet.sheet_purpose === 'scores' ? 'badge-success' : 
+                      sheet.sheet_purpose === 'bracket' ? 'badge-primary' : 
+                      'badge-warning'
+                    }`}>
+                      {sheet.sheet_purpose === 'scores' ? 'Score Submissions' : 
+                       sheet.sheet_purpose === 'bracket' ? 'DE Bracket' : 
+                       'Data Source'}
+                    </span>
+                  </td>
                   <td>
                     {sheet.is_active ? (
                       <span className="text-success">Active</span>

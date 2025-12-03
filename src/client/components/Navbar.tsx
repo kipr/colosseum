@@ -26,6 +26,9 @@ export default function Navbar() {
           <button className="nav-item" onClick={() => navigate('/')}>
             Home
           </button>
+          <button className={`nav-item ${isActive('/judge') ? 'active' : ''}`} onClick={() => navigate('/judge')}>
+            Score Sheets
+          </button>
           {user && (
             <button className={`nav-item ${isActive('/admin') ? 'active' : ''}`} onClick={() => navigate('/admin')}>
               Admin

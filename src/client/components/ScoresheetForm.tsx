@@ -1,19 +1,52 @@
 import React, { useState, useEffect } from 'react';
 import '../pages/Scoresheet.css';
 
+interface BracketGame {
+  gameNumber: number;
+  team1: { teamNumber: string; displayName: string } | null;
+  team2: { teamNumber: string; displayName: string } | null;
+  hasWinner?: boolean;
+  winner?: string;
+}
+
 interface ScoresheetFormProps {
   template: any;
 }
 
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const [formData, setFormData] = useState<Record<string, any>>(() => {
-    // Initialize with cached round number if available
+    // Initialize with cached round number if available (seeding only)
+    // For head-to-head, always start fresh so user must select a game
     const cachedRound = localStorage.getItem('lastRoundNumber');
-    return cachedRound ? { round: cachedRound } : {};
+    const initial: Record<string, any> = {};
+    if (cachedRound) initial.round = cachedRound;
+    return initial;
   });
   const [dynamicData, setDynamicData] = useState<Record<string, any[]>>({});
+  const [bracketGames, setBracketGames] = useState<BracketGame[]>([]);
+  const [teamsData, setTeamsData] = useState<any[]>([]); // Teams lookup for head-to-head
   const [calculatedValues, setCalculatedValues] = useState<Record<string, number>>({});
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const schema = template.schema;
+  const isHeadToHead = schema.mode === 'head-to-head';
+
+  // Show notification and auto-dismiss
+  const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
+    setNotification({ message, type });
+    
+    // Scroll to top using multiple methods for better browser compatibility
+    // Use a small delay to ensure the DOM has updated
+    setTimeout(() => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0; // For Safari
+    }, 100);
+    
+    // Auto-dismiss after 2 seconds
+    setTimeout(() => {
+      setNotification(null);
+    }, 2000);
+  };
 
   // Recalculate all formulas when form data changes
   useEffect(() => {
@@ -23,16 +56,101 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   useEffect(() => {
     // Load dynamic dropdown data
     loadDynamicData();
+    
+    // Load bracket games if head-to-head mode
+    if (isHeadToHead && schema.bracketSource) {
+      loadBracketGames();
+      loadTeamsData();
+    }
   }, []);
 
+  const loadBracketGames = async () => {
+    try {
+      const { sheetName } = schema.bracketSource;
+      const url = `/data/bracket-games/${sheetName}?templateId=${template.id}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('Failed to load bracket games:', errorData);
+        return;
+      }
+      
+      const games = await response.json();
+      setBracketGames(games);
+    } catch (error) {
+      console.error('Error loading bracket games:', error);
+    }
+  };
+
+  // Load teams data for looking up full team names in head-to-head mode
+  const loadTeamsData = async () => {
+    try {
+      // Use the teamsDataSource from the schema, or default to "Teams"
+      const teamsConfig = schema.teamsDataSource;
+      const sheetName = teamsConfig?.sheetName || 'Teams';
+      
+      const url = `/data/sheet-data/${sheetName}?templateId=${template.id}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        console.error('Failed to load teams data for name lookup');
+        return;
+      }
+      
+      const data = await response.json();
+      setTeamsData(data);
+    } catch (error) {
+      console.error('Error loading teams data:', error);
+    }
+  };
+
+  // Look up full team name from Teams data using team number
+  const lookupTeamName = (teamNumber: string): string => {
+    if (!teamNumber || teamNumber === 'Bye') return 'Bye';
+    
+    // Use field names from teamsDataSource config, or common defaults
+    const teamsConfig = schema.teamsDataSource;
+    const teamNumberField = teamsConfig?.teamNumberField || 'Team Number';
+    const teamNameField = teamsConfig?.teamNameField || 'Team Name';
+    
+    const team = teamsData.find((t: any) => 
+      String(t[teamNumberField]) === String(teamNumber) ||
+      String(t['Team #']) === String(teamNumber) ||
+      String(t['Team Number']) === String(teamNumber)
+    );
+    
+    if (team) {
+      return team[teamNameField] || team['Team Name'] || team['Name'] || teamNumber;
+    }
+    
+    return teamNumber; // Fallback to team number if not found
+  };
+
+  // Format team display for bracket (team number + first 7 chars of name)
+  const formatBracketDisplay = (teamNumber: string, teamName: string): string => {
+    if (!teamNumber || teamNumber === 'Bye') return 'Bye';
+    const shortName = teamName.substring(0, 7);
+    return `${teamNumber} ${shortName}`;
+  };
+
   const loadDynamicData = async () => {
-    const fieldsWithDataSource = schema.fields.filter((f: any) => f.dataSource);
+    const fieldsWithDataSource = schema.fields.filter((f: any) => 
+      f.dataSource && f.dataSource.type !== 'bracket'
+    );
     
     for (const field of fieldsWithDataSource) {
       try {
         const { sheetName, range, labelField } = field.dataSource;
-        const response = await fetch(`/data/sheet-data/${sheetName}?range=${range || ''}`);
-        if (!response.ok) continue;
+        const url = `/data/sheet-data/${sheetName}?range=${range || ''}&templateId=${template.id}`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error(`Failed to load ${field.id}:`, errorData);
+          continue;
+        }
+        
         let data = await response.json();
         
         // Sort data alphanumerically by the label field
@@ -40,7 +158,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           const aVal = String(a[labelField] || '');
           const bVal = String(b[labelField] || '');
           
-          // Try numeric comparison first
           const aNum = parseFloat(aVal);
           const bNum = parseFloat(bVal);
           
@@ -48,7 +165,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             return aNum - bNum;
           }
           
-          // Fall back to string comparison
           return aVal.localeCompare(bVal, undefined, { numeric: true, sensitivity: 'base' });
         });
         
@@ -62,8 +178,40 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const handleInputChange = (fieldId: string, value: any, field?: any) => {
     const updates: Record<string, any> = { [fieldId]: value };
 
+    // Handle bracket game selection - populate both teams
+    if (fieldId === 'game_number' && isHeadToHead) {
+      const selectedGame = bracketGames.find(g => g.gameNumber === Number(value));
+      if (selectedGame) {
+        if (selectedGame.team1) {
+          const teamNum = selectedGame.team1.teamNumber;
+          const fullName = lookupTeamName(teamNum);
+          updates.team_a_number = teamNum;
+          updates.team_a_name = fullName;
+          // Store the bracket display format for when we write the winner
+          updates.team_a_bracket_display = formatBracketDisplay(teamNum, fullName);
+        } else {
+          updates.team_a_number = 'Bye';
+          updates.team_a_name = 'Bye';
+          updates.team_a_bracket_display = 'Bye';
+        }
+        if (selectedGame.team2) {
+          const teamNum = selectedGame.team2.teamNumber;
+          const fullName = lookupTeamName(teamNum);
+          updates.team_b_number = teamNum;
+          updates.team_b_name = fullName;
+          updates.team_b_bracket_display = formatBracketDisplay(teamNum, fullName);
+        } else {
+          updates.team_b_number = 'Bye';
+          updates.team_b_name = 'Bye';
+          updates.team_b_bracket_display = 'Bye';
+        }
+        // Reset winner when game changes
+        updates.winner = '';
+      }
+    }
+
     // Handle cascading fields (e.g., team number selection updates team name)
-    if (field?.cascades) {
+    if (field?.cascades && !isHeadToHead) {
       const cascadeField = schema.fields.find((f: any) => f.id === field.cascades.targetField);
       if (cascadeField && dynamicData[field.id]) {
         const selectedItem = dynamicData[field.id].find((item: any) => 
@@ -97,36 +245,24 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const evaluateFormula = (formula: string, data: Record<string, any>, calculated: Record<string, number>): number => {
-    // Replace field IDs with their values
     let expression = formula;
-    
-    // Match all field IDs in the formula (but not string literals in quotes)
     const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-    
-    // Remove duplicates
     const uniqueFieldIds = Array.from(new Set(fieldIds));
     
     uniqueFieldIds.forEach(fieldId => {
       let value: any = 0;
       
-      // Check if it's a calculated field we just computed
       if (calculated[fieldId] !== undefined) {
         value = calculated[fieldId];
-      }
-      // Check if it's in form data
-      else if (data[fieldId] !== undefined && data[fieldId] !== '') {
+      } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
         value = data[fieldId];
       }
       
-      // Convert value for formula use
       let replacement: string;
       
-      // For string comparisons (like === '1'), keep it as a string
       if (formula.includes(`${fieldId} ===`)) {
         replacement = `'${String(value)}'`;
-      } 
-      // For numeric operations, convert to number
-      else if (typeof value === 'string') {
+      } else if (typeof value === 'string') {
         replacement = String(Number(value) || 0);
       } else if (typeof value === 'boolean') {
         replacement = value ? '1' : '0';
@@ -134,12 +270,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         replacement = String(Number(value) || 0);
       }
       
-      // Replace all occurrences of this field ID (word boundary)
       const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
       expression = expression.replace(regex, replacement);
     });
     
-    // Evaluate the expression
     try {
       // eslint-disable-next-line no-eval
       const result = eval(expression);
@@ -153,6 +287,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validate winner selection for head-to-head
+    if (isHeadToHead && !formData.winner) {
+      alert('Please select a winner before submitting.');
+      return;
+    }
+
     const scoreData: Record<string, any> = {};
     
     schema.fields.forEach((field: any) => {
@@ -160,9 +300,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         return;
       }
 
-      const value = formData[field.id] !== undefined ? formData[field.id] : 
-                    field.type === 'number' ? 0 : 
-                    field.type === 'checkbox' ? false : '';
+      let value;
+      
+      if (field.type === 'calculated') {
+        value = calculatedValues[field.id] || 0;
+      } else {
+        value = formData[field.id] !== undefined ? formData[field.id] : 
+                field.type === 'number' ? 0 : 
+                field.type === 'checkbox' ? false : '';
+      }
 
       scoreData[field.id] = {
         label: field.label,
@@ -171,8 +317,40 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       };
     });
 
-    const participantName = scoreData['team_name']?.value || '';
-    const matchId = scoreData['round']?.value || '';
+    // For head-to-head, determine the winner info
+    let participantName = '';
+    let matchId = '';
+    
+    if (isHeadToHead) {
+      const winnerTeam = formData.winner === 'team_a' 
+        ? { 
+            number: formData.team_a_number, 
+            name: formData.team_a_name, 
+            bracketDisplay: formData.team_a_bracket_display 
+          }
+        : { 
+            number: formData.team_b_number, 
+            name: formData.team_b_name,
+            bracketDisplay: formData.team_b_bracket_display
+          };
+      
+      // participantName shows full team info for display
+      participantName = `${winnerTeam.number} - ${winnerTeam.name}`;
+      matchId = formData.game_number;
+      
+      // Add winner info to score data
+      scoreData.winner_team_number = { label: 'Winner Team Number', value: winnerTeam.number, type: 'text' };
+      scoreData.winner_team_name = { label: 'Winner Team Name', value: winnerTeam.name, type: 'text' };
+      // winner_display is what gets written to the bracket (team # + first 7 chars)
+      scoreData.winner_display = { 
+        label: 'Winner Display', 
+        value: winnerTeam.bracketDisplay || formatBracketDisplay(winnerTeam.number, winnerTeam.name), 
+        type: 'text' 
+      };
+    } else {
+      participantName = scoreData['team_name']?.value || '';
+      matchId = scoreData['round']?.value || '';
+    }
 
     try {
       const response = await fetch('/api/scores/submit', {
@@ -182,26 +360,84 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           templateId: template.id,
           participantName,
           matchId,
-          scoreData
+          scoreData,
+          isHeadToHead,
+          bracketSource: isHeadToHead ? schema.bracketSource : null
         })
       });
 
       if (!response.ok) throw new Error('Failed to submit score');
 
-      // Cache the round number for next submission
-      if (scoreData['round']?.value) {
+      // Cache the round number for next submission (seeding only, not head-to-head)
+      if (!isHeadToHead && scoreData['round']?.value) {
         localStorage.setItem('lastRoundNumber', scoreData['round'].value);
       }
 
-      alert('Score submitted successfully!');
+      // Show success notification
+      showNotification('Score submitted successfully!', 'success');
       
-      // Reset form but keep round number
-      const currentRound = formData['round'];
-      setFormData({ round: currentRound });
+      // Reset form
+      if (isHeadToHead) {
+        // For head-to-head, reset completely so user can select a new game
+        setFormData({});
+        // Reload bracket games in case some are now decided
+        loadBracketGames();
+      } else {
+        // For seeding, keep round number for convenience
+        const currentRound = formData['round'];
+        setFormData({ round: currentRound });
+      }
     } catch (error) {
       console.error('Error submitting score:', error);
-      alert('Failed to submit score. Please try again.');
+      showNotification('Failed to submit score. Please try again.', 'error');
     }
+  };
+
+  const renderWinnerSelect = (field: any) => {
+    const teamATotal = calculatedValues['team_a_total'] || 0;
+    const teamBTotal = calculatedValues['team_b_total'] || 0;
+    const teamAName = formData.team_a_name || 'Team A';
+    const teamBName = formData.team_b_name || 'Team B';
+    const teamANumber = formData.team_a_number || '';
+    const teamBNumber = formData.team_b_number || '';
+    const selectedWinner = formData.winner;
+    
+    return (
+      <div key={field.id} className="winner-select-container">
+        <h3 className="winner-select-title">Select Winner</h3>
+        <div className="winner-options">
+          <button
+            type="button"
+            className={`winner-button ${selectedWinner === 'team_a' ? 'selected' : ''} ${teamATotal > teamBTotal ? 'leading' : ''}`}
+            onClick={() => handleInputChange('winner', 'team_a')}
+            disabled={!formData.game_number || formData.team_a_number === 'Bye'}
+          >
+            <div className="winner-team-info">
+              <span className="winner-team-number">{teamANumber}</span>
+              <span className="winner-team-name">{teamAName}</span>
+            </div>
+            <div className="winner-team-score">{teamATotal}</div>
+            {selectedWinner === 'team_a' && <div className="winner-badge">✓ WINNER</div>}
+          </button>
+          
+          <div className="winner-vs">VS</div>
+          
+          <button
+            type="button"
+            className={`winner-button ${selectedWinner === 'team_b' ? 'selected' : ''} ${teamBTotal > teamATotal ? 'leading' : ''}`}
+            onClick={() => handleInputChange('winner', 'team_b')}
+            disabled={!formData.game_number || formData.team_b_number === 'Bye'}
+          >
+            <div className="winner-team-info">
+              <span className="winner-team-number">{teamBNumber}</span>
+              <span className="winner-team-name">{teamBName}</span>
+            </div>
+            <div className="winner-team-score">{teamBTotal}</div>
+            {selectedWinner === 'team_b' && <div className="winner-badge">✓ WINNER</div>}
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const renderField = (field: any) => {
@@ -211,6 +447,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     if (field.type === 'group_header') {
       return <div key={field.id} className="group-header">{field.label}</div>;
+    }
+
+    if (field.type === 'winner-select') {
+      return renderWinnerSelect(field);
     }
 
     if (field.type === 'calculated') {
@@ -226,11 +466,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       );
     }
 
-    // Declare value and isCompact BEFORE using them
     const value = formData[field.id] !== undefined ? formData[field.id] : 
                   field.type === 'number' ? 0 : '';
 
-    // Determine if this should be compact (number fields, buttons, small inputs)
     const isCompact = field.type === 'number' || field.type === 'buttons' || field.type === 'checkbox';
 
     if (field.isMultiplier) {
@@ -257,6 +495,43 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const renderFieldInput = (field: any, value: any, isCompact: boolean) => {
+    // Handle bracket data source for game selection
+    if (field.dataSource?.type === 'bracket') {
+      // Filter out games that already have a winner or have a Bye
+      const availableGames = bracketGames.filter(game => {
+        // Exclude games with winners
+        if (game.hasWinner) return false;
+        // Exclude games where either team is a Bye (null team)
+        if (game.team1 === null || game.team2 === null) return false;
+        return true;
+      });
+      
+      return (
+        <select
+          className="score-input"
+          value={value}
+          onChange={(e) => handleInputChange(field.id, e.target.value, field)}
+          required={field.required}
+          style={{ width: '250px' }}
+        >
+          <option value="">Select Game...</option>
+          {availableGames.length === 0 ? (
+            <option value="" disabled>No undecided games available</option>
+          ) : (
+            availableGames.map((game) => {
+              const team1Display = game.team1?.displayName || 'Bye';
+              const team2Display = game.team2?.displayName || 'Bye';
+              return (
+                <option key={game.gameNumber} value={game.gameNumber}>
+                  Game {game.gameNumber}: {team1Display} vs {team2Display}
+                </option>
+              );
+            })
+          )}
+        </select>
+      );
+    }
+
     return (
       <>
         {field.type === 'text' && (
@@ -280,19 +555,16 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             value={value}
             onChange={(e) => {
               const newValue = e.target.value;
-              // Only update if it's a valid number or empty
               if (newValue === '' || !isNaN(Number(newValue))) {
                 handleInputChange(field.id, newValue);
               }
             }}
             onInput={(e) => {
-              // Remove any non-numeric characters from the input
               const input = e.target as HTMLInputElement;
               const cursorPosition = input.selectionStart;
               const cleaned = input.value.replace(/[^0-9.-]/g, '');
               if (input.value !== cleaned) {
                 input.value = cleaned;
-                // Restore cursor position
                 if (cursorPosition) {
                   input.setSelectionRange(cursorPosition - 1, cursorPosition - 1);
                 }
@@ -312,7 +584,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           >
             <option value="">Select...</option>
             {field.dataSource && dynamicData[field.id] ? (
-              // Dynamic dropdown from spreadsheet (already sorted)
               dynamicData[field.id].map((item: any, idx: number) => (
                 <option 
                   key={idx} 
@@ -322,7 +593,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
                 </option>
               ))
             ) : field.options ? (
-              // Static dropdown from template
               field.options.map((opt: any) => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))
@@ -355,38 +625,59 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     );
   };
 
+  // Filter header fields - exclude auto-populated team fields in head-to-head mode
+  const headerFields = schema.fields.filter((f: any) => {
+    if (f.column) return false;
+    if (f.type === 'section_header' || f.type === 'group_header' || f.type === 'calculated') return false;
+    if (f.type === 'winner-select') return false;
+    return true;
+  });
+
   return (
-    <form onSubmit={handleSubmit} className="scoresheet-form">
-      {schema.title && <div className="scoresheet-title">{schema.title}</div>}
-
-      <div className="scoresheet-header-fields">
-        {schema.fields.filter((f: any) => !f.column && f.type !== 'section_header' && f.type !== 'group_header' && f.type !== 'calculated').map(renderField)}
-      </div>
-
-      {schema.layout === 'two-column' ? (
-        <div className="scoresheet-columns">
-          <div className="scoresheet-column">
-            {schema.fields.filter((f: any) => f.column === 'left').map(renderField)}
+    <>
+      {/* Notification overlay */}
+      {notification && (
+        <div className={`notification-overlay ${notification.type}`}>
+          <div className="notification-content">
+            {notification.type === 'success' ? '✓' : '✕'} {notification.message}
           </div>
-          <div className="scoresheet-column">
-            {schema.fields.filter((f: any) => f.column === 'right').map(renderField)}
-          </div>
-        </div>
-      ) : (
-        <div>
-          {schema.fields.filter((f: any) => !f.column && f.type !== 'section_header' && f.type !== 'group_header').map(renderField)}
         </div>
       )}
 
-      {/* Render grand total if it exists (no column specified) */}
-      {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
+      <form onSubmit={handleSubmit} className="scoresheet-form">
+        {schema.title && <div className="scoresheet-title">{schema.title}</div>}
 
-      <div className="scoresheet-footer">
-        <button type="submit" className="btn btn-primary btn-large">
-          Submit Score
-        </button>
-      </div>
-    </form>
+        <div className="scoresheet-header-fields">
+          {headerFields.map(renderField)}
+        </div>
+
+        {/* Winner selection for head-to-head mode */}
+        {isHeadToHead && schema.fields.filter((f: any) => f.type === 'winner-select').map(renderField)}
+
+        {schema.layout === 'two-column' ? (
+          <div className="scoresheet-columns">
+            <div className="scoresheet-column">
+              {schema.fields.filter((f: any) => f.column === 'left').map(renderField)}
+            </div>
+            <div className="scoresheet-column">
+              {schema.fields.filter((f: any) => f.column === 'right').map(renderField)}
+            </div>
+          </div>
+        ) : (
+          <div>
+            {schema.fields.filter((f: any) => !f.column && f.type !== 'section_header' && f.type !== 'group_header').map(renderField)}
+          </div>
+        )}
+
+        {/* Render grand total if it exists (no column specified) */}
+        {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
+
+        <div className="scoresheet-footer">
+          <button type="submit" className="btn btn-primary btn-large">
+            {isHeadToHead ? 'Submit Winner' : 'Submit Score'}
+          </button>
+        </div>
+      </form>
+    </>
   );
 }
-

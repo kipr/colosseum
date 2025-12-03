@@ -17,6 +17,7 @@ interface SheetSelectionModalProps {
 export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, onClose, onSuccess }: SheetSelectionModalProps) {
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [selectedSheet, setSelectedSheet] = useState('');
+  const [sheetPurpose, setSheetPurpose] = useState('scores');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -48,21 +49,29 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
       return;
     }
 
+    if (!sheetPurpose) {
+      alert('Please select a purpose');
+      return;
+    }
+
     try {
       const response = await fetch('/admin/spreadsheets/link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ spreadsheetId, sheetName: selectedSheet })
+        body: JSON.stringify({ spreadsheetId, sheetName: selectedSheet, sheetPurpose })
       });
 
-      if (!response.ok) throw new Error('Failed to link spreadsheet');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to link spreadsheet');
+      }
 
-      showSuccessMessage('Spreadsheet linked successfully!');
+      showSuccessMessage(`Sheet linked successfully as "${sheetPurpose}" source!`);
       onSuccess();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error linking spreadsheet:', error);
-      alert('Failed to link spreadsheet');
+      alert(error.message || 'Failed to link spreadsheet');
     }
   };
 
@@ -109,6 +118,23 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
               ))}
             </select>
           )}
+        </div>
+        <div className="form-group">
+          <label>Sheet Purpose:</label>
+          <select
+            className="field-input"
+            value={sheetPurpose}
+            onChange={(e) => setSheetPurpose(e.target.value)}
+          >
+            <option value="data">Data Source (for dropdowns like Teams list)</option>
+            <option value="scores">Score Submissions (where accepted seeding scores go)</option>
+            <option value="bracket">DE Bracket (for double elimination tournaments)</option>
+          </select>
+          <small>
+            <strong>Data Source:</strong> Used to populate dropdowns (e.g., Teams sheet)<br/>
+            <strong>Score Submissions:</strong> Where accepted seeding scores are written<br/>
+            <strong>DE Bracket:</strong> Double elimination bracket - reads matchups & writes winners
+          </small>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary" onClick={onClose}>

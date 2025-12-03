@@ -2,6 +2,7 @@ import express, { Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { listSpreadsheets, getSpreadsheetInfo, getSpreadsheetSheets } from '../services/googleSheets';
+import { getValidAccessToken } from '../services/tokenRefresh';
 
 const router = express.Router();
 
@@ -9,10 +10,14 @@ const router = express.Router();
 router.get('/spreadsheets', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
-    const configs = await db.all(
-      'SELECT * FROM spreadsheet_configs WHERE user_id = ? ORDER BY created_at DESC',
-      [req.user.id]
-    );
+    // If 'all' query param is set, return all configs (for template assignment)
+    // Otherwise, return only the current user's configs
+    const query = req.query.all === 'true'
+      ? 'SELECT * FROM spreadsheet_configs WHERE is_active = 1 ORDER BY spreadsheet_name, sheet_name'
+      : 'SELECT * FROM spreadsheet_configs WHERE user_id = ? ORDER BY created_at DESC';
+    const params = req.query.all === 'true' ? [] : [req.user.id];
+    
+    const configs = await db.all(query, params);
     res.json(configs);
   } catch (error) {
     console.error('Error fetching spreadsheet configs:', error);
@@ -24,11 +29,17 @@ router.get('/spreadsheets', requireAuth, async (req: AuthRequest, res: Response)
 router.get('/spreadsheets/:spreadsheetId/sheets', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { spreadsheetId } = req.params;
-    const sheets = await getSpreadsheetSheets(req.user.access_token, spreadsheetId);
+    // Get a valid (possibly refreshed) access token
+    const accessToken = await getValidAccessToken(req.user.id);
+    const sheets = await getSpreadsheetSheets(accessToken, spreadsheetId);
     res.json(sheets);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error getting spreadsheet sheets:', error);
-    res.status(500).json({ error: 'Failed to get sheets from spreadsheet' });
+    if (error.message?.includes('re-authenticate')) {
+      res.status(401).json({ error: error.message, needsReauth: true });
+    } else {
+      res.status(500).json({ error: 'Failed to get sheets from spreadsheet' });
+    }
   }
 });
 
@@ -36,11 +47,17 @@ router.get('/spreadsheets/:spreadsheetId/sheets', requireAuth, async (req: AuthR
 router.get('/drive/locations', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { listDrives } = await import('../services/googleSheets');
-    const locations = await listDrives(req.user.access_token);
+    // Get a valid (possibly refreshed) access token
+    const accessToken = await getValidAccessToken(req.user.id);
+    const locations = await listDrives(accessToken);
     res.json(locations);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error listing drives:', error);
-    res.status(500).json({ error: 'Failed to list drives from Google Drive' });
+    if (error.message?.includes('re-authenticate')) {
+      res.status(401).json({ error: error.message, needsReauth: true });
+    } else {
+      res.status(500).json({ error: 'Failed to list drives from Google Drive' });
+    }
   }
 });
 
@@ -48,40 +65,56 @@ router.get('/drive/locations', requireAuth, async (req: AuthRequest, res: Respon
 router.get('/drive/spreadsheets', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { driveId, driveType } = req.query;
+    // Get a valid (possibly refreshed) access token
+    const accessToken = await getValidAccessToken(req.user.id);
     const spreadsheets = await listSpreadsheets(
-      req.user.access_token,
+      accessToken,
       driveId as string,
       driveType as string
     );
     res.json(spreadsheets);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error listing spreadsheets:', error);
-    res.status(500).json({ error: 'Failed to list spreadsheets from Google Drive' });
+    if (error.message?.includes('re-authenticate')) {
+      res.status(401).json({ error: error.message, needsReauth: true });
+    } else {
+      res.status(500).json({ error: 'Failed to list spreadsheets from Google Drive' });
+    }
   }
 });
 
-// Link a spreadsheet
+// Link a spreadsheet sheet with purpose
 router.post('/spreadsheets/link', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { spreadsheetId, sheetName } = req.body;
+    const { spreadsheetId, sheetName, sheetPurpose } = req.body;
     
-    if (!spreadsheetId) {
-      return res.status(400).json({ error: 'Spreadsheet ID is required' });
+    if (!spreadsheetId || !sheetName || !sheetPurpose) {
+      return res.status(400).json({ error: 'Spreadsheet ID, sheet name, and purpose are required' });
     }
 
+    // Get a valid (possibly refreshed) access token
+    const accessToken = await getValidAccessToken(req.user.id);
+    
     // Get spreadsheet info from Google
-    const spreadsheetInfo = await getSpreadsheetInfo(req.user.access_token, spreadsheetId);
+    const spreadsheetInfo = await getSpreadsheetInfo(accessToken, spreadsheetId);
 
     const db = await getDatabase();
     
-    // Deactivate other configurations
-    await db.run('UPDATE spreadsheet_configs SET is_active = 0 WHERE user_id = ?', [req.user.id]);
+    // Check if this exact combination already exists
+    const existing = await db.get(
+      'SELECT id FROM spreadsheet_configs WHERE user_id = ? AND spreadsheet_id = ? AND sheet_name = ? AND sheet_purpose = ?',
+      [req.user.id, spreadsheetId, sheetName, sheetPurpose]
+    );
 
-    // Create new configuration
+    if (existing) {
+      return res.status(400).json({ error: 'This sheet configuration already exists' });
+    }
+
+    // Create new configuration (multiple can be active)
     const result = await db.run(
-      `INSERT INTO spreadsheet_configs (user_id, spreadsheet_id, spreadsheet_name, sheet_name, is_active)
-       VALUES (?, ?, ?, ?, 1)`,
-      [req.user.id, spreadsheetId, spreadsheetInfo.title, sheetName || 'Sheet1']
+      `INSERT INTO spreadsheet_configs (user_id, spreadsheet_id, spreadsheet_name, sheet_name, sheet_purpose, is_active)
+       VALUES (?, ?, ?, ?, ?, 1)`,
+      [req.user.id, spreadsheetId, spreadsheetInfo.title, sheetName, sheetPurpose]
     );
 
     const config = await db.get('SELECT * FROM spreadsheet_configs WHERE id = ?', [result.lastID]);

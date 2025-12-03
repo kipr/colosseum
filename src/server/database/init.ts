@@ -34,12 +34,21 @@ export async function initializeDatabase(): Promise<void> {
       spreadsheet_id TEXT NOT NULL,
       spreadsheet_name TEXT,
       sheet_name TEXT,
+      sheet_purpose TEXT, -- 'data', 'scores', or other custom purposes
       is_active BOOLEAN DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
+
+  // Add sheet_purpose column if it doesn't exist
+  try {
+    await db.exec(`ALTER TABLE spreadsheet_configs ADD COLUMN sheet_purpose TEXT DEFAULT 'scores'`);
+    console.log('✅ Added sheet_purpose column to spreadsheet_configs');
+  } catch (error) {
+    // Column already exists
+  }
 
   // Scoresheet templates
   await db.exec(`
@@ -64,6 +73,14 @@ export async function initializeDatabase(): Promise<void> {
     // Column already exists, ignore error
   }
 
+  // Add spreadsheet_config_id column if it doesn't exist (links template to primary spreadsheet)
+  try {
+    await db.exec(`ALTER TABLE scoresheet_templates ADD COLUMN spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id)`);
+    console.log('✅ Added spreadsheet_config_id column to scoresheet_templates');
+  } catch (error) {
+    // Column already exists, ignore error
+  }
+
   // Score submissions
   await db.exec(`
     CREATE TABLE IF NOT EXISTS score_submissions (
@@ -75,22 +92,27 @@ export async function initializeDatabase(): Promise<void> {
       match_id TEXT,
       score_data TEXT NOT NULL, -- JSON data containing all field values
       submitted_to_sheet BOOLEAN DEFAULT 0,
+      status TEXT DEFAULT 'pending', -- pending, accepted, rejected
+      reviewed_by INTEGER, -- Admin who reviewed
+      reviewed_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
-      FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE
+      FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
+      FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
 
-  // Fix existing table if it has NOT NULL constraint on user_id
+  // Add new columns to existing table if needed
   try {
-    // Check if we need to recreate the table
     const tableInfo = await db.all('PRAGMA table_info(score_submissions)');
+    const hasStatus = tableInfo.some((col: any) => col.name === 'status');
+    const hasReviewedBy = tableInfo.some((col: any) => col.name === 'reviewed_by');
     const userIdColumn = tableInfo.find((col: any) => col.name === 'user_id');
     
-    if (userIdColumn && userIdColumn.notnull === 1) {
-      // Need to recreate table without NOT NULL constraint
+    // If table needs updating
+    if (!hasStatus || !hasReviewedBy || (userIdColumn && userIdColumn.notnull === 1)) {
       await db.exec(`
         CREATE TABLE score_submissions_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -101,18 +123,24 @@ export async function initializeDatabase(): Promise<void> {
           match_id TEXT,
           score_data TEXT NOT NULL,
           submitted_to_sheet BOOLEAN DEFAULT 0,
+          status TEXT DEFAULT 'pending',
+          reviewed_by INTEGER,
+          reviewed_at DATETIME,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
           FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
-          FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE
+          FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
+          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
         );
         
-        INSERT INTO score_submissions_new SELECT * FROM score_submissions;
+        INSERT INTO score_submissions_new (id, user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, submitted_to_sheet, created_at, updated_at)
+        SELECT id, user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, submitted_to_sheet, created_at, updated_at FROM score_submissions;
+        
         DROP TABLE score_submissions;
         ALTER TABLE score_submissions_new RENAME TO score_submissions;
       `);
-      console.log('✅ Updated score_submissions table to allow NULL user_id');
+      console.log('✅ Updated score_submissions table with review columns');
     }
   } catch (error) {
     // Table might not exist yet, ignore error

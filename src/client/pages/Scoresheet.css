@@ -127,6 +127,16 @@
     text-align: center;
 }
 
+/* Number input spinner arrows - ensure visibility in dark mode */
+.score-input[type="number"]::-webkit-inner-spin-button,
+.score-input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
+[data-theme="dark"] .score-input[type="number"] {
+    color-scheme: dark;
+}
+
 .score-input[type="text"],
 .score-input:not([type]) {
     width: 100%;
@@ -309,6 +319,180 @@ select.score-input {
     
     .scoresheet-form {
         padding: 1rem;
+    }
+}
+
+/* Winner Selection (Head-to-Head Mode) */
+.winner-select-container {
+    background: linear-gradient(135deg, var(--card-bg) 0%, var(--bg-color) 100%);
+    border: 2px solid var(--primary-color);
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+    margin: 1.5rem 0;
+    text-align: center;
+}
+
+.winner-select-title {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin: 0 0 1rem 0;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.winner-options {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+}
+
+.winner-vs {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--secondary-color);
+    padding: 0 0.5rem;
+}
+
+.winner-button {
+    flex: 1;
+    max-width: 280px;
+    padding: 1rem;
+    border: 3px solid var(--border-color);
+    border-radius: 0.5rem;
+    background: var(--card-bg);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+}
+
+.winner-button:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.winner-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.winner-button.selected {
+    border-color: var(--success-color);
+    background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+}
+
+[data-theme="dark"] .winner-button.selected {
+    background: linear-gradient(135deg, #14532d 0%, #166534 100%);
+}
+
+.winner-button.leading {
+    border-color: var(--primary-color);
+}
+
+.winner-team-info {
+    margin-bottom: 0.5rem;
+}
+
+.winner-team-number {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.winner-team-name {
+    display: block;
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.winner-team-score {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--text-color);
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.winner-badge {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    background: var(--success-color);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+@media (max-width: 768px) {
+    .winner-options {
+        flex-direction: column;
+    }
+    
+    .winner-button {
+        max-width: 100%;
+    }
+    
+    .winner-vs {
+        padding: 0.5rem 0;
+    }
+}
+
+/* Notification overlay */
+.notification-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    padding: 1rem;
+    animation: slideDown 0.3s ease-out, fadeOut 0.5s ease-in 1.5s forwards;
+}
+
+.notification-overlay.success {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.95), rgba(22, 163, 74, 0.95));
+}
+
+.notification-overlay.error {
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95));
+}
+
+.notification-content {
+    color: white;
+    font-size: 1.25rem;
+    font-weight: 600;
+    padding: 1rem 2rem;
+    text-align: center;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+@keyframes fadeOut {
+    from {
+        opacity: 1;
+    }
+    to {
+        opacity: 0;
     }
 }
 

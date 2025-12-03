@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import '../Modal.css';
 
+interface SpreadsheetConfig {
+  id: number;
+  spreadsheet_name: string;
+  sheet_name: string;
+}
+
 interface TemplateEditorModalProps {
   templateId: number | null;
   onClose: () => void;
@@ -12,9 +18,12 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [schema, setSchema] = useState('');
+  const [spreadsheetConfigId, setSpreadsheetConfigId] = useState<number | ''>('');
+  const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
   const [loading, setLoading] = useState(!!templateId);
 
   useEffect(() => {
+    loadSpreadsheets();
     if (templateId) {
       loadTemplate();
     } else {
@@ -33,6 +42,30 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
     }
   }, [templateId]);
 
+  const loadSpreadsheets = async () => {
+    try {
+      // Use all=true to get all spreadsheets from all admins
+      const response = await fetch('/admin/spreadsheets?all=true', { credentials: 'include' });
+      if (!response.ok) {
+        console.error('Failed to load spreadsheets, status:', response.status);
+        throw new Error('Failed to load spreadsheets');
+      }
+      const data = await response.json();
+      // Get unique spreadsheets by spreadsheet_name
+      const uniqueSpreadsheets: SpreadsheetConfig[] = [];
+      const seen = new Set<string>();
+      data.forEach((config: SpreadsheetConfig) => {
+        if (config.spreadsheet_name && !seen.has(config.spreadsheet_name)) {
+          seen.add(config.spreadsheet_name);
+          uniqueSpreadsheets.push(config);
+        }
+      });
+      setSpreadsheets(uniqueSpreadsheets);
+    } catch (error) {
+      console.error('Error loading spreadsheets:', error);
+    }
+  };
+
   const loadTemplate = async () => {
     try {
       const response = await fetch(`/scoresheet/templates/${templateId}`, {
@@ -45,6 +78,7 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
       setDescription(template.description || '');
       setAccessCode(template.access_code || '');
       setSchema(JSON.stringify(template.schema, null, 2));
+      setSpreadsheetConfigId(template.spreadsheet_config_id || '');
     } catch (error) {
       console.error('Error loading template:', error);
       alert('Failed to load template');
@@ -72,7 +106,13 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, description, accessCode, schema: parsedSchema })
+        body: JSON.stringify({ 
+          name, 
+          description, 
+          accessCode, 
+          schema: parsedSchema,
+          spreadsheetConfigId: spreadsheetConfigId || null
+        })
       });
 
       if (!response.ok) throw new Error('Failed to save template');
@@ -132,6 +172,21 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
+            </div>
+            <div className="form-group">
+              <label>Spreadsheet</label>
+              <select
+                value={spreadsheetConfigId}
+                onChange={(e) => setSpreadsheetConfigId(e.target.value ? parseInt(e.target.value) : '')}
+              >
+                <option value="">-- Select Spreadsheet --</option>
+                {spreadsheets.map(config => (
+                  <option key={config.id} value={config.id}>
+                    {config.spreadsheet_name}
+                  </option>
+                ))}
+              </select>
+              <small>Groups this template under the selected spreadsheet for judges</small>
             </div>
             <div className="form-group">
               <label>Access Code <span style={{ color: 'var(--danger-color)' }}>*</span></label>

@@ -195,14 +195,14 @@ export async function submitScoreToSheet(
   accessToken: string,
   spreadsheetId: string,
   sheetName: string,
-  scoreData: any
+  scoreValues: any[]
 ): Promise<void> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
   try {
-    // Convert score data to array format
-    const values = [Object.values(scoreData)];
+    // scoreValues should already be a flat array
+    const values = [scoreValues];
 
     await sheets.spreadsheets.values.append({
       auth,
@@ -216,6 +216,84 @@ export async function submitScoreToSheet(
   } catch (error) {
     console.error('Error submitting score to sheet:', error);
     throw new Error('Failed to submit score to spreadsheet');
+  }
+}
+
+export async function updateTeamScore(
+  accessToken: string,
+  spreadsheetId: string,
+  sheetName: string,
+  teamNumber: string,
+  round: number,
+  totalScore: number | string  // Allow string for clearing cells
+): Promise<void> {
+  const auth = new google.auth.OAuth2();
+  auth.setCredentials({ access_token: accessToken });
+
+  try {
+    // First, get all data from the sheet to find the team row
+    const response = await sheets.spreadsheets.values.get({
+      auth,
+      spreadsheetId,
+      range: `${sheetName}!A:Z`,
+    });
+
+    const values = response.data.values || [];
+    if (values.length === 0) {
+      throw new Error('Sheet is empty');
+    }
+
+    // Find the header row and team row
+    const headers = values[0];
+    
+    // More flexible search for team number column
+    const teamNumberColIndex = headers.findIndex((h: string) => {
+      const normalized = String(h || '').toLowerCase().trim();
+      return normalized.includes('team') && normalized.includes('number') ||
+             normalized === 'team #' ||
+             normalized === 'team number' ||
+             normalized === 'teamnumber';
+    });
+    
+    if (teamNumberColIndex === -1) {
+      console.error('Available headers:', headers);
+      throw new Error(`Could not find Team Number column. Available columns: ${headers.join(', ')}`);
+    }
+
+    // Find the team's row
+    const teamRowIndex = values.findIndex((row, idx) => 
+      idx > 0 && String(row[teamNumberColIndex]) === String(teamNumber)
+    );
+
+    if (teamRowIndex === -1) {
+      throw new Error(`Team ${teamNumber} not found in sheet`);
+    }
+
+    // Find the correct round column (Seed 1, Seed 2, Seed 3)
+    const roundColumnName = `Seed ${round}`;
+    const roundColIndex = headers.findIndex((h: string) => h === roundColumnName);
+
+    if (roundColIndex === -1) {
+      throw new Error(`Column "${roundColumnName}" not found in sheet`);
+    }
+
+    // Convert column index to letter (A, B, C, etc.)
+    const columnLetter = String.fromCharCode(65 + roundColIndex);
+    const rowNumber = teamRowIndex + 1; // +1 because sheets are 1-indexed
+
+    // Update the specific cell
+    await sheets.spreadsheets.values.update({
+      auth,
+      spreadsheetId,
+      range: `${sheetName}!${columnLetter}${rowNumber}`,
+      valueInputOption: 'USER_ENTERED',
+      requestBody: {
+        values: [[totalScore]]
+      }
+    });
+  } catch (error: any) {
+    console.error('Error updating team score:', error);
+    throw new Error(`Failed to update team score: ${error.message}`);
   }
 }
 
@@ -252,9 +330,13 @@ export async function getSheetData(
       });
       return obj;
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error getting sheet data:', error);
-    throw new Error('Failed to get data from spreadsheet');
+    console.error('Sheet name:', sheetName, 'Range:', range);
+    if (error.response) {
+      console.error('API Error:', error.response.status, error.response.data);
+    }
+    throw new Error(`Failed to get data from spreadsheet: ${error.message}`);
   }
 }
 

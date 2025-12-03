@@ -9,7 +9,10 @@ A powerful web-based scoring application with Google Sheets integration, support
 - 📝 **Customizable Templates** - Create multiple score sheet templates with various field types
 - 👥 **Multi-User Support** - Multiple users can score simultaneously
 - 💾 **Local & Cloud Storage** - Scores saved locally (SQLite) and synced to Google Sheets
-- 🎨 **Modern UI** - Clean, responsive interface built with vanilla JavaScript
+- 🎨 **Modern UI** - Clean, responsive React interface with dark mode support
+- 🏆 **Score Review System** - Admins can accept, reject, or edit submitted scores
+- 🎯 **Double Elimination Brackets** - Support for head-to-head tournament scoring
+- 🔒 **Access Codes** - Judges access scoresheets via secure access codes (no login required)
 
 ## Supported Field Types
 
@@ -59,6 +62,8 @@ Edit `.env` and add your Google OAuth credentials:
 ```env
 GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
+SESSION_SECRET=your-random-session-secret
+ALLOWED_EMAIL_DOMAINS=yourdomain.org  # Optional: restrict admin access to specific domains
 ```
 
 ### 4. Run the Application
@@ -173,20 +178,15 @@ colosseum/
 ├── src/
 │   ├── client/                  # React frontend
 │   │   ├── components/          # Reusable React components
+│   │   │   ├── admin/           # Admin-specific components
 │   │   │   ├── Navbar.tsx
 │   │   │   ├── AccessCodeModal.tsx
 │   │   │   └── ScoresheetForm.tsx
-│   │   ├── contexts/            # React contexts
-│   │   │   ├── AuthContext.tsx
-│   │   │   └── ThemeContext.tsx
+│   │   ├── contexts/            # React contexts (Auth, Theme)
 │   │   ├── pages/               # Page components
-│   │   │   ├── Home.tsx
-│   │   │   ├── Judge.tsx
-│   │   │   ├── Scoresheet.tsx
-│   │   │   └── Admin.tsx
 │   │   ├── styles/              # Global styles
-│   │   │   └── global.css
-│   │   ├── App.tsx              # Main React app
+│   │   ├── utils/               # Utility functions
+│   │   ├── App.tsx              # Main React app with routing
 │   │   ├── main.tsx             # React entry point
 │   │   └── index.html           # HTML template
 │   └── server/                  # Express backend
@@ -201,19 +201,27 @@ colosseum/
 │       │   ├── auth.ts          # Authentication routes
 │       │   ├── admin.ts         # Admin panel routes
 │       │   ├── scoresheet.ts    # Template management routes
-│       │   └── api.ts           # Score submission & data routes
+│       │   ├── scores.ts        # Score review/approval routes
+│       │   ├── data.ts          # Dynamic data fetching routes
+│       │   └── api.ts           # Score submission routes
 │       ├── services/
-│       │   └── googleSheets.ts  # Google Sheets API integration
+│       │   ├── googleSheets.ts  # Google Sheets API integration
+│       │   ├── bracketParser.ts # Double elimination bracket parsing
+│       │   └── tokenRefresh.ts  # OAuth token refresh service
 │       └── server.ts            # Express server setup
-├── public/                      # Legacy HTML files (being phased out)
+├── docs/                        # Documentation
+│   ├── BOTBALL_SETUP.md
+│   ├── DYNAMIC_FIELDS_GUIDE.md
+│   ├── MULTI_SHEET_GUIDE.md
+│   └── TEMPLATE_SCHEMA_GUIDE.md
+├── templates/                   # Example score sheet templates
+│   ├── botball-de-template.json
+│   └── botball-seeding-template.json
 ├── static/                      # Static assets (images, etc.)
-├── database/
-│   └── colosseum.db             # SQLite database (auto-created)
+├── database/                    # SQLite databases (auto-created)
 ├── dist/                        # Build output
-│   ├── client/                  # Built React app
-│   └── server/                  # Built Express app
 ├── vite.config.ts               # Vite configuration
-├── tsconfig.json                # TypeScript config (server)
+├── tsconfig.json                # TypeScript config
 ├── package.json
 └── .env                         # Environment variables
 ```

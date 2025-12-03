@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import AccessCodeModal from '../components/AccessCodeModal';
+import { formatDate } from '../utils/dateUtils';
 import './Judge.css';
 
 interface Template {
@@ -9,6 +10,8 @@ interface Template {
   name: string;
   description: string;
   created_at: string;
+  spreadsheet_config_id: number | null;
+  spreadsheet_name: string | null;
 }
 
 export default function Judge() {
@@ -34,6 +37,21 @@ export default function Judge() {
     }
   };
 
+  // Group templates by spreadsheet name
+  const groupedTemplates = useMemo(() => {
+    const groups: Record<string, Template[]> = {};
+    
+    templates.forEach(template => {
+      const groupName = template.spreadsheet_name || 'Unassigned';
+      if (!groups[groupName]) {
+        groups[groupName] = [];
+      }
+      groups[groupName].push(template);
+    });
+    
+    return groups;
+  }, [templates]);
+
   const handleTemplateSelect = (id: number, name: string) => {
     setSelectedTemplate({ id, name });
   };
@@ -46,26 +64,43 @@ export default function Judge() {
     navigate(`/scoresheet?template=${selectedTemplate!.id}&name=${urlName}`);
   };
 
+  // Get sorted group names (Unassigned at the end)
+  const sortedGroupNames = useMemo(() => {
+    const names = Object.keys(groupedTemplates);
+    return names.sort((a, b) => {
+      if (a === 'Unassigned') return 1;
+      if (b === 'Unassigned') return -1;
+      return a.localeCompare(b);
+    });
+  }, [groupedTemplates]);
+
   return (
     <div className="app">
       <Navbar />
       <main className="container">
-        <h2>Select a Score Sheet Template</h2>
+        <h2>Select a Score Sheet</h2>
         {loading ? (
           <p>Loading templates...</p>
         ) : templates.length === 0 ? (
-          <p>No templates available. An administrator needs to create templates first.</p>
+          <p>No scoresheets available. An administrator needs to create templates first.</p>
         ) : (
-          <div className="template-grid">
-            {templates.map(template => (
-              <div
-                key={template.id}
-                className="template-card"
-                onClick={() => handleTemplateSelect(template.id, template.name)}
-              >
-                <h3>{template.name}</h3>
-                <p>{template.description || 'No description'}</p>
-                <small>Created: {new Date(template.created_at).toLocaleDateString()}</small>
+          <div className="template-groups">
+            {sortedGroupNames.map(groupName => (
+              <div key={groupName} className="template-group">
+                <h3 className="template-group-header">{groupName}</h3>
+                <div className="template-grid">
+                  {groupedTemplates[groupName].map(template => (
+                    <div
+                      key={template.id}
+                      className="template-card"
+                      onClick={() => handleTemplateSelect(template.id, template.name)}
+                    >
+                      <h4>{template.name}</h4>
+                      <p>{template.description || 'No description'}</p>
+                      <small>Created: {formatDate(template.created_at)}</small>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

@@ -8,9 +8,34 @@ const router = express.Router();
 router.get('/templates', async (req: express.Request, res: express.Response) => {
   try {
     const db = await getDatabase();
-    const templates = await db.all(
-      'SELECT id, name, description, created_at FROM scoresheet_templates WHERE is_active = 1'
-    );
+    const templates = await db.all(`
+      SELECT 
+        t.id, 
+        t.name, 
+        t.description, 
+        t.schema, 
+        t.created_at,
+        t.spreadsheet_config_id,
+        sc.spreadsheet_name,
+        sc.sheet_name
+      FROM scoresheet_templates t
+      LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
+      WHERE t.is_active = 1
+      ORDER BY sc.spreadsheet_name, t.name
+    `);
+    
+    // Parse schema JSON for each template
+    templates.forEach(template => {
+      if (template.schema) {
+        try {
+          template.schema = JSON.parse(template.schema);
+        } catch (e) {
+          console.error('Error parsing template schema:', e);
+          template.schema = null;
+        }
+      }
+    });
+    
     res.json(templates);
   } catch (error) {
     console.error('Error fetching templates:', error);
@@ -22,9 +47,22 @@ router.get('/templates', async (req: express.Request, res: express.Response) => 
 router.get('/templates/admin', requireAuth, async (req: AuthRequest, res: express.Response) => {
   try {
     const db = await getDatabase();
-    const templates = await db.all(
-      'SELECT id, name, description, access_code, created_at, is_active FROM scoresheet_templates WHERE is_active = 1'
-    );
+    const templates = await db.all(`
+      SELECT 
+        t.id, 
+        t.name, 
+        t.description, 
+        t.access_code, 
+        t.created_at, 
+        t.is_active,
+        t.spreadsheet_config_id,
+        sc.spreadsheet_name,
+        sc.sheet_name
+      FROM scoresheet_templates t
+      LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
+      WHERE t.is_active = 1
+      ORDER BY sc.spreadsheet_name, t.name
+    `);
     res.json(templates);
   } catch (error) {
     console.error('Error fetching templates:', error);
@@ -91,7 +129,7 @@ router.get('/templates/:id', requireAuth, async (req: AuthRequest, res: express.
 // Create a new template
 router.post('/templates', requireAuth, async (req: AuthRequest, res: express.Response) => {
   try {
-    const { name, description, schema, accessCode } = req.body;
+    const { name, description, schema, accessCode, spreadsheetConfigId } = req.body;
 
     if (!name || !schema || !accessCode) {
       return res.status(400).json({ error: 'Name, schema, and access code are required' });
@@ -99,9 +137,9 @@ router.post('/templates', requireAuth, async (req: AuthRequest, res: express.Res
 
     const db = await getDatabase();
     const result = await db.run(
-      `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by)
-       VALUES (?, ?, ?, ?, ?)`,
-      [name, description, JSON.stringify(schema), accessCode, req.user.id]
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by, spreadsheet_config_id)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [name, description, JSON.stringify(schema), accessCode, req.user.id, spreadsheetConfigId || null]
     );
 
     const template = await db.get('SELECT * FROM scoresheet_templates WHERE id = ?', [result.lastID]);
@@ -118,14 +156,14 @@ router.post('/templates', requireAuth, async (req: AuthRequest, res: express.Res
 router.put('/templates/:id', requireAuth, async (req: AuthRequest, res: express.Response) => {
   try {
     const { id } = req.params;
-    const { name, description, schema, accessCode } = req.body;
+    const { name, description, schema, accessCode, spreadsheetConfigId } = req.body;
 
     const db = await getDatabase();
     await db.run(
       `UPDATE scoresheet_templates 
-       SET name = ?, description = ?, schema = ?, access_code = ?, updated_at = CURRENT_TIMESTAMP
+       SET name = ?, description = ?, schema = ?, access_code = ?, spreadsheet_config_id = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-      [name, description, JSON.stringify(schema), accessCode, id]
+      [name, description, JSON.stringify(schema), accessCode, spreadsheetConfigId || null, id]
     );
 
     const template = await db.get('SELECT * FROM scoresheet_templates WHERE id = ?', [id]);

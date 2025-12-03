@@ -127,3 +127,54 @@
     }
 }
 
+/* Re-authentication banner */
+.reauth-banner {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-bottom: 2px solid #f59e0b;
+    padding: 0.75rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+    color: #92400e;
+    font-weight: 500;
+}
+
+.reauth-banner span {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.reauth-button {
+    background: #f59e0b;
+    color: white;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 0.375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.reauth-button:hover {
+    background: #d97706;
+}
+
+/* Dark mode adjustments for banner */
+[data-theme="dark"] .reauth-banner {
+    background: linear-gradient(135deg, #78350f, #92400e);
+    border-color: #f59e0b;
+    color: #fef3c7;
+}
+
+[data-theme="dark"] .reauth-button {
+    background: #f59e0b;
+    color: #78350f;
+}
+
+[data-theme="dark"] .reauth-button:hover {
+    background: #fbbf24;
+}
+

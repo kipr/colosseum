@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import SheetSelectionModal from './SheetSelectionModal';
+import { formatDateTime } from '../../utils/dateUtils';
 
 interface DriveLocation {
   id: string;
@@ -114,7 +115,7 @@ export default function DriveLocationSelector({ onSpreadsheetLinked }: DriveLoca
             {spreadsheets.map(sheet => (
               <tr key={sheet.id}>
                 <td>{sheet.name}</td>
-                <td>{new Date(sheet.modifiedTime).toLocaleString()}</td>
+                <td>{formatDateTime(sheet.modifiedTime)}</td>
                 <td>
                   <button
                     className="btn btn-primary"

@@ -88,8 +88,8 @@ export default function TemplatePreviewModal({ templateId, onClose }: TemplatePr
         {loading ? (
           <p>Loading preview...</p>
         ) : template ? (
-          <div style={{ background: '#f5f5f5', padding: '1rem', borderRadius: '0.5rem' }}>
-            <div className="scoresheet-form" style={{ background: 'white' }}>
+          <div style={{ background: 'var(--bg-color)', padding: '1rem', borderRadius: '0.5rem' }}>
+            <div className="scoresheet-form" style={{ background: 'var(--card-bg)' }}>
               {template.schema.title && <div className="scoresheet-title">{template.schema.title}</div>}
 
               <div className="scoresheet-header-fields">

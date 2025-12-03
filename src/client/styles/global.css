@@ -172,6 +172,18 @@ body {
     border-color: var(--primary-color);
 }
 
+/* Fix number input spinner arrows in dark mode */
+[data-theme="dark"] input[type="number"],
+[data-theme="dark"] .field-input[type="number"],
+[data-theme="dark"] .form-group input[type="number"] {
+    color-scheme: dark;
+}
+
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    opacity: 1;
+}
+
 /* Tables */
 table {
     width: 100%;
@@ -225,6 +237,56 @@ tr:hover {
 
 .drive-location-item:last-child {
     border-bottom: none;
+}
+
+/* Status Badges */
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.75rem;
+    border-radius: 0.25rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge-success {
+    background-color: #dcfce7;
+    color: #166534;
+}
+
+[data-theme="dark"] .badge-success {
+    background-color: #14532d;
+    color: #86efac;
+}
+
+.badge-danger {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+[data-theme="dark"] .badge-danger {
+    background-color: #7f1d1d;
+    color: #fca5a5;
+}
+
+.badge-warning {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+[data-theme="dark"] .badge-warning {
+    background-color: #78350f;
+    color: #fde68a;
+}
+
+.badge-primary {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+[data-theme="dark"] .badge-primary {
+    background-color: #1e3a5f;
+    color: #93c5fd;
 }
 
 /* Utilities */

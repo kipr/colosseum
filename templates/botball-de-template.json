@@ -1,0 +1,501 @@
+{
+  "layout": "two-column",
+  "mode": "head-to-head",
+  "title": "2026 Botball Fall Tournament - Double Elimination Score Sheet",
+  "bracketSource": {
+    "sheetName": "DE 16 Team",
+    "purpose": "bracket"
+  },
+  "teamsDataSource": {
+    "sheetName": "Teams",
+    "teamNumberField": "Team Number",
+    "teamNameField": "Team Name"
+  },
+  "fields": [
+    {
+      "id": "game_number",
+      "label": "Game",
+      "type": "dropdown",
+      "required": true,
+      "dataSource": {
+        "type": "bracket",
+        "sheetName": "DE 16 Team"
+      },
+      "cascades": {
+        "team_a_number": "team1.teamNumber",
+        "team_a_name": "team1.displayName",
+        "team_b_number": "team2.teamNumber",
+        "team_b_name": "team2.displayName"
+      }
+    },
+    {
+      "id": "team_a_number",
+      "label": "Team A Number",
+      "type": "text",
+      "required": true,
+      "autoPopulated": true,
+      "placeholder": "Select game first"
+    },
+    {
+      "id": "team_a_name",
+      "label": "Team A Name",
+      "type": "text",
+      "required": true,
+      "autoPopulated": true,
+      "placeholder": "Select game first"
+    },
+    {
+      "id": "team_b_number",
+      "label": "Team B Number",
+      "type": "text",
+      "required": true,
+      "autoPopulated": true,
+      "placeholder": "Select game first"
+    },
+    {
+      "id": "team_b_name",
+      "label": "Team B Name",
+      "type": "text",
+      "required": true,
+      "autoPopulated": true,
+      "placeholder": "Select game first"
+    },
+    {
+      "id": "winner",
+      "label": "Winner",
+      "type": "winner-select",
+      "required": true,
+      "options": [
+        { "value": "team_a", "label": "Team A Wins" },
+        { "value": "team_b", "label": "Team B Wins" }
+      ]
+    },
+    {
+      "id": "section_header_team_a",
+      "label": "TEAM A",
+      "type": "section_header",
+      "column": "left"
+    },
+    {
+      "id": "team_a_starting_boxes_header",
+      "label": "Starting Boxes",
+      "type": "group_header",
+      "column": "left"
+    },
+    {
+      "id": "team_a_starting_cubes",
+      "label": "Cubes",
+      "suffix": "× 2",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_starting_baskets",
+      "label": "Baskets",
+      "suffix": "× 15",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_starting_botguy",
+      "label": "Botguy",
+      "suffix": "× 2",
+      "column": "left",
+      "type": "buttons",
+      "required": false,
+      "isMultiplier": true,
+      "options": [
+        { "value": "0", "label": "No" },
+        { "value": "1", "label": "Yes" }
+      ]
+    },
+    {
+      "id": "team_a_starting_subtotal",
+      "label": "Starting Boxes Subtotal",
+      "type": "calculated",
+      "column": "left",
+      "formula": "(team_a_starting_cubes * 2) + (team_a_starting_baskets * 15)"
+    },
+    {
+      "id": "team_a_starting_multiplied",
+      "label": "Starting Boxes × Botguy",
+      "type": "calculated",
+      "column": "left",
+      "formula": "team_a_starting_subtotal * (team_a_starting_botguy === '1' ? 2 : 1)"
+    },
+    {
+      "id": "team_a_workstations_header",
+      "label": "Work Stations",
+      "type": "group_header",
+      "column": "left"
+    },
+    {
+      "id": "team_a_ws_cubes",
+      "label": "Cubes",
+      "suffix": "× 2",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_ws_baskets",
+      "label": "Baskets",
+      "suffix": "× 15",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_ws_poms",
+      "label": "Pom Poms",
+      "suffix": "× 4",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_ws_potatoes",
+      "label": "Potatoes",
+      "suffix": "× 6",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_ws_botguy",
+      "label": "Botguy",
+      "suffix": "× 2",
+      "column": "left",
+      "type": "buttons",
+      "required": false,
+      "isMultiplier": true,
+      "options": [
+        { "value": "0", "label": "No" },
+        { "value": "1", "label": "Yes" }
+      ]
+    },
+    {
+      "id": "team_a_ws_subtotal",
+      "label": "Work Stations Subtotal",
+      "type": "calculated",
+      "column": "left",
+      "formula": "(team_a_ws_cubes * 2) + (team_a_ws_baskets * 15) + (team_a_ws_poms * 4) + (team_a_ws_potatoes * 6)"
+    },
+    {
+      "id": "team_a_ws_multiplied",
+      "label": "Work Stations × Botguy",
+      "type": "calculated",
+      "column": "left",
+      "formula": "team_a_ws_subtotal * (team_a_ws_botguy === '1' ? 2 : 1)"
+    },
+    {
+      "id": "team_a_arena_header",
+      "label": "Arena",
+      "type": "group_header",
+      "column": "left"
+    },
+    {
+      "id": "team_a_arena_cubes",
+      "label": "Cubes",
+      "suffix": "× 2",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_arena_baskets",
+      "label": "Baskets",
+      "suffix": "× 15",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_arena_poms",
+      "label": "Pom Poms",
+      "suffix": "× 4",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_arena_potatoes",
+      "label": "Potatoes",
+      "suffix": "× 6",
+      "column": "left",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_a_arena_botguy",
+      "label": "Botguy",
+      "suffix": "× 2",
+      "column": "left",
+      "type": "buttons",
+      "required": false,
+      "isMultiplier": true,
+      "options": [
+        { "value": "0", "label": "No" },
+        { "value": "1", "label": "Yes" }
+      ]
+    },
+    {
+      "id": "team_a_arena_subtotal",
+      "label": "Arena Subtotal",
+      "type": "calculated",
+      "column": "left",
+      "formula": "(team_a_arena_cubes * 2) + (team_a_arena_baskets * 15) + (team_a_arena_poms * 4) + (team_a_arena_potatoes * 6)"
+    },
+    {
+      "id": "team_a_arena_multiplied",
+      "label": "Arena × Botguy",
+      "type": "calculated",
+      "column": "left",
+      "formula": "team_a_arena_subtotal * (team_a_arena_botguy === '1' ? 2 : 1)"
+    },
+    {
+      "id": "team_a_total",
+      "label": "TEAM A TOTAL",
+      "type": "calculated",
+      "column": "left",
+      "isTotal": true,
+      "formula": "team_a_starting_multiplied + team_a_ws_multiplied + team_a_arena_multiplied"
+    },
+    {
+      "id": "section_header_team_b",
+      "label": "TEAM B",
+      "type": "section_header",
+      "column": "right"
+    },
+    {
+      "id": "team_b_starting_boxes_header",
+      "label": "Starting Boxes",
+      "type": "group_header",
+      "column": "right"
+    },
+    {
+      "id": "team_b_starting_cubes",
+      "label": "Cubes",
+      "suffix": "× 2",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_starting_baskets",
+      "label": "Baskets",
+      "suffix": "× 15",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_starting_botguy",
+      "label": "Botguy",
+      "suffix": "× 2",
+      "column": "right",
+      "type": "buttons",
+      "required": false,
+      "isMultiplier": true,
+      "options": [
+        { "value": "0", "label": "No" },
+        { "value": "1", "label": "Yes" }
+      ]
+    },
+    {
+      "id": "team_b_starting_subtotal",
+      "label": "Starting Boxes Subtotal",
+      "type": "calculated",
+      "column": "right",
+      "formula": "(team_b_starting_cubes * 2) + (team_b_starting_baskets * 15)"
+    },
+    {
+      "id": "team_b_starting_multiplied",
+      "label": "Starting Boxes × Botguy",
+      "type": "calculated",
+      "column": "right",
+      "formula": "team_b_starting_subtotal * (team_b_starting_botguy === '1' ? 2 : 1)"
+    },
+    {
+      "id": "team_b_workstations_header",
+      "label": "Work Stations",
+      "type": "group_header",
+      "column": "right"
+    },
+    {
+      "id": "team_b_ws_cubes",
+      "label": "Cubes",
+      "suffix": "× 2",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_ws_baskets",
+      "label": "Baskets",
+      "suffix": "× 15",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_ws_poms",
+      "label": "Pom Poms",
+      "suffix": "× 4",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_ws_potatoes",
+      "label": "Potatoes",
+      "suffix": "× 6",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_ws_botguy",
+      "label": "Botguy",
+      "suffix": "× 2",
+      "column": "right",
+      "type": "buttons",
+      "required": false,
+      "isMultiplier": true,
+      "options": [
+        { "value": "0", "label": "No" },
+        { "value": "1", "label": "Yes" }
+      ]
+    },
+    {
+      "id": "team_b_ws_subtotal",
+      "label": "Work Stations Subtotal",
+      "type": "calculated",
+      "column": "right",
+      "formula": "(team_b_ws_cubes * 2) + (team_b_ws_baskets * 15) + (team_b_ws_poms * 4) + (team_b_ws_potatoes * 6)"
+    },
+    {
+      "id": "team_b_ws_multiplied",
+      "label": "Work Stations × Botguy",
+      "type": "calculated",
+      "column": "right",
+      "formula": "team_b_ws_subtotal * (team_b_ws_botguy === '1' ? 2 : 1)"
+    },
+    {
+      "id": "team_b_arena_header",
+      "label": "Arena",
+      "type": "group_header",
+      "column": "right"
+    },
+    {
+      "id": "team_b_arena_cubes",
+      "label": "Cubes",
+      "suffix": "× 2",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_arena_baskets",
+      "label": "Baskets",
+      "suffix": "× 15",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_arena_poms",
+      "label": "Pom Poms",
+      "suffix": "× 4",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_arena_potatoes",
+      "label": "Potatoes",
+      "suffix": "× 6",
+      "column": "right",
+      "type": "number",
+      "required": false,
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "team_b_arena_botguy",
+      "label": "Botguy",
+      "suffix": "× 2",
+      "column": "right",
+      "type": "buttons",
+      "required": false,
+      "isMultiplier": true,
+      "options": [
+        { "value": "0", "label": "No" },
+        { "value": "1", "label": "Yes" }
+      ]
+    },
+    {
+      "id": "team_b_arena_subtotal",
+      "label": "Arena Subtotal",
+      "type": "calculated",
+      "column": "right",
+      "formula": "(team_b_arena_cubes * 2) + (team_b_arena_baskets * 15) + (team_b_arena_poms * 4) + (team_b_arena_potatoes * 6)"
+    },
+    {
+      "id": "team_b_arena_multiplied",
+      "label": "Arena × Botguy",
+      "type": "calculated",
+      "column": "right",
+      "formula": "team_b_arena_subtotal * (team_b_arena_botguy === '1' ? 2 : 1)"
+    },
+    {
+      "id": "team_b_total",
+      "label": "TEAM B TOTAL",
+      "type": "calculated",
+      "column": "right",
+      "isTotal": true,
+      "formula": "team_b_starting_multiplied + team_b_ws_multiplied + team_b_arena_multiplied"
+    }
+  ]
+}
+

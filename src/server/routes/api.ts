@@ -8,7 +8,7 @@ const router = express.Router();
 // Submit a score (public - for judges without login)
 router.post('/scores/submit', async (req: express.Request, res: express.Response) => {
   try {
-    const { templateId, participantName, matchId, scoreData, judgeToken } = req.body;
+    const { templateId, participantName, matchId, scoreData, isHeadToHead, bracketSource } = req.body;
 
     if (!templateId || !scoreData) {
       return res.status(400).json({ error: 'Template ID and score data are required' });
@@ -26,48 +26,45 @@ router.post('/scores/submit', async (req: express.Request, res: express.Response
       return res.status(400).json({ error: 'Template not found or has no owner' });
     }
 
-    // Get active spreadsheet config for the template owner
-    const config = await db.get(
-      'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active = 1',
-      [template.created_by]
-    );
+    // For head-to-head mode, get the bracket config instead of scores config
+    let config;
+    if (isHeadToHead && bracketSource) {
+      config = await db.get(
+        `SELECT * FROM spreadsheet_configs 
+         WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'bracket'
+         LIMIT 1`,
+        [template.created_by]
+      );
+    } else {
+      config = await db.get(
+        `SELECT * FROM spreadsheet_configs 
+         WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'scores'
+         LIMIT 1`,
+        [template.created_by]
+      );
+    }
 
     if (!config) {
       return res.status(400).json({ error: 'No active spreadsheet configuration found' });
     }
 
-    // Get the owner's access token
-    const owner = await db.get(
-      'SELECT access_token FROM users WHERE id = ?',
-      [template.created_by]
-    );
+    // Add metadata to score data for head-to-head
+    const enrichedScoreData = {
+      ...scoreData,
+      _isHeadToHead: { value: isHeadToHead || false, type: 'boolean' },
+      _bracketSource: { value: bracketSource || null, type: 'object' }
+    };
 
     // Save to database (use null for user_id since judge isn't logged in)
     const result = await db.run(
       `INSERT INTO score_submissions 
        (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [null, templateId, config.id, participantName, matchId, JSON.stringify(scoreData)]
+      [null, templateId, config.id, participantName, matchId, JSON.stringify(enrichedScoreData)]
     );
 
-    // Submit to Google Sheets using owner's token
-    try {
-      await submitScoreToSheet(
-        owner.access_token,
-        config.spreadsheet_id,
-        config.sheet_name,
-        scoreData
-      );
-
-      // Mark as submitted
-      await db.run(
-        'UPDATE score_submissions SET submitted_to_sheet = 1 WHERE id = ?',
-        [result.lastID]
-      );
-    } catch (sheetError) {
-      console.error('Error submitting to sheet:', sheetError);
-      // Score saved locally but not to sheet
-    }
+    // Don't auto-submit to sheet - wait for admin approval
+    // Score is saved with submitted_to_sheet = 0 and pending status
 
     const submission = await db.get('SELECT * FROM score_submissions WHERE id = ?', [result.lastID]);
     res.json(submission);

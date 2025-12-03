@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import TemplateEditorModal from './TemplateEditorModal';
 import TemplatePreviewModal from './TemplatePreviewModal';
+import { formatDate } from '../../utils/dateUtils';
 
 interface Template {
   id: number;
@@ -8,6 +9,8 @@ interface Template {
   description: string;
   access_code: string;
   created_at: string;
+  spreadsheet_config_id: number | null;
+  spreadsheet_name: string | null;
 }
 
 export default function TemplatesTab() {
@@ -68,6 +71,7 @@ export default function TemplatesTab() {
                 <tr>
                   <th>Name</th>
                   <th>Description</th>
+                  <th>Spreadsheet</th>
                   <th>Access Code</th>
                   <th>Created</th>
                   <th>Actions</th>
@@ -83,11 +87,16 @@ export default function TemplatesTab() {
                       )}
                     </td>
                     <td>
+                      {template.spreadsheet_name || (
+                        <em style={{ color: 'var(--secondary-color)' }}>Not assigned</em>
+                      )}
+                    </td>
+                    <td>
                       <code style={{ background: 'var(--bg-color)', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}>
                         {template.access_code || 'N/A'}
                       </code>
                     </td>
-                    <td>{new Date(template.created_at).toLocaleDateString()}</td>
+                    <td>{formatDate(template.created_at)}</td>
                     <td>
                       <button className="btn btn-primary" onClick={() => handlePreview(template.id)}>
                         Preview

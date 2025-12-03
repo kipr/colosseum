@@ -12,6 +12,7 @@ import adminRoutes from './routes/admin';
 import scoresheetRoutes from './routes/scoresheet';
 import apiRoutes from './routes/api';
 import dataRoutes from './routes/data';
+import scoresRoutes from './routes/scores';
 
 dotenv.config();
 
@@ -64,6 +65,7 @@ app.use('/admin', adminRoutes);
 app.use('/scoresheet', scoresheetRoutes);
 app.use('/api', apiRoutes);
 app.use('/data', dataRoutes);
+app.use('/scores', scoresRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
