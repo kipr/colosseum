@@ -31,21 +31,34 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session configuration with SQLite store
-const SQLiteStore = connectSqlite3(session);
-app.use(session({
-  store: new SQLiteStore({
-    db: 'sessions.db',
-    dir: path.join(__dirname, '../../database')
-  }) as any, // Type assertion needed due to connect-sqlite3 types compatibility
+// Session configuration
+// In production (Cloud Run), use memory store since SQLite doesn't persist across instances
+// For development, use SQLite store for persistence across restarts
+const isProduction = process.env.NODE_ENV === 'production';
+
+const sessionConfig: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'colosseum-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
+  proxy: isProduction, // Trust the reverse proxy (Cloud Run)
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProduction, // Require HTTPS in production
+    httpOnly: true,
+    sameSite: isProduction ? 'lax' : 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
-}));
+};
+
+// Only use SQLite store in development
+if (!isProduction) {
+  const SQLiteStore = connectSqlite3(session);
+  sessionConfig.store = new SQLiteStore({
+    db: 'sessions.db',
+    dir: path.join(__dirname, '../../database')
+  }) as any;
+}
+
+app.use(session(sessionConfig));
 
 // Passport initialization
 app.use(passport.initialize());
