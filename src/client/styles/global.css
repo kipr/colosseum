@@ -111,6 +111,24 @@ body {
     background-color: #dc2626;
 }
 
+.btn-delete {
+    background-color: #7f1d1d;
+    color: white;
+    border: none;
+}
+
+.btn-delete:hover {
+    background-color: #991b1b;
+}
+
+[data-theme="dark"] .btn-delete {
+    background-color: #991b1b;
+}
+
+[data-theme="dark"] .btn-delete:hover {
+    background-color: #b91c1c;
+}
+
 /* Cards */
 .card {
     background-color: var(--card-bg);

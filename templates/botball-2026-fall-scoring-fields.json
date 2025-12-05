@@ -1,0 +1,803 @@
+[
+  {
+    "id": "section_header_side_a",
+    "label": "SIDE A",
+    "type": "section_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_starting_boxes_header",
+    "label": "Starting Boxes",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_starting_cubes",
+    "label": "Cubes",
+    "suffix": "× 2",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1,
+    "description": "Number of cubes in starting boxes"
+  },
+  {
+    "id": "side_a_starting_baskets",
+    "label": "Baskets",
+    "suffix": "× 15",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1,
+    "description": "Number of baskets"
+  },
+  {
+    "id": "side_a_starting_botguy",
+    "label": "Botguy",
+    "suffix": "× 2",
+    "column": "left",
+    "type": "buttons",
+    "required": false,
+    "isMultiplier": true,
+    "options": [
+      { "label": "No", "value": "0" },
+      { "label": "Yes", "value": "1" }
+    ]
+  },
+  {
+    "id": "side_a_starting_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "((side_a_starting_cubes * 2) + (side_a_starting_baskets * 15)) * (side_a_starting_botguy === '1' ? 2 : 1)",
+    "description": "Itemized points × Botguy multiplier (2 if yes, 1 if no)"
+  },
+  {
+    "id": "side_a_workstation_header",
+    "label": "Work Stations",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_workstation_poms",
+    "label": "Poms",
+    "suffix": "× 2",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1,
+    "description": "Number of poms at work stations"
+  },
+  {
+    "id": "side_a_workstation_both_colors",
+    "label": "# of Stations with Both Pom Colors",
+    "suffix": "×",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies work station subtotal"
+  },
+  {
+    "id": "side_a_workstation_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "(side_a_workstation_poms * 2) * (side_a_workstation_both_colors > 0 ? side_a_workstation_both_colors : 1)",
+    "description": "Pom points × # of stations with both colors"
+  },
+  {
+    "id": "side_a_lower_storage_header",
+    "label": "Lower Storage",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_lower_cubes_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 5",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_lower_botguy",
+    "label": "Botguy",
+    "suffix": "× 20",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_lower_traffic_cones",
+    "label": "Stored Traffic Cones",
+    "suffix": "× 25",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_lower_pallets",
+    "label": "# of Pallets",
+    "suffix": "×",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies lower storage subtotal"
+  },
+  {
+    "id": "side_a_lower_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "((side_a_lower_cubes_pallets * 5) + (side_a_lower_botguy * 20) + (side_a_lower_traffic_cones * 25)) * (side_a_lower_pallets > 0 ? side_a_lower_pallets : 1)",
+    "description": "Itemized points × # of pallets"
+  },
+  {
+    "id": "side_a_storage_posts_header",
+    "label": "Storage Posts",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_storage_posts",
+    "label": "2\\\" PVC Pipes",
+    "suffix": "× 30",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_storage_posts_count",
+    "label": "# of Posts",
+    "suffix": "×",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies storage posts subtotal"
+  },
+  {
+    "id": "side_a_storage_posts_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "(side_a_storage_posts * 30) * (side_a_storage_posts_count > 0 ? side_a_storage_posts_count : 1)",
+    "description": "PVC pipe points × # of posts"
+  },
+  {
+    "id": "side_a_pom_sorter_header",
+    "label": "Pom Sorter",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_pom_unsorted",
+    "label": "Unsorted Poms in Baskets",
+    "suffix": "× 5",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_pom_sorted",
+    "label": "Sorted Poms in Baskets",
+    "suffix": "× 10",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_pom_sorted_baskets",
+    "label": "Sorted Baskets",
+    "suffix": "×",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "First multiplier for pom sorter"
+  },
+  {
+    "id": "side_a_pom_returned_baskets",
+    "label": "Returned Baskets",
+    "suffix": "×",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Second multiplier for pom sorter"
+  },
+  {
+    "id": "side_a_pom_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "((side_a_pom_unsorted * 5) + (side_a_pom_sorted * 10)) * (side_a_pom_sorted_baskets > 0 ? side_a_pom_sorted_baskets : 1) * (side_a_pom_returned_baskets > 0 ? side_a_pom_returned_baskets : 1)",
+    "description": "Pom points × sorted baskets × returned baskets"
+  },
+  {
+    "id": "side_a_upper_storage_header",
+    "label": "Upper Storage",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_upper_cubes_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 10",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_upper_traffic_cones",
+    "label": "Traffic Cones",
+    "suffix": "× 15",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_upper_pallets",
+    "label": "# of Pallets",
+    "suffix": "×",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies upper storage subtotal"
+  },
+  {
+    "id": "side_a_upper_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "((side_a_upper_cubes_pallets * 10) + (side_a_upper_traffic_cones * 15)) * (side_a_upper_pallets > 0 ? side_a_upper_pallets : 1)",
+    "description": "Itemized points × # of pallets"
+  },
+  {
+    "id": "side_a_raised_loading_header",
+    "label": "Raised Loading Dock",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_raised_cubes",
+    "label": "Cubes",
+    "suffix": "× 5",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_raised_cubes_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 10",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_raised_pallets",
+    "label": "# of Pallets",
+    "suffix": "× 2",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies raised dock subtotal (value × 2)"
+  },
+  {
+    "id": "side_a_raised_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "((side_a_raised_cubes * 5) + (side_a_raised_cubes_pallets * 10)) * (side_a_raised_pallets > 0 ? (side_a_raised_pallets * 2) : 1)",
+    "description": "Itemized points × (# of pallets × 2)"
+  },
+  {
+    "id": "side_a_outdoor_loading_header",
+    "label": "Outdoor Loading Docks",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_outdoor_unsorted",
+    "label": "Unsorted Cubes",
+    "suffix": "× 5",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_outdoor_sorted",
+    "label": "Sorted Cubes",
+    "suffix": "× 10",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_outdoor_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 5",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_a_outdoor_highest_sorted",
+    "label": "Highest # of Sorted Cubes on a Pallet",
+    "suffix": "×",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies outdoor docks subtotal"
+  },
+  {
+    "id": "side_a_outdoor_subtotal",
+    "label": "Subtotal",
+    "column": "left",
+    "type": "calculated",
+    "formula": "((side_a_outdoor_unsorted * 5) + (side_a_outdoor_sorted * 10) + (side_a_outdoor_pallets * 5)) * (side_a_outdoor_highest_sorted > 0 ? side_a_outdoor_highest_sorted : 1)",
+    "description": "Itemized points × highest # of sorted cubes on a pallet"
+  },
+  {
+    "id": "side_a_total",
+    "label": "Side A Total",
+    "column": "left",
+    "type": "calculated",
+    "formula": "side_a_starting_subtotal + side_a_workstation_subtotal + side_a_lower_subtotal + side_a_storage_posts_subtotal + side_a_pom_subtotal + side_a_upper_subtotal + side_a_raised_subtotal + side_a_outdoor_subtotal",
+    "isTotal": true
+  },
+  {
+    "id": "section_header_side_b",
+    "label": "SIDE B",
+    "type": "section_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_starting_boxes_header",
+    "label": "Starting Boxes",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_starting_cubes",
+    "label": "Cubes",
+    "suffix": "× 2",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_starting_baskets",
+    "label": "Baskets",
+    "suffix": "× 15",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_starting_botguy",
+    "label": "Botguy",
+    "suffix": "× 2",
+    "column": "right",
+    "type": "buttons",
+    "required": false,
+    "isMultiplier": true,
+    "options": [
+      { "label": "No", "value": "0" },
+      { "label": "Yes", "value": "1" }
+    ]
+  },
+  {
+    "id": "side_b_starting_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "((side_b_starting_cubes * 2) + (side_b_starting_baskets * 15)) * (side_b_starting_botguy === '1' ? 2 : 1)",
+    "description": "Itemized points × Botguy multiplier (2 if yes, 1 if no)"
+  },
+  {
+    "id": "side_b_workstation_header",
+    "label": "Work Stations",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_workstation_poms",
+    "label": "Poms",
+    "suffix": "× 2",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_workstation_both_colors",
+    "label": "# of Stations with Both Pom Colors",
+    "suffix": "×",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies work station subtotal"
+  },
+  {
+    "id": "side_b_workstation_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "(side_b_workstation_poms * 2) * (side_b_workstation_both_colors > 0 ? side_b_workstation_both_colors : 1)",
+    "description": "Pom points × # of stations with both colors"
+  },
+  {
+    "id": "side_b_lower_storage_header",
+    "label": "Lower Storage",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_lower_cubes_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 5",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_lower_botguy",
+    "label": "Botguy",
+    "suffix": "× 20",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_lower_traffic_cones",
+    "label": "Stored Traffic Cones",
+    "suffix": "× 25",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_lower_pallets",
+    "label": "# of Pallets",
+    "suffix": "×",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies lower storage subtotal"
+  },
+  {
+    "id": "side_b_lower_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "((side_b_lower_cubes_pallets * 5) + (side_b_lower_botguy * 20) + (side_b_lower_traffic_cones * 25)) * (side_b_lower_pallets > 0 ? side_b_lower_pallets : 1)",
+    "description": "Itemized points × # of pallets"
+  },
+  {
+    "id": "side_b_storage_posts_header",
+    "label": "Storage Posts",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_storage_posts",
+    "label": "2\\\" PVC Pipes",
+    "suffix": "× 30",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_storage_posts_count",
+    "label": "# of Posts",
+    "suffix": "×",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies storage posts subtotal"
+  },
+  {
+    "id": "side_b_storage_posts_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "(side_b_storage_posts * 30) * (side_b_storage_posts_count > 0 ? side_b_storage_posts_count : 1)",
+    "description": "PVC pipe points × # of posts"
+  },
+  {
+    "id": "side_b_pom_sorter_header",
+    "label": "Pom Sorter",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_pom_unsorted",
+    "label": "Unsorted Poms in Baskets",
+    "suffix": "× 5",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_pom_sorted",
+    "label": "Sorted Poms in Baskets",
+    "suffix": "× 10",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_pom_sorted_baskets",
+    "label": "Sorted Baskets",
+    "suffix": "×",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "First multiplier for pom sorter"
+  },
+  {
+    "id": "side_b_pom_returned_baskets",
+    "label": "Returned Baskets",
+    "suffix": "×",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Second multiplier for pom sorter"
+  },
+  {
+    "id": "side_b_pom_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "((side_b_pom_unsorted * 5) + (side_b_pom_sorted * 10)) * (side_b_pom_sorted_baskets > 0 ? side_b_pom_sorted_baskets : 1) * (side_b_pom_returned_baskets > 0 ? side_b_pom_returned_baskets : 1)",
+    "description": "Pom points × sorted baskets × returned baskets"
+  },
+  {
+    "id": "side_b_upper_storage_header",
+    "label": "Upper Storage",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_upper_cubes_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 10",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_upper_traffic_cones",
+    "label": "Traffic Cones",
+    "suffix": "× 15",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_upper_pallets",
+    "label": "# of Pallets",
+    "suffix": "×",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies upper storage subtotal"
+  },
+  {
+    "id": "side_b_upper_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "((side_b_upper_cubes_pallets * 10) + (side_b_upper_traffic_cones * 15)) * (side_b_upper_pallets > 0 ? side_b_upper_pallets : 1)",
+    "description": "Itemized points × # of pallets"
+  },
+  {
+    "id": "side_b_raised_loading_header",
+    "label": "Raised Loading Dock",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_raised_cubes",
+    "label": "Cubes",
+    "suffix": "× 5",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_raised_cubes_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 10",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_raised_pallets",
+    "label": "# of Pallets",
+    "suffix": "× 2",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies raised dock subtotal (value × 2)"
+  },
+  {
+    "id": "side_b_raised_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "((side_b_raised_cubes * 5) + (side_b_raised_cubes_pallets * 10)) * (side_b_raised_pallets > 0 ? (side_b_raised_pallets * 2) : 1)",
+    "description": "Itemized points × (# of pallets × 2)"
+  },
+  {
+    "id": "side_b_outdoor_loading_header",
+    "label": "Outdoor Loading Docks",
+    "type": "group_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_outdoor_unsorted",
+    "label": "Unsorted Cubes",
+    "suffix": "× 5",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_outdoor_sorted",
+    "label": "Sorted Cubes",
+    "suffix": "× 10",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_outdoor_pallets",
+    "label": "Cubes on Pallets",
+    "suffix": "× 5",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "side_b_outdoor_highest_sorted",
+    "label": "Highest # of Sorted Cubes on a Pallet",
+    "suffix": "×",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1,
+    "description": "Multiplies outdoor docks subtotal"
+  },
+  {
+    "id": "side_b_outdoor_subtotal",
+    "label": "Subtotal",
+    "column": "right",
+    "type": "calculated",
+    "formula": "((side_b_outdoor_unsorted * 5) + (side_b_outdoor_sorted * 10) + (side_b_outdoor_pallets * 5)) * (side_b_outdoor_highest_sorted > 0 ? side_b_outdoor_highest_sorted : 1)",
+    "description": "Itemized points × highest # of sorted cubes on a pallet"
+  },
+  {
+    "id": "side_b_total",
+    "label": "Side B Total",
+    "column": "right",
+    "type": "calculated",
+    "formula": "side_b_starting_subtotal + side_b_workstation_subtotal + side_b_lower_subtotal + side_b_storage_posts_subtotal + side_b_pom_subtotal + side_b_upper_subtotal + side_b_raised_subtotal + side_b_outdoor_subtotal",
+    "isTotal": true
+  },
+  {
+    "id": "grand_total",
+    "label": "Total Score (A + B)",
+    "type": "calculated",
+    "formula": "side_a_total + side_b_total",
+    "isGrandTotal": true
+  }
+]
+

@@ -3,16 +3,28 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
 import SpreadsheetsTab from '../components/admin/SpreadsheetsTab';
-import TemplatesTab from '../components/admin/TemplatesTab';
+import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
 import ScoringTab from '../components/admin/ScoringTab';
 import './Admin.css';
 
-type TabType = 'spreadsheets' | 'templates' | 'scoring';
+type TabType = 'spreadsheets' | 'scoresheets' | 'scoring';
 
 export default function Admin() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>('spreadsheets');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    // Initialize from localStorage
+    const saved = localStorage.getItem('colosseum_last_admin_tab');
+    // Handle old 'templates' value
+    if (saved === 'templates') {
+      localStorage.setItem('colosseum_last_admin_tab', 'scoresheets');
+      return 'scoresheets';
+    }
+    if (saved && (saved === 'spreadsheets' || saved === 'scoresheets' || saved === 'scoring')) {
+      return saved as TabType;
+    }
+    return 'spreadsheets';
+  });
   const [tokenStatus, setTokenStatus] = useState<{ valid: boolean; message?: string } | null>(null);
 
   useEffect(() => {
@@ -20,6 +32,11 @@ export default function Admin() {
       navigate('/');
     }
   }, [user, loading, navigate]);
+
+  // Save active tab to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('colosseum_last_admin_tab', activeTab);
+  }, [activeTab]);
 
   // Check token status periodically
   useEffect(() => {
@@ -88,10 +105,10 @@ export default function Admin() {
                 📊 Spreadsheets
               </button>
               <button
-                className={`sidebar-item ${activeTab === 'templates' ? 'active' : ''}`}
-                onClick={() => setActiveTab('templates')}
+                className={`sidebar-item ${activeTab === 'scoresheets' ? 'active' : ''}`}
+                onClick={() => setActiveTab('scoresheets')}
               >
-                📝 Templates
+                📝 Score Sheets
               </button>
               <button
                 className={`sidebar-item ${activeTab === 'scoring' ? 'active' : ''}`}
@@ -104,7 +121,7 @@ export default function Admin() {
 
           <div className="admin-content">
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
-            {activeTab === 'templates' && <TemplatesTab />}
+            {activeTab === 'scoresheets' && <ScoreSheetsTab />}
             {activeTab === 'scoring' && <ScoringTab />}
           </div>
         </div>

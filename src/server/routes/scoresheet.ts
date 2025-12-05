@@ -176,5 +176,20 @@ router.put('/templates/:id', requireAuth, async (req: AuthRequest, res: express.
   }
 });
 
+// Delete a template
+router.delete('/templates/:id', requireAuth, async (req: AuthRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+
+    await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [id]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting template:', error);
+    res.status(500).json({ error: 'Failed to delete template' });
+  }
+});
+
 export default router;
 

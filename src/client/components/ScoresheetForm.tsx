@@ -61,6 +61,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     if (isHeadToHead && schema.bracketSource) {
       loadBracketGames();
       loadTeamsData();
+      
+      // Poll for bracket updates every 5 seconds so new games appear as winners are decided
+      const interval = setInterval(() => {
+        loadBracketGames();
+      }, 5000);
+      
+      return () => clearInterval(interval);
     }
   }, []);
 
@@ -114,11 +121,19 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     const teamNumberField = teamsConfig?.teamNumberField || 'Team Number';
     const teamNameField = teamsConfig?.teamNameField || 'Team Name';
     
-    const team = teamsData.find((t: any) => 
-      String(t[teamNumberField]) === String(teamNumber) ||
-      String(t['Team #']) === String(teamNumber) ||
-      String(t['Team Number']) === String(teamNumber)
-    );
+    // Normalize team number by stripping leading zeros (e.g., "001" -> "1")
+    const normalizedTeamNumber = String(parseInt(teamNumber, 10) || teamNumber);
+    
+    const team = teamsData.find((t: any) => {
+      // Normalize the stored team number as well for comparison
+      const storedNumber = String(parseInt(t[teamNumberField], 10) || t[teamNumberField]);
+      const storedNumberAlt1 = String(parseInt(t['Team #'], 10) || t['Team #']);
+      const storedNumberAlt2 = String(parseInt(t['Team Number'], 10) || t['Team Number']);
+      
+      return storedNumber === normalizedTeamNumber ||
+             storedNumberAlt1 === normalizedTeamNumber ||
+             storedNumberAlt2 === normalizedTeamNumber;
+    });
     
     if (team) {
       return team[teamNameField] || team['Team Name'] || team['Name'] || teamNumber;
@@ -183,23 +198,28 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       const selectedGame = bracketGames.find(g => g.gameNumber === Number(value));
       if (selectedGame) {
         if (selectedGame.team1) {
-          const teamNum = selectedGame.team1.teamNumber;
+          const teamNumRaw = selectedGame.team1.teamNumber;
+          // Normalize team number (strip leading zeros)
+          const teamNum = String(parseInt(teamNumRaw, 10) || teamNumRaw);
           const fullName = lookupTeamName(teamNum);
           updates.team_a_number = teamNum;
           updates.team_a_name = fullName;
-          // Store the bracket display format for when we write the winner
-          updates.team_a_bracket_display = formatBracketDisplay(teamNum, fullName);
+          // Store the original bracket display format for when we write the winner
+          updates.team_a_bracket_display = selectedGame.team1.displayName;
         } else {
           updates.team_a_number = 'Bye';
           updates.team_a_name = 'Bye';
           updates.team_a_bracket_display = 'Bye';
         }
         if (selectedGame.team2) {
-          const teamNum = selectedGame.team2.teamNumber;
+          const teamNumRaw = selectedGame.team2.teamNumber;
+          // Normalize team number (strip leading zeros)
+          const teamNum = String(parseInt(teamNumRaw, 10) || teamNumRaw);
           const fullName = lookupTeamName(teamNum);
           updates.team_b_number = teamNum;
           updates.team_b_name = fullName;
-          updates.team_b_bracket_display = formatBracketDisplay(teamNum, fullName);
+          // Store the original bracket display format for when we write the winner
+          updates.team_b_bracket_display = selectedGame.team2.displayName;
         } else {
           updates.team_b_number = 'Bye';
           updates.team_b_name = 'Bye';

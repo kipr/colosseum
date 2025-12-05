@@ -1,0 +1,40 @@
+[
+  {
+    "id": "section_header_side_a",
+    "label": "SIDE A",
+    "type": "section_header",
+    "column": "left"
+  },
+  {
+    "id": "side_a_score",
+    "label": "Side A Score",
+    "type": "number",
+    "column": "left",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "section_header_side_b",
+    "label": "SIDE B",
+    "type": "section_header",
+    "column": "right"
+  },
+  {
+    "id": "side_b_score",
+    "label": "Side B Score",
+    "type": "number",
+    "column": "right",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "grand_total",
+    "label": "Total Score",
+    "type": "calculated",
+    "formula": "side_a_score + side_b_score",
+    "isGrandTotal": true
+  }
+]
+

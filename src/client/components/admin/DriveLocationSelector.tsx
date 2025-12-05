@@ -16,9 +16,10 @@ interface Spreadsheet {
 
 interface DriveLocationSelectorProps {
   onSpreadsheetLinked: () => void;
+  linkSpreadsheetOnly?: boolean;  // If true, just link the spreadsheet without selecting a sheet
 }
 
-export default function DriveLocationSelector({ onSpreadsheetLinked }: DriveLocationSelectorProps) {
+export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreadsheetOnly = false }: DriveLocationSelectorProps) {
   const [locations, setLocations] = useState<DriveLocation[]>([]);
   const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
   const [selectedLocation, setSelectedLocation] = useState<DriveLocation | null>(null);
@@ -64,8 +65,30 @@ export default function DriveLocationSelector({ onSpreadsheetLinked }: DriveLoca
     setSpreadsheets([]);
   };
 
-  const handleSpreadsheetSelect = (id: string, name: string) => {
-    setSelectedSpreadsheet({ id, name });
+  const handleSpreadsheetSelect = async (id: string, name: string) => {
+    if (linkSpreadsheetOnly) {
+      // Just link the spreadsheet without selecting a sheet
+      try {
+        const response = await fetch('/admin/spreadsheets/link-spreadsheet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ spreadsheetId: id })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to link spreadsheet');
+        }
+
+        onSpreadsheetLinked();
+      } catch (error: any) {
+        console.error('Error linking spreadsheet:', error);
+        alert(error.message || 'Failed to link spreadsheet');
+      }
+    } else {
+      setSelectedSpreadsheet({ id, name });
+    }
   };
 
   if (loading && !selectedLocation) {

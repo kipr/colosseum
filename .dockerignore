@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.gitignore
+.env
+.env.*
+*.md
+*.log
+.DS_Store
+database/*.db
+database/*.db-journal
+

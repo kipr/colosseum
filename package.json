@@ -6,11 +6,12 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "nodemon --watch src/server --exec ts-node src/server/server.ts",
-    "dev:client": "vite",
-    "build": "npm run build:client && npm run build:server",
+    "dev:client": "wait-on http://localhost:3000/health && vite",
+    "build": "npm run clean && npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsc",
-    "start": "node dist/server/server.js",
+    "clean": "node -e \"const fs = require('fs'); if(fs.existsSync('dist')) fs.rmSync('dist', {recursive:true});\"",
+    "start": "cross-env NODE_ENV=production node dist/server/server.js",
     "preview": "vite preview"
   },
   "keywords": [],
@@ -44,9 +45,11 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "vite": "^7.2.6"
+    "vite": "^7.2.6",
+    "wait-on": "^9.0.3"
   }
 }

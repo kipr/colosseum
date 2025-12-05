@@ -16,9 +16,9 @@ router.post('/scores/submit', async (req: express.Request, res: express.Response
 
     const db = await getDatabase();
     
-    // Get the template to find who created it
+    // Get the template to find who created it and which sheet it's linked to
     const template = await db.get(
-      'SELECT created_by FROM scoresheet_templates WHERE id = ?',
+      'SELECT id, name, created_by, spreadsheet_config_id FROM scoresheet_templates WHERE id = ?',
       [templateId]
     );
     
@@ -26,26 +26,43 @@ router.post('/scores/submit', async (req: express.Request, res: express.Response
       return res.status(400).json({ error: 'Template not found or has no owner' });
     }
 
-    // For head-to-head mode, get the bracket config instead of scores config
+    // Get the spreadsheet config - prefer template's linked config if set
     let config;
-    if (isHeadToHead && bracketSource) {
+    if (template.spreadsheet_config_id) {
+      // Use the specific sheet linked to this template
       config = await db.get(
-        `SELECT * FROM spreadsheet_configs 
-         WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'bracket'
-         LIMIT 1`,
-        [template.created_by]
+        'SELECT * FROM spreadsheet_configs WHERE id = ?',
+        [template.spreadsheet_config_id]
       );
+      
+      if (!config || !config.is_active) {
+        return res.status(400).json({ 
+          error: config 
+            ? 'The sheet linked to this score sheet is not active. Please activate it in Admin > Spreadsheets.' 
+            : 'The sheet linked to this score sheet no longer exists.'
+        });
+      }
     } else {
-      config = await db.get(
-        `SELECT * FROM spreadsheet_configs 
-         WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'scores'
-         LIMIT 1`,
-        [template.created_by]
-      );
-    }
+      // Fallback: Find an active sheet with the appropriate purpose
+      if (isHeadToHead && bracketSource) {
+        config = await db.get(
+          `SELECT * FROM spreadsheet_configs 
+           WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'bracket'
+           LIMIT 1`,
+          [template.created_by]
+        );
+      } else {
+        config = await db.get(
+          `SELECT * FROM spreadsheet_configs 
+           WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'scores'
+           LIMIT 1`,
+          [template.created_by]
+        );
+      }
 
-    if (!config) {
-      return res.status(400).json({ error: 'No active spreadsheet configuration found' });
+      if (!config) {
+        return res.status(400).json({ error: 'No active spreadsheet configuration found' });
+      }
     }
 
     // Add metadata to score data for head-to-head
@@ -54,7 +71,7 @@ router.post('/scores/submit', async (req: express.Request, res: express.Response
       _isHeadToHead: { value: isHeadToHead || false, type: 'boolean' },
       _bracketSource: { value: bracketSource || null, type: 'object' }
     };
-
+    
     // Save to database (use null for user_id since judge isn't logged in)
     const result = await db.run(
       `INSERT INTO score_submissions 

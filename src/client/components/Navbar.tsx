@@ -1,11 +1,10 @@
 import React from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import './Navbar.css';
 
 export default function Navbar() {
-  const navigate = useNavigate();
   const location = useLocation();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -23,16 +22,16 @@ export default function Navbar() {
           <h1>🏛️ Colosseum{location.pathname === '/admin' ? ' Admin' : location.pathname === '/judge' ? ' - Judge' : ''}</h1>
         </div>
         <div className="nav-menu">
-          <button className="nav-item" onClick={() => navigate('/')}>
+          <Link to="/" className={`nav-item ${isActive('/') ? 'active' : ''}`}>
             Home
-          </button>
-          <button className={`nav-item ${isActive('/judge') ? 'active' : ''}`} onClick={() => navigate('/judge')}>
+          </Link>
+          <Link to="/judge" className={`nav-item ${isActive('/judge') ? 'active' : ''}`}>
             Score Sheets
-          </button>
+          </Link>
           {user && (
-            <button className={`nav-item ${isActive('/admin') ? 'active' : ''}`} onClick={() => navigate('/admin')}>
+            <Link to="/admin" className={`nav-item ${isActive('/admin') ? 'active' : ''}`}>
               Admin
-            </button>
+            </Link>
           )}
           <button className="nav-item theme-toggle" onClick={toggleTheme}>
             <span className="theme-icon">{theme === 'dark' ? '☀️' : '🌙'}</span>

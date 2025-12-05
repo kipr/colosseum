@@ -34,19 +34,18 @@ export function setupPassport() {
         clientID: process.env.GOOGLE_CLIENT_ID || '',
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
         callbackURL: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3000/auth/google/callback',
-        scope: [
-          'profile',
-          'email',
-          'https://www.googleapis.com/auth/drive.readonly',
-          'https://www.googleapis.com/auth/spreadsheets'
-        ]
       },
-      async (accessToken, refreshToken, profile, done) => {
+      async (accessToken: string, refreshToken: string, profile: any, done: any) => {
         try {
           const db = await getDatabase();
           const email = profile.emails?.[0]?.value;
           const name = profile.displayName;
           const googleId = profile.id;
+          
+          // Log if we got a refresh token (for debugging)
+          if (!refreshToken) {
+            console.warn(`Warning: No refresh token received for ${email}. User may need to revoke and re-authorize.`);
+          }
 
           // Check if email domain is allowed
           if (!isEmailAllowed(email)) {
@@ -62,24 +61,28 @@ export function setupPassport() {
             [googleId]
           );
 
+          // Token expires in 1 hour (standard Google OAuth)
+          const tokenExpiresAt = Date.now() + 3600 * 1000;
+
           if (!user) {
-            // Create new user
+            // Create new user - set is_admin = 1 since they passed the domain check
             const result = await db.run(
-              `INSERT INTO users (google_id, email, name, access_token, refresh_token) 
-               VALUES (?, ?, ?, ?, ?)`,
-              [googleId, email, name, accessToken, refreshToken]
+              `INSERT INTO users (google_id, email, name, access_token, refresh_token, is_admin, token_expires_at) 
+               VALUES (?, ?, ?, ?, ?, 1, ?)`,
+              [googleId, email, name, accessToken, refreshToken, tokenExpiresAt]
             );
             user = await db.get('SELECT * FROM users WHERE id = ?', [result.lastID]);
             console.log(`New admin user created: ${email}`);
           } else {
-            // Update tokens
+            // Update tokens and ensure is_admin is set (fix for existing users)
             await db.run(
-              `UPDATE users SET access_token = ?, refresh_token = ?, name = ?, email = ? 
+              `UPDATE users SET access_token = ?, refresh_token = ?, name = ?, email = ?, is_admin = 1, token_expires_at = ?
                WHERE google_id = ?`,
-              [accessToken, refreshToken || user.refresh_token, name, email, googleId]
+              [accessToken, refreshToken || user.refresh_token, name, email, tokenExpiresAt, googleId]
             );
             user.access_token = accessToken;
             user.refresh_token = refreshToken || user.refresh_token;
+            user.is_admin = 1;
             console.log(`Admin user logged in: ${email}`);
           }
 

@@ -50,7 +50,72 @@ export async function initializeDatabase(): Promise<void> {
     // Column already exists
   }
 
-  // Scoresheet templates
+  // Add token_expires_at column to users table for proactive token refresh
+  try {
+    await db.exec(`ALTER TABLE users ADD COLUMN token_expires_at INTEGER`);
+    console.log('✅ Added token_expires_at column to users');
+  } catch (error) {
+    // Column already exists
+  }
+
+  // Scoresheet field templates (reusable scoring field patterns)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS scoresheet_field_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      fields_json TEXT NOT NULL, -- JSON array of field definitions (scoring fields only)
+      created_by INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+  
+  // Migration: Remove type column if it exists (from old schema)
+  try {
+    const tableInfo = await db.all('PRAGMA table_info(scoresheet_field_templates)');
+    const hasTypeColumn = tableInfo.some((col: any) => col.name === 'type');
+    
+    if (hasTypeColumn) {
+      console.log('⚙️ Migrating scoresheet_field_templates to remove type column...');
+      
+      // SQLite doesn't support DROP COLUMN, so we need to recreate the table
+      await db.exec(`
+        -- Create new table without type column
+        CREATE TABLE scoresheet_field_templates_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT,
+          fields_json TEXT NOT NULL,
+          created_by INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        );
+        
+        -- Copy data (excluding type column)
+        INSERT INTO scoresheet_field_templates_new (id, name, description, fields_json, created_by, created_at, updated_at)
+        SELECT id, name, description, fields_json, created_by, created_at, updated_at 
+        FROM scoresheet_field_templates;
+        
+        -- Drop old table
+        DROP TABLE scoresheet_field_templates;
+        
+        -- Rename new table
+        ALTER TABLE scoresheet_field_templates_new RENAME TO scoresheet_field_templates;
+      `);
+      
+      console.log('✅ Scoresheet field templates table migrated successfully');
+    } else {
+      console.log('✅ Scoresheet field templates table ready (no migration needed)');
+    }
+  } catch (error) {
+    console.error('Migration error (table might not exist yet):', error);
+    console.log('✅ Scoresheet field templates table ready');
+  }
+
+  // Scoresheet templates (actual score sheets with access codes)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS scoresheet_templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -159,12 +224,28 @@ export async function initializeDatabase(): Promise<void> {
     )
   `);
 
+  // Chat messages table for public chat feature
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      spreadsheet_id TEXT NOT NULL,
+      sender_name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      is_admin BOOLEAN DEFAULT 0,
+      user_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
   // Create indexes for better performance
   await db.exec(`
     CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
     CREATE INDEX IF NOT EXISTS idx_spreadsheet_configs_user ON spreadsheet_configs(user_id);
     CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id);
     CREATE INDEX IF NOT EXISTS idx_active_sessions_user ON active_sessions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_spreadsheet ON chat_messages(spreadsheet_id);
+    CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at);
   `);
 
   console.log('✅ Database initialized successfully');

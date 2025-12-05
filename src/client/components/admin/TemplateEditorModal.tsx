@@ -11,9 +11,16 @@ interface TemplateEditorModalProps {
   templateId: number | null;
   onClose: () => void;
   onSave: () => void;
+  initialData?: {
+    name: string;
+    description: string;
+    accessCode: string;
+    schema: any;
+    spreadsheetConfigId: number | '';
+  };
 }
 
-export default function TemplateEditorModal({ templateId, onClose, onSave }: TemplateEditorModalProps) {
+export default function TemplateEditorModal({ templateId, onClose, onSave, initialData }: TemplateEditorModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
@@ -26,6 +33,13 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
     loadSpreadsheets();
     if (templateId) {
       loadTemplate();
+    } else if (initialData) {
+      // Pre-fill from wizard data
+      setName(initialData.name);
+      setDescription(initialData.description);
+      setAccessCode(initialData.accessCode);
+      setSchema(JSON.stringify(initialData.schema, null, 2));
+      setSpreadsheetConfigId(initialData.spreadsheetConfigId);
     } else {
       // New template with example schema
       setSchema(JSON.stringify({
@@ -40,27 +54,18 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
         ]
       }, null, 2));
     }
-  }, [templateId]);
+  }, [templateId, initialData]);
 
   const loadSpreadsheets = async () => {
     try {
-      // Use all=true to get all spreadsheets from all admins
-      const response = await fetch('/admin/spreadsheets?all=true', { credentials: 'include' });
+      // Load all spreadsheet configs (no deduplication - we want individual sheets)
+      const response = await fetch('/admin/spreadsheets', { credentials: 'include' });
       if (!response.ok) {
         console.error('Failed to load spreadsheets, status:', response.status);
         throw new Error('Failed to load spreadsheets');
       }
       const data = await response.json();
-      // Get unique spreadsheets by spreadsheet_name
-      const uniqueSpreadsheets: SpreadsheetConfig[] = [];
-      const seen = new Set<string>();
-      data.forEach((config: SpreadsheetConfig) => {
-        if (config.spreadsheet_name && !seen.has(config.spreadsheet_name)) {
-          seen.add(config.spreadsheet_name);
-          uniqueSpreadsheets.push(config);
-        }
-      });
-      setSpreadsheets(uniqueSpreadsheets);
+      setSpreadsheets(data);
     } catch (error) {
       console.error('Error loading spreadsheets:', error);
     }
@@ -117,7 +122,7 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
 
       if (!response.ok) throw new Error('Failed to save template');
 
-      showSuccessMessage(templateId ? 'Template updated successfully!' : 'Template created successfully!');
+      showSuccessMessage(templateId ? 'Score sheet updated successfully!' : 'Score sheet created successfully!');
       onSave();
     } catch (error) {
       console.error('Error saving template:', error);
@@ -151,15 +156,21 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
     <div className="modal show" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <span className="close" onClick={onClose}>&times;</span>
-        <h3>{templateId ? 'Edit Template' : 'Create New Template'}</h3>
+        <h3>{templateId ? 'Edit Score Sheet' : initialData ? 'Review Generated Score Sheet' : 'Create New Score Sheet'}</h3>
+        {initialData && (
+          <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
+            Review and customize the generated score sheet below. You can edit any field or add more scoring sections.
+          </p>
+        )}
         {loading ? (
           <p>Loading...</p>
         ) : (
           <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label>Template Name</label>
+              <label>Score Sheet Name</label>
               <input
                 type="text"
+                className="field-input"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -168,49 +179,54 @@ export default function TemplateEditorModal({ templateId, onClose, onSave }: Tem
             <div className="form-group">
               <label>Description</label>
               <textarea
+                className="field-input"
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
             <div className="form-group">
-              <label>Spreadsheet</label>
+              <label>Destination Sheet</label>
               <select
+                className="field-input"
                 value={spreadsheetConfigId}
                 onChange={(e) => setSpreadsheetConfigId(e.target.value ? parseInt(e.target.value) : '')}
               >
-                <option value="">-- Select Spreadsheet --</option>
+                <option value="">-- Select Sheet --</option>
                 {spreadsheets.map(config => (
                   <option key={config.id} value={config.id}>
-                    {config.spreadsheet_name}
+                    {config.spreadsheet_name} → {config.sheet_name} ({config.sheet_purpose})
                   </option>
                 ))}
               </select>
-              <small>Groups this template under the selected spreadsheet for judges</small>
+              <small>The sheet where scores will be written (or bracket sheet for DE)</small>
             </div>
             <div className="form-group">
               <label>Access Code <span style={{ color: 'var(--danger-color)' }}>*</span></label>
               <input
                 type="text"
+                className="field-input"
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
                 placeholder="Enter code for judges to use"
                 required
               />
-              <small>Judges will need this code to access the scoresheet</small>
+              <small>Judges will need this code to access the score sheet</small>
             </div>
             <div className="form-group">
-              <label>Template Schema (JSON)</label>
+              <label>Score Sheet Schema (JSON)</label>
               <textarea
+                className="field-input"
                 rows={12}
                 value={schema}
                 onChange={(e) => setSchema(e.target.value)}
                 required
+                style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}
               />
               <small>Define fields, types, and options in JSON format</small>
             </div>
             <button type="submit" className="btn btn-primary">
-              Save Template
+              {templateId ? 'Update Score Sheet' : 'Create Score Sheet'}
             </button>
           </form>
         )}

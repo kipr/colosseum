@@ -109,12 +109,24 @@ router.get('/access-denied', (req: Request, res: Response) => {
 router.get('/logout', (req: Request, res: Response) => {
   req.logout((err) => {
     if (err) {
+      console.error('Logout error:', err);
       return res.status(500).json({ error: 'Logout failed' });
     }
-    // In development, redirect to Vite dev server
-    const isDev = process.env.NODE_ENV !== 'production';
-    const baseUrl = isDev ? 'http://localhost:5173' : '';
-    res.redirect(`${baseUrl}/`);
+    
+    // Also destroy the session to ensure complete logout
+    req.session.destroy((sessionErr) => {
+      if (sessionErr) {
+        console.error('Session destroy error:', sessionErr);
+      }
+      
+      // Clear the session cookie
+      res.clearCookie('connect.sid');
+      
+      // In development, redirect to Vite dev server
+      const isDev = process.env.NODE_ENV !== 'production';
+      const baseUrl = isDev ? 'http://localhost:5173' : '';
+      res.redirect(`${baseUrl}/`);
+    });
   });
 });
 

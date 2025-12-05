@@ -2,7 +2,7 @@ import express from 'express';
 import { getDatabase } from '../database/connection';
 import { getSheetData } from '../services/googleSheets';
 import { getAvailableGames, getGame } from '../services/bracketParser';
-import { getValidAccessToken } from '../services/tokenRefresh';
+import { getValidAccessToken, forceRefreshToken } from '../services/tokenRefresh';
 
 const router = express.Router();
 
@@ -56,12 +56,26 @@ router.get('/sheet-data/:sheetName', async (req: express.Request, res: express.R
       });
     }
 
-    const data = await getSheetData(
-      accessToken,
-      config.spreadsheet_id,
-      sheetName,
-      range as string
-    );
+    // Try to get data, retry with refreshed token if 401 error
+    let data;
+    try {
+      data = await getSheetData(accessToken, config.spreadsheet_id, sheetName, range as string);
+    } catch (apiError: any) {
+      const status = apiError?.code || apiError?.status || apiError?.response?.status;
+      if (status === 401) {
+        try {
+          accessToken = await forceRefreshToken(config.user_id);
+          data = await getSheetData(accessToken, config.spreadsheet_id, sheetName, range as string);
+        } catch (retryError: any) {
+          return res.status(401).json({
+            error: 'Token expired. Admin needs to re-authenticate.',
+            needsReauth: true
+          });
+        }
+      } else {
+        throw apiError;
+      }
+    }
 
     res.json(data);
   } catch (error: any) {
@@ -139,11 +153,28 @@ router.get('/bracket-games/:sheetName', async (req: express.Request, res: expres
       });
     }
 
-    const games = await getAvailableGames(
-      accessToken,
-      config.spreadsheet_id,
-      sheetName
-    );
+    // Try to get games, retry with refreshed token if 401 error
+    let games;
+    try {
+      games = await getAvailableGames(accessToken, config.spreadsheet_id, sheetName);
+    } catch (apiError: any) {
+      // Check if it's a 401 error
+      const status = apiError?.code || apiError?.status || apiError?.response?.status;
+      if (status === 401) {
+        // Force refresh token and retry
+        try {
+          accessToken = await forceRefreshToken(config.user_id);
+          games = await getAvailableGames(accessToken, config.spreadsheet_id, sheetName);
+        } catch (retryError: any) {
+          return res.status(401).json({
+            error: 'Token expired. Admin needs to re-authenticate.',
+            needsReauth: true
+          });
+        }
+      } else {
+        throw apiError;
+      }
+    }
 
     res.json(games);
   } catch (error: any) {
@@ -216,12 +247,26 @@ router.get('/bracket-game/:sheetName/:gameNumber', async (req: express.Request, 
       });
     }
 
-    const game = await getGame(
-      accessToken,
-      config.spreadsheet_id,
-      sheetName,
-      parseInt(gameNumber, 10)
-    );
+    // Try to get game, retry with refreshed token if 401 error
+    let game;
+    try {
+      game = await getGame(accessToken, config.spreadsheet_id, sheetName, parseInt(gameNumber, 10));
+    } catch (apiError: any) {
+      const status = apiError?.code || apiError?.status || apiError?.response?.status;
+      if (status === 401) {
+        try {
+          accessToken = await forceRefreshToken(config.user_id);
+          game = await getGame(accessToken, config.spreadsheet_id, sheetName, parseInt(gameNumber, 10));
+        } catch (retryError: any) {
+          return res.status(401).json({
+            error: 'Token expired. Admin needs to re-authenticate.',
+            needsReauth: true
+          });
+        }
+      } else {
+        throw apiError;
+      }
+    }
 
     if (!game) {
       return res.status(404).json({ error: `Game ${gameNumber} not found` });

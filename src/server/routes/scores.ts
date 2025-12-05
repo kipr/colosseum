@@ -3,7 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { submitScoreToSheet, updateTeamScore } from '../services/googleSheets';
 import { writeWinnerToBracket, clearWinnerFromBracket } from '../services/bracketParser';
-import { getValidAccessToken } from '../services/tokenRefresh';
+import { getValidAccessToken, forceRefreshToken } from '../services/tokenRefresh';
 
 const router = express.Router();
 
@@ -57,7 +57,7 @@ router.post('/:id/accept', requireAuth, async (req: AuthRequest, res: express.Re
     }
 
     // Get a valid (possibly refreshed) access token for the sheet owner
-    let accessToken;
+    let accessToken: string;
     try {
       accessToken = await getValidAccessToken(config.owner_id);
     } catch (tokenError: any) {
@@ -73,6 +73,20 @@ router.post('/:id/accept', requireAuth, async (req: AuthRequest, res: express.Re
     // Check if this is a head-to-head score
     const isHeadToHead = scoreData._isHeadToHead?.value === true;
     
+    // Helper function to execute API call with retry on 401
+    const executeWithRetry = async <T>(apiCall: (token: string) => Promise<T>): Promise<T> => {
+      try {
+        return await apiCall(accessToken);
+      } catch (apiError: any) {
+        const status = apiError?.code || apiError?.status || apiError?.response?.status;
+        if (status === 401) {
+          accessToken = await forceRefreshToken(config.owner_id);
+          return await apiCall(accessToken);
+        }
+        throw apiError;
+      }
+    };
+
     try {
       if (isHeadToHead) {
         // Head-to-head mode: Write winner to bracket
@@ -86,14 +100,14 @@ router.post('/:id/accept', requireAuth, async (req: AuthRequest, res: express.Re
           });
         }
         
-        await writeWinnerToBracket(
-          accessToken,
+        await executeWithRetry((token) => writeWinnerToBracket(
+          token,
           config.spreadsheet_id,
           config.sheet_name,
           parseInt(gameNumber, 10),
           winnerTeamNumber,
           winnerDisplay
-        );
+        ));
       } else {
         // Standard seeding mode: Update team score
         const teamNumber = scoreData.team_number?.value;
@@ -106,14 +120,14 @@ router.post('/:id/accept', requireAuth, async (req: AuthRequest, res: express.Re
           });
         }
 
-        await updateTeamScore(
-          accessToken,
+        await executeWithRetry((token) => updateTeamScore(
+          token,
           config.spreadsheet_id,
           config.sheet_name,
           teamNumber,
           round,
           grandTotal
-        );
+        ));
       }
 
       // Update status
@@ -175,7 +189,7 @@ router.post('/:id/revert', requireAuth, async (req: AuthRequest, res: express.Re
 
       if (config) {
         // Get a valid (possibly refreshed) access token
-        let accessToken;
+        let accessToken: string;
         try {
           accessToken = await getValidAccessToken(config.owner_id);
         } catch (tokenError: any) {
@@ -190,18 +204,32 @@ router.post('/:id/revert', requireAuth, async (req: AuthRequest, res: express.Re
         // Check if this is a head-to-head score
         const isHeadToHead = scoreData._isHeadToHead?.value === true;
 
+        // Helper function to execute API call with retry on 401
+        const executeWithRetry = async <T>(apiCall: (token: string) => Promise<T>): Promise<T> => {
+          try {
+            return await apiCall(accessToken);
+          } catch (apiError: any) {
+            const status = apiError?.code || apiError?.status || apiError?.response?.status;
+            if (status === 401) {
+              accessToken = await forceRefreshToken(config.owner_id);
+              return await apiCall(accessToken);
+            }
+            throw apiError;
+          }
+        };
+
         try {
           if (isHeadToHead) {
             // Head-to-head mode: Clear winner from bracket
             const gameNumber = scoreData.game_number?.value;
             
             if (gameNumber) {
-              await clearWinnerFromBracket(
-                accessToken,
+              await executeWithRetry((token) => clearWinnerFromBracket(
+                token,
                 config.spreadsheet_id,
                 config.sheet_name,
                 parseInt(gameNumber, 10)
-              );
+              ));
               console.log(`Cleared winner for Game ${gameNumber} from bracket`);
             }
           } else {
@@ -210,14 +238,14 @@ router.post('/:id/revert', requireAuth, async (req: AuthRequest, res: express.Re
             const round = scoreData.round?.value;
 
             if (teamNumber && round) {
-              await updateTeamScore(
-                accessToken,
+              await executeWithRetry((token) => updateTeamScore(
+                token,
                 config.spreadsheet_id,
                 config.sheet_name,
                 teamNumber,
                 round,
                 '' // Empty value to clear the cell
-              );
+              ));
               console.log(`Cleared score for Team ${teamNumber} Round ${round}`);
             }
           }
@@ -260,6 +288,21 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: express.Response) 
   } catch (error) {
     console.error('Error updating score:', error);
     res.status(500).json({ error: 'Failed to update score' });
+  }
+});
+
+// Delete a score
+router.delete('/:id', requireAuth, async (req: AuthRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+
+    await db.run('DELETE FROM score_submissions WHERE id = ?', [id]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting score:', error);
+    res.status(500).json({ error: 'Failed to delete score' });
   }
 });
 

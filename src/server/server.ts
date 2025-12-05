@@ -1,20 +1,24 @@
+// Load environment variables FIRST, before any other imports
+// This ensures all modules have access to env vars when they initialize
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
 import connectSqlite3 from 'connect-sqlite3';
 import passport from 'passport';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import path from 'path';
 import { setupPassport } from './config/passport';
 import { initializeDatabase } from './database/init';
 import authRoutes from './routes/auth';
 import adminRoutes from './routes/admin';
 import scoresheetRoutes from './routes/scoresheet';
+import fieldTemplatesRoutes from './routes/fieldTemplates';
 import apiRoutes from './routes/api';
 import dataRoutes from './routes/data';
 import scoresRoutes from './routes/scores';
-
-dotenv.config();
+import chatRoutes from './routes/chat';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -63,9 +67,11 @@ app.use('/images', express.static(path.join(__dirname, '../../static/images')));
 app.use('/auth', authRoutes);
 app.use('/admin', adminRoutes);
 app.use('/scoresheet', scoresheetRoutes);
+app.use('/field-templates', fieldTemplatesRoutes);
 app.use('/api', apiRoutes);
 app.use('/data', dataRoutes);
 app.use('/scores', scoresRoutes);
+app.use('/chat', chatRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -74,10 +80,13 @@ app.get('/health', (req: Request, res: Response) => {
 
 // In production, serve React app for all non-API routes
 if (process.env.NODE_ENV === 'production') {
-  app.get('*', (req: Request, res: Response) => {
+  // Express 5 requires named parameter for wildcards
+  app.get('/{*path}', (req: Request, res: Response) => {
     // Don't serve React for API routes
     if (!req.path.startsWith('/api') && !req.path.startsWith('/auth') && 
-        !req.path.startsWith('/admin') && !req.path.startsWith('/scoresheet')) {
+        !req.path.startsWith('/admin') && !req.path.startsWith('/scoresheet') &&
+        !req.path.startsWith('/data') && !req.path.startsWith('/scores') &&
+        !req.path.startsWith('/chat') && !req.path.startsWith('/field-templates')) {
       res.sendFile(path.join(__dirname, '../client/index.html'));
     }
   });

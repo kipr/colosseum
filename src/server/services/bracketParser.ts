@@ -24,22 +24,26 @@ export interface BracketGame {
 
 /**
  * Parse a team string like "859 ACES Te" into team number and display name
+ * Preserves the original string (including trailing spaces) as displayName
  */
 function parseTeamString(teamStr: string): { teamNumber: string; displayName: string } | null {
   if (!teamStr || teamStr === 'Bye' || teamStr.trim() === '') {
     return null;
   }
   
+  // Use trimmed version for parsing the team number
   const trimmed = teamStr.trim();
   const spaceIndex = trimmed.indexOf(' ');
   
   if (spaceIndex === -1) {
-    // Just a number
-    return { teamNumber: trimmed, displayName: trimmed };
+    // Just a number - preserve original
+    return { teamNumber: trimmed, displayName: teamStr };
   }
   
   const teamNumber = trimmed.substring(0, spaceIndex);
-  const displayName = trimmed;
+  // Preserve original string (including any trailing spaces) as displayName
+  // This is important for bracket validation that expects exact format
+  const displayName = teamStr;
   
   return { teamNumber, displayName };
 }
@@ -81,7 +85,8 @@ export async function parseBracket(
   }
 
   const games: BracketGame[] = [];
-  const gamePattern = /^Game\s+(\d+)$/i;
+  // Match "Game X" at the start, allowing optional trailing text like "Game 15 - Finals"
+  const gamePattern = /^Game\s+(\d+)(?:\s|$)/i;
 
   // Scan through all cells to find "Game X" patterns
   for (let rowIdx = 0; rowIdx < values.length; rowIdx++) {
@@ -106,16 +111,18 @@ export async function parseBracket(
         let isChampionshipGame = false;
         
         // Search for teams below the "Game X" cell in the same column
-        // In later rounds (like Game 27), teams can be 15+ rows apart, so search far
-        const maxSearchRows = 25; // Search up to 25 rows down for later-round games
+        // In 32-team brackets, later rounds can have teams 30+ rows apart
+        const maxSearchRows = 40; // Search up to 40 rows down for 32-team brackets
         let team1Row = -1;
         let team2Row = -1;
+        let teamColumn = colIdx; // Track which column the teams are in
         
         for (let searchOffset = 1; searchOffset <= maxSearchRows && rowIdx + searchOffset < values.length; searchOffset++) {
           const searchRow = values[rowIdx + searchOffset];
           if (!searchRow) continue;
           
-          const cellValue = String(searchRow[colIdx] || '').trim();
+          const cellValueRaw = String(searchRow[colIdx] || '');
+          const cellValue = cellValueRaw.trim();
           
           // Stop if we hit another "Game X" pattern
           if (gamePattern.test(cellValue)) break;
@@ -133,8 +140,8 @@ export async function parseBracket(
             continue;
           }
           
-          // Try to parse as a team
-          const potentialTeam = parseTeamString(cellValue);
+          // Try to parse as a team - pass raw value to preserve trailing spaces
+          const potentialTeam = parseTeamString(cellValueRaw);
           if (potentialTeam) {
             if (!team1) {
               team1 = potentialTeam;
@@ -147,34 +154,50 @@ export async function parseBracket(
           }
         }
         
-        // If no teams found directly below, check shifted column (championship game pattern - Game 31)
-        if (!team1 && !team2) {
-          isChampionshipGame = true;
-          
-          // For championship games, teams are in the next column
+        // If no teams found directly below, OR only one team found, check shifted column
+        if (!team1 || !team2) {
+          // For championship/final games, teams may be in the next column
           const shiftedCol = colIdx + 1;
           
-          // Team 1 is in the same row or row below, shifted column
-          if (row[shiftedCol]) {
-            team1 = parseTeamString(String(row[shiftedCol]));
-          }
-          if (!team1 && rowIdx + 1 < values.length) {
-            const nextRow = values[rowIdx + 1];
-            if (nextRow && nextRow[shiftedCol]) {
-              team1 = parseTeamString(String(nextRow[shiftedCol]));
+          if (!team1) {
+            isChampionshipGame = true;
+            teamColumn = shiftedCol; // Teams are in shifted column
+            
+            // Team 1 is in the same row or row below, shifted column
+            if (row[shiftedCol]) {
+              team1 = parseTeamString(String(row[shiftedCol]));
+              if (team1) team1Row = rowIdx;
+            }
+            if (!team1 && rowIdx + 1 < values.length) {
+              const nextRow = values[rowIdx + 1];
+              if (nextRow && nextRow[shiftedCol]) {
+                team1 = parseTeamString(String(nextRow[shiftedCol]));
+                if (team1) team1Row = rowIdx + 1;
+              }
             }
           }
           
-          // Team 2 is below team 1 in the shifted column, or further down
-          for (let searchRow = rowIdx + 1; searchRow < Math.min(rowIdx + 5, values.length); searchRow++) {
-            const searchRowData = values[searchRow];
-            if (searchRowData && searchRowData[shiftedCol]) {
-              const potentialTeam = parseTeamString(String(searchRowData[shiftedCol]));
-              if (potentialTeam && (!team1 || potentialTeam.teamNumber !== team1.teamNumber)) {
+          // Search for teams in the shifted column (broader search for finals)
+          if (!team2) {
+            teamColumn = shiftedCol; // Update team column
+            for (let searchRow = rowIdx; searchRow < Math.min(rowIdx + maxSearchRows, values.length); searchRow++) {
+              const searchRowData = values[searchRow];
+              if (!searchRowData || !searchRowData[shiftedCol]) continue;
+              
+              const cellValueRaw = String(searchRowData[shiftedCol]);
+              const cellValue = cellValueRaw.trim();
+              // Skip if it's another game label
+              if (gamePattern.test(cellValue)) break;
+              
+              // Pass raw value to preserve trailing spaces
+              const potentialTeam = parseTeamString(cellValueRaw);
+              if (potentialTeam) {
                 if (!team1) {
                   team1 = potentialTeam;
-                } else {
+                  team1Row = searchRow;
+                } else if (potentialTeam.teamNumber !== team1.teamNumber) {
                   team2 = potentialTeam;
+                  team2Row = searchRow;
                   break;
                 }
               }
@@ -214,8 +237,11 @@ export async function parseBracket(
         // Search the range around team rows including midRow
         const searchRows = [actualTeam1Row, actualTeam2Row, midRow, midRow - 1, midRow + 1];
         
+        // Start winner search AFTER the team column (teams are in teamColumn)
+        const winnerSearchStartCol = teamColumn + 1;
+        
         outerLoop:
-        for (let checkCol = colIdx + 1; checkCol < Math.min(colIdx + 8, 26); checkCol++) {
+        for (let checkCol = winnerSearchStartCol; checkCol < Math.min(winnerSearchStartCol + 8, 26); checkCol++) {
           for (const checkRow of searchRows) {
             if (checkRow < 0 || checkRow >= values.length) continue;
             if (!values[checkRow] || !values[checkRow][checkCol]) continue;
@@ -296,9 +322,78 @@ export async function getGame(
 }
 
 /**
+ * Detect bracket size from sheet name
+ * Sheet names should start with "DE 4", "DE 8", "DE 16", or "DE 32"
+ */
+function detectBracketSize(sheetName: string): number {
+  const normalized = sheetName.toLowerCase();
+  if (normalized.startsWith('de 32') || normalized.startsWith('de32')) return 32;
+  if (normalized.startsWith('de 16') || normalized.startsWith('de16')) return 16;
+  if (normalized.startsWith('de 8') || normalized.startsWith('de8')) return 8;
+  if (normalized.startsWith('de 4') || normalized.startsWith('de4')) return 4;
+  // Default to 16 if not specified
+  return 16;
+}
+
+/**
+ * Lookup table for 4-team double elimination bracket
+ */
+const BRACKET_TARGET_CELLS_4_TEAM: Record<number, string> = {
+  // Main Bracket (Games 1-2) → Semi-finals
+  1: 'D5',
+  2: 'D8',
+  
+  // Consolation (Game 3) → From loser of game 1
+  3: 'D14',
+  
+  // Main Final (Game 4)
+  4: 'F7',
+  
+  // Consolation Final (Game 5)
+  5: 'F13',
+  
+  // True Final (Game 6)
+  6: 'H11',
+  
+  // Grand Final if needed (Game 7)
+  7: 'J13',
+};
+
+/**
+ * Lookup table for 8-team double elimination bracket
+ */
+const BRACKET_TARGET_CELLS_8_TEAM: Record<number, string> = {
+  // Main Bracket Round 1 (Games 1-4) → Quarter-finals
+  1: 'E5', 2: 'E8',
+  3: 'E13', 4: 'E16',
+  
+  // Consolation Round 1 (Games 5-6)
+  5: 'D24', 6: 'D28',
+  
+  // Main Bracket Round 2 (Games 7-8) → Semi-finals
+  7: 'H7', 8: 'H14',
+  
+  // Consolation Round 2 (Games 9-10)
+  9: 'F24', 10: 'F27',
+  
+  // Main Final (Game 11)
+  11: 'K11',
+
+  // Consolation Round 3 (Game 12)
+  12: 'H25',
+  
+  // Consolation Final (Game 13)
+  13: 'K23',
+  
+  // True Final (Game 14)
+  14: 'O16',
+  
+  // Grand Final if needed (Game 15)
+  15: 'Q18',
+};
+
+/**
  * Lookup table for 16-team double elimination bracket
- * Maps game number to target cell (where winner advances to)
- * Format: { gameNumber: "COLUMN_ROW" } using 1-indexed rows
  */
 const BRACKET_TARGET_CELLS_16_TEAM: Record<number, string> = {
   // Main Bracket Round 1 (Games 1-8) → Column E
@@ -338,6 +433,76 @@ const BRACKET_TARGET_CELLS_16_TEAM: Record<number, string> = {
 };
 
 /**
+ * Lookup table for 32-team double elimination bracket
+ * Based on the clearDE32 function pattern
+ */
+const BRACKET_TARGET_CELLS_32_TEAM: Record<number, string> = {
+  // Winners Bracket Round 1 (Games 1-16)
+  1: 'E5', 2: 'E8', 3: 'E13', 4: 'E16',
+  5: 'E21', 6: 'E24', 7: 'E29', 8: 'E32',
+  9: 'E37', 10: 'E40', 11: 'E45', 12: 'E48',
+  13: 'E53', 14: 'E56', 15: 'E61', 16: 'E64',
+  
+  // Consolation Bracket Round 1 (Games 17-24)
+  17: 'D71', 18: 'D75', 19: 'D79', 20: 'D83',
+  21: 'D87', 22: 'D91', 23: 'D95', 24: 'D99',
+  
+  // Winners Bracket Round 2 (Games 25-32)
+  25: 'H7', 26: 'H14', 27: 'H23', 28: 'H30',
+  29: 'H39', 30: 'H46', 31: 'H55', 32: 'H62',
+  
+  // Consolation Bracket Round 2 (Games 33-40)
+  33: 'F71', 34: 'F74', 35: 'F79', 36: 'F82',
+  37: 'F87', 38: 'F90', 39: 'F95', 40: 'F98',
+  
+  // Winners Bracket Round 3 (Games 41-44)
+  41: 'K11', 42: 'K26', 43: 'K43', 44: 'K58',
+  
+  // Consolation Bracket Round 3 (Games 45-48)
+  45: 'H72', 46: 'H80', 47: 'H88', 48: 'H96',
+  
+  // Consolation Bracket Round 4 (Games 49-52)
+  49: 'J71', 50: 'J78', 51: 'J87', 52: 'J94',
+  
+  // Winners Bracket Round 4 (Games 53-54)
+  53: 'N19', 54: 'N50',
+  
+  // Consolation Bracket Round 5 (Games 55-56)
+  55: 'L74', 56: 'L90',
+  
+  // Consolation Bracket Round 6 (Games 57-58)
+  57: 'N71', 58: 'N86',
+  
+  // Consolation Bracket Round 7 (Game 59)
+  59: 'R35',
+  
+  // Winners Bracket Final (Game 60)
+  60: 'P78',
+  
+  // Consolation Bracket Final (Game 61)
+  61: 'R70',
+  
+  // Grand Final (Game 62) - if winner comes from consolation
+  62: 'V53',
+  
+  // Grand Final Reset (Game 63) - if needed
+  63: 'X55',
+};
+
+/**
+ * Get the appropriate lookup table based on bracket size
+ */
+function getBracketLookupTable(size: number): Record<number, string> {
+  switch (size) {
+    case 4: return BRACKET_TARGET_CELLS_4_TEAM;
+    case 8: return BRACKET_TARGET_CELLS_8_TEAM;
+    case 16: return BRACKET_TARGET_CELLS_16_TEAM;
+    case 32: return BRACKET_TARGET_CELLS_32_TEAM;
+    default: return BRACKET_TARGET_CELLS_16_TEAM;
+  }
+}
+
+/**
  * Write the winner to the bracket
  * This finds where the winner should advance to and writes their name there
  */
@@ -352,14 +517,16 @@ export async function writeWinnerToBracket(
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
+  // Detect bracket size from sheet name
+  const bracketSize = detectBracketSize(sheetName);
+  const lookupTable = getBracketLookupTable(bracketSize);
+
   // Check if we have a known target cell for this game
-  const knownTargetCell = BRACKET_TARGET_CELLS_16_TEAM[gameNumber];
+  const knownTargetCell = lookupTable[gameNumber];
   
   if (knownTargetCell) {
     // Use the lookup table - most reliable method
     const fullCellRef = `${sheetName}!${knownTargetCell}`;
-    
-    console.log(`Writing winner "${winnerDisplayName}" to ${fullCellRef} (from lookup table)`);
     
     await sheets.spreadsheets.values.update({
       auth,
@@ -375,7 +542,6 @@ export async function writeWinnerToBracket(
   }
 
   // Fallback: calculate position for games not in lookup table
-  console.log(`Game ${gameNumber} not in lookup table, calculating position...`);
 
   // First, get the bracket to find the game
   const response = await sheets.spreadsheets.values.get({
@@ -411,7 +577,6 @@ export async function writeWinnerToBracket(
     throw new Error(`Game ${gameNumber} not found in bracket`);
   }
 
-  console.log(`Found Game ${gameNumber} at row ${gameRow}, col ${gameCol}`);
 
   // Find the actual team rows using the same logic as parseBracket
   // Search down from the game cell to find both teams
@@ -425,22 +590,21 @@ export async function writeWinnerToBracket(
     const searchRow = values[gameRow + searchOffset];
     if (!searchRow) continue;
     
-    const cellValue = String(searchRow[gameCol] || '').trim();
+    const cellValueRaw = String(searchRow[gameCol] || '');
+    const cellValue = cellValueRaw.trim();
     
     // Stop if we hit another "Game X" pattern
     if (gamePatternAny.test(cellValue)) break;
     
-    // Try to parse as a team
-    const potentialTeam = parseTeamString(cellValue);
+    // Try to parse as a team - pass raw value to preserve trailing spaces
+    const potentialTeam = parseTeamString(cellValueRaw);
     if (potentialTeam) {
       if (!team1Info) {
         team1Info = potentialTeam;
         team1Row = gameRow + searchOffset;
-        console.log(`Found team1 "${potentialTeam.displayName}" at row ${team1Row}`);
       } else if (!team2Info && potentialTeam.teamNumber !== team1Info.teamNumber) {
         team2Info = potentialTeam;
         team2Row = gameRow + searchOffset;
-        console.log(`Found team2 "${potentialTeam.displayName}" at row ${team2Row}`);
         break;
       }
     }
@@ -454,10 +618,8 @@ export async function writeWinnerToBracket(
   let winnerRow = -1;
   if (team1Info && team1Info.teamNumber === winnerTeamNumber) {
     winnerRow = team1Row;
-    console.log(`Winner is team1, row ${winnerRow}`);
   } else if (team2Info && team2Info.teamNumber === winnerTeamNumber) {
     winnerRow = team2Row;
-    console.log(`Winner is team2, row ${winnerRow}`);
   } else {
     // Try matching by display name
     if (team1Info && winnerDisplayName.includes(team1Info.teamNumber)) {
@@ -477,7 +639,6 @@ export async function writeWinnerToBracket(
   const rawMid = team2Row > 0 ? (team1Row + team2Row) / 2 : team1Row;
   const midRow = gameNumber % 2 === 1 ? Math.ceil(rawMid) : Math.floor(rawMid);
   
-  console.log(`Looking for advancement cell. team1Row=${team1Row}, team2Row=${team2Row}, midRow=${midRow}`);
   
   // First, find columns that contain game headers (these are bracket columns)
   // Skip columns that are just empty padding
@@ -498,7 +659,6 @@ export async function writeWinnerToBracket(
     }
   }
   
-  console.log(`Bracket columns to the right: ${bracketColumns.map(c => columnToLetter(c)).join(', ')}`);
   
   let targetCol = -1;
   let targetRow = -1;
@@ -517,7 +677,6 @@ export async function writeWinnerToBracket(
           (team2Info && cellVal.startsWith(team2Info.teamNumber))) {
         targetCol = col;
         targetRow = midRow;
-        console.log(`Found exact midRow match at col ${col} (${columnToLetter(col)}), row ${midRow}`);
         break;
       }
     }
@@ -543,7 +702,6 @@ export async function writeWinnerToBracket(
             (team2Info && cellVal.startsWith(team2Info.teamNumber))) {
           targetCol = col;
           targetRow = checkRow;
-          console.log(`Found nearby match at col ${col} (${columnToLetter(col)}), row ${checkRow} (offset ${offset} from midRow=${midRow})`);
           break;
         }
       }
@@ -575,7 +733,6 @@ export async function writeWinnerToBracket(
     }
   });
   
-  console.log(`Wrote winner "${winnerDisplayName}" to ${targetCell}`);
 }
 
 /**
@@ -590,13 +747,16 @@ export async function clearWinnerFromBracket(
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
+  // Detect bracket size from sheet name
+  const bracketSize = detectBracketSize(sheetName);
+  const lookupTable = getBracketLookupTable(bracketSize);
+
   // Check if we have a known target cell for this game
-  const knownTargetCell = BRACKET_TARGET_CELLS_16_TEAM[gameNumber];
+  const knownTargetCell = lookupTable[gameNumber];
   
   if (knownTargetCell) {
     const fullCellRef = `${sheetName}!${knownTargetCell}`;
     
-    console.log(`Clearing winner from ${fullCellRef} (from lookup table)`);
     
     await sheets.spreadsheets.values.update({
       auth,
@@ -611,6 +771,6 @@ export async function clearWinnerFromBracket(
     return;
   }
   
-  console.warn(`clearWinnerFromBracket: Game ${gameNumber} not in lookup table, cannot clear`);
+  console.warn(`clearWinnerFromBracket: Game ${gameNumber} not in ${bracketSize}-team lookup table, cannot clear`);
 }
 

@@ -53,6 +53,7 @@
     box-sizing: border-box;
     line-height: 1.2;
     vertical-align: middle;
+    text-decoration: none;
 }
 
 .nav-item > * {

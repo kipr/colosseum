@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import ScoreViewModal from './ScoreViewModal';
+import { useConfirm } from '../ConfirmModal';
+import { useToast } from '../Toast';
 import { formatDateTime } from '../../utils/dateUtils';
 
 interface SpreadsheetConfig {
@@ -31,6 +33,9 @@ export default function ScoringTab() {
   const [scores, setScores] = useState<ScoreSubmission[]>([]);
   const [editingScore, setEditingScore] = useState<ScoreSubmission | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  const { confirm, ConfirmDialog } = useConfirm();
+  const toast = useToast();
 
   useEffect(() => {
     loadSpreadsheets();
@@ -38,6 +43,9 @@ export default function ScoringTab() {
 
   useEffect(() => {
     if (selectedSpreadsheet) {
+      // Save to localStorage for next time
+      localStorage.setItem('colosseum_last_scoring_sheet', selectedSpreadsheet.toString());
+      
       loadScores(true); // Show loading on initial load
       // Get the purpose of the selected spreadsheet
       const selected = spreadsheets.find(s => s.id === selectedSpreadsheet);
@@ -64,10 +72,29 @@ export default function ScoringTab() {
       );
       setSpreadsheets(scoringSheets);
       
-      // Auto-select first active sheet
-      const active = scoringSheets.find((s: SpreadsheetConfig) => s.is_active);
-      if (active) {
-        setSelectedSpreadsheet(active.id);
+      // Try to restore last selected sheet from localStorage
+      const lastSelectedId = localStorage.getItem('colosseum_last_scoring_sheet');
+      let sheetToSelect = null;
+      
+      if (lastSelectedId) {
+        // Check if the last selected sheet still exists
+        sheetToSelect = scoringSheets.find((s: SpreadsheetConfig) => 
+          s.id === parseInt(lastSelectedId, 10)
+        );
+      }
+      
+      // If no last selected or it doesn't exist, auto-select first active sheet
+      if (!sheetToSelect) {
+        sheetToSelect = scoringSheets.find((s: SpreadsheetConfig) => s.is_active);
+      }
+      
+      // Fall back to first sheet if no active sheets
+      if (!sheetToSelect && scoringSheets.length > 0) {
+        sheetToSelect = scoringSheets[0];
+      }
+      
+      if (sheetToSelect) {
+        setSelectedSpreadsheet(sheetToSelect.id);
       }
     } catch (error) {
       console.error('Error loading spreadsheets:', error);
@@ -104,15 +131,22 @@ export default function ScoringTab() {
         const error = await response.json();
         throw new Error(error.error || 'Failed to accept score');
       }
-      loadScores();
+      // Don't show loading to preserve scroll position
+      loadScores(false);
     } catch (error: any) {
       console.error('Error accepting score:', error);
-      alert(error.message || 'Failed to accept score');
+      toast.error(error.message || 'Failed to accept score');
     }
   };
 
   const handleReject = async (id: number) => {
-    if (!confirm('Are you sure you want to reject this score?')) return;
+    const confirmed = await confirm({
+      title: 'Reject Score',
+      message: 'Are you sure you want to reject this score?',
+      confirmText: 'Reject',
+      confirmStyle: 'danger'
+    });
+    if (!confirmed) return;
     
     try {
       const response = await fetch(`/scores/${id}/reject`, {
@@ -120,15 +154,22 @@ export default function ScoringTab() {
         credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to reject score');
-      loadScores();
+      // Don't show loading to preserve scroll position
+      loadScores(false);
     } catch (error) {
       console.error('Error rejecting score:', error);
-      alert('Failed to reject score');
+      toast.error('Failed to reject score');
     }
   };
 
   const handleRevert = async (id: number) => {
-    if (!confirm('Are you sure you want to revert this score to pending?')) return;
+    const confirmed = await confirm({
+      title: 'Revert Score',
+      message: 'Are you sure you want to revert this score to pending?',
+      confirmText: 'Revert',
+      confirmStyle: 'warning'
+    });
+    if (!confirmed) return;
     
     try {
       const response = await fetch(`/scores/${id}/revert`, {
@@ -136,10 +177,34 @@ export default function ScoringTab() {
         credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to revert score');
-      loadScores();
+      // Don't show loading to preserve scroll position
+      loadScores(false);
     } catch (error) {
       console.error('Error reverting score:', error);
-      alert('Failed to revert score');
+      toast.error('Failed to revert score');
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    const confirmed = await confirm({
+      title: 'Delete Score',
+      message: 'Are you sure you want to permanently delete this score? This cannot be undone.',
+      confirmText: 'Delete',
+      confirmStyle: 'danger'
+    });
+    if (!confirmed) return;
+    
+    try {
+      const response = await fetch(`/scores/${id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Failed to delete score');
+      // Don't show loading to preserve scroll position
+      loadScores(false);
+    } catch (error) {
+      console.error('Error deleting score:', error);
+      toast.error('Failed to delete score');
     }
   };
 
@@ -149,7 +214,8 @@ export default function ScoringTab() {
 
   const handleScoreUpdated = () => {
     setEditingScore(null);
-    loadScores();
+    // Don't show loading to preserve scroll position
+    loadScores(false);
   };
 
   const getStatusBadge = (status: string) => {
@@ -295,30 +361,59 @@ export default function ScoringTab() {
   );
 
   const renderActions = (score: ScoreSubmission) => (
-    <>
+    <div style={{ 
+      display: 'grid', 
+      gridTemplateColumns: '1fr 1fr', 
+      gap: '0.25rem',
+      width: '200px',
+      minWidth: '200px'
+    }}>
       {score.status === 'pending' ? (
         <>
-          <button className="btn btn-primary" onClick={() => handleAccept(score.id)} style={{ marginRight: '0.25rem' }}>
+          <button className="btn btn-primary" onClick={() => handleAccept(score.id)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}>
             Accept
           </button>
-          <button className="btn btn-danger" onClick={() => handleReject(score.id)} style={{ marginRight: '0.25rem' }}>
+          <button className="btn btn-danger" onClick={() => handleReject(score.id)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}>
             Reject
           </button>
-          <button className="btn btn-secondary" onClick={() => handleEdit(score)}>
+          <button className="btn btn-secondary" onClick={() => handleEdit(score)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}>
             Edit
+          </button>
+          <button 
+            className="btn btn-delete" 
+            onClick={() => handleDelete(score.id)} 
+            title="Permanently delete"
+            style={{ 
+              fontSize: '0.85rem', 
+              padding: '0.4rem 0.6rem'
+            }}
+          >
+            Delete
           </button>
         </>
       ) : (
         <>
-          <button className="btn btn-secondary" onClick={() => handleRevert(score.id)} style={{ marginRight: '0.25rem' }}>
+          <button className="btn btn-secondary" onClick={() => handleRevert(score.id)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem', gridColumn: '1 / 2' }}>
             Revert
           </button>
-          <button className="btn btn-secondary" onClick={() => handleEdit(score)}>
+          <button className="btn btn-secondary" onClick={() => handleEdit(score)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem', gridColumn: '2 / 3' }}>
             View
+          </button>
+          <button 
+            className="btn btn-delete" 
+            onClick={() => handleDelete(score.id)} 
+            title="Permanently delete"
+            style={{ 
+              fontSize: '0.85rem', 
+              padding: '0.4rem 0.6rem',
+              gridColumn: '1 / 3'
+            }}
+          >
+            Delete
           </button>
         </>
       )}
-    </>
+    </div>
   );
 
   return (
@@ -327,14 +422,14 @@ export default function ScoringTab() {
 
       <div className="card">
         <div className="form-group">
-          <label>Select Spreadsheet:</label>
+          <label>Select Sheet:</label>
           <select
             className="field-input"
             value={selectedSpreadsheet || ''}
             onChange={(e) => setSelectedSpreadsheet(Number(e.target.value))}
             style={{ maxWidth: '500px' }}
           >
-            <option value="">Select a spreadsheet...</option>
+            <option value="">Select a sheet...</option>
             {spreadsheets.map(config => (
               <option key={config.id} value={config.id}>
                 [{getPurposeLabel(config.sheet_purpose)}] {config.spreadsheet_name} → {config.sheet_name} {config.is_active ? '(Active)' : ''}
@@ -347,9 +442,9 @@ export default function ScoringTab() {
       {loading ? (
         <p>Loading scores...</p>
       ) : !selectedSpreadsheet ? (
-        <p>Please select a spreadsheet to view scores.</p>
+        <p>Please select a sheet to view scores.</p>
       ) : scores.length === 0 ? (
-        <p>No scores submitted for this spreadsheet yet.</p>
+        <p>No scores submitted for this sheet yet.</p>
       ) : (
         selectedPurpose === 'bracket' ? renderBracketTable() : renderSeedingTable()
       )}
@@ -361,6 +456,9 @@ export default function ScoringTab() {
           onSave={handleScoreUpdated}
         />
       )}
+      
+      {ConfirmDialog}
+      {toast.ToastContainer}
     </div>
   );
 }
