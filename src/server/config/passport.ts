@@ -65,24 +65,24 @@ export function setupPassport() {
           const tokenExpiresAt = Date.now() + 3600 * 1000;
 
           if (!user) {
-            // Create new user - set is_admin = 1 since they passed the domain check
+            // Create new user - set is_admin = true since they passed the domain check
             const result = await db.run(
               `INSERT INTO users (google_id, email, name, access_token, refresh_token, is_admin, token_expires_at) 
-               VALUES (?, ?, ?, ?, ?, 1, ?)`,
-              [googleId, email, name, accessToken, refreshToken, tokenExpiresAt]
+               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+              [googleId, email, name, accessToken, refreshToken, true, tokenExpiresAt]
             );
             user = await db.get('SELECT * FROM users WHERE id = ?', [result.lastID]);
             console.log(`New admin user created: ${email}`);
           } else {
             // Update tokens and ensure is_admin is set (fix for existing users)
             await db.run(
-              `UPDATE users SET access_token = ?, refresh_token = ?, name = ?, email = ?, is_admin = 1, token_expires_at = ?
+              `UPDATE users SET access_token = ?, refresh_token = ?, name = ?, email = ?, is_admin = ?, token_expires_at = ?
                WHERE google_id = ?`,
-              [accessToken, refreshToken || user.refresh_token, name, email, tokenExpiresAt, googleId]
+              [accessToken, refreshToken || user.refresh_token, name, email, true, tokenExpiresAt, googleId]
             );
             user.access_token = accessToken;
             user.refresh_token = refreshToken || user.refresh_token;
-            user.is_admin = 1;
+            user.is_admin = true;
             console.log(`Admin user logged in: ${email}`);
           }
 

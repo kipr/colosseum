@@ -25,7 +25,7 @@ router.get('/sheet-data/:sheetName', async (req: express.Request, res: express.R
       
       if (template && template.created_by) {
         config = await db.get(
-          'SELECT sc.*, u.access_token FROM spreadsheet_configs sc JOIN users u ON sc.user_id = u.id WHERE sc.user_id = ? AND sc.is_active = 1 LIMIT 1',
+          'SELECT sc.*, u.access_token FROM spreadsheet_configs sc JOIN users u ON sc.user_id = u.id WHERE sc.user_id = ? AND sc.is_active = true LIMIT 1',
           [template.created_by]
         );
       }
@@ -36,7 +36,7 @@ router.get('/sheet-data/:sheetName', async (req: express.Request, res: express.R
       config = await db.get(
         `SELECT sc.*, u.access_token FROM spreadsheet_configs sc 
          JOIN users u ON sc.user_id = u.id 
-         WHERE sc.is_active = 1 AND (sc.sheet_purpose = 'data' OR sc.sheet_purpose IS NULL)
+         WHERE sc.is_active = true AND (sc.sheet_purpose = 'data' OR sc.sheet_purpose IS NULL)
          ORDER BY sc.updated_at DESC LIMIT 1`
       );
     }
@@ -110,7 +110,7 @@ router.get('/bracket-games/:sheetName', async (req: express.Request, res: expres
         config = await db.get(
           `SELECT sc.*, u.access_token FROM spreadsheet_configs sc 
            JOIN users u ON sc.user_id = u.id 
-           WHERE sc.user_id = ? AND sc.is_active = 1 AND sc.sheet_purpose = 'bracket'
+           WHERE sc.user_id = ? AND sc.is_active = true AND sc.sheet_purpose = 'bracket'
            LIMIT 1`,
           [template.created_by]
         );
@@ -120,7 +120,7 @@ router.get('/bracket-games/:sheetName', async (req: express.Request, res: expres
           config = await db.get(
             `SELECT sc.*, u.access_token FROM spreadsheet_configs sc 
              JOIN users u ON sc.user_id = u.id 
-             WHERE sc.user_id = ? AND sc.is_active = 1
+             WHERE sc.user_id = ? AND sc.is_active = true
              LIMIT 1`,
             [template.created_by]
           );
@@ -133,7 +133,7 @@ router.get('/bracket-games/:sheetName', async (req: express.Request, res: expres
       config = await db.get(
         `SELECT sc.*, u.access_token FROM spreadsheet_configs sc 
          JOIN users u ON sc.user_id = u.id 
-         WHERE sc.is_active = 1 AND sc.sheet_purpose = 'bracket'
+         WHERE sc.is_active = true AND sc.sheet_purpose = 'bracket'
          ORDER BY sc.updated_at DESC LIMIT 1`
       );
     }
@@ -206,7 +206,7 @@ router.get('/bracket-game/:sheetName/:gameNumber', async (req: express.Request, 
         config = await db.get(
           `SELECT sc.*, u.access_token FROM spreadsheet_configs sc 
            JOIN users u ON sc.user_id = u.id 
-           WHERE sc.user_id = ? AND sc.is_active = 1 AND sc.sheet_purpose = 'bracket'
+           WHERE sc.user_id = ? AND sc.is_active = true AND sc.sheet_purpose = 'bracket'
            LIMIT 1`,
           [template.created_by]
         );
@@ -215,7 +215,7 @@ router.get('/bracket-game/:sheetName/:gameNumber', async (req: express.Request, 
           config = await db.get(
             `SELECT sc.*, u.access_token FROM spreadsheet_configs sc 
              JOIN users u ON sc.user_id = u.id 
-             WHERE sc.user_id = ? AND sc.is_active = 1
+             WHERE sc.user_id = ? AND sc.is_active = true
              LIMIT 1`,
             [template.created_by]
           );
@@ -227,7 +227,7 @@ router.get('/bracket-game/:sheetName/:gameNumber', async (req: express.Request, 
       config = await db.get(
         `SELECT sc.*, u.access_token FROM spreadsheet_configs sc 
          JOIN users u ON sc.user_id = u.id 
-         WHERE sc.is_active = 1 AND sc.sheet_purpose = 'bracket'
+         WHERE sc.is_active = true AND sc.sheet_purpose = 'bracket'
          ORDER BY sc.updated_at DESC LIMIT 1`
       );
     }

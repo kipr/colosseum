@@ -133,7 +133,7 @@ router.post('/:id/accept', requireAuth, async (req: AuthRequest, res: express.Re
       // Update status
       await db.run(
         `UPDATE score_submissions 
-         SET status = 'accepted', submitted_to_sheet = 1, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+         SET status = 'accepted', submitted_to_sheet = true, reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
         [req.user.id, id]
       );
@@ -258,7 +258,7 @@ router.post('/:id/revert', requireAuth, async (req: AuthRequest, res: express.Re
 
     await db.run(
       `UPDATE score_submissions 
-       SET status = 'pending', submitted_to_sheet = 0, reviewed_by = NULL, reviewed_at = NULL
+       SET status = 'pending', submitted_to_sheet = false, reviewed_by = NULL, reviewed_at = NULL
        WHERE id = ?`,
       [id]
     );

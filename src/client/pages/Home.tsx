@@ -1,12 +1,26 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
 import './Home.css';
 
 export default function Home() {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const { user, loading } = useAuth();
+
+  // Handle redirect after OAuth login
+  useEffect(() => {
+    if (searchParams.get('logged_in') === '1' && !loading) {
+      // Clear the query param from URL
+      window.history.replaceState({}, '', '/');
+      
+      if (user) {
+        // User is logged in, redirect to admin
+        navigate('/admin', { replace: true });
+      }
+    }
+  }, [searchParams, user, loading, navigate]);
 
   const handleJudgeClick = () => {
     navigate('/judge');

@@ -6,11 +6,13 @@ dotenv.config();
 import express, { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
 import connectSqlite3 from 'connect-sqlite3';
+import connectPgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import cors from 'cors';
 import path from 'path';
 import { setupPassport } from './config/passport';
 import { initializeDatabase } from './database/init';
+import { getPostgresPool } from './database/connection';
 import authRoutes from './routes/auth';
 import adminRoutes from './routes/admin';
 import scoresheetRoutes from './routes/scoresheet';
@@ -23,6 +25,14 @@ import chatRoutes from './routes/chat';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const isProduction = process.env.NODE_ENV === 'production';
+const usePostgres = isProduction || !!process.env.DATABASE_URL;
+
+// Trust Cloud Run's load balancer
+if (isProduction) {
+  app.set('trust proxy', 1);
+}
+
 // Middleware
 app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3000',
@@ -32,10 +42,6 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Session configuration
-// In production (Cloud Run), use memory store since SQLite doesn't persist across instances
-// For development, use SQLite store for persistence across restarts
-const isProduction = process.env.NODE_ENV === 'production';
-
 const sessionConfig: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'colosseum-secret-key-change-in-production',
   resave: false,
@@ -44,18 +50,32 @@ const sessionConfig: session.SessionOptions = {
   cookie: {
     secure: isProduction, // Require HTTPS in production
     httpOnly: true,
-    sameSite: isProduction ? 'lax' : 'lax',
+    sameSite: 'lax',
     maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
   }
 };
 
-// Only use SQLite store in development
-if (!isProduction) {
+// Configure session store based on environment
+if (usePostgres) {
+  // Use PostgreSQL session store in production
+  const PgSession = connectPgSimple(session);
+  const pgPool = getPostgresPool();
+  if (pgPool) {
+    sessionConfig.store = new PgSession({
+      pool: pgPool,
+      tableName: 'session',
+      createTableIfMissing: true
+    });
+    console.log('Using PostgreSQL session store');
+  }
+} else {
+  // Use SQLite session store in development
   const SQLiteStore = connectSqlite3(session);
   sessionConfig.store = new SQLiteStore({
     db: 'sessions.db',
     dir: path.join(__dirname, '../../database')
   }) as any;
+  console.log('Using SQLite session store');
 }
 
 app.use(session(sessionConfig));

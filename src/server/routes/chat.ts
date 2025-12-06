@@ -32,7 +32,7 @@ router.get('/spreadsheets', async (req: Request, res: Response) => {
     const spreadsheets = await db.all(`
       SELECT DISTINCT spreadsheet_id, spreadsheet_name 
       FROM spreadsheet_configs 
-      WHERE is_active = 1 AND sheet_name != '__SPREADSHEET_PLACEHOLDER__'
+      WHERE is_active = true AND sheet_name != '__SPREADSHEET_PLACEHOLDER__'
       ORDER BY spreadsheet_name
     `);
     res.json(spreadsheets);
@@ -99,7 +99,7 @@ router.post('/messages', async (req: Request, res: Response) => {
     const result = await db.run(
       `INSERT INTO chat_messages (spreadsheet_id, sender_name, message, is_admin, user_id) 
        VALUES (?, ?, ?, ?, ?)`,
-      [spreadsheetId, trimmedName, message.trim(), isAdmin ? 1 : 0, userId]
+      [spreadsheetId, trimmedName, message.trim(), isAdmin, userId]
     );
     
     const newMessage = await db.get(

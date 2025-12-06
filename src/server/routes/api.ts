@@ -47,14 +47,14 @@ router.post('/scores/submit', async (req: express.Request, res: express.Response
       if (isHeadToHead && bracketSource) {
         config = await db.get(
           `SELECT * FROM spreadsheet_configs 
-           WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'bracket'
+           WHERE user_id = ? AND is_active = true AND sheet_purpose = 'bracket'
            LIMIT 1`,
           [template.created_by]
         );
       } else {
         config = await db.get(
           `SELECT * FROM spreadsheet_configs 
-           WHERE user_id = ? AND is_active = 1 AND sheet_purpose = 'scores'
+           WHERE user_id = ? AND is_active = true AND sheet_purpose = 'scores'
            LIMIT 1`,
           [template.created_by]
         );
@@ -96,7 +96,7 @@ router.get('/participants', requireAuth, async (req: AuthRequest, res: express.R
   try {
     const db = await getDatabase();
     const config = await db.get(
-      'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active = 1',
+      'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active = true',
       [req.user.id]
     );
 
@@ -122,7 +122,7 @@ router.get('/matches', requireAuth, async (req: AuthRequest, res: express.Respon
   try {
     const db = await getDatabase();
     const config = await db.get(
-      'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active = 1',
+      'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active = true',
       [req.user.id]
     );
 

@@ -27,10 +27,19 @@ router.get('/google/callback',
     failureMessage: true
   }),
   (req: Request, res: Response) => {
-    // In development, redirect to Vite dev server
-    const isDev = process.env.NODE_ENV !== 'production';
-    const baseUrl = isDev ? 'http://localhost:5173' : '';
-    res.redirect(`${baseUrl}/admin`);
+    // Ensure session is saved before redirecting
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session save error:', err);
+        return res.status(500).send('Session save failed');
+      }
+      
+      // Redirect to root with a query param so frontend knows to go to admin
+      // Don't redirect to /admin as it conflicts with the API route
+      const isDev = process.env.NODE_ENV !== 'production';
+      const baseUrl = isDev ? 'http://localhost:5173' : '';
+      res.redirect(`${baseUrl}/?logged_in=1`);
+    });
   }
 );
 

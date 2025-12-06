@@ -20,7 +20,7 @@ router.get('/templates', async (req: express.Request, res: express.Response) => 
         sc.sheet_name
       FROM scoresheet_templates t
       LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
-      WHERE t.is_active = 1
+      WHERE t.is_active = true
       ORDER BY sc.spreadsheet_name, t.name
     `);
     
@@ -60,7 +60,7 @@ router.get('/templates/admin', requireAuth, async (req: AuthRequest, res: expres
         sc.sheet_name
       FROM scoresheet_templates t
       LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
-      WHERE t.is_active = 1
+      WHERE t.is_active = true
       ORDER BY sc.spreadsheet_name, t.name
     `);
     res.json(templates);
@@ -78,7 +78,7 @@ router.post('/templates/:id/verify', async (req: express.Request, res: express.R
     const db = await getDatabase();
     
     const template = await db.get(
-      'SELECT * FROM scoresheet_templates WHERE id = ? AND is_active = 1',
+      'SELECT * FROM scoresheet_templates WHERE id = ? AND is_active = true',
       [id]
     );
 
@@ -109,7 +109,7 @@ router.get('/templates/:id', requireAuth, async (req: AuthRequest, res: express.
     const { id } = req.params;
     const db = await getDatabase();
     const template = await db.get(
-      'SELECT * FROM scoresheet_templates WHERE id = ? AND is_active = 1',
+      'SELECT * FROM scoresheet_templates WHERE id = ? AND is_active = true',
       [id]
     );
 

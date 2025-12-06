@@ -13,7 +13,7 @@ router.get('/spreadsheets', requireAuth, async (req: AuthRequest, res: Response)
     // If 'all' query param is set, return all configs (for template assignment)
     // Otherwise, return only the current user's configs
     const query = req.query.all === 'true'
-      ? 'SELECT * FROM spreadsheet_configs WHERE is_active = 1 ORDER BY spreadsheet_name, sheet_name'
+      ? 'SELECT * FROM spreadsheet_configs WHERE is_active = true ORDER BY spreadsheet_name, sheet_name'
       : 'SELECT * FROM spreadsheet_configs WHERE user_id = ? ORDER BY created_at DESC';
     const params = req.query.all === 'true' ? [] : [req.user.id];
     
@@ -34,7 +34,7 @@ router.get('/spreadsheets/grouped', requireAuth, async (req: AuthRequest, res: R
         spreadsheet_id,
         MAX(spreadsheet_name) as spreadsheet_name,
         SUM(CASE WHEN sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as sheet_count,
-        SUM(CASE WHEN is_active = 1 AND sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as active_count
+        SUM(CASE WHEN is_active = true AND sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as active_count
       FROM spreadsheet_configs 
       WHERE user_id = ?
       GROUP BY spreadsheet_id
@@ -72,8 +72,8 @@ router.put('/spreadsheets/by-spreadsheet/:spreadsheetId/deactivate', requireAuth
     const db = await getDatabase();
     
     await db.run(
-      'UPDATE spreadsheet_configs SET is_active = 0 WHERE spreadsheet_id = ? AND user_id = ?',
-      [spreadsheetId, req.user.id]
+      'UPDATE spreadsheet_configs SET is_active = ? WHERE spreadsheet_id = ? AND user_id = ?',
+      [false, spreadsheetId, req.user.id]
     );
     
     res.json({ success: true });
@@ -130,8 +130,8 @@ router.post('/spreadsheets/link-spreadsheet', requireAuth, async (req: AuthReque
     // We'll use a special marker for sheet_name to indicate it's just the spreadsheet link
     const result = await db.run(
       `INSERT INTO spreadsheet_configs (user_id, spreadsheet_id, spreadsheet_name, sheet_name, sheet_purpose, is_active)
-       VALUES (?, ?, ?, ?, ?, 0)`,
-      [req.user.id, spreadsheetId, spreadsheetInfo.title, '__SPREADSHEET_PLACEHOLDER__', 'none']
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [req.user.id, spreadsheetId, spreadsheetInfo.title, '__SPREADSHEET_PLACEHOLDER__', 'none', false]
     );
 
     res.json({ success: true, id: result.lastID });
@@ -181,7 +181,7 @@ router.post('/spreadsheets/link-sheet', requireAuth, async (req: AuthRequest, re
     const result = await db.run(
       `INSERT INTO spreadsheet_configs (user_id, spreadsheet_id, spreadsheet_name, sheet_name, sheet_purpose, is_active)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [req.user.id, spreadsheetId, spreadsheetName, sheetName, sheetPurpose, isActive ? 1 : 0]
+      [req.user.id, spreadsheetId, spreadsheetName, sheetName, sheetPurpose, !!isActive]
     );
 
     // Remove placeholder if it exists
@@ -308,8 +308,8 @@ router.post('/spreadsheets/link', requireAuth, async (req: AuthRequest, res: Res
     // Create new configuration (multiple can be active)
     const result = await db.run(
       `INSERT INTO spreadsheet_configs (user_id, spreadsheet_id, spreadsheet_name, sheet_name, sheet_purpose, is_active)
-       VALUES (?, ?, ?, ?, ?, 1)`,
-      [req.user.id, spreadsheetId, spreadsheetInfo.title, sheetName, sheetPurpose]
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [req.user.id, spreadsheetId, spreadsheetInfo.title, sheetName, sheetPurpose, true]
     );
 
     const config = await db.get('SELECT * FROM spreadsheet_configs WHERE id = ?', [result.lastID]);
@@ -337,7 +337,7 @@ router.put('/spreadsheets/:id/activate', requireAuth, async (req: AuthRequest, r
     }
 
     // Activate this spreadsheet (allow multiple active)
-    await db.run('UPDATE spreadsheet_configs SET is_active = 1 WHERE id = ?', [id]);
+    await db.run('UPDATE spreadsheet_configs SET is_active = ? WHERE id = ?', [true, id]);
 
     res.json({ success: true });
   } catch (error) {
@@ -363,7 +363,7 @@ router.put('/spreadsheets/:id/deactivate', requireAuth, async (req: AuthRequest,
     }
 
     // Deactivate this spreadsheet
-    await db.run('UPDATE spreadsheet_configs SET is_active = 0 WHERE id = ?', [id]);
+    await db.run('UPDATE spreadsheet_configs SET is_active = ? WHERE id = ?', [false, id]);
 
     res.json({ success: true });
   } catch (error) {
