@@ -149,6 +149,15 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
     if (selectedTemplate && selectedTemplate.fields) {
       // Use template fields as-is for seeding (already use side_a/side_b naming)
       schema.fields.push(...selectedTemplate.fields);
+      
+      // Add grand total for seeding sheets (templates don't include this so it can be conditional)
+      schema.fields.push({
+        id: 'grand_total',
+        label: 'Total Score (A + B)',
+        type: 'calculated',
+        formula: 'side_a_total + side_b_total',
+        isGrandTotal: true
+      });
     } else {
       // Default basic scoring fields
       schema.fields.push({

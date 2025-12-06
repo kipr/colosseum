@@ -791,13 +791,6 @@
     "type": "calculated",
     "formula": "side_b_starting_subtotal + side_b_workstation_subtotal + side_b_lower_subtotal + side_b_storage_posts_subtotal + side_b_pom_subtotal + side_b_upper_subtotal + side_b_raised_subtotal + side_b_outdoor_subtotal",
     "isTotal": true
-  },
-  {
-    "id": "grand_total",
-    "label": "Total Score (A + B)",
-    "type": "calculated",
-    "formula": "side_a_total + side_b_total",
-    "isGrandTotal": true
   }
 ]
 
