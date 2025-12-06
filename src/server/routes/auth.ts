@@ -36,8 +36,9 @@ router.get('/google/callback',
       
       // Redirect to root with a query param so frontend knows to go to admin
       // Don't redirect to /admin as it conflicts with the API route
+      // Use APP_URL to redirect to custom domain in production
       const isDev = process.env.NODE_ENV !== 'production';
-      const baseUrl = isDev ? 'http://localhost:5173' : '';
+      const baseUrl = isDev ? 'http://localhost:5173' : (process.env.APP_URL || '');
       res.redirect(`${baseUrl}/?logged_in=1`);
     });
   }
@@ -46,7 +47,7 @@ router.get('/google/callback',
 // Access denied page for unauthorized users
 router.get('/access-denied', (req: Request, res: Response) => {
   const isDev = process.env.NODE_ENV !== 'production';
-  const baseUrl = isDev ? 'http://localhost:5173' : '';
+  const baseUrl = isDev ? 'http://localhost:5173' : (process.env.APP_URL || '');
   
   // Get allowed domains from environment or default
   const allowedDomains = process.env.ALLOWED_EMAIL_DOMAINS 
@@ -132,8 +133,9 @@ router.get('/logout', (req: Request, res: Response) => {
       res.clearCookie('connect.sid');
       
       // In development, redirect to Vite dev server
+      // Use APP_URL for custom domain in production
       const isDev = process.env.NODE_ENV !== 'production';
-      const baseUrl = isDev ? 'http://localhost:5173' : '';
+      const baseUrl = isDev ? 'http://localhost:5173' : (process.env.APP_URL || '');
       res.redirect(`${baseUrl}/`);
     });
   });
