@@ -6,18 +6,22 @@ import { getValidAccessToken } from '../services/tokenRefresh';
 
 const router = express.Router();
 
-// Get all spreadsheet configurations for the current user
+// Get all spreadsheet configurations
 router.get('/spreadsheets', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
-    // If 'all' query param is set, return all configs (for template assignment)
-    // Otherwise, return only the current user's configs
-    const query = req.query.all === 'true'
-      ? 'SELECT * FROM spreadsheet_configs WHERE is_active = true ORDER BY spreadsheet_name, sheet_name'
-      : 'SELECT * FROM spreadsheet_configs WHERE user_id = ? ORDER BY created_at DESC';
-    const params = req.query.all === 'true' ? [] : [req.user.id];
+    // If 'all' query param is set, return all active configs (for template assignment)
+    // If 'shared' query param is set, return all configs regardless of user
+    // Otherwise, return current user's configs
+    let configs;
+    if (req.query.all === 'true') {
+      configs = await db.all('SELECT * FROM spreadsheet_configs WHERE is_active IS TRUE ORDER BY spreadsheet_name, sheet_name');
+    } else if (req.query.shared === 'true') {
+      configs = await db.all('SELECT * FROM spreadsheet_configs ORDER BY spreadsheet_name, sheet_name, created_at DESC');
+    } else {
+      configs = await db.all('SELECT * FROM spreadsheet_configs WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+    }
     
-    const configs = await db.all(query, params);
     res.json(configs);
   } catch (error) {
     console.error('Error fetching spreadsheet configs:', error);
@@ -29,17 +33,30 @@ router.get('/spreadsheets', requireAuth, async (req: AuthRequest, res: Response)
 router.get('/spreadsheets/grouped', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
-    const spreadsheets = await db.all(`
-      SELECT 
-        spreadsheet_id,
-        MAX(spreadsheet_name) as spreadsheet_name,
-        SUM(CASE WHEN sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as sheet_count,
-        SUM(CASE WHEN is_active = true AND sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as active_count
-      FROM spreadsheet_configs 
-      WHERE user_id = ?
-      GROUP BY spreadsheet_id
-      ORDER BY spreadsheet_name
-    `, [req.user.id]);
+    // If shared=true, show all spreadsheets; otherwise show only user's spreadsheets
+    const showAll = req.query.shared === 'true';
+    
+    const query = showAll
+      ? `SELECT 
+          spreadsheet_id,
+          MAX(spreadsheet_name) as spreadsheet_name,
+          SUM(CASE WHEN sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as sheet_count,
+          SUM(CASE WHEN is_active IS TRUE AND sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as active_count
+        FROM spreadsheet_configs 
+        GROUP BY spreadsheet_id
+        ORDER BY spreadsheet_name`
+      : `SELECT 
+          spreadsheet_id,
+          MAX(spreadsheet_name) as spreadsheet_name,
+          SUM(CASE WHEN sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as sheet_count,
+          SUM(CASE WHEN is_active IS TRUE AND sheet_name != '__SPREADSHEET_PLACEHOLDER__' THEN 1 ELSE 0 END) as active_count
+        FROM spreadsheet_configs 
+        WHERE user_id = ?
+        GROUP BY spreadsheet_id
+        ORDER BY spreadsheet_name`;
+    
+    const params = showAll ? [] : [req.user.id];
+    const spreadsheets = await db.all(query, params);
     res.json(spreadsheets);
   } catch (error) {
     console.error('Error fetching grouped spreadsheets:', error);
@@ -52,12 +69,18 @@ router.get('/spreadsheets/by-spreadsheet/:spreadsheetId/configs', requireAuth, a
   try {
     const { spreadsheetId } = req.params;
     const db = await getDatabase();
-    const configs = await db.all(
-      `SELECT * FROM spreadsheet_configs 
-       WHERE spreadsheet_id = ? AND user_id = ? AND sheet_name != '__SPREADSHEET_PLACEHOLDER__'
-       ORDER BY sheet_name`,
-      [spreadsheetId, req.user.id]
-    );
+    const showAll = req.query.shared === 'true';
+    
+    const query = showAll
+      ? `SELECT * FROM spreadsheet_configs 
+         WHERE spreadsheet_id = ? AND sheet_name != '__SPREADSHEET_PLACEHOLDER__'
+         ORDER BY sheet_name`
+      : `SELECT * FROM spreadsheet_configs 
+         WHERE spreadsheet_id = ? AND user_id = ? AND sheet_name != '__SPREADSHEET_PLACEHOLDER__'
+         ORDER BY sheet_name`;
+    
+    const params = showAll ? [spreadsheetId] : [spreadsheetId, req.user.id];
+    const configs = await db.all(query, params);
     res.json(configs);
   } catch (error) {
     console.error('Error fetching sheet configs:', error);
@@ -70,11 +93,19 @@ router.put('/spreadsheets/by-spreadsheet/:spreadsheetId/deactivate', requireAuth
   try {
     const { spreadsheetId } = req.params;
     const db = await getDatabase();
+    const updateAll = req.query.shared === 'true';
     
-    await db.run(
-      'UPDATE spreadsheet_configs SET is_active = ? WHERE spreadsheet_id = ? AND user_id = ?',
-      [false, spreadsheetId, req.user.id]
-    );
+    if (updateAll) {
+      await db.run(
+        'UPDATE spreadsheet_configs SET is_active = false WHERE spreadsheet_id = ?',
+        [spreadsheetId]
+      );
+    } else {
+      await db.run(
+        'UPDATE spreadsheet_configs SET is_active = false WHERE spreadsheet_id = ? AND user_id = ?',
+        [spreadsheetId, req.user.id]
+      );
+    }
     
     res.json({ success: true });
   } catch (error) {
@@ -88,11 +119,45 @@ router.delete('/spreadsheets/by-spreadsheet/:spreadsheetId', requireAuth, async 
   try {
     const { spreadsheetId } = req.params;
     const db = await getDatabase();
+    const deleteAll = req.query.shared === 'true';
     
-    await db.run(
-      'DELETE FROM spreadsheet_configs WHERE spreadsheet_id = ? AND user_id = ?',
-      [spreadsheetId, req.user.id]
-    );
+    // First, get the config IDs we're about to delete
+    let configIds: number[];
+    if (deleteAll) {
+      const configs = await db.all(
+        'SELECT id FROM spreadsheet_configs WHERE spreadsheet_id = ?',
+        [spreadsheetId]
+      );
+      configIds = configs.map((c: any) => c.id);
+    } else {
+      const configs = await db.all(
+        'SELECT id FROM spreadsheet_configs WHERE spreadsheet_id = ? AND user_id = ?',
+        [spreadsheetId, req.user.id]
+      );
+      configIds = configs.map((c: any) => c.id);
+    }
+    
+    // Unlink any scoresheet templates that reference these configs
+    if (configIds.length > 0) {
+      const placeholders = configIds.map(() => '?').join(',');
+      await db.run(
+        `UPDATE scoresheet_templates SET spreadsheet_config_id = NULL WHERE spreadsheet_config_id IN (${placeholders})`,
+        configIds
+      );
+    }
+    
+    // Now delete the configs
+    if (deleteAll) {
+      await db.run(
+        'DELETE FROM spreadsheet_configs WHERE spreadsheet_id = ?',
+        [spreadsheetId]
+      );
+    } else {
+      await db.run(
+        'DELETE FROM spreadsheet_configs WHERE spreadsheet_id = ? AND user_id = ?',
+        [spreadsheetId, req.user.id]
+      );
+    }
     
     res.json({ success: true });
   } catch (error) {
@@ -112,7 +177,7 @@ router.post('/spreadsheets/link-spreadsheet', requireAuth, async (req: AuthReque
 
     const db = await getDatabase();
     
-    // Check if this spreadsheet is already linked
+    // Check if this spreadsheet is already linked by this user
     const existing = await db.get(
       'SELECT id FROM spreadsheet_configs WHERE user_id = ? AND spreadsheet_id = ?',
       [req.user.id, spreadsheetId]
@@ -152,7 +217,7 @@ router.post('/spreadsheets/link-sheet', requireAuth, async (req: AuthRequest, re
 
     const db = await getDatabase();
     
-    // Check if this exact combination already exists
+    // Check if this exact combination already exists for this user
     const existing = await db.get(
       'SELECT id FROM spreadsheet_configs WHERE user_id = ? AND spreadsheet_id = ? AND sheet_name = ?',
       [req.user.id, spreadsheetId, sheetName]
@@ -184,7 +249,7 @@ router.post('/spreadsheets/link-sheet', requireAuth, async (req: AuthRequest, re
       [req.user.id, spreadsheetId, spreadsheetName, sheetName, sheetPurpose, !!isActive]
     );
 
-    // Remove placeholder if it exists
+    // Remove placeholder if it exists for this user
     await db.run(
       'DELETE FROM spreadsheet_configs WHERE user_id = ? AND spreadsheet_id = ? AND sheet_name = ?',
       [req.user.id, spreadsheetId, '__SPREADSHEET_PLACEHOLDER__']
@@ -295,7 +360,7 @@ router.post('/spreadsheets/link', requireAuth, async (req: AuthRequest, res: Res
 
     const db = await getDatabase();
     
-    // Check if this exact combination already exists
+    // Check if this exact combination already exists for this user
     const existing = await db.get(
       'SELECT id FROM spreadsheet_configs WHERE user_id = ? AND spreadsheet_id = ? AND sheet_name = ? AND sheet_purpose = ?',
       [req.user.id, spreadsheetId, sheetName, sheetPurpose]
@@ -326,7 +391,7 @@ router.put('/spreadsheets/:id/activate', requireAuth, async (req: AuthRequest, r
     const { id } = req.params;
     const db = await getDatabase();
 
-    // Verify ownership
+    // Verify ownership unless shared mode
     const config = await db.get(
       'SELECT * FROM spreadsheet_configs WHERE id = ? AND user_id = ?',
       [id, req.user.id]
@@ -337,7 +402,7 @@ router.put('/spreadsheets/:id/activate', requireAuth, async (req: AuthRequest, r
     }
 
     // Activate this spreadsheet (allow multiple active)
-    await db.run('UPDATE spreadsheet_configs SET is_active = ? WHERE id = ?', [true, id]);
+    await db.run('UPDATE spreadsheet_configs SET is_active = true WHERE id = ?', [id]);
 
     res.json({ success: true });
   } catch (error) {
@@ -363,12 +428,38 @@ router.put('/spreadsheets/:id/deactivate', requireAuth, async (req: AuthRequest,
     }
 
     // Deactivate this spreadsheet
-    await db.run('UPDATE spreadsheet_configs SET is_active = ? WHERE id = ?', [false, id]);
+    await db.run('UPDATE spreadsheet_configs SET is_active = false WHERE id = ?', [id]);
 
     res.json({ success: true });
   } catch (error) {
     console.error('Error deactivating spreadsheet:', error);
     res.status(500).json({ error: 'Failed to deactivate spreadsheet' });
+  }
+});
+
+// Toggle auto-accept for a spreadsheet config
+router.post('/spreadsheets/:id/auto-accept', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { enabled } = req.body;
+    const db = await getDatabase();
+
+    // Verify the config exists
+    const config = await db.get('SELECT * FROM spreadsheet_configs WHERE id = ?', [id]);
+    if (!config) {
+      return res.status(404).json({ error: 'Spreadsheet configuration not found' });
+    }
+
+    // Update auto_accept setting
+    await db.run(
+      'UPDATE spreadsheet_configs SET auto_accept = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+      [enabled ? true : false, id]
+    );
+
+    res.json({ success: true, auto_accept: enabled });
+  } catch (error) {
+    console.error('Error updating auto-accept:', error);
+    res.status(500).json({ error: 'Failed to update auto-accept setting' });
   }
 });
 
@@ -378,15 +469,85 @@ router.delete('/spreadsheets/:id', requireAuth, async (req: AuthRequest, res: Re
     const { id } = req.params;
     const db = await getDatabase();
 
+    // First, unlink any scoresheet templates that reference this config
     await db.run(
-      'DELETE FROM spreadsheet_configs WHERE id = ? AND user_id = ?',
-      [id, req.user.id]
+      'UPDATE scoresheet_templates SET spreadsheet_config_id = NULL WHERE spreadsheet_config_id = ?',
+      [id]
     );
+
+    // Now delete the config (allow shared delete if query param is set)
+    const deleteShared = req.query.shared === 'true';
+    if (deleteShared) {
+      await db.run(
+        'DELETE FROM spreadsheet_configs WHERE id = ?',
+        [id]
+      );
+    } else {
+      await db.run(
+        'DELETE FROM spreadsheet_configs WHERE id = ? AND user_id = ?',
+        [id, req.user.id]
+      );
+    }
 
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting spreadsheet config:', error);
     res.status(500).json({ error: 'Failed to delete spreadsheet configuration' });
+  }
+});
+
+// Get all admin users with activity status
+router.get('/users', requireAuth, async (req: AuthRequest, res: Response) => {
+  try {
+    const db = await getDatabase();
+    
+    // Get all admin users with last activity
+    const users = await db.all(`
+      SELECT 
+        id, 
+        email, 
+        name, 
+        is_admin,
+        token_expires_at,
+        last_activity,
+        created_at,
+        updated_at
+      FROM users 
+      WHERE is_admin IS TRUE
+      ORDER BY last_activity DESC NULLS LAST
+    `);
+    
+    // Add activity status to each user
+    const now = Date.now();
+    const usersWithStatus = users.map((user: any) => {
+      // Handle both Date objects (PostgreSQL) and strings (SQLite)
+      let lastActivityTime: number | null = null;
+      if (user.last_activity) {
+        if (user.last_activity instanceof Date) {
+          lastActivityTime = user.last_activity.getTime();
+        } else {
+          lastActivityTime = new Date(user.last_activity).getTime();
+        }
+      }
+      
+      // Consider "active" if activity within last 5 minutes
+      const isActive = lastActivityTime ? (now - lastActivityTime) < 5 * 60 * 1000 : false;
+      // Consider "recently active" if within last hour
+      const isRecentlyActive = lastActivityTime ? (now - lastActivityTime) < 60 * 60 * 1000 : false;
+      
+      return {
+        ...user,
+        last_activity: lastActivityTime ? new Date(lastActivityTime).toISOString() : null,
+        isActive,
+        isRecentlyActive,
+        tokenValid: user.token_expires_at ? user.token_expires_at > now : false
+      };
+    });
+    
+    res.json(usersWithStatus);
+  } catch (error) {
+    console.error('Error fetching admin users:', error);
+    res.status(500).json({ error: 'Failed to fetch admin users' });
   }
 });
 

@@ -218,19 +218,22 @@ export default function PublicChat() {
                         <small>Chat rooms will appear when spreadsheets are linked.</small>
                       </div>
                     ) : (
-                      spreadsheets.map((spreadsheet) => (
+                      spreadsheets.map((spreadsheet) => {
+                      const isAdminRoom = spreadsheet.spreadsheet_id === '__ADMIN_ONLY__';
+                      return (
                         <button
                           key={spreadsheet.spreadsheet_id}
-                          className="chat-room-item"
+                          className={`chat-room-item ${isAdminRoom ? 'admin-room' : ''}`}
                           onClick={() => handleSpreadsheetSelect(spreadsheet)}
                         >
-                          <span className="chat-room-icon">💬</span>
+                          <span className="chat-room-icon">{isAdminRoom ? '🔒' : '💬'}</span>
                           <span className="chat-room-name">{spreadsheet.spreadsheet_name}</span>
                           <svg className="chat-room-arrow" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
                           </svg>
                         </button>
-                      ))
+                      );
+                    })
                     )}
                   </div>
                 )}

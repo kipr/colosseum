@@ -28,6 +28,8 @@ export default function TemplateEditorModal({ templateId, onClose, onSave, initi
   const [spreadsheetConfigId, setSpreadsheetConfigId] = useState<number | ''>('');
   const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
   const [loading, setLoading] = useState(!!templateId);
+  const [gameAreasImage, setGameAreasImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   useEffect(() => {
     loadSpreadsheets();
@@ -40,6 +42,10 @@ export default function TemplateEditorModal({ templateId, onClose, onSave, initi
       setAccessCode(initialData.accessCode);
       setSchema(JSON.stringify(initialData.schema, null, 2));
       setSpreadsheetConfigId(initialData.spreadsheetConfigId);
+      // Load game areas image from schema if present
+      if (initialData.schema?.gameAreasImage) {
+        setGameAreasImage(initialData.schema.gameAreasImage);
+      }
     } else {
       // New template with example schema
       setSchema(JSON.stringify({
@@ -82,6 +88,10 @@ export default function TemplateEditorModal({ templateId, onClose, onSave, initi
       setName(template.name);
       setDescription(template.description || '');
       setAccessCode(template.access_code || '');
+      // Extract gameAreasImage from schema before stringifying
+      if (template.schema?.gameAreasImage) {
+        setGameAreasImage(template.schema.gameAreasImage);
+      }
       setSchema(JSON.stringify(template.schema, null, 2));
       setSpreadsheetConfigId(template.spreadsheet_config_id || '');
     } catch (error) {
@@ -90,6 +100,42 @@ export default function TemplateEditorModal({ templateId, onClose, onSave, initi
       onClose();
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle image upload
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    // Check file size (limit to 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Image must be less than 2MB');
+      return;
+    }
+    
+    // Check file type
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+    
+    setUploadingImage(true);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setGameAreasImage(event.target?.result as string);
+      setUploadingImage(false);
+    };
+    reader.onerror = () => {
+      alert('Failed to read image file');
+      setUploadingImage(false);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveImage = () => {
+    if (window.confirm('Are you sure you want to remove the game areas image?')) {
+      setGameAreasImage(null);
     }
   };
 
@@ -103,6 +149,13 @@ export default function TemplateEditorModal({ templateId, onClose, onSave, initi
 
     try {
       const parsedSchema = JSON.parse(schema);
+      
+      // Add game areas image to schema if present
+      if (gameAreasImage) {
+        parsedSchema.gameAreasImage = gameAreasImage;
+      } else {
+        delete parsedSchema.gameAreasImage;
+      }
       
       const method = templateId ? 'PUT' : 'POST';
       const url = templateId ? `/scoresheet/templates/${templateId}` : '/scoresheet/templates';
@@ -212,6 +265,72 @@ export default function TemplateEditorModal({ templateId, onClose, onSave, initi
                 required
               />
               <small>Judges will need this code to access the score sheet</small>
+            </div>
+            <div className="form-group">
+              <label>Game Areas Image (Optional)</label>
+              <div style={{ 
+                border: '2px dashed var(--border-color)', 
+                borderRadius: '0.5rem', 
+                padding: '1rem',
+                textAlign: 'center',
+                background: 'var(--bg-color)'
+              }}>
+                {gameAreasImage ? (
+                  <div>
+                    <img 
+                      src={gameAreasImage} 
+                      alt="Game Areas" 
+                      style={{ 
+                        maxWidth: '100%', 
+                        maxHeight: '200px', 
+                        borderRadius: '0.25rem',
+                        marginBottom: '0.5rem'
+                      }} 
+                    />
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <button 
+                        type="button" 
+                        className="btn btn-danger" 
+                        onClick={handleRemoveImage}
+                      >
+                        Remove Image
+                      </button>
+                      <label className="btn btn-secondary" style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center' }}>
+                        Replace Image
+                        <input 
+                          type="file" 
+                          accept="image/*" 
+                          onChange={handleImageUpload}
+                          style={{ display: 'none' }}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label 
+                      className="btn btn-primary" 
+                      style={{ cursor: 'pointer', display: 'inline-block' }}
+                    >
+                      {uploadingImage ? 'Uploading...' : 'Upload Game Areas Image'}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        onChange={handleImageUpload}
+                        disabled={uploadingImage}
+                        style={{ display: 'none' }}
+                      />
+                    </label>
+                    <p style={{ 
+                      marginTop: '0.5rem', 
+                      color: 'var(--secondary-color)', 
+                      fontSize: '0.875rem' 
+                    }}>
+                      Upload an image of the game field layout. This will be shown as a "Game Areas" button on the scoresheet.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="form-group">
               <label>Score Sheet Schema (JSON)</label>

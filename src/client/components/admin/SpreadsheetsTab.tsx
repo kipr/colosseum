@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import DriveLocationSelector from './DriveLocationSelector';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import './SpreadsheetsTab.css';
 
 interface SheetConfig {
   id: number;
@@ -48,12 +49,19 @@ export default function SpreadsheetsTab() {
 
   useEffect(() => {
     loadLinkedSpreadsheets();
+    
+    // Auto-refresh every 10 seconds to sync across all admins
+    const interval = setInterval(() => {
+      loadLinkedSpreadsheets();
+    }, 10000);
+    
+    return () => clearInterval(interval);
   }, []);
 
-  // Load unique spreadsheets
+  // Load unique spreadsheets (shared across all admins)
   const loadLinkedSpreadsheets = async () => {
     try {
-      const response = await fetch('/admin/spreadsheets/grouped', { credentials: 'include' });
+      const response = await fetch('/admin/spreadsheets/grouped?shared=true', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to load spreadsheets');
       const data = await response.json();
       setLinkedSpreadsheets(data);
@@ -74,10 +82,10 @@ export default function SpreadsheetsTab() {
     }
   };
 
-  // Load sheet configs for selected spreadsheet
+  // Load sheet configs for selected spreadsheet (shared across all admins)
   const loadSheetConfigs = async (spreadsheetId: string) => {
     try {
-      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/configs`, {
+      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/configs?shared=true`, {
         credentials: 'include'
       });
       if (!response.ok) throw new Error('Failed to load sheet configs');
@@ -105,6 +113,17 @@ export default function SpreadsheetsTab() {
     }
   };
 
+  // Auto-refresh sheet configs when a spreadsheet is selected
+  useEffect(() => {
+    if (selectedSpreadsheet) {
+      const interval = setInterval(() => {
+        loadSheetConfigs(selectedSpreadsheet.spreadsheet_id);
+      }, 10000);
+      
+      return () => clearInterval(interval);
+    }
+  }, [selectedSpreadsheet]);
+
   // Select a spreadsheet to view its sheets
   const handleSelectSpreadsheet = async (spreadsheet: LinkedSpreadsheet) => {
     setSelectedSpreadsheet(spreadsheet);
@@ -121,10 +140,10 @@ export default function SpreadsheetsTab() {
     setShowAddSheet(false);
   };
 
-  // Deactivate entire spreadsheet (all sheets)
+  // Deactivate entire spreadsheet (all sheets) - shared across all admins
   const handleDeactivateSpreadsheet = async (spreadsheetId: string) => {
     try {
-      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/deactivate`, {
+      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/deactivate?shared=true`, {
         method: 'PUT',
         credentials: 'include'
       });
@@ -139,18 +158,18 @@ export default function SpreadsheetsTab() {
     }
   };
 
-  // Delete entire spreadsheet (unlink)
+  // Delete entire spreadsheet (unlink) - shared across all admins
   const handleDeleteSpreadsheet = async (spreadsheetId: string) => {
     const confirmed = await confirm({
       title: 'Unlink Spreadsheet',
-      message: 'Are you sure you want to unlink this spreadsheet and all its sheet configurations?',
+      message: 'Are you sure you want to unlink this spreadsheet and all its sheet configurations? This will affect all admins.',
       confirmText: 'Unlink',
       confirmStyle: 'danger'
     });
     if (!confirmed) return;
     
     try {
-      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}`, {
+      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}?shared=true`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -214,7 +233,7 @@ export default function SpreadsheetsTab() {
     if (!confirmed) return;
     
     try {
-      const response = await fetch(`/admin/spreadsheets/${id}`, {
+      const response = await fetch(`/admin/spreadsheets/${id}?shared=true`, {
         method: 'DELETE',
         credentials: 'include'
       });
@@ -242,7 +261,7 @@ export default function SpreadsheetsTab() {
           spreadsheetId: selectedSpreadsheet.spreadsheet_id,
           sheetName: newSheetName,
           sheetPurpose: newSheetPurpose,
-          isActive: false  // Start inactive
+          isActive: true  // Start active so sheets work immediately
         })
       });
 

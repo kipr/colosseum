@@ -14,21 +14,35 @@ interface ScoresheetFormProps {
 }
 
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
-  const [formData, setFormData] = useState<Record<string, any>>(() => {
-    // Initialize with cached round number if available (seeding only)
-    // For head-to-head, always start fresh so user must select a game
+  // Helper to get initial form data with default values from schema
+  const getInitialFormData = () => {
     const cachedRound = localStorage.getItem('lastRoundNumber');
     const initial: Record<string, any> = {};
     if (cachedRound) initial.round = cachedRound;
+    
+    // Initialize fields with their default values if specified
+    template.schema.fields.forEach((field: any) => {
+      if (field.defaultValue !== undefined) {
+        initial[field.id] = field.defaultValue;
+      } else if (field.startValue !== undefined) {
+        // Support both defaultValue and startValue
+        initial[field.id] = field.startValue;
+      }
+    });
+    
     return initial;
-  });
+  };
+
+  const [formData, setFormData] = useState<Record<string, any>>(getInitialFormData);
   const [dynamicData, setDynamicData] = useState<Record<string, any[]>>({});
   const [bracketGames, setBracketGames] = useState<BracketGame[]>([]);
   const [teamsData, setTeamsData] = useState<any[]>([]); // Teams lookup for head-to-head
   const [calculatedValues, setCalculatedValues] = useState<Record<string, number>>({});
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const [showGameAreas, setShowGameAreas] = useState(false);
   const schema = template.schema;
   const isHeadToHead = schema.mode === 'head-to-head';
+  const gameAreasImage = schema.gameAreasImage;
 
   // Show notification and auto-dismiss
   const showNotification = (message: string, type: 'success' | 'error' = 'success') => {
@@ -46,6 +60,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     setTimeout(() => {
       setNotification(null);
     }, 2000);
+  };
+
+  // Reset form to initial values
+  const handleReset = () => {
+    if (window.confirm('Are you sure you want to reset all fields? This cannot be undone.')) {
+      setFormData(getInitialFormData());
+      setCalculatedValues({});
+      showNotification('Form has been reset', 'success');
+    }
   };
 
   // Recalculate all formulas when form data changes
@@ -569,13 +592,21 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           <input
             type="number"
             className="score-input"
-            min={field.min || 0}
-            max={field.max || undefined}
+            min={field.min ?? 0}
+            max={field.max}
             step={field.step || 1}
             value={value}
             onChange={(e) => {
-              const newValue = e.target.value;
+              let newValue = e.target.value;
               if (newValue === '' || !isNaN(Number(newValue))) {
+                // Enforce min/max bounds
+                const numValue = Number(newValue);
+                if (newValue !== '' && field.max !== undefined && numValue > field.max) {
+                  newValue = String(field.max);
+                }
+                if (newValue !== '' && field.min !== undefined && numValue < field.min) {
+                  newValue = String(field.min);
+                }
                 handleInputChange(field.id, newValue);
               }
             }}
@@ -663,9 +694,128 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           </div>
         </div>
       )}
+      
+      {/* Game Areas overlay */}
+      {showGameAreas && gameAreasImage && (
+        <div 
+          className="game-areas-overlay" 
+          onClick={() => setShowGameAreas(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            padding: '1rem',
+            cursor: 'pointer'
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              maxWidth: '95vw',
+              maxHeight: '95vh'
+            }}
+          >
+            <button
+              onClick={() => setShowGameAreas(false)}
+              style={{
+                position: 'absolute',
+                top: '-40px',
+                right: '0',
+                background: 'white',
+                border: 'none',
+                borderRadius: '50%',
+                width: '36px',
+                height: '36px',
+                fontSize: '24px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+              }}
+            >
+              ×
+            </button>
+            <img 
+              src={gameAreasImage} 
+              alt="Game Areas" 
+              style={{
+                maxWidth: '100%',
+                maxHeight: '90vh',
+                borderRadius: '0.5rem',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.5)'
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="scoresheet-form">
-        {schema.title && <div className="scoresheet-title">{schema.title}</div>}
+        {/* Title row with reset button */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          marginBottom: '1.5rem',
+          paddingBottom: '1rem',
+          borderBottom: '2px solid var(--border-color)'
+        }}>
+          {/* Invisible spacer to balance the reset button and keep title centered */}
+          <div style={{ width: '60px' }}></div>
+          
+          {/* Centered title */}
+          <div style={{ 
+            flex: 1, 
+            textAlign: 'center',
+            fontSize: '1.5rem',
+            fontWeight: 700
+          }}>
+            {schema.title || ''}
+          </div>
+          
+          {/* Reset button */}
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={handleReset}
+            style={{ 
+              padding: '0.4rem 0.75rem',
+              fontSize: '0.8rem',
+              width: '60px'
+            }}
+          >
+            Reset
+          </button>
+        </div>
+        
+        {/* Game Areas button */}
+        {gameAreasImage && (
+          <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowGameAreas(true)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                padding: '0.75rem 1.5rem'
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM3 5h18v14H3V5zm8 6H7v2h4v-2zm0-4H7v2h4V7zm0 8H7v2h4v-2zm6-4h-4v2h4v-2zm0-4h-4v2h4V7zm0 8h-4v2h4v-2z"/>
+              </svg>
+              Game Areas
+            </button>
+          </div>
+        )}
 
         <div className="scoresheet-header-fields">
           {headerFields.map(renderField)}

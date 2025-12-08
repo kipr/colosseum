@@ -10,6 +10,7 @@ interface SpreadsheetConfig {
   sheet_name: string;
   sheet_purpose: string;
   is_active: boolean;
+  auto_accept: boolean;
 }
 
 interface ScoreSubmission {
@@ -33,9 +34,45 @@ export default function ScoringTab() {
   const [scores, setScores] = useState<ScoreSubmission[]>([]);
   const [editingScore, setEditingScore] = useState<ScoreSubmission | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processingAutoAccept, setProcessingAutoAccept] = useState(false);
   
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
+  
+  // Get auto-accept status for selected sheet from spreadsheets state
+  const selectedSheet = spreadsheets.find(s => s.id === selectedSpreadsheet);
+  const autoAccept = selectedSheet?.auto_accept ?? false;
+  
+  // Toggle auto-accept and save to database
+  const toggleAutoAccept = async () => {
+    if (!selectedSpreadsheet) return;
+    
+    const newValue = !autoAccept;
+    try {
+      const response = await fetch(`/admin/spreadsheets/${selectedSpreadsheet}/auto-accept`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ enabled: newValue })
+      });
+      
+      if (!response.ok) throw new Error('Failed to update');
+      
+      // Update local state
+      setSpreadsheets(prev => prev.map(s => 
+        s.id === selectedSpreadsheet ? { ...s, auto_accept: newValue } : s
+      ));
+      
+      if (newValue) {
+        toast.success('Auto-accept enabled for this sheet');
+      } else {
+        toast.info('Auto-accept disabled for this sheet');
+      }
+    } catch (error) {
+      console.error('Error toggling auto-accept:', error);
+      toast.error('Failed to update auto-accept setting');
+    }
+  };
 
   useEffect(() => {
     loadSpreadsheets();
@@ -62,7 +99,7 @@ export default function ScoringTab() {
 
   const loadSpreadsheets = async () => {
     try {
-      const response = await fetch('/admin/spreadsheets', { credentials: 'include' });
+      const response = await fetch('/admin/spreadsheets?shared=true', { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to load spreadsheets');
       const data = await response.json();
       
@@ -103,7 +140,7 @@ export default function ScoringTab() {
     }
   };
 
-  const loadScores = async (showLoading = true) => {
+  const loadScores = async (showLoading = true, currentSpreadsheets?: SpreadsheetConfig[]) => {
     if (!selectedSpreadsheet) return;
     
     if (showLoading) setLoading(true);
@@ -114,6 +151,32 @@ export default function ScoringTab() {
       if (!response.ok) throw new Error('Failed to load scores');
       const data = await response.json();
       setScores(data);
+      
+      // Get current auto-accept status for this sheet (use passed spreadsheets or current state)
+      const sheetsToCheck = currentSpreadsheets || spreadsheets;
+      const currentSheet = sheetsToCheck.find(s => s.id === selectedSpreadsheet);
+      const isAutoAcceptEnabled = currentSheet?.auto_accept ?? false;
+      
+      // Auto-accept pending scores if enabled for this sheet
+      if (isAutoAcceptEnabled && !processingAutoAccept) {
+        const pendingScores = data.filter((s: ScoreSubmission) => s.status === 'pending');
+        if (pendingScores.length > 0) {
+          setProcessingAutoAccept(true);
+          for (const score of pendingScores) {
+            try {
+              await fetch(`/scores/${score.id}/accept`, {
+                method: 'POST',
+                credentials: 'include'
+              });
+            } catch (error) {
+              console.error('Auto-accept failed for score:', score.id, error);
+            }
+          }
+          setProcessingAutoAccept(false);
+          // Reload to show updated statuses
+          loadScores(false, sheetsToCheck);
+        }
+      }
     } catch (error) {
       console.error('Error loading scores:', error);
     } finally {
@@ -421,21 +484,78 @@ export default function ScoringTab() {
       <h2>Scoring</h2>
 
       <div className="card">
-        <div className="form-group">
-          <label>Select Sheet:</label>
-          <select
-            className="field-input"
-            value={selectedSpreadsheet || ''}
-            onChange={(e) => setSelectedSpreadsheet(Number(e.target.value))}
-            style={{ maxWidth: '500px' }}
-          >
-            <option value="">Select a sheet...</option>
-            {spreadsheets.map(config => (
-              <option key={config.id} value={config.id}>
-                [{getPurposeLabel(config.sheet_purpose)}] {config.spreadsheet_name} → {config.sheet_name} {config.is_active ? '(Active)' : ''}
-              </option>
-            ))}
-          </select>
+        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '300px' }}>
+            <label>Select Sheet:</label>
+            <select
+              className="field-input"
+              value={selectedSpreadsheet || ''}
+              onChange={(e) => setSelectedSpreadsheet(Number(e.target.value))}
+              style={{ maxWidth: '500px' }}
+            >
+              <option value="">Select a sheet...</option>
+              {spreadsheets.map(config => (
+                <option key={config.id} value={config.id}>
+                  [{getPurposeLabel(config.sheet_purpose)}] {config.spreadsheet_name} → {config.sheet_name} {config.is_active ? '(Active)' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+          
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+            padding: '0.5rem 1rem',
+            background: autoAccept ? 'var(--success-bg, rgba(34, 197, 94, 0.1))' : 'var(--bg-color)',
+            borderRadius: '0.5rem',
+            border: autoAccept ? '2px solid var(--success-color)' : '1px solid var(--border-color)'
+          }}>
+            <label 
+              htmlFor="autoAcceptToggle" 
+              style={{ 
+                cursor: 'pointer', 
+                fontWeight: autoAccept ? 600 : 400,
+                color: autoAccept ? 'var(--success-color)' : 'inherit'
+              }}
+            >
+              Auto-Accept
+            </label>
+            <button
+              id="autoAcceptToggle"
+              type="button"
+              onClick={toggleAutoAccept}
+              style={{
+                width: '50px',
+                height: '26px',
+                borderRadius: '13px',
+                border: 'none',
+                cursor: 'pointer',
+                position: 'relative',
+                background: autoAccept ? 'var(--success-color)' : 'var(--border-color)',
+                transition: 'background 0.2s'
+              }}
+            >
+              <span
+                style={{
+                  position: 'absolute',
+                  top: '3px',
+                  left: autoAccept ? '27px' : '3px',
+                  width: '20px',
+                  height: '20px',
+                  borderRadius: '50%',
+                  background: 'white',
+                  transition: 'left 0.2s',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                }}
+              />
+            </button>
+            {processingAutoAccept && (
+              <span style={{ fontSize: '0.875rem', color: 'var(--secondary-color)' }}>
+                Processing...
+              </span>
+            )}
+          </div>
         </div>
       </div>
 

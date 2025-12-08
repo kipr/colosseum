@@ -121,9 +121,55 @@
     text-overflow: ellipsis;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
     .admin-layout {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+    }
+
+    .admin-sidebar {
+        flex: none;
+        width: 100%;
+        position: relative;
+        top: 0;
+        height: auto;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        padding: 1rem;
+    }
+
+    .sidebar-menu {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        justify-content: center;
+    }
+
+    .sidebar-item {
+        padding: 0.5rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .admin-content {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .admin-sidebar {
+        padding: 0.75rem;
+    }
+
+    .sidebar-menu {
+        gap: 0.25rem;
+    }
+
+    .sidebar-item {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.8rem;
+    }
+
+    .admin-content {
+        padding: 0.75rem;
     }
 }
 

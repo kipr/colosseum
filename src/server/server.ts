@@ -38,8 +38,9 @@ app.use(cors({
   origin: process.env.CLIENT_URL || 'http://localhost:3000',
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase body size limit to 10MB for image uploads (game areas images stored as base64)
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Session configuration
 const sessionConfig: session.SessionOptions = {
@@ -85,6 +86,28 @@ app.use(passport.initialize());
 app.use(passport.session());
 setupPassport();
 
+// Activity tracking middleware - updates last_activity for authenticated users
+app.use(async (req: Request, res: Response, next: NextFunction) => {
+  if (req.isAuthenticated() && req.user) {
+    const user = req.user as any;
+    // Update last activity (throttled to once per minute to reduce DB writes)
+    const now = Date.now();
+    const lastUpdate = (user as any)._lastActivityUpdate || 0;
+    if (now - lastUpdate > 60000) { // Only update once per minute
+      (user as any)._lastActivityUpdate = now;
+      try {
+        const { getDatabase } = require('./database/connection');
+        const db = await getDatabase();
+        await db.run('UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+      } catch (error) {
+        // Silently fail - don't break requests if activity tracking fails
+        console.error('Failed to update last activity:', error);
+      }
+    }
+  }
+  next();
+});
+
 // Static files - serve React build in production
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client')));
@@ -113,14 +136,26 @@ app.get('/health', (req: Request, res: Response) => {
 
 // In production, serve React app for all non-API routes
 if (process.env.NODE_ENV === 'production') {
-  // Express 5 requires named parameter for wildcards
-  app.get('/{*path}', (req: Request, res: Response) => {
-    // Don't serve React for API routes
-    if (!req.path.startsWith('/api') && !req.path.startsWith('/auth') && 
-        !req.path.startsWith('/admin') && !req.path.startsWith('/scoresheet') &&
-        !req.path.startsWith('/data') && !req.path.startsWith('/scores') &&
-        !req.path.startsWith('/chat') && !req.path.startsWith('/field-templates')) {
+  // These are the React SPA routes - serve index.html for these exact paths
+  const spaRoutes = ['/', '/admin', '/judge', '/scoresheet'];
+  
+  spaRoutes.forEach(route => {
+    app.get(route, (req: Request, res: Response) => {
       res.sendFile(path.join(__dirname, '../client/index.html'));
+    });
+  });
+  
+  // Catch-all for any other non-API routes (e.g., direct asset requests that miss static)
+  app.get('/{*path}', (req: Request, res: Response, next: NextFunction) => {
+    // Only serve React for paths that aren't handled by API routes
+    const apiPrefixes = ['/api', '/auth/', '/admin/', '/scoresheet/', '/data/', '/scores/', '/chat/', '/field-templates/'];
+    const isApiRoute = apiPrefixes.some(prefix => req.path.startsWith(prefix));
+    
+    if (!isApiRoute) {
+      res.sendFile(path.join(__dirname, '../client/index.html'));
+    } else {
+      // If it's an API route that wasn't matched, return 404
+      next();
     }
   });
 }

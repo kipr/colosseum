@@ -41,6 +41,7 @@ const ChatContext = createContext<ChatContextType | undefined>(undefined);
 const CHAT_NAME_KEY = 'colosseum_chat_name';
 const LAST_CHAT_KEY = 'colosseum_last_chat';
 const LAST_SEEN_MESSAGE_KEY = 'colosseum_last_seen_message';
+const ADMIN_CHAT_ROOM_ID = '__ADMIN_ONLY__';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
@@ -121,7 +122,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       try {
         const response = await fetch('/chat/spreadsheets');
         if (response.ok) {
-          const data = await response.json();
+          let data = await response.json();
+          
+          // Add admin-only chat room at the top for admin users
+          if (isAdmin) {
+            const adminRoom: Spreadsheet = {
+              spreadsheet_id: ADMIN_CHAT_ROOM_ID,
+              spreadsheet_name: '🔒 Admin Only'
+            };
+            data = [adminRoom, ...data];
+          }
+          
           setSpreadsheets(data);
           
           // Restore last chat if not already restored
@@ -131,7 +142,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
             if (lastChatStr) {
               try {
                 const lastChat = JSON.parse(lastChatStr) as Spreadsheet;
-                // Verify this spreadsheet still exists in the list
+                // Verify this spreadsheet still exists in the list (or is admin chat for admins)
                 const exists = data.some((s: Spreadsheet) => s.spreadsheet_id === lastChat.spreadsheet_id);
                 if (exists) {
                   setSelectedSpreadsheetState(lastChat);
@@ -150,7 +161,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     // Load spreadsheets on mount, not just when open
     loadSpreadsheets();
-  }, []);
+  }, [isAdmin]);
 
   // Refs to avoid recreating loadMessages on every state change
   const lastSeenMessageIdRef = useRef(lastSeenMessageId);
@@ -173,7 +184,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setIsLoading(true);
     }
     try {
-      const response = await fetch(`/chat/messages/${selectedSpreadsheet.spreadsheet_id}`);
+      // Use different endpoint for admin chat
+      const isAdminChat = selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
+      const url = isAdminChat 
+        ? '/chat/admin/messages'
+        : `/chat/messages/${selectedSpreadsheet.spreadsheet_id}`;
+      
+      const response = await fetch(url, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json() as ChatMessage[];
         setMessages(data);
@@ -228,17 +245,25 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!selectedSpreadsheet || !effectiveChatName) return;
 
     try {
-      const response = await fetch('/chat/messages', {
+      const isAdminChat = selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
+      
+      // Use different endpoint and body for admin chat
+      const url = isAdminChat ? '/chat/admin/messages' : '/chat/messages';
+      const body = isAdminChat
+        ? { message }
+        : {
+            spreadsheetId: selectedSpreadsheet.spreadsheet_id,
+            senderName: effectiveChatName,
+            message,
+          };
+      
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({
-          spreadsheetId: selectedSpreadsheet.spreadsheet_id,
-          senderName: effectiveChatName,
-          message,
-        }),
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
@@ -255,7 +280,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!selectedSpreadsheet || !isAdmin) return;
 
     try {
-      const response = await fetch(`/chat/messages/${selectedSpreadsheet.spreadsheet_id}`, {
+      const isAdminChat = selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
+      const url = isAdminChat 
+        ? '/chat/admin/messages'
+        : `/chat/messages/${selectedSpreadsheet.spreadsheet_id}`;
+      
+      const response = await fetch(url, {
         method: 'DELETE',
         credentials: 'include',
       });

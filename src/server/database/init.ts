@@ -39,10 +39,18 @@ async function initializePostgres(db: any): Promise<void> {
       refresh_token TEXT,
       token_expires_at BIGINT,
       is_admin BOOLEAN DEFAULT FALSE,
+      last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  
+  // Add last_activity column if it doesn't exist (migration for existing databases)
+  try {
+    await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+  } catch (error) {
+    // Column might already exist or syntax not supported
+  }
 
   // Spreadsheet configurations
   await db.exec(`
@@ -54,10 +62,18 @@ async function initializePostgres(db: any): Promise<void> {
       sheet_name TEXT,
       sheet_purpose TEXT DEFAULT 'scores',
       is_active BOOLEAN DEFAULT TRUE,
+      auto_accept BOOLEAN DEFAULT FALSE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  
+  // Add auto_accept column if it doesn't exist (migration)
+  try {
+    await db.exec(`ALTER TABLE spreadsheet_configs ADD COLUMN IF NOT EXISTS auto_accept BOOLEAN DEFAULT FALSE`);
+  } catch (error) {
+    // Column might already exist
+  }
 
   // Scoresheet field templates
   await db.exec(`
@@ -167,10 +183,18 @@ async function initializeSQLite(db: any): Promise<void> {
       access_token TEXT,
       refresh_token TEXT,
       is_admin BOOLEAN DEFAULT 0,
+      last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Add last_activity column if it doesn't exist (migration)
+  try {
+    await db.exec(`ALTER TABLE users ADD COLUMN last_activity DATETIME DEFAULT CURRENT_TIMESTAMP`);
+  } catch (error) {
+    // Column might already exist
+  }
 
   // Spreadsheet configurations
   await db.exec(`
@@ -182,6 +206,7 @@ async function initializeSQLite(db: any): Promise<void> {
       sheet_name TEXT,
       sheet_purpose TEXT,
       is_active BOOLEAN DEFAULT 1,
+      auto_accept BOOLEAN DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -192,6 +217,14 @@ async function initializeSQLite(db: any): Promise<void> {
   try {
     await db.exec(`ALTER TABLE spreadsheet_configs ADD COLUMN sheet_purpose TEXT DEFAULT 'scores'`);
     console.log('✅ Added sheet_purpose column to spreadsheet_configs');
+  } catch (error) {
+    // Column already exists
+  }
+  
+  // Add auto_accept column if it doesn't exist
+  try {
+    await db.exec(`ALTER TABLE spreadsheet_configs ADD COLUMN auto_accept BOOLEAN DEFAULT 0`);
+    console.log('✅ Added auto_accept column to spreadsheet_configs');
   } catch (error) {
     // Column already exists
   }

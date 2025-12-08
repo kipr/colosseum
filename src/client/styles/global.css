@@ -236,6 +236,69 @@ tr:hover {
     .hero h2 {
         font-size: 2rem;
     }
+
+    /* Responsive tables */
+    .table-responsive {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    table {
+        min-width: 600px;
+    }
+
+    th, td {
+        padding: 0.5rem;
+        font-size: 0.875rem;
+    }
+
+    /* Buttons */
+    .btn {
+        padding: 0 0.75rem;
+        height: 36px;
+        font-size: 0.875rem;
+    }
+
+    .btn-large {
+        padding: 0 1.5rem;
+        height: 44px;
+    }
+
+    /* Forms */
+    .form-group label {
+        font-size: 0.9rem;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select,
+    .field-input {
+        font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 0.75rem;
+    }
+
+    .card {
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+
+    .btn {
+        padding: 0 0.5rem;
+        height: 34px;
+        font-size: 0.8rem;
+    }
+
+    .btn-large {
+        padding: 0 1rem;
+        height: 40px;
+        font-size: 0.9rem;
+    }
 }
 
 /* Drive Location Selector */

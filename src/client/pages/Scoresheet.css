@@ -320,6 +320,94 @@ select.score-input {
     .scoresheet-form {
         padding: 1rem;
     }
+
+    .score-field {
+        grid-template-columns: 1fr;
+        gap: 0.25rem;
+    }
+
+    .score-field.compact {
+        grid-template-columns: 1fr auto;
+    }
+
+    .scoresheet-header-fields .score-field {
+        grid-template-columns: 1fr;
+    }
+
+    .score-label {
+        font-size: 0.9rem;
+    }
+
+    .score-input[type="number"] {
+        width: 100%;
+        max-width: 120px;
+    }
+
+    .calculated-value {
+        font-size: 0.9rem;
+        min-width: 70px;
+        width: auto;
+    }
+
+    .total-field .calculated-value {
+        font-size: 1rem;
+        min-width: 80px;
+    }
+
+    .grand-total-field .score-label {
+        font-size: 1.1rem;
+    }
+
+    .grand-total-field .calculated-value {
+        font-size: 1.4rem;
+        min-width: 100px;
+    }
+}
+
+@media (max-width: 480px) {
+    .scoresheet-form {
+        padding: 0.75rem;
+    }
+
+    .scoresheet-title {
+        font-size: 1.2rem;
+    }
+
+    .section-header {
+        font-size: 1rem;
+        padding: 0.5rem 0.75rem;
+    }
+
+    .group-header {
+        font-size: 0.85rem;
+        padding: 0.4rem 0.75rem;
+        margin: 0.75rem -0.75rem 0.5rem -0.75rem;
+    }
+
+    .scoresheet-column {
+        padding: 0.75rem;
+    }
+
+    .score-field {
+        padding: 0.3rem 0.25rem;
+    }
+
+    .score-label {
+        font-size: 0.8rem;
+    }
+
+    .score-button-group {
+        flex-wrap: wrap;
+    }
+
+    .score-option-button {
+        padding: 0.4rem 0.5rem;
+        font-size: 0.8rem;
+    }
+
+    .scoresheet-footer .btn {
+        width: 100%;
+    }
 }
 
 /* Winner Selection (Head-to-Head Mode) */

@@ -5,9 +5,10 @@ import Navbar from '../components/Navbar';
 import SpreadsheetsTab from '../components/admin/SpreadsheetsTab';
 import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
 import ScoringTab from '../components/admin/ScoringTab';
+import AdminsTab from '../components/admin/AdminsTab';
 import './Admin.css';
 
-type TabType = 'spreadsheets' | 'scoresheets' | 'scoring';
+type TabType = 'spreadsheets' | 'scoresheets' | 'scoring' | 'admins';
 
 export default function Admin() {
   const { user, loading } = useAuth();
@@ -20,7 +21,7 @@ export default function Admin() {
       localStorage.setItem('colosseum_last_admin_tab', 'scoresheets');
       return 'scoresheets';
     }
-    if (saved && (saved === 'spreadsheets' || saved === 'scoresheets' || saved === 'scoring')) {
+    if (saved && (saved === 'spreadsheets' || saved === 'scoresheets' || saved === 'scoring' || saved === 'admins')) {
       return saved as TabType;
     }
     return 'spreadsheets';
@@ -116,6 +117,12 @@ export default function Admin() {
               >
                 🏆 Scoring
               </button>
+              <button
+                className={`sidebar-item ${activeTab === 'admins' ? 'active' : ''}`}
+                onClick={() => setActiveTab('admins')}
+              >
+                👥 Admins
+              </button>
             </div>
           </aside>
 
@@ -123,6 +130,7 @@ export default function Admin() {
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
             {activeTab === 'scoring' && <ScoringTab />}
+            {activeTab === 'admins' && <AdminsTab />}
           </div>
         </div>
       </main>

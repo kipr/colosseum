@@ -226,6 +226,15 @@
   background-color: var(--bg-color);
 }
 
+.chat-room-item.admin-room {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.1) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+.chat-room-item.admin-room:hover {
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+}
+
 .chat-room-icon {
   font-size: 1.5rem;
   margin-right: 0.75rem;
