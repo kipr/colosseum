@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "nodemon --watch src/server --exec ts-node src/server/server.ts",
-    "dev:client": "wait-on http://localhost:3000/health && vite",
+    "dev:client": "wait-on http://localhost:3000/health && vite --host 0.0.0.0",
     "build": "npm run clean && npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "tsc",
@@ -36,6 +36,8 @@
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
+    "@eslint/css": "^0.14.1",
+    "@eslint/js": "^9.39.2",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/connect-sqlite3": "^0.9.6",
     "@types/cors": "^2.8.19",
@@ -48,11 +50,18 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "baseline-browser-mapping": "^2.9.19",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^17.2.0",
     "nodemon": "^3.1.11",
+    "prettier": "3.8.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.54.0",
     "vite": "^7.2.6",
     "wait-on": "^9.0.3"
   }

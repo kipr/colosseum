@@ -27,7 +27,7 @@ export async function initializeDatabase(): Promise<void> {
 
 async function initializePostgres(db: any): Promise<void> {
   // PostgreSQL schema
-  
+
   // Users table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -44,10 +44,12 @@ async function initializePostgres(db: any): Promise<void> {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  
+
   // Add last_activity column if it doesn't exist (migration for existing databases)
   try {
-    await db.exec(`ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+    await db.exec(
+      `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
+    );
   } catch (error) {
     // Column might already exist or syntax not supported
   }
@@ -67,10 +69,12 @@ async function initializePostgres(db: any): Promise<void> {
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  
+
   // Add auto_accept column if it doesn't exist (migration)
   try {
-    await db.exec(`ALTER TABLE spreadsheet_configs ADD COLUMN IF NOT EXISTS auto_accept BOOLEAN DEFAULT FALSE`);
+    await db.exec(
+      `ALTER TABLE spreadsheet_configs ADD COLUMN IF NOT EXISTS auto_accept BOOLEAN DEFAULT FALSE`,
+    );
   } catch (error) {
     // Column might already exist
   }
@@ -156,23 +160,35 @@ async function initializePostgres(db: any): Promise<void> {
       CONSTRAINT "session_pkey" PRIMARY KEY ("sid")
     )
   `);
-  
+
   await db.exec(`
     CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")
   `);
 
   // Create indexes
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_spreadsheet_configs_user ON spreadsheet_configs(user_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_active_sessions_user ON active_sessions(user_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_spreadsheet ON chat_messages(spreadsheet_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)`);
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_spreadsheet_configs_user ON spreadsheet_configs(user_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_active_sessions_user ON active_sessions(user_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_spreadsheet ON chat_messages(spreadsheet_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)`,
+  );
 }
 
 async function initializeSQLite(db: any): Promise<void> {
   // SQLite schema (existing schema)
-  
+
   // Users table
   await db.exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -191,7 +207,9 @@ async function initializeSQLite(db: any): Promise<void> {
 
   // Add last_activity column if it doesn't exist (migration)
   try {
-    await db.exec(`ALTER TABLE users ADD COLUMN last_activity DATETIME DEFAULT CURRENT_TIMESTAMP`);
+    await db.exec(
+      `ALTER TABLE users ADD COLUMN last_activity DATETIME DEFAULT CURRENT_TIMESTAMP`,
+    );
   } catch (error) {
     // Column might already exist
   }
@@ -215,15 +233,19 @@ async function initializeSQLite(db: any): Promise<void> {
 
   // Add sheet_purpose column if it doesn't exist
   try {
-    await db.exec(`ALTER TABLE spreadsheet_configs ADD COLUMN sheet_purpose TEXT DEFAULT 'scores'`);
+    await db.exec(
+      `ALTER TABLE spreadsheet_configs ADD COLUMN sheet_purpose TEXT DEFAULT 'scores'`,
+    );
     console.log('✅ Added sheet_purpose column to spreadsheet_configs');
   } catch (error) {
     // Column already exists
   }
-  
+
   // Add auto_accept column if it doesn't exist
   try {
-    await db.exec(`ALTER TABLE spreadsheet_configs ADD COLUMN auto_accept BOOLEAN DEFAULT 0`);
+    await db.exec(
+      `ALTER TABLE spreadsheet_configs ADD COLUMN auto_accept BOOLEAN DEFAULT 0`,
+    );
     console.log('✅ Added auto_accept column to spreadsheet_configs');
   } catch (error) {
     // Column already exists
@@ -250,14 +272,18 @@ async function initializeSQLite(db: any): Promise<void> {
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
-  
+
   // Migration: Remove type column if it exists
   try {
-    const tableInfo = await db.all('PRAGMA table_info(scoresheet_field_templates)');
+    const tableInfo = await db.all(
+      'PRAGMA table_info(scoresheet_field_templates)',
+    );
     const hasTypeColumn = tableInfo.some((col: any) => col.name === 'type');
-    
+
     if (hasTypeColumn) {
-      console.log('⚙️ Migrating scoresheet_field_templates to remove type column...');
+      console.log(
+        '⚙️ Migrating scoresheet_field_templates to remove type column...',
+      );
       await db.exec(`
         CREATE TABLE scoresheet_field_templates_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -277,7 +303,9 @@ async function initializeSQLite(db: any): Promise<void> {
       `);
       console.log('✅ Scoresheet field templates table migrated successfully');
     } else {
-      console.log('✅ Scoresheet field templates table ready (no migration needed)');
+      console.log(
+        '✅ Scoresheet field templates table ready (no migration needed)',
+      );
     }
   } catch (error) {
     console.log('✅ Scoresheet field templates table ready');
@@ -301,13 +329,19 @@ async function initializeSQLite(db: any): Promise<void> {
 
   // Add access_code column if it doesn't exist
   try {
-    await db.exec(`ALTER TABLE scoresheet_templates ADD COLUMN access_code TEXT`);
+    await db.exec(
+      `ALTER TABLE scoresheet_templates ADD COLUMN access_code TEXT`,
+    );
   } catch (error) {}
 
   // Add spreadsheet_config_id column if it doesn't exist
   try {
-    await db.exec(`ALTER TABLE scoresheet_templates ADD COLUMN spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id)`);
-    console.log('✅ Added spreadsheet_config_id column to scoresheet_templates');
+    await db.exec(
+      `ALTER TABLE scoresheet_templates ADD COLUMN spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id)`,
+    );
+    console.log(
+      '✅ Added spreadsheet_config_id column to scoresheet_templates',
+    );
   } catch (error) {}
 
   // Score submissions
@@ -337,10 +371,16 @@ async function initializeSQLite(db: any): Promise<void> {
   try {
     const tableInfo = await db.all('PRAGMA table_info(score_submissions)');
     const hasStatus = tableInfo.some((col: any) => col.name === 'status');
-    const hasReviewedBy = tableInfo.some((col: any) => col.name === 'reviewed_by');
+    const hasReviewedBy = tableInfo.some(
+      (col: any) => col.name === 'reviewed_by',
+    );
     const userIdColumn = tableInfo.find((col: any) => col.name === 'user_id');
-    
-    if (!hasStatus || !hasReviewedBy || (userIdColumn && userIdColumn.notnull === 1)) {
+
+    if (
+      !hasStatus ||
+      !hasReviewedBy ||
+      (userIdColumn && userIdColumn.notnull === 1)
+    ) {
       await db.exec(`
         CREATE TABLE score_submissions_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,

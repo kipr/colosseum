@@ -4,7 +4,7 @@ import { getDatabase } from '../database/connection';
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_CALLBACK_URL
+  process.env.GOOGLE_CALLBACK_URL,
 );
 
 // Buffer time before expiry to trigger refresh (5 minutes)
@@ -16,17 +16,20 @@ const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 function isTokenExpiredOrExpiring(expiresAt: number | null): boolean {
   if (!expiresAt) return true; // No expiry info means we should refresh
   const now = Date.now();
-  return now >= (expiresAt - TOKEN_REFRESH_BUFFER_MS);
+  return now >= expiresAt - TOKEN_REFRESH_BUFFER_MS;
 }
 
 /**
  * Refresh the access token using the refresh token
  */
-async function doTokenRefresh(userId: number, userRefreshToken: string): Promise<{ accessToken: string; expiresAt: number }> {
+async function doTokenRefresh(
+  userId: number,
+  userRefreshToken: string,
+): Promise<{ accessToken: string; expiresAt: number }> {
   const db = await getDatabase();
-  
+
   oauth2Client.setCredentials({
-    refresh_token: userRefreshToken
+    refresh_token: userRefreshToken,
   });
 
   const { credentials } = await oauth2Client.refreshAccessToken();
@@ -40,7 +43,7 @@ async function doTokenRefresh(userId: number, userRefreshToken: string): Promise
 
   // Calculate expiry time (Google returns expiry_date as timestamp in ms)
   // If not provided, assume 1 hour from now (standard Google token lifetime)
-  const expiresAt = expiryDate || (Date.now() + 3600 * 1000);
+  const expiresAt = expiryDate || Date.now() + 3600 * 1000;
 
   // Update the database with new tokens and expiry time
   await db.run(
@@ -50,7 +53,7 @@ async function doTokenRefresh(userId: number, userRefreshToken: string): Promise
       token_expires_at = ?,
       updated_at = CURRENT_TIMESTAMP 
     WHERE id = ?`,
-    [newAccessToken, newRefreshToken || userRefreshToken, expiresAt, userId]
+    [newAccessToken, newRefreshToken || userRefreshToken, expiresAt, userId],
   );
 
   return { accessToken: newAccessToken, expiresAt };
@@ -63,7 +66,7 @@ async function doTokenRefresh(userId: number, userRefreshToken: string): Promise
 export async function getValidAccessToken(userId: number): Promise<string> {
   const db = await getDatabase();
   const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
-  
+
   if (!user) {
     throw new Error('User not found');
   }
@@ -73,7 +76,9 @@ export async function getValidAccessToken(userId: number): Promise<string> {
   }
 
   if (!user.refresh_token) {
-    throw new Error('No refresh token available. Please log out and log back in to get a new refresh token.');
+    throw new Error(
+      'No refresh token available. Please log out and log back in to get a new refresh token.',
+    );
   }
 
   // Check if token is expired or expiring soon
@@ -83,7 +88,9 @@ export async function getValidAccessToken(userId: number): Promise<string> {
       return accessToken;
     } catch (error: any) {
       console.error('Proactive token refresh failed:', error.message);
-      throw new Error('Token refresh failed. Please log out and log back in to re-authenticate with Google.');
+      throw new Error(
+        'Token refresh failed. Please log out and log back in to re-authenticate with Google.',
+      );
     }
   }
 
@@ -91,22 +98,22 @@ export async function getValidAccessToken(userId: number): Promise<string> {
   try {
     oauth2Client.setCredentials({
       access_token: user.access_token,
-      refresh_token: user.refresh_token
+      refresh_token: user.refresh_token,
     });
 
     // Try to get token - this will refresh if needed
     const tokenResult = await oauth2Client.getAccessToken();
-    
+
     // If we got a new token, save it
     if (tokenResult.token && tokenResult.token !== user.access_token) {
       const expiresAt = Date.now() + 3600 * 1000; // Assume 1 hour
       await db.run(
         `UPDATE users SET access_token = ?, token_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [tokenResult.token, expiresAt, userId]
+        [tokenResult.token, expiresAt, userId],
       );
       return tokenResult.token;
     }
-    
+
     return user.access_token;
   } catch (error: any) {
     // Token validation failed, try to force refresh
@@ -115,7 +122,9 @@ export async function getValidAccessToken(userId: number): Promise<string> {
       return accessToken;
     } catch (refreshError: any) {
       console.error('Token refresh failed:', refreshError.message);
-      throw new Error('Token refresh failed. Please log out and log back in to re-authenticate with Google.');
+      throw new Error(
+        'Token refresh failed. Please log out and log back in to re-authenticate with Google.',
+      );
     }
   }
 }
@@ -126,10 +135,14 @@ export async function getValidAccessToken(userId: number): Promise<string> {
  */
 export async function forceRefreshToken(userId: number): Promise<string> {
   const db = await getDatabase();
-  const user = await db.get('SELECT refresh_token FROM users WHERE id = ?', [userId]);
-  
+  const user = await db.get('SELECT refresh_token FROM users WHERE id = ?', [
+    userId,
+  ]);
+
   if (!user?.refresh_token) {
-    throw new Error('No refresh token available. Please log out and log back in.');
+    throw new Error(
+      'No refresh token available. Please log out and log back in.',
+    );
   }
 
   const { accessToken } = await doTokenRefresh(userId, user.refresh_token);
@@ -140,14 +153,17 @@ export async function forceRefreshToken(userId: number): Promise<string> {
  * Save token expiry time when tokens are first obtained (during OAuth callback).
  * Call this from the passport callback after getting tokens.
  */
-export async function saveTokenExpiry(userId: number, expiryDate?: number): Promise<void> {
+export async function saveTokenExpiry(
+  userId: number,
+  expiryDate?: number,
+): Promise<void> {
   const db = await getDatabase();
-  const expiresAt = expiryDate || (Date.now() + 3600 * 1000); // Default 1 hour
-  
-  await db.run(
-    `UPDATE users SET token_expires_at = ? WHERE id = ?`,
-    [expiresAt, userId]
-  );
+  const expiresAt = expiryDate || Date.now() + 3600 * 1000; // Default 1 hour
+
+  await db.run(`UPDATE users SET token_expires_at = ? WHERE id = ?`, [
+    expiresAt,
+    userId,
+  ]);
 }
 
 /**
@@ -157,7 +173,7 @@ export async function saveTokenExpiry(userId: number, expiryDate?: number): Prom
 export async function refreshAccessTokenIfNeeded(
   accessToken: string,
   refreshToken: string | null,
-  userId: number
+  userId: number,
 ): Promise<string> {
   if (!refreshToken) {
     return accessToken; // No refresh token, just use what we have
@@ -166,7 +182,7 @@ export async function refreshAccessTokenIfNeeded(
   try {
     oauth2Client.setCredentials({
       access_token: accessToken,
-      refresh_token: refreshToken
+      refresh_token: refreshToken,
     });
 
     // Try to get token
@@ -178,7 +194,7 @@ export async function refreshAccessTokenIfNeeded(
         const expiresAt = Date.now() + 3600 * 1000;
         await db.run(
           `UPDATE users SET access_token = ?, token_expires_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-          [tokenInfo.token, expiresAt, userId]
+          [tokenInfo.token, expiresAt, userId],
         );
       }
       return tokenInfo.token;
@@ -187,7 +203,10 @@ export async function refreshAccessTokenIfNeeded(
   } catch (error: any) {
     // Token expired, try to refresh
     try {
-      const { accessToken: newToken } = await doTokenRefresh(userId, refreshToken);
+      const { accessToken: newToken } = await doTokenRefresh(
+        userId,
+        refreshToken,
+      );
       return newToken;
     } catch (refreshError: any) {
       console.error('Failed to refresh token:', refreshError.message);
@@ -202,21 +221,23 @@ export async function refreshAccessTokenIfNeeded(
  */
 export async function getAuthenticatedClient(userId: number) {
   const accessToken = await getValidAccessToken(userId);
-  
+
   const db = await getDatabase();
-  const user = await db.get('SELECT refresh_token FROM users WHERE id = ?', [userId]);
-  
+  const user = await db.get('SELECT refresh_token FROM users WHERE id = ?', [
+    userId,
+  ]);
+
   const client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_CALLBACK_URL
+    process.env.GOOGLE_CALLBACK_URL,
   );
-  
+
   client.setCredentials({
     access_token: accessToken,
-    refresh_token: user?.refresh_token
+    refresh_token: user?.refresh_token,
   });
-  
+
   return client;
 }
 
@@ -226,28 +247,31 @@ export async function getAuthenticatedClient(userId: number) {
  */
 export async function withTokenRefresh<T>(
   userId: number,
-  apiCall: (accessToken: string) => Promise<T>
+  apiCall: (accessToken: string) => Promise<T>,
 ): Promise<T> {
   // Get current valid token
   let accessToken = await getValidAccessToken(userId);
-  
+
   try {
     return await apiCall(accessToken);
   } catch (error: any) {
     // Check if it's a 401 error (unauthorized/token expired)
     const status = error?.code || error?.status || error?.response?.status;
-    
+
     if (status === 401) {
       // Force refresh the token and retry
       try {
         accessToken = await forceRefreshToken(userId);
         return await apiCall(accessToken);
       } catch (retryError: any) {
-        console.error('API call failed after token refresh:', retryError.message);
+        console.error(
+          'API call failed after token refresh:',
+          retryError.message,
+        );
         throw retryError;
       }
     }
-    
+
     // Not a token error, rethrow
     throw error;
   }

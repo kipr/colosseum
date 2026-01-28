@@ -24,6 +24,7 @@ The Teams sheet should have these columns (in this order):
 ```
 
 **Important:**
+
 - First row MUST be headers: "Team Number" and "Team Name"
 - Team Number column (A) contains the numbers
 - Team Name column (B) contains the full team names
@@ -33,6 +34,7 @@ The Teams sheet should have these columns (in this order):
 The Seeding sheet should have team rows with round columns.
 
 **Required structure:**
+
 ```
 | Team Number | Team Name            | Seed 1 | Seed 2 | Seed 3 |
 |-------------|----------------------|--------|--------|--------|
@@ -42,6 +44,7 @@ The Seeding sheet should have team rows with round columns.
 ```
 
 **Important:**
+
 - First row MUST have headers: "Team Number" (or "Team #"), "Team Name", "Seed 1", "Seed 2", "Seed 3"
 - Each team gets one row
 - When a Round 1 score is accepted, it writes to the "Seed 1" column for that team
@@ -132,14 +135,14 @@ From `botball-seeding-template.json`:
   "id": "team_number",
   "type": "dropdown",
   "dataSource": {
-    "sheetName": "Teams",           // Pulls from Teams sheet
-    "range": "A1:B",                // Columns A and B
-    "labelField": "Team Number",    // Shows this column
-    "valueField": "Team Number"     // Saves this column value
+    "sheetName": "Teams", // Pulls from Teams sheet
+    "range": "A1:B", // Columns A and B
+    "labelField": "Team Number", // Shows this column
+    "valueField": "Team Number" // Saves this column value
   },
   "cascades": {
-    "targetField": "team_name",     // Auto-fills this field
-    "sourceField": "Team Name"      // With this column's value
+    "targetField": "team_name", // Auto-fills this field
+    "sourceField": "Team Name" // With this column's value
   }
 }
 ```
@@ -154,6 +157,7 @@ From `botball-seeding-template.json`:
 6. **Data in spreadsheet** → Seed 1 column for Team 101 now shows 250
 
 If the same team scores in Round 2:
+
 - Their Seed 2 column gets updated
 - Seed 1 column remains unchanged
 - Each round has its own column
@@ -161,16 +165,19 @@ If the same team scores in Round 2:
 ## Troubleshooting
 
 **Team dropdown is empty:**
+
 - Verify you linked the Teams sheet with purpose "Data Source"
 - Check that Teams sheet has "Team Number" and "Team Name" column headers
 - Make sure you're logged in as admin with valid token
 
 **Accepted scores don't appear in spreadsheet:**
+
 - Verify you linked the Seeding sheet with purpose "Score Submissions"
 - Check that both Teams and Seeding sheets are marked "Active"
 - Try logging out and back in to refresh your access token
 
 **"No active spreadsheet configuration found" error:**
+
 - You need at least one sheet with purpose "Score Submissions" linked
 - Go to Admin → Spreadsheets and verify one is active
 
@@ -184,4 +191,3 @@ You can run multiple events simultaneously:
 4. Link **"2026 Spring Tournament" → Finals** (Score Submissions)
 
 All four can be active at once! Each template will use its owner's configurations.
-

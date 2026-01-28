@@ -1,181 +1,180 @@
 .hero {
-    text-align: center;
-    padding: 3rem 2rem 2rem;
+  text-align: center;
+  padding: 3rem 2rem 2rem;
 }
 
 .hero h2 {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
 }
 
 .hero p {
-    font-size: 1.25rem;
-    color: var(--secondary-color);
-    margin-bottom: 2rem;
+  font-size: 1.25rem;
+  color: var(--secondary-color);
+  margin-bottom: 2rem;
 }
 
 .role-selection {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 2rem;
-    max-width: 900px;
-    margin: 0 auto;
-    padding: 2rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 2rem;
 }
 
 .role-card {
-    background-color: var(--card-bg);
-    border: 2px solid var(--border-color);
-    border-radius: 1rem;
-    padding: 2rem;
-    text-align: center;
-    transition: all 0.3s;
-    box-shadow: var(--shadow);
+  background-color: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 1rem;
+  padding: 2rem;
+  text-align: center;
+  transition: all 0.3s;
+  box-shadow: var(--shadow);
 }
 
 .role-card:hover {
-    border-color: var(--primary-color);
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-4px);
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
 }
 
 .role-icon {
-    margin-bottom: 1rem;
-    height: 100px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  margin-bottom: 1rem;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .role-icon img {
-    max-height: 100px;
-    max-width: 150px;
-    object-fit: contain;
+  max-height: 100px;
+  max-width: 150px;
+  object-fit: contain;
 }
 
 .role-card h3 {
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-    color: var(--text-color);
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: var(--text-color);
 }
 
 .role-card > p {
-    color: var(--secondary-color);
-    margin-bottom: 1.5rem;
-    line-height: 1.6;
+  color: var(--secondary-color);
+  margin-bottom: 1.5rem;
+  line-height: 1.6;
 }
 
 .role-features {
-    list-style: none;
-    padding: 0;
-    margin: 1.5rem 0;
-    text-align: left;
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+  text-align: left;
 }
 
 .role-features li {
-    padding: 0.5rem 0;
-    color: var(--text-color);
-    font-size: 0.95rem;
+  padding: 0.5rem 0;
+  color: var(--text-color);
+  font-size: 0.95rem;
 }
 
 .role-card .btn-large {
-    margin-top: 1rem;
-    width: 100%;
+  margin-top: 1rem;
+  width: 100%;
 }
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
-    .hero {
-        padding: 2rem 1rem 1.5rem;
-    }
+  .hero {
+    padding: 2rem 1rem 1.5rem;
+  }
 
-    .hero h2 {
-        font-size: 1.75rem;
-    }
+  .hero h2 {
+    font-size: 1.75rem;
+  }
 
-    .hero p {
-        font-size: 1rem;
-        margin-bottom: 1.5rem;
-    }
+  .hero p {
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+  }
 
-    .role-selection {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
-        padding: 1rem;
-    }
+  .role-selection {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+    padding: 1rem;
+  }
 
-    .role-card {
-        padding: 1.5rem;
-    }
+  .role-card {
+    padding: 1.5rem;
+  }
 
-    .role-icon {
-        height: 80px;
-    }
+  .role-icon {
+    height: 80px;
+  }
 
-    .role-icon img {
-        max-height: 80px;
-        max-width: 120px;
-    }
+  .role-icon img {
+    max-height: 80px;
+    max-width: 120px;
+  }
 
-    .role-card h3 {
-        font-size: 1.25rem;
-    }
+  .role-card h3 {
+    font-size: 1.25rem;
+  }
 
-    .role-features li {
-        font-size: 0.9rem;
-    }
+  .role-features li {
+    font-size: 0.9rem;
+  }
 }
 
 @media (max-width: 480px) {
-    .hero {
-        padding: 1.5rem 0.75rem 1rem;
-    }
+  .hero {
+    padding: 1.5rem 0.75rem 1rem;
+  }
 
-    .hero h2 {
-        font-size: 1.5rem;
-    }
+  .hero h2 {
+    font-size: 1.5rem;
+  }
 
-    .hero p {
-        font-size: 0.9rem;
-    }
+  .hero p {
+    font-size: 0.9rem;
+  }
 
-    .role-selection {
-        padding: 0.5rem;
-        gap: 1rem;
-    }
+  .role-selection {
+    padding: 0.5rem;
+    gap: 1rem;
+  }
 
-    .role-card {
-        padding: 1rem;
-        border-radius: 0.75rem;
-    }
+  .role-card {
+    padding: 1rem;
+    border-radius: 0.75rem;
+  }
 
-    .role-icon {
-        height: 60px;
-        margin-bottom: 0.75rem;
-    }
+  .role-icon {
+    height: 60px;
+    margin-bottom: 0.75rem;
+  }
 
-    .role-icon img {
-        max-height: 60px;
-        max-width: 100px;
-    }
+  .role-icon img {
+    max-height: 60px;
+    max-width: 100px;
+  }
 
-    .role-card h3 {
-        font-size: 1.1rem;
-        margin-bottom: 0.75rem;
-    }
+  .role-card h3 {
+    font-size: 1.1rem;
+    margin-bottom: 0.75rem;
+  }
 
-    .role-card > p {
-        font-size: 0.85rem;
-        margin-bottom: 1rem;
-    }
+  .role-card > p {
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+  }
 
-    .role-features {
-        margin: 1rem 0;
-    }
+  .role-features {
+    margin: 1rem 0;
+  }
 
-    .role-features li {
-        font-size: 0.85rem;
-        padding: 0.35rem 0;
-    }
+  .role-features li {
+    font-size: 0.85rem;
+    padding: 0.35rem 0;
+  }
 }
-

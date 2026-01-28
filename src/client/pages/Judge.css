@@ -1,114 +1,113 @@
 .template-groups {
-    display: flex;
-    flex-direction: column;
-    gap: 2rem;
-    margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-top: 1rem;
 }
 
 .template-group {
-    background-color: var(--card-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 0.75rem;
-    padding: 1.5rem;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.5rem;
 }
 
 .template-group-header {
-    font-size: 1.25rem;
-    font-weight: 600;
-    margin-bottom: 1rem;
-    padding-bottom: 0.75rem;
-    border-bottom: 2px solid var(--primary-color);
-    color: var(--text-color);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 2px solid var(--primary-color);
+  color: var(--text-color);
 }
 
 .template-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.25rem;
 }
 
 .template-card {
-    background-color: var(--bg-color);
-    border: 2px solid var(--border-color);
-    border-radius: 0.5rem;
-    padding: 1.25rem;
-    cursor: pointer;
-    transition: all 0.2s;
+  background-color: var(--bg-color);
+  border: 2px solid var(--border-color);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .template-card:hover {
-    border-color: var(--primary-color);
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-2px);
 }
 
 .template-card h4 {
-    margin: 0 0 0.5rem 0;
-    font-size: 1.1rem;
-    color: var(--text-color);
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: var(--text-color);
 }
 
 .template-card p {
-    color: var(--secondary-color);
-    font-size: 0.875rem;
-    margin: 0 0 0.75rem 0;
+  color: var(--secondary-color);
+  font-size: 0.875rem;
+  margin: 0 0 0.75rem 0;
 }
 
 .template-card small {
-    color: var(--secondary-color);
-    font-size: 0.75rem;
+  color: var(--secondary-color);
+  font-size: 0.75rem;
 }
 
 /* Mobile Responsive */
 @media (max-width: 768px) {
-    .template-groups {
-        gap: 1.5rem;
-    }
+  .template-groups {
+    gap: 1.5rem;
+  }
 
-    .template-group {
-        padding: 1rem;
-    }
+  .template-group {
+    padding: 1rem;
+  }
 
-    .template-group-header {
-        font-size: 1.1rem;
-    }
+  .template-group-header {
+    font-size: 1.1rem;
+  }
 
-    .template-grid {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-    }
+  .template-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
 
-    .template-card {
-        padding: 1rem;
-    }
+  .template-card {
+    padding: 1rem;
+  }
 
-    .template-card h4 {
-        font-size: 1rem;
-    }
+  .template-card h4 {
+    font-size: 1rem;
+  }
 }
 
 @media (max-width: 480px) {
-    .template-group {
-        padding: 0.75rem;
-        border-radius: 0.5rem;
-    }
+  .template-group {
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+  }
 
-    .template-group-header {
-        font-size: 1rem;
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.5rem;
-    }
+  .template-group-header {
+    font-size: 1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+  }
 
-    .template-card {
-        padding: 0.75rem;
-    }
+  .template-card {
+    padding: 0.75rem;
+  }
 
-    .template-card h4 {
-        font-size: 0.95rem;
-    }
+  .template-card h4 {
+    font-size: 0.95rem;
+  }
 
-    .template-card p {
-        font-size: 0.8rem;
-    }
+  .template-card p {
+    font-size: 0.8rem;
+  }
 }
-

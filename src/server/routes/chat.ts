@@ -11,13 +11,13 @@ interface ChatMessage {
   message: string;
   is_admin: boolean;
   user_id: number | null;
-  created_at: string | Date;  // SQLite returns string, PostgreSQL returns Date
+  created_at: string | Date; // SQLite returns string, PostgreSQL returns Date
 }
 
 // Helper to normalize timestamps from both SQLite (string) and PostgreSQL (Date object)
 function fixTimestamp(msg: ChatMessage): ChatMessage & { created_at: string } {
   if (!msg.created_at) return { ...msg, created_at: '' };
-  
+
   // PostgreSQL returns Date objects, SQLite returns strings
   let timestamp: string;
   if (msg.created_at instanceof Date) {
@@ -34,7 +34,7 @@ function fixTimestamp(msg: ChatMessage): ChatMessage & { created_at: string } {
     // Unknown format, try to convert
     timestamp = String(msg.created_at);
   }
-  
+
   return { ...msg, created_at: timestamp };
 }
 
@@ -47,7 +47,7 @@ router.get('/spreadsheets', async (req: Request, res: Response) => {
       `SELECT DISTINCT spreadsheet_id, spreadsheet_name 
        FROM spreadsheet_configs 
        WHERE is_active IS TRUE AND sheet_name != '__SPREADSHEET_PLACEHOLDER__'
-       ORDER BY spreadsheet_name`
+       ORDER BY spreadsheet_name`,
     );
     res.json(spreadsheets);
   } catch (error) {
@@ -61,25 +61,25 @@ router.get('/messages/:spreadsheetId', async (req: Request, res: Response) => {
   try {
     const { spreadsheetId } = req.params;
     const { limit = 100, before } = req.query;
-    
+
     const db = await getDatabase();
-    
+
     let query = `
       SELECT id, spreadsheet_id, sender_name, message, is_admin, created_at 
       FROM chat_messages 
       WHERE spreadsheet_id = ?
     `;
     const params: any[] = [spreadsheetId];
-    
+
     if (before) {
       query += ` AND id < ?`;
       params.push(before);
     }
-    
+
     query += ` ORDER BY created_at DESC LIMIT ?`;
     params.push(Number(limit));
-    
-    const messages = await db.all(query, params) as ChatMessage[];
+
+    const messages = (await db.all(query, params)) as ChatMessage[];
     // Reverse to get chronological order and fix timestamps
     res.json(messages.reverse().map(fixTimestamp));
   } catch (error) {
@@ -92,35 +92,39 @@ router.get('/messages/:spreadsheetId', async (req: Request, res: Response) => {
 router.post('/messages', async (req: Request, res: Response) => {
   try {
     const { spreadsheetId, senderName, message } = req.body;
-    
+
     if (!spreadsheetId || !senderName || !message) {
-      return res.status(400).json({ error: 'Spreadsheet ID, sender name, and message are required' });
+      return res.status(400).json({
+        error: 'Spreadsheet ID, sender name, and message are required',
+      });
     }
-    
+
     if (message.length > 1000) {
-      return res.status(400).json({ error: 'Message too long (max 1000 characters)' });
+      return res
+        .status(400)
+        .json({ error: 'Message too long (max 1000 characters)' });
     }
-    
+
     const db = await getDatabase();
-    
+
     // Check if user is authenticated (admin)
     const authReq = req as AuthRequest;
     const isAdmin = authReq.user?.is_admin || false;
     const userId = authReq.user?.id || null;
-    
+
     const trimmedName = senderName.trim();
-    
+
     const result = await db.run(
       `INSERT INTO chat_messages (spreadsheet_id, sender_name, message, is_admin, user_id) 
        VALUES (?, ?, ?, ?, ?)`,
-      [spreadsheetId, trimmedName, message.trim(), isAdmin, userId]
+      [spreadsheetId, trimmedName, message.trim(), isAdmin, userId],
     );
-    
-    const newMessage = await db.get(
+
+    const newMessage = (await db.get(
       'SELECT id, spreadsheet_id, sender_name, message, is_admin, created_at FROM chat_messages WHERE id = ?',
-      [result.lastID]
-    ) as ChatMessage;
-    
+      [result.lastID],
+    )) as ChatMessage;
+
     res.json(fixTimestamp(newMessage));
   } catch (error) {
     console.error('Error posting chat message:', error);
@@ -132,20 +136,20 @@ router.post('/messages', async (req: Request, res: Response) => {
 router.get('/user-info', async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    
+
     if (authReq.user) {
       res.json({
         isAuthenticated: true,
         isAdmin: authReq.user.is_admin || false,
         name: authReq.user.name,
-        id: authReq.user.id
+        id: authReq.user.id,
       });
     } else {
       res.json({
         isAuthenticated: false,
         isAdmin: false,
         name: null,
-        id: null
+        id: null,
       });
     }
   } catch (error) {
@@ -155,136 +159,155 @@ router.get('/user-info', async (req: Request, res: Response) => {
 });
 
 // Clear all messages in a chat room (admin only)
-router.delete('/messages/:spreadsheetId', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const authReq = req as AuthRequest;
-    
-    // Check if user is admin
-    if (!authReq.user?.is_admin) {
-      return res.status(403).json({ error: 'Only admins can clear chat messages' });
+router.delete(
+  '/messages/:spreadsheetId',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+
+      // Check if user is admin
+      if (!authReq.user?.is_admin) {
+        return res
+          .status(403)
+          .json({ error: 'Only admins can clear chat messages' });
+      }
+
+      const { spreadsheetId } = req.params;
+      const db = await getDatabase();
+
+      const result = await db.run(
+        'DELETE FROM chat_messages WHERE spreadsheet_id = ?',
+        [spreadsheetId],
+      );
+
+      res.json({
+        success: true,
+        message: `Cleared ${result.changes} messages from chat`,
+      });
+    } catch (error) {
+      console.error('Error clearing chat messages:', error);
+      res.status(500).json({ error: 'Failed to clear messages' });
     }
-    
-    const { spreadsheetId } = req.params;
-    const db = await getDatabase();
-    
-    const result = await db.run(
-      'DELETE FROM chat_messages WHERE spreadsheet_id = ?',
-      [spreadsheetId]
-    );
-    
-    res.json({ 
-      success: true, 
-      message: `Cleared ${result.changes} messages from chat` 
-    });
-  } catch (error) {
-    console.error('Error clearing chat messages:', error);
-    res.status(500).json({ error: 'Failed to clear messages' });
-  }
-});
+  },
+);
 
 // ==================== ADMIN-ONLY CHAT ====================
 const ADMIN_CHAT_ROOM_ID = '__ADMIN_ONLY__';
 
 // Get admin chat messages (admin only)
-router.get('/admin/messages', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const authReq = req as AuthRequest;
-    
-    if (!authReq.user?.is_admin) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-    
-    const { limit = 100, before } = req.query;
-    const db = await getDatabase();
-    
-    let query = `
+router.get(
+  '/admin/messages',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+
+      if (!authReq.user?.is_admin) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { limit = 100, before } = req.query;
+      const db = await getDatabase();
+
+      let query = `
       SELECT id, spreadsheet_id, sender_name, message, is_admin, created_at 
       FROM chat_messages 
       WHERE spreadsheet_id = ?
     `;
-    const params: any[] = [ADMIN_CHAT_ROOM_ID];
-    
-    if (before) {
-      query += ` AND id < ?`;
-      params.push(before);
+      const params: any[] = [ADMIN_CHAT_ROOM_ID];
+
+      if (before) {
+        query += ` AND id < ?`;
+        params.push(before);
+      }
+
+      query += ` ORDER BY created_at DESC LIMIT ?`;
+      params.push(Number(limit));
+
+      const messages = (await db.all(query, params)) as ChatMessage[];
+      res.json(messages.reverse().map(fixTimestamp));
+    } catch (error) {
+      console.error('Error fetching admin chat messages:', error);
+      res.status(500).json({ error: 'Failed to fetch messages' });
     }
-    
-    query += ` ORDER BY created_at DESC LIMIT ?`;
-    params.push(Number(limit));
-    
-    const messages = await db.all(query, params) as ChatMessage[];
-    res.json(messages.reverse().map(fixTimestamp));
-  } catch (error) {
-    console.error('Error fetching admin chat messages:', error);
-    res.status(500).json({ error: 'Failed to fetch messages' });
-  }
-});
+  },
+);
 
 // Post message to admin chat (admin only)
-router.post('/admin/messages', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const authReq = req as AuthRequest;
-    
-    if (!authReq.user?.is_admin) {
-      return res.status(403).json({ error: 'Admin access required' });
-    }
-    
-    const { message } = req.body;
-    
-    if (!message) {
-      return res.status(400).json({ error: 'Message is required' });
-    }
-    
-    if (message.length > 1000) {
-      return res.status(400).json({ error: 'Message too long (max 1000 characters)' });
-    }
-    
-    const db = await getDatabase();
-    const senderName = authReq.user.name || authReq.user.email || 'Admin';
-    
-    const result = await db.run(
-      `INSERT INTO chat_messages (spreadsheet_id, sender_name, message, is_admin, user_id) 
+router.post(
+  '/admin/messages',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+
+      if (!authReq.user?.is_admin) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const { message } = req.body;
+
+      if (!message) {
+        return res.status(400).json({ error: 'Message is required' });
+      }
+
+      if (message.length > 1000) {
+        return res
+          .status(400)
+          .json({ error: 'Message too long (max 1000 characters)' });
+      }
+
+      const db = await getDatabase();
+      const senderName = authReq.user.name || authReq.user.email || 'Admin';
+
+      const result = await db.run(
+        `INSERT INTO chat_messages (spreadsheet_id, sender_name, message, is_admin, user_id) 
        VALUES (?, ?, ?, ?, ?)`,
-      [ADMIN_CHAT_ROOM_ID, senderName, message.trim(), true, authReq.user.id]
-    );
-    
-    const newMessage = await db.get(
-      'SELECT id, spreadsheet_id, sender_name, message, is_admin, created_at FROM chat_messages WHERE id = ?',
-      [result.lastID]
-    ) as ChatMessage;
-    
-    res.json(fixTimestamp(newMessage));
-  } catch (error) {
-    console.error('Error posting admin chat message:', error);
-    res.status(500).json({ error: 'Failed to post message' });
-  }
-});
+        [ADMIN_CHAT_ROOM_ID, senderName, message.trim(), true, authReq.user.id],
+      );
+
+      const newMessage = (await db.get(
+        'SELECT id, spreadsheet_id, sender_name, message, is_admin, created_at FROM chat_messages WHERE id = ?',
+        [result.lastID],
+      )) as ChatMessage;
+
+      res.json(fixTimestamp(newMessage));
+    } catch (error) {
+      console.error('Error posting admin chat message:', error);
+      res.status(500).json({ error: 'Failed to post message' });
+    }
+  },
+);
 
 // Clear admin chat (admin only)
-router.delete('/admin/messages', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const authReq = req as AuthRequest;
-    
-    if (!authReq.user?.is_admin) {
-      return res.status(403).json({ error: 'Admin access required' });
+router.delete(
+  '/admin/messages',
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const authReq = req as AuthRequest;
+
+      if (!authReq.user?.is_admin) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+
+      const db = await getDatabase();
+
+      const result = await db.run(
+        'DELETE FROM chat_messages WHERE spreadsheet_id = ?',
+        [ADMIN_CHAT_ROOM_ID],
+      );
+
+      res.json({
+        success: true,
+        message: `Cleared ${result.changes} messages from admin chat`,
+      });
+    } catch (error) {
+      console.error('Error clearing admin chat:', error);
+      res.status(500).json({ error: 'Failed to clear messages' });
     }
-    
-    const db = await getDatabase();
-    
-    const result = await db.run(
-      'DELETE FROM chat_messages WHERE spreadsheet_id = ?',
-      [ADMIN_CHAT_ROOM_ID]
-    );
-    
-    res.json({ 
-      success: true, 
-      message: `Cleared ${result.changes} messages from admin chat` 
-    });
-  } catch (error) {
-    console.error('Error clearing admin chat:', error);
-    res.status(500).json({ error: 'Failed to clear messages' });
-  }
-});
+  },
+);
 
 export default router;
-

@@ -29,40 +29,49 @@ interface ScoreSubmission {
 
 export default function ScoringTab() {
   const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
-  const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<number | null>(null);
+  const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<number | null>(
+    null,
+  );
   const [selectedPurpose, setSelectedPurpose] = useState<string>('');
   const [scores, setScores] = useState<ScoreSubmission[]>([]);
-  const [editingScore, setEditingScore] = useState<ScoreSubmission | null>(null);
+  const [editingScore, setEditingScore] = useState<ScoreSubmission | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [processingAutoAccept, setProcessingAutoAccept] = useState(false);
-  
+
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
-  
+
   // Get auto-accept status for selected sheet from spreadsheets state
-  const selectedSheet = spreadsheets.find(s => s.id === selectedSpreadsheet);
+  const selectedSheet = spreadsheets.find((s) => s.id === selectedSpreadsheet);
   const autoAccept = selectedSheet?.auto_accept ?? false;
-  
+
   // Toggle auto-accept and save to database
   const toggleAutoAccept = async () => {
     if (!selectedSpreadsheet) return;
-    
+
     const newValue = !autoAccept;
     try {
-      const response = await fetch(`/admin/spreadsheets/${selectedSpreadsheet}/auto-accept`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ enabled: newValue })
-      });
-      
+      const response = await fetch(
+        `/admin/spreadsheets/${selectedSpreadsheet}/auto-accept`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ enabled: newValue }),
+        },
+      );
+
       if (!response.ok) throw new Error('Failed to update');
-      
+
       // Update local state
-      setSpreadsheets(prev => prev.map(s => 
-        s.id === selectedSpreadsheet ? { ...s, auto_accept: newValue } : s
-      ));
-      
+      setSpreadsheets((prev) =>
+        prev.map((s) =>
+          s.id === selectedSpreadsheet ? { ...s, auto_accept: newValue } : s,
+        ),
+      );
+
       if (newValue) {
         toast.success('Auto-accept enabled for this sheet');
       } else {
@@ -81,55 +90,65 @@ export default function ScoringTab() {
   useEffect(() => {
     if (selectedSpreadsheet) {
       // Save to localStorage for next time
-      localStorage.setItem('colosseum_last_scoring_sheet', selectedSpreadsheet.toString());
-      
+      localStorage.setItem(
+        'colosseum_last_scoring_sheet',
+        selectedSpreadsheet.toString(),
+      );
+
       loadScores(true); // Show loading on initial load
       // Get the purpose of the selected spreadsheet
-      const selected = spreadsheets.find(s => s.id === selectedSpreadsheet);
+      const selected = spreadsheets.find((s) => s.id === selectedSpreadsheet);
       setSelectedPurpose(selected?.sheet_purpose || '');
-      
+
       // Auto-refresh scores every 10 seconds (without loading spinner)
       const interval = setInterval(() => {
         loadScores(false);
       }, 10000);
-      
+
       return () => clearInterval(interval);
     }
   }, [selectedSpreadsheet]);
 
   const loadSpreadsheets = async () => {
     try {
-      const response = await fetch('/admin/spreadsheets?shared=true', { credentials: 'include' });
+      const response = await fetch('/admin/spreadsheets?shared=true', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to load spreadsheets');
       const data = await response.json();
-      
+
       // Filter to show score submission and bracket sheets
-      const scoringSheets = data.filter((s: SpreadsheetConfig) => 
-        s.sheet_purpose === 'scores' || s.sheet_purpose === 'bracket'
+      const scoringSheets = data.filter(
+        (s: SpreadsheetConfig) =>
+          s.sheet_purpose === 'scores' || s.sheet_purpose === 'bracket',
       );
       setSpreadsheets(scoringSheets);
-      
+
       // Try to restore last selected sheet from localStorage
-      const lastSelectedId = localStorage.getItem('colosseum_last_scoring_sheet');
+      const lastSelectedId = localStorage.getItem(
+        'colosseum_last_scoring_sheet',
+      );
       let sheetToSelect = null;
-      
+
       if (lastSelectedId) {
         // Check if the last selected sheet still exists
-        sheetToSelect = scoringSheets.find((s: SpreadsheetConfig) => 
-          s.id === parseInt(lastSelectedId, 10)
+        sheetToSelect = scoringSheets.find(
+          (s: SpreadsheetConfig) => s.id === parseInt(lastSelectedId, 10),
         );
       }
-      
+
       // If no last selected or it doesn't exist, auto-select first active sheet
       if (!sheetToSelect) {
-        sheetToSelect = scoringSheets.find((s: SpreadsheetConfig) => s.is_active);
+        sheetToSelect = scoringSheets.find(
+          (s: SpreadsheetConfig) => s.is_active,
+        );
       }
-      
+
       // Fall back to first sheet if no active sheets
       if (!sheetToSelect && scoringSheets.length > 0) {
         sheetToSelect = scoringSheets[0];
       }
-      
+
       if (sheetToSelect) {
         setSelectedSpreadsheet(sheetToSelect.id);
       }
@@ -140,33 +159,43 @@ export default function ScoringTab() {
     }
   };
 
-  const loadScores = async (showLoading = true, currentSpreadsheets?: SpreadsheetConfig[]) => {
+  const loadScores = async (
+    showLoading = true,
+    currentSpreadsheets?: SpreadsheetConfig[],
+  ) => {
     if (!selectedSpreadsheet) return;
-    
+
     if (showLoading) setLoading(true);
     try {
-      const response = await fetch(`/scores/by-spreadsheet/${selectedSpreadsheet}`, { 
-        credentials: 'include' 
-      });
+      const response = await fetch(
+        `/scores/by-spreadsheet/${selectedSpreadsheet}`,
+        {
+          credentials: 'include',
+        },
+      );
       if (!response.ok) throw new Error('Failed to load scores');
       const data = await response.json();
       setScores(data);
-      
+
       // Get current auto-accept status for this sheet (use passed spreadsheets or current state)
       const sheetsToCheck = currentSpreadsheets || spreadsheets;
-      const currentSheet = sheetsToCheck.find(s => s.id === selectedSpreadsheet);
+      const currentSheet = sheetsToCheck.find(
+        (s) => s.id === selectedSpreadsheet,
+      );
       const isAutoAcceptEnabled = currentSheet?.auto_accept ?? false;
-      
+
       // Auto-accept pending scores if enabled for this sheet
       if (isAutoAcceptEnabled && !processingAutoAccept) {
-        const pendingScores = data.filter((s: ScoreSubmission) => s.status === 'pending');
+        const pendingScores = data.filter(
+          (s: ScoreSubmission) => s.status === 'pending',
+        );
         if (pendingScores.length > 0) {
           setProcessingAutoAccept(true);
           for (const score of pendingScores) {
             try {
               await fetch(`/scores/${score.id}/accept`, {
                 method: 'POST',
-                credentials: 'include'
+                credentials: 'include',
               });
             } catch (error) {
               console.error('Auto-accept failed for score:', score.id, error);
@@ -188,7 +217,7 @@ export default function ScoringTab() {
     try {
       const response = await fetch(`/scores/${id}/accept`, {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) {
         const error = await response.json();
@@ -207,14 +236,14 @@ export default function ScoringTab() {
       title: 'Reject Score',
       message: 'Are you sure you want to reject this score?',
       confirmText: 'Reject',
-      confirmStyle: 'danger'
+      confirmStyle: 'danger',
     });
     if (!confirmed) return;
-    
+
     try {
       const response = await fetch(`/scores/${id}/reject`, {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to reject score');
       // Don't show loading to preserve scroll position
@@ -230,14 +259,14 @@ export default function ScoringTab() {
       title: 'Revert Score',
       message: 'Are you sure you want to revert this score to pending?',
       confirmText: 'Revert',
-      confirmStyle: 'warning'
+      confirmStyle: 'warning',
     });
     if (!confirmed) return;
-    
+
     try {
       const response = await fetch(`/scores/${id}/revert`, {
         method: 'POST',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to revert score');
       // Don't show loading to preserve scroll position
@@ -251,16 +280,17 @@ export default function ScoringTab() {
   const handleDelete = async (id: number) => {
     const confirmed = await confirm({
       title: 'Delete Score',
-      message: 'Are you sure you want to permanently delete this score? This cannot be undone.',
+      message:
+        'Are you sure you want to permanently delete this score? This cannot be undone.',
       confirmText: 'Delete',
-      confirmStyle: 'danger'
+      confirmStyle: 'danger',
     });
     if (!confirmed) return;
-    
+
     try {
       const response = await fetch(`/scores/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to delete score');
       // Don't show loading to preserve scroll position
@@ -325,11 +355,15 @@ export default function ScoringTab() {
         </tr>
       </thead>
       <tbody>
-        {scores.map(score => (
+        {scores.map((score) => (
           <tr key={score.id}>
             <td>{score.template_name}</td>
             <td>{score.score_data?.team_number?.value || '-'}</td>
-            <td>{score.participant_name || score.score_data?.team_name?.value || '-'}</td>
+            <td>
+              {score.participant_name ||
+                score.score_data?.team_name?.value ||
+                '-'}
+            </td>
             <td>{score.match_id || score.score_data?.round?.value || '-'}</td>
             <td>
               <strong style={{ color: 'var(--primary-color)' }}>
@@ -341,7 +375,10 @@ export default function ScoringTab() {
             <td>
               {score.reviewer_name || '-'}
               {score.reviewed_at && (
-                <><br/><small>{formatDateTime(score.reviewed_at)}</small></>
+                <>
+                  <br />
+                  <small>{formatDateTime(score.reviewed_at)}</small>
+                </>
               )}
             </td>
             <td>{renderActions(score)}</td>
@@ -369,7 +406,7 @@ export default function ScoringTab() {
         </tr>
       </thead>
       <tbody>
-        {scores.map(score => {
+        {scores.map((score) => {
           const data = score.score_data || {};
           const teamANum = data.team_a_number?.value || '-';
           const teamAName = data.team_a_name?.value || '';
@@ -380,38 +417,70 @@ export default function ScoringTab() {
           const winnerNum = data.winner_team_number?.value || '-';
           const winnerName = data.winner_team_name?.value || '';
           const gameNum = data.game_number?.value || score.match_id || '-';
-          
+
           return (
             <tr key={score.id}>
               <td>{score.template_name}</td>
-              <td><strong>Game {gameNum}</strong></td>
               <td>
-                <div><strong>{teamANum}</strong></div>
-                {teamAName && <small style={{ color: 'var(--text-secondary)' }}>{teamAName}</small>}
+                <strong>Game {gameNum}</strong>
+              </td>
+              <td>
+                <div>
+                  <strong>{teamANum}</strong>
+                </div>
+                {teamAName && (
+                  <small style={{ color: 'var(--text-secondary)' }}>
+                    {teamAName}
+                  </small>
+                )}
               </td>
               <td style={{ textAlign: 'center' }}>
-                <span style={{ 
-                  fontWeight: winnerNum === teamANum ? 700 : 400,
-                  color: winnerNum === teamANum ? 'var(--success-color)' : 'inherit'
-                }}>
+                <span
+                  style={{
+                    fontWeight: winnerNum === teamANum ? 700 : 400,
+                    color:
+                      winnerNum === teamANum
+                        ? 'var(--success-color)'
+                        : 'inherit',
+                  }}
+                >
                   {teamAScore}
                 </span>
               </td>
               <td>
-                <div><strong>{teamBNum}</strong></div>
-                {teamBName && <small style={{ color: 'var(--text-secondary)' }}>{teamBName}</small>}
+                <div>
+                  <strong>{teamBNum}</strong>
+                </div>
+                {teamBName && (
+                  <small style={{ color: 'var(--text-secondary)' }}>
+                    {teamBName}
+                  </small>
+                )}
               </td>
               <td style={{ textAlign: 'center' }}>
-                <span style={{ 
-                  fontWeight: winnerNum === teamBNum ? 700 : 400,
-                  color: winnerNum === teamBNum ? 'var(--success-color)' : 'inherit'
-                }}>
+                <span
+                  style={{
+                    fontWeight: winnerNum === teamBNum ? 700 : 400,
+                    color:
+                      winnerNum === teamBNum
+                        ? 'var(--success-color)'
+                        : 'inherit',
+                  }}
+                >
                   {teamBScore}
                 </span>
               </td>
               <td>
-                <div><strong style={{ color: 'var(--success-color)' }}>{winnerNum}</strong></div>
-                {winnerName && <small style={{ color: 'var(--success-color)' }}>{winnerName}</small>}
+                <div>
+                  <strong style={{ color: 'var(--success-color)' }}>
+                    {winnerNum}
+                  </strong>
+                </div>
+                {winnerName && (
+                  <small style={{ color: 'var(--success-color)' }}>
+                    {winnerName}
+                  </small>
+                )}
               </td>
               <td>{formatDateTime(score.created_at)}</td>
               <td>{getStatusBadge(score.status)}</td>
@@ -424,31 +493,45 @@ export default function ScoringTab() {
   );
 
   const renderActions = (score: ScoreSubmission) => (
-    <div style={{ 
-      display: 'grid', 
-      gridTemplateColumns: '1fr 1fr', 
-      gap: '0.25rem',
-      width: '200px',
-      minWidth: '200px'
-    }}>
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr',
+        gap: '0.25rem',
+        width: '200px',
+        minWidth: '200px',
+      }}
+    >
       {score.status === 'pending' ? (
         <>
-          <button className="btn btn-primary" onClick={() => handleAccept(score.id)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => handleAccept(score.id)}
+            style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+          >
             Accept
           </button>
-          <button className="btn btn-danger" onClick={() => handleReject(score.id)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}>
+          <button
+            className="btn btn-danger"
+            onClick={() => handleReject(score.id)}
+            style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+          >
             Reject
           </button>
-          <button className="btn btn-secondary" onClick={() => handleEdit(score)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEdit(score)}
+            style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+          >
             Edit
           </button>
-          <button 
-            className="btn btn-delete" 
-            onClick={() => handleDelete(score.id)} 
+          <button
+            className="btn btn-delete"
+            onClick={() => handleDelete(score.id)}
             title="Permanently delete"
-            style={{ 
-              fontSize: '0.85rem', 
-              padding: '0.4rem 0.6rem'
+            style={{
+              fontSize: '0.85rem',
+              padding: '0.4rem 0.6rem',
             }}
           >
             Delete
@@ -456,20 +539,36 @@ export default function ScoringTab() {
         </>
       ) : (
         <>
-          <button className="btn btn-secondary" onClick={() => handleRevert(score.id)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem', gridColumn: '1 / 2' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleRevert(score.id)}
+            style={{
+              fontSize: '0.85rem',
+              padding: '0.4rem 0.6rem',
+              gridColumn: '1 / 2',
+            }}
+          >
             Revert
           </button>
-          <button className="btn btn-secondary" onClick={() => handleEdit(score)} style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem', gridColumn: '2 / 3' }}>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEdit(score)}
+            style={{
+              fontSize: '0.85rem',
+              padding: '0.4rem 0.6rem',
+              gridColumn: '2 / 3',
+            }}
+          >
             View
           </button>
-          <button 
-            className="btn btn-delete" 
-            onClick={() => handleDelete(score.id)} 
+          <button
+            className="btn btn-delete"
+            onClick={() => handleDelete(score.id)}
             title="Permanently delete"
-            style={{ 
-              fontSize: '0.85rem', 
+            style={{
+              fontSize: '0.85rem',
               padding: '0.4rem 0.6rem',
-              gridColumn: '1 / 3'
+              gridColumn: '1 / 3',
             }}
           >
             Delete
@@ -484,7 +583,15 @@ export default function ScoringTab() {
       <h2>Scoring</h2>
 
       <div className="card">
-        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <div
+          className="form-group"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
           <div style={{ flex: 1, minWidth: '300px' }}>
             <label>Select Sheet:</label>
             <select
@@ -494,29 +601,37 @@ export default function ScoringTab() {
               style={{ maxWidth: '500px' }}
             >
               <option value="">Select a sheet...</option>
-              {spreadsheets.map(config => (
+              {spreadsheets.map((config) => (
                 <option key={config.id} value={config.id}>
-                  [{getPurposeLabel(config.sheet_purpose)}] {config.spreadsheet_name} → {config.sheet_name} {config.is_active ? '(Active)' : ''}
+                  [{getPurposeLabel(config.sheet_purpose)}]{' '}
+                  {config.spreadsheet_name} → {config.sheet_name}{' '}
+                  {config.is_active ? '(Active)' : ''}
                 </option>
               ))}
             </select>
           </div>
-          
-          <div style={{ 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem',
-            padding: '0.5rem 1rem',
-            background: autoAccept ? 'var(--success-bg, rgba(34, 197, 94, 0.1))' : 'var(--bg-color)',
-            borderRadius: '0.5rem',
-            border: autoAccept ? '2px solid var(--success-color)' : '1px solid var(--border-color)'
-          }}>
-            <label 
-              htmlFor="autoAcceptToggle" 
-              style={{ 
-                cursor: 'pointer', 
+
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.5rem 1rem',
+              background: autoAccept
+                ? 'var(--success-bg, rgba(34, 197, 94, 0.1))'
+                : 'var(--bg-color)',
+              borderRadius: '0.5rem',
+              border: autoAccept
+                ? '2px solid var(--success-color)'
+                : '1px solid var(--border-color)',
+            }}
+          >
+            <label
+              htmlFor="autoAcceptToggle"
+              style={{
+                cursor: 'pointer',
                 fontWeight: autoAccept ? 600 : 400,
-                color: autoAccept ? 'var(--success-color)' : 'inherit'
+                color: autoAccept ? 'var(--success-color)' : 'inherit',
               }}
             >
               Auto-Accept
@@ -532,8 +647,10 @@ export default function ScoringTab() {
                 border: 'none',
                 cursor: 'pointer',
                 position: 'relative',
-                background: autoAccept ? 'var(--success-color)' : 'var(--border-color)',
-                transition: 'background 0.2s'
+                background: autoAccept
+                  ? 'var(--success-color)'
+                  : 'var(--border-color)',
+                transition: 'background 0.2s',
               }}
             >
               <span
@@ -546,12 +663,17 @@ export default function ScoringTab() {
                   borderRadius: '50%',
                   background: 'white',
                   transition: 'left 0.2s',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
                 }}
               />
             </button>
             {processingAutoAccept && (
-              <span style={{ fontSize: '0.875rem', color: 'var(--secondary-color)' }}>
+              <span
+                style={{
+                  fontSize: '0.875rem',
+                  color: 'var(--secondary-color)',
+                }}
+              >
                 Processing...
               </span>
             )}
@@ -565,8 +687,10 @@ export default function ScoringTab() {
         <p>Please select a sheet to view scores.</p>
       ) : scores.length === 0 ? (
         <p>No scores submitted for this sheet yet.</p>
+      ) : selectedPurpose === 'bracket' ? (
+        renderBracketTable()
       ) : (
-        selectedPurpose === 'bracket' ? renderBracketTable() : renderSeedingTable()
+        renderSeedingTable()
       )}
 
       {editingScore && (
@@ -576,10 +700,9 @@ export default function ScoringTab() {
           onSave={handleScoreUpdated}
         />
       )}
-      
+
       {ConfirmDialog}
       {toast.ToastContainer}
     </div>
   );
 }
-

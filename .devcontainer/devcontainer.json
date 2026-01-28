@@ -1,0 +1,19 @@
+{
+  "name": "colosseum-dev",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+  "workspaceFolder": "/workspaces/colosseum",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/colosseum,type=bind,consistency=cached",
+  "forwardPorts": [3000, 5173],
+  "runArgs": ["--security-opt", "label=disable"],
+  "remoteUser": "node"
+}

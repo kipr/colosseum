@@ -32,6 +32,7 @@ Free-form text input for names, comments, etc.
 ```
 
 **Properties:**
+
 - `id` (required): Unique identifier for the field
 - `label` (required): Display label
 - `type` (required): "text"
@@ -57,6 +58,7 @@ Numeric input with optional constraints.
 ```
 
 **Properties:**
+
 - `id`, `label`, `type`, `required`, `description`: Same as text field
 - `min` (optional): Minimum value
 - `max` (optional): Maximum value
@@ -82,6 +84,7 @@ Select from predefined options.
 ```
 
 **Properties:**
+
 - `id`, `label`, `type`, `required`, `description`: Same as above
 - `options` (required): Array of objects with `label` and `value`
 
@@ -107,6 +110,7 @@ Multiple choice with visual buttons (only one can be selected).
 ```
 
 **Properties:**
+
 - `id`, `label`, `type`, `required`, `description`: Same as above
 - `options` (required): Array of objects with `label` and `value`
 
@@ -127,6 +131,7 @@ Boolean (true/false) field.
 ```
 
 **Properties:**
+
 - `id`, `label`, `type`, `description`: Same as above
 - `checkboxLabel` (optional): Text shown next to checkbox
 
@@ -354,6 +359,7 @@ When converting a PDF scoresheet to JSON:
 ## Schema Validation
 
 The system expects:
+
 - Valid JSON syntax
 - A `fields` array at the root
 - Each field has at least `id`, `label`, and `type`
@@ -361,4 +367,3 @@ The system expects:
 - All IDs are unique within the template
 
 Invalid schemas will be rejected with an error message.
-

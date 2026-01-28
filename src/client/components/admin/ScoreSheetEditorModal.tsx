@@ -9,30 +9,51 @@ interface ScoreSheetEditorModalProps {
   onSave: () => void;
 }
 
-export default function ScoreSheetEditorModal({ scoreSheetId, onClose, onSave }: ScoreSheetEditorModalProps) {
+export default function ScoreSheetEditorModal({
+  scoreSheetId,
+  onClose,
+  onSave,
+}: ScoreSheetEditorModalProps) {
   const [mode, setMode] = useState<'choice' | 'wizard' | 'manual' | null>(
-    scoreSheetId ? 'manual' : 'choice'  // If editing existing, go straight to manual mode
+    scoreSheetId ? 'manual' : 'choice', // If editing existing, go straight to manual mode
   );
   const [wizardData, setWizardData] = useState<any>(null);
 
   // If editing an existing score sheet, go directly to the manual editor
   if (scoreSheetId) {
-    return <TemplateEditorModal templateId={scoreSheetId} onClose={onClose} onSave={onSave} />;
+    return (
+      <TemplateEditorModal
+        templateId={scoreSheetId}
+        onClose={onClose}
+        onSave={onSave}
+      />
+    );
   }
 
   // Show choice dialog for new score sheets
   if (mode === 'choice') {
     return (
-      <div className="modal show" onClick={(e) => e.target === e.currentTarget && onClose()}>
-        <div className="modal-content" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
-          <span className="close" onClick={onClose}>&times;</span>
-          
+      <div
+        className="modal show"
+        onClick={(e) => e.target === e.currentTarget && onClose()}
+      >
+        <div
+          className="modal-content"
+          style={{ maxWidth: '600px' }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="close" onClick={onClose}>
+            &times;
+          </span>
+
           <h3>Create New Score Sheet</h3>
           <p style={{ color: 'var(--secondary-color)', marginBottom: '2rem' }}>
             Choose how you'd like to create your score sheet:
           </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div
+            style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+          >
             <button
               className="btn btn-primary"
               onClick={() => setMode('wizard')}
@@ -41,13 +62,17 @@ export default function ScoreSheetEditorModal({ scoreSheetId, onClose, onSave }:
                 textAlign: 'left',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.5rem'
+                gap: '0.5rem',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}
+              >
                 <span style={{ fontSize: '2rem' }}>🧙‍♂️</span>
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>Use Score Sheet Generator</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+                    Use Score Sheet Generator
+                  </div>
                   <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>
                     Guided wizard to generate a basic seeding or DE score sheet
                   </div>
@@ -63,13 +88,17 @@ export default function ScoreSheetEditorModal({ scoreSheetId, onClose, onSave }:
                 textAlign: 'left',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.5rem'
+                gap: '0.5rem',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <div
+                style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}
+              >
                 <span style={{ fontSize: '2rem' }}>📝</span>
                 <div>
-                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>Paste JSON Manually</div>
+                  <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>
+                    Paste JSON Manually
+                  </div>
                   <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>
                     For advanced users or custom score sheets
                   </div>
@@ -111,4 +140,3 @@ export default function ScoreSheetEditorModal({ scoreSheetId, onClose, onSave }:
     />
   );
 }
-

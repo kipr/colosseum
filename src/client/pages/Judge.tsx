@@ -17,7 +17,10 @@ interface Template {
 export default function Judge() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTemplate, setSelectedTemplate] = useState<{ id: number; name: string } | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -40,15 +43,15 @@ export default function Judge() {
   // Group templates by spreadsheet name
   const groupedTemplates = useMemo(() => {
     const groups: Record<string, Template[]> = {};
-    
-    templates.forEach(template => {
+
+    templates.forEach((template) => {
       const groupName = template.spreadsheet_name || 'Unassigned';
       if (!groups[groupName]) {
         groups[groupName] = [];
       }
       groups[groupName].push(template);
     });
-    
+
     return groups;
   }, [templates]);
 
@@ -58,7 +61,8 @@ export default function Judge() {
 
   const handleAccessGranted = (template: any) => {
     sessionStorage.setItem('currentTemplate', JSON.stringify(template));
-    const urlName = selectedTemplate!.name.toLowerCase()
+    const urlName = selectedTemplate!.name
+      .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
     navigate(`/scoresheet?template=${selectedTemplate!.id}&name=${urlName}`);
@@ -82,18 +86,23 @@ export default function Judge() {
         {loading ? (
           <p>Loading templates...</p>
         ) : templates.length === 0 ? (
-          <p>No scoresheets available. An administrator needs to create templates first.</p>
+          <p>
+            No scoresheets available. An administrator needs to create templates
+            first.
+          </p>
         ) : (
           <div className="template-groups">
-            {sortedGroupNames.map(groupName => (
+            {sortedGroupNames.map((groupName) => (
               <div key={groupName} className="template-group">
                 <h3 className="template-group-header">{groupName}</h3>
                 <div className="template-grid">
-                  {groupedTemplates[groupName].map(template => (
+                  {groupedTemplates[groupName].map((template) => (
                     <div
                       key={template.id}
                       className="template-card"
-                      onClick={() => handleTemplateSelect(template.id, template.name)}
+                      onClick={() =>
+                        handleTemplateSelect(template.id, template.name)
+                      }
                     >
                       <h4>{template.name}</h4>
                       <p>{template.description || 'No description'}</p>
@@ -118,4 +127,3 @@ export default function Judge() {
     </div>
   );
 }
-

@@ -36,7 +36,7 @@ export default function AdminsTab() {
 
   useEffect(() => {
     loadAdmins();
-    
+
     // Refresh every 30 seconds
     const interval = setInterval(loadAdmins, 30000);
     return () => clearInterval(interval);
@@ -50,13 +50,13 @@ export default function AdminsTab() {
       day: 'numeric',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
   const formatRelativeTime = (dateString: string | null) => {
     if (!dateString) return 'Never';
-    
+
     const date = new Date(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -74,8 +74,16 @@ export default function AdminsTab() {
 
   const getActivityStatus = (admin: AdminUser) => {
     if (admin.isActive) return { label: 'Active now', className: 'active' };
-    if (admin.isRecentlyActive) return { label: formatRelativeTime(admin.last_activity), className: 'recent' };
-    if (admin.last_activity) return { label: formatRelativeTime(admin.last_activity), className: 'inactive' };
+    if (admin.isRecentlyActive)
+      return {
+        label: formatRelativeTime(admin.last_activity),
+        className: 'recent',
+      };
+    if (admin.last_activity)
+      return {
+        label: formatRelativeTime(admin.last_activity),
+        className: 'inactive',
+      };
     return { label: 'Never', className: 'inactive' };
   };
 
@@ -100,8 +108,10 @@ export default function AdminsTab() {
     );
   }
 
-  const activeCount = admins.filter(a => a.isActive).length;
-  const recentCount = admins.filter(a => a.isRecentlyActive && !a.isActive).length;
+  const activeCount = admins.filter((a) => a.isActive).length;
+  const recentCount = admins.filter(
+    (a) => a.isRecentlyActive && !a.isActive,
+  ).length;
 
   return (
     <div className="admins-tab">
@@ -128,12 +138,17 @@ export default function AdminsTab() {
         {admins.length === 0 ? (
           <p className="no-admins">No admin users found.</p>
         ) : (
-          admins.map(admin => {
+          admins.map((admin) => {
             const activityStatus = getActivityStatus(admin);
             return (
-              <div key={admin.id} className={`admin-card ${activityStatus.className}`}>
+              <div
+                key={admin.id}
+                className={`admin-card ${activityStatus.className}`}
+              >
                 <div className="admin-status">
-                  <span className={`status-dot ${activityStatus.className}`}></span>
+                  <span
+                    className={`status-dot ${activityStatus.className}`}
+                  ></span>
                 </div>
                 <div className="admin-info">
                   <div className="admin-name">{admin.name || 'Unknown'}</div>
@@ -141,17 +156,24 @@ export default function AdminsTab() {
                 </div>
                 <div className="admin-details">
                   <div className="admin-activity">
-                    <span className={`activity-label ${activityStatus.className}`}>
+                    <span
+                      className={`activity-label ${activityStatus.className}`}
+                    >
                       {activityStatus.label}
                     </span>
                     {admin.last_activity && (
-                      <span className="activity-timestamp" title={admin.last_activity}>
+                      <span
+                        className="activity-timestamp"
+                        title={admin.last_activity}
+                      >
                         {formatDate(admin.last_activity)}
                       </span>
                     )}
                   </div>
                   <div className="admin-meta">
-                    <span className={`token-status ${admin.tokenValid ? 'valid' : 'expired'}`}>
+                    <span
+                      className={`token-status ${admin.tokenValid ? 'valid' : 'expired'}`}
+                    >
                       {admin.tokenValid ? '🔑 Valid' : '⚠️ Expired'}
                     </span>
                   </div>
@@ -171,4 +193,3 @@ export default function AdminsTab() {
     </div>
   );
 }
-

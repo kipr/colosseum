@@ -16,14 +16,21 @@ interface Spreadsheet {
 
 interface DriveLocationSelectorProps {
   onSpreadsheetLinked: () => void;
-  linkSpreadsheetOnly?: boolean;  // If true, just link the spreadsheet without selecting a sheet
+  linkSpreadsheetOnly?: boolean; // If true, just link the spreadsheet without selecting a sheet
 }
 
-export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreadsheetOnly = false }: DriveLocationSelectorProps) {
+export default function DriveLocationSelector({
+  onSpreadsheetLinked,
+  linkSpreadsheetOnly = false,
+}: DriveLocationSelectorProps) {
   const [locations, setLocations] = useState<DriveLocation[]>([]);
   const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<DriveLocation | null>(null);
-  const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<{ id: string; name: string } | null>(null);
+  const [selectedLocation, setSelectedLocation] =
+    useState<DriveLocation | null>(null);
+  const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,7 +39,9 @@ export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreads
 
   const loadLocations = async () => {
     try {
-      const response = await fetch('/admin/drive/locations', { credentials: 'include' });
+      const response = await fetch('/admin/drive/locations', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to load locations');
       const data = await response.json();
       setLocations(data);
@@ -73,7 +82,7 @@ export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreads
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ spreadsheetId: id })
+          body: JSON.stringify({ spreadsheetId: id }),
         });
 
         if (!response.ok) {
@@ -100,7 +109,7 @@ export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreads
       <div style={{ marginTop: '1rem' }}>
         <h4>Select a Location</h4>
         <div className="card" style={{ padding: 0 }}>
-          {locations.map(location => (
+          {locations.map((location) => (
             <div
               key={location.id}
               className="drive-location-item"
@@ -117,7 +126,11 @@ export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreads
 
   return (
     <div style={{ marginTop: '1rem' }}>
-      <button className="btn btn-secondary" onClick={handleBack} style={{ marginBottom: '1rem' }}>
+      <button
+        className="btn btn-secondary"
+        onClick={handleBack}
+        style={{ marginBottom: '1rem' }}
+      >
         ← Back to Locations
       </button>
       <h4>Spreadsheets in {selectedLocation.name}</h4>
@@ -135,14 +148,16 @@ export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreads
             </tr>
           </thead>
           <tbody>
-            {spreadsheets.map(sheet => (
+            {spreadsheets.map((sheet) => (
               <tr key={sheet.id}>
                 <td>{sheet.name}</td>
                 <td>{formatDateTime(sheet.modifiedTime)}</td>
                 <td>
                   <button
                     className="btn btn-primary"
-                    onClick={() => handleSpreadsheetSelect(sheet.id, sheet.name)}
+                    onClick={() =>
+                      handleSpreadsheetSelect(sheet.id, sheet.name)
+                    }
                   >
                     Link
                   </button>
@@ -164,4 +179,3 @@ export default function DriveLocationSelector({ onSpreadsheetLinked, linkSpreads
     </div>
   );
 }
-

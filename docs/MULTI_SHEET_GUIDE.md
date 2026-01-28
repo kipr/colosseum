@@ -7,9 +7,11 @@ This guide explains how to use multiple sheets from the same (or different) spre
 The system supports two types of sheet configurations:
 
 ### 1. **Data Source Sheets**
+
 Used to populate dropdown fields in scoresheets.
 
 **Example:** Teams sheet with columns:
+
 ```
 | Team Number | Team Name            |
 |-------------|----------------------|
@@ -18,14 +20,17 @@ Used to populate dropdown fields in scoresheets.
 ```
 
 **Purpose:** `data`
+
 - Provides options for dynamic dropdowns
 - Read-only (app never writes to these sheets)
 - Can have multiple data source sheets active simultaneously
 
 ### 2. **Score Submission Sheets**
+
 Where accepted scores are written after admin approval.
 
 **Example:** Seeding sheet for storing final scores:
+
 ```
 | Team Number | Team Name | Round 1 | Round 2 | Round 3 |
 |-------------|-----------|---------|---------|---------|
@@ -33,6 +38,7 @@ Where accepted scores are written after admin approval.
 ```
 
 **Purpose:** `scores`
+
 - Receives approved score submissions
 - Written to when admin clicks "Accept" on a score
 - Can have multiple score sheets active (different events, divisions, etc.)
@@ -104,16 +110,19 @@ When an admin accepts a score:
 ## Troubleshooting
 
 **Dropdown shows no options:**
+
 - Make sure you linked a sheet with purpose "Data Source"
 - Verify the sheet name in your template's `dataSource.sheetName` matches exactly
 - Check that the sheet has the columns specified in `labelField` and `valueField`
 
 **Accepted scores go to wrong sheet:**
+
 - Verify you have a sheet linked with purpose "Score Submissions"
 - Make sure it's the active config for the template owner
 - Check the spreadsheet in Admin → Spreadsheets tab
 
 **"This sheet configuration already exists" error:**
+
 - You're trying to link the same spreadsheet + sheet + purpose combination again
 - Either delete the existing one first or use a different sheet/purpose
 
@@ -122,10 +131,10 @@ When an admin accepts a score:
 **Spreadsheet:** "2026 Fall Scoring Template"
 
 **Linked Sheets:**
+
 1. `Teams` - Data Source - Provides team list for dropdowns
 2. `Seeding` - Score Submissions - Receives seeding round scores
 3. `Double Elim` - Score Submissions - Receives playoff scores
 4. `Match Schedule` - Data Source - Could provide match numbers
 
 All four can be active simultaneously!
-

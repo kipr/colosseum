@@ -28,25 +28,39 @@ interface ScoreSheetWizardProps {
   onCancel: () => void;
 }
 
-type StepType = 'type' | 'template' | 'basic' | 'datasource' | 'destination' | 'review';
+type StepType =
+  | 'type'
+  | 'template'
+  | 'basic'
+  | 'datasource'
+  | 'destination'
+  | 'review';
 type SheetType = 'seeding' | 'de';
 
-export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWizardProps) {
+export default function ScoreSheetWizard({
+  onComplete,
+  onCancel,
+}: ScoreSheetWizardProps) {
   const [currentStep, setCurrentStep] = useState<StepType>('type');
   const [sheetType, setSheetType] = useState<SheetType>('seeding');
-  const [selectedTemplate, setSelectedTemplate] = useState<FieldTemplate | null>(null);
+  const [selectedTemplate, setSelectedTemplate] =
+    useState<FieldTemplate | null>(null);
   const [fieldTemplates, setFieldTemplates] = useState<FieldTemplate[]>([]);
-  
+
   // Basic info
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
-  
+
   // Data sources
   const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
-  const [dataSourceSheet, setDataSourceSheet] = useState<SpreadsheetConfig | null>(null);
-  const [destinationSheet, setDestinationSheet] = useState<SpreadsheetConfig | null>(null); // For seeding only
-  const [bracketSheet, setBracketSheet] = useState<SpreadsheetConfig | null>(null); // For DE only
+  const [dataSourceSheet, setDataSourceSheet] =
+    useState<SpreadsheetConfig | null>(null);
+  const [destinationSheet, setDestinationSheet] =
+    useState<SpreadsheetConfig | null>(null); // For seeding only
+  const [bracketSheet, setBracketSheet] = useState<SpreadsheetConfig | null>(
+    null,
+  ); // For DE only
 
   useEffect(() => {
     loadSpreadsheets();
@@ -62,15 +76,15 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
 
   const loadFieldTemplates = async () => {
     try {
-      const response = await fetch('/field-templates', { 
-        credentials: 'include' 
+      const response = await fetch('/field-templates', {
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load templates');
       const data = await response.json();
       // Parse fields_json for each template
       const templatesWithParsedFields = data.map((t: any) => ({
         ...t,
-        fields: JSON.parse(t.fields_json)
+        fields: JSON.parse(t.fields_json),
       }));
       setFieldTemplates(templatesWithParsedFields);
     } catch (error) {
@@ -80,7 +94,9 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
 
   const loadSpreadsheets = async () => {
     try {
-      const response = await fetch('/admin/spreadsheets', { credentials: 'include' });
+      const response = await fetch('/admin/spreadsheets', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to load spreadsheets');
       const data = await response.json();
       setSpreadsheets(data);
@@ -89,9 +105,12 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
     }
   };
 
-  const getDataSheets = () => spreadsheets.filter(s => s.sheet_purpose === 'data');
-  const getScoreSheets = () => spreadsheets.filter(s => s.sheet_purpose === 'scores');
-  const getBracketSheets = () => spreadsheets.filter(s => s.sheet_purpose === 'bracket');
+  const getDataSheets = () =>
+    spreadsheets.filter((s) => s.sheet_purpose === 'data');
+  const getScoreSheets = () =>
+    spreadsheets.filter((s) => s.sheet_purpose === 'scores');
+  const getBracketSheets = () =>
+    spreadsheets.filter((s) => s.sheet_purpose === 'bracket');
 
   const generateSchema = () => {
     if (sheetType === 'seeding') {
@@ -105,7 +124,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
     const schema: any = {
       layout: 'two-column',
       title: name || 'Seeding Score Sheet',
-      fields: []
+      fields: [],
     };
 
     // Add team selection fields (always included)
@@ -118,12 +137,12 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         sheetName: dataSourceSheet?.sheet_name || 'Teams',
         range: 'A1:B',
         labelField: 'Team Number',
-        valueField: 'Team Number'
+        valueField: 'Team Number',
       },
       cascades: {
         targetField: 'team_name',
-        sourceField: 'Team Name'
-      }
+        sourceField: 'Team Name',
+      },
     });
 
     schema.fields.push({
@@ -132,7 +151,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       type: 'text',
       required: true,
       autoPopulated: true,
-      placeholder: 'Select team number first'
+      placeholder: 'Select team number first',
     });
 
     schema.fields.push({
@@ -142,21 +161,21 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       required: true,
       min: 1,
       step: 1,
-      placeholder: 'Enter round number'
+      placeholder: 'Enter round number',
     });
 
-    // Add scoring fields from template if selected  
+    // Add scoring fields from template if selected
     if (selectedTemplate && selectedTemplate.fields) {
       // Use template fields as-is for seeding (already use side_a/side_b naming)
       schema.fields.push(...selectedTemplate.fields);
-      
+
       // Add grand total for seeding sheets (templates don't include this so it can be conditional)
       schema.fields.push({
         id: 'grand_total',
         label: 'Total Score (A + B)',
         type: 'calculated',
         formula: 'side_a_total + side_b_total',
-        isGrandTotal: true
+        isGrandTotal: true,
       });
     } else {
       // Default basic scoring fields
@@ -164,7 +183,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         id: 'section_header_side_a',
         label: 'SIDE A',
         type: 'section_header',
-        column: 'left'
+        column: 'left',
       });
 
       schema.fields.push({
@@ -174,14 +193,14 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         column: 'left',
         required: false,
         min: 0,
-        step: 1
+        step: 1,
       });
 
       schema.fields.push({
         id: 'section_header_side_b',
         label: 'SIDE B',
         type: 'section_header',
-        column: 'right'
+        column: 'right',
       });
 
       schema.fields.push({
@@ -191,7 +210,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         column: 'right',
         required: false,
         min: 0,
-        step: 1
+        step: 1,
       });
 
       schema.fields.push({
@@ -199,7 +218,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         label: 'Total Score (A + B)',
         type: 'calculated',
         formula: 'side_a_score + side_b_score',
-        isGrandTotal: true
+        isGrandTotal: true,
       });
     }
 
@@ -213,14 +232,14 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       title: name || 'Double Elimination Score Sheet',
       bracketSource: {
         sheetName: bracketSheet?.sheet_name || 'DE 16 Team',
-        purpose: 'bracket'
+        purpose: 'bracket',
       },
       teamsDataSource: {
         sheetName: dataSourceSheet?.sheet_name || 'Teams',
         teamNumberField: 'Team Number',
-        teamNameField: 'Team Name'
+        teamNameField: 'Team Name',
       },
-      fields: []
+      fields: [],
     };
 
     // Game selection (always included)
@@ -231,14 +250,14 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       required: true,
       dataSource: {
         type: 'bracket',
-        sheetName: bracketSheet?.sheet_name || 'DE 16 Team'
+        sheetName: bracketSheet?.sheet_name || 'DE 16 Team',
       },
       cascades: {
         team_a_number: 'team1.teamNumber',
         team_a_name: 'team1.displayName',
         team_b_number: 'team2.teamNumber',
-        team_b_name: 'team2.displayName'
-      }
+        team_b_name: 'team2.displayName',
+      },
     });
 
     // Team info fields (always included)
@@ -248,7 +267,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       type: 'text',
       required: true,
       autoPopulated: true,
-      placeholder: 'Select game first'
+      placeholder: 'Select game first',
     });
 
     schema.fields.push({
@@ -257,7 +276,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       type: 'text',
       required: true,
       autoPopulated: true,
-      placeholder: 'Select game first'
+      placeholder: 'Select game first',
     });
 
     schema.fields.push({
@@ -266,7 +285,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       type: 'text',
       required: true,
       autoPopulated: true,
-      placeholder: 'Select game first'
+      placeholder: 'Select game first',
     });
 
     schema.fields.push({
@@ -275,7 +294,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       type: 'text',
       required: true,
       autoPopulated: true,
-      placeholder: 'Select game first'
+      placeholder: 'Select game first',
     });
 
     // Winner selector (always included)
@@ -286,32 +305,36 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
       required: true,
       options: [
         { value: 'team_a', label: 'Team A Wins' },
-        { value: 'team_b', label: 'Team B Wins' }
-      ]
+        { value: 'team_b', label: 'Team B Wins' },
+      ],
     });
 
     // Add scoring fields from template if selected
     if (selectedTemplate && selectedTemplate.fields) {
       // When using a template for DE, we need to adapt Side A/B to Team A/B
-      const adaptedFields = selectedTemplate.fields.map(field => {
+      const adaptedFields = selectedTemplate.fields.map((field) => {
         const newField = { ...field };
-        
+
         // Replace side_a with team_a in IDs and formulas
         if (newField.id) {
-          newField.id = newField.id.replace(/side_a/g, 'team_a').replace(/side_b/g, 'team_b');
+          newField.id = newField.id
+            .replace(/side_a/g, 'team_a')
+            .replace(/side_b/g, 'team_b');
         }
         if (newField.formula) {
-          newField.formula = newField.formula.replace(/side_a/g, 'team_a').replace(/side_b/g, 'team_b');
+          newField.formula = newField.formula
+            .replace(/side_a/g, 'team_a')
+            .replace(/side_b/g, 'team_b');
         }
         // Update section header labels
         if (newField.type === 'section_header') {
           if (newField.label === 'SIDE A') newField.label = 'TEAM A';
           if (newField.label === 'SIDE B') newField.label = 'TEAM B';
         }
-        
+
         return newField;
       });
-      
+
       schema.fields.push(...adaptedFields);
     } else {
       // Default basic scoring fields
@@ -319,7 +342,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         id: 'section_header_team_a',
         label: 'TEAM A',
         type: 'section_header',
-        column: 'left'
+        column: 'left',
       });
 
       schema.fields.push({
@@ -329,7 +352,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         column: 'left',
         required: false,
         min: 0,
-        step: 1
+        step: 1,
       });
 
       schema.fields.push({
@@ -338,14 +361,14 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         type: 'calculated',
         column: 'left',
         isTotal: true,
-        formula: 'team_a_score'
+        formula: 'team_a_score',
       });
 
       schema.fields.push({
         id: 'section_header_team_b',
         label: 'TEAM B',
         type: 'section_header',
-        column: 'right'
+        column: 'right',
       });
 
       schema.fields.push({
@@ -355,7 +378,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         column: 'right',
         required: false,
         min: 0,
-        step: 1
+        step: 1,
       });
 
       schema.fields.push({
@@ -364,7 +387,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         type: 'calculated',
         column: 'right',
         isTotal: true,
-        formula: 'team_b_score'
+        formula: 'team_b_score',
       });
     }
 
@@ -407,9 +430,10 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         accessCode,
         schema,
         // Use destinationSheet for seeding, bracketSheet for DE
-        spreadsheetConfigId: sheetType === 'seeding' 
-          ? (destinationSheet?.id || '') 
-          : (bracketSheet?.id || '')
+        spreadsheetConfigId:
+          sheetType === 'seeding'
+            ? destinationSheet?.id || ''
+            : bracketSheet?.id || '',
       });
     }
   };
@@ -429,17 +453,35 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
   };
 
   const getStepNumber = () => {
-    const steps: StepType[] = ['type', 'template', 'basic', 'datasource', 'destination', 'review'];
+    const steps: StepType[] = [
+      'type',
+      'template',
+      'basic',
+      'datasource',
+      'destination',
+      'review',
+    ];
     return steps.indexOf(currentStep) + 1;
   };
 
   return (
-    <div className="modal show" onClick={(e) => e.target === e.currentTarget && onCancel()}>
-      <div className="modal-content" style={{ maxWidth: '700px' }} onClick={(e) => e.stopPropagation()}>
-        <span className="close" onClick={onCancel}>&times;</span>
-        
+    <div
+      className="modal show"
+      onClick={(e) => e.target === e.currentTarget && onCancel()}
+    >
+      <div
+        className="modal-content"
+        style={{ maxWidth: '700px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="close" onClick={onCancel}>
+          &times;
+        </span>
+
         <h3>Score Sheet Wizard</h3>
-        <div style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
+        <div
+          style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}
+        >
           Step {getStepNumber()} of 6
         </div>
 
@@ -447,29 +489,51 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         {currentStep === 'type' && (
           <div>
             <h4>Choose Score Sheet Type</h4>
-            <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
-              Select whether this is for seeding rounds or double elimination bracket.
+            <p
+              style={{
+                color: 'var(--secondary-color)',
+                marginBottom: '1.5rem',
+              }}
+            >
+              Select whether this is for seeding rounds or double elimination
+              bracket.
             </p>
-            
+
             <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
               <button
                 className={`btn ${sheetType === 'seeding' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setSheetType('seeding')}
-                style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+                style={{
+                  flex: 1,
+                  padding: '2rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
               >
                 <div style={{ fontSize: '2rem' }}>📊</div>
                 <div style={{ fontWeight: 'bold' }}>Seeding</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>For qualification rounds</div>
+                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                  For qualification rounds
+                </div>
               </button>
-              
+
               <button
                 className={`btn ${sheetType === 'de' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setSheetType('de')}
-                style={{ flex: 1, padding: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+                style={{
+                  flex: 1,
+                  padding: '2rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
               >
                 <div style={{ fontSize: '2rem' }}>🏆</div>
                 <div style={{ fontWeight: 'bold' }}>Double Elimination</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>For bracket games</div>
+                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                  For bracket games
+                </div>
               </button>
             </div>
           </div>
@@ -479,28 +543,47 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         {currentStep === 'template' && (
           <div>
             <h4>Select Scoring Fields Template</h4>
-            <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
-              Choose a pre-made template with detailed scoring fields, or use basic fields.
-              Templates work for both seeding and DE score sheets.
+            <p
+              style={{
+                color: 'var(--secondary-color)',
+                marginBottom: '1.5rem',
+              }}
+            >
+              Choose a pre-made template with detailed scoring fields, or use
+              basic fields. Templates work for both seeding and DE score sheets.
             </p>
-            
+
             {fieldTemplates.length === 0 ? (
-              <div style={{ 
-                padding: '2rem', 
-                background: 'var(--bg-color)', 
-                borderRadius: '0.5rem', 
-                textAlign: 'center',
-                marginBottom: '1rem'
-              }}>
+              <div
+                style={{
+                  padding: '2rem',
+                  background: 'var(--bg-color)',
+                  borderRadius: '0.5rem',
+                  textAlign: 'center',
+                  marginBottom: '1rem',
+                }}
+              >
                 <p style={{ color: 'var(--secondary-color)' }}>
                   No field templates available yet.
                 </p>
-                <p style={{ fontSize: '0.875rem', color: 'var(--secondary-color)' }}>
-                  You can create field templates on the Score Sheets page, or continue with basic fields.
+                <p
+                  style={{
+                    fontSize: '0.875rem',
+                    color: 'var(--secondary-color)',
+                  }}
+                >
+                  You can create field templates on the Score Sheets page, or
+                  continue with basic fields.
                 </p>
               </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem',
+                }}
+              >
                 {/* None selected option */}
                 <button
                   className={`btn ${!selectedTemplate ? 'btn-primary' : 'btn-secondary'}`}
@@ -510,11 +593,13 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                     textAlign: 'left',
                     display: 'flex',
                     justifyContent: 'space-between',
-                    alignItems: 'center'
+                    alignItems: 'center',
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 'bold' }}>Basic Fields (No Template)</div>
+                    <div style={{ fontWeight: 'bold' }}>
+                      Basic Fields (No Template)
+                    </div>
                     <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
                       Use simple default scoring fields
                     </div>
@@ -523,7 +608,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                 </button>
 
                 {/* Template options */}
-                {fieldTemplates.map(template => (
+                {fieldTemplates.map((template) => (
                   <button
                     key={template.id}
                     className={`btn ${selectedTemplate?.id === template.id ? 'btn-primary' : 'btn-secondary'}`}
@@ -533,7 +618,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                       textAlign: 'left',
                       display: 'flex',
                       justifyContent: 'space-between',
-                      alignItems: 'center'
+                      alignItems: 'center',
                     }}
                   >
                     <div>
@@ -566,7 +651,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                 placeholder="e.g., 2024 Botball Seeding"
               />
             </div>
-            
+
             <div className="form-group">
               <label>Description</label>
               <textarea
@@ -577,7 +662,7 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                 rows={3}
               />
             </div>
-            
+
             <div className="form-group">
               <label>Access Code *</label>
               <input
@@ -596,28 +681,35 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         {currentStep === 'datasource' && (
           <div>
             <h4>Data Source</h4>
-            <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
-              Select the sheet containing team information (Team Numbers and Names).
+            <p
+              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
+            >
+              Select the sheet containing team information (Team Numbers and
+              Names).
             </p>
-            
+
             <div className="form-group">
               <label>Teams Data Sheet *</label>
               <select
                 className="field-input"
                 value={dataSourceSheet?.id || ''}
                 onChange={(e) => {
-                  const sheet = spreadsheets.find(s => s.id === Number(e.target.value));
+                  const sheet = spreadsheets.find(
+                    (s) => s.id === Number(e.target.value),
+                  );
                   setDataSourceSheet(sheet || null);
                 }}
               >
                 <option value="">Select data source...</option>
-                {getDataSheets().map(sheet => (
+                {getDataSheets().map((sheet) => (
                   <option key={sheet.id} value={sheet.id}>
                     {sheet.spreadsheet_name} → {sheet.sheet_name}
                   </option>
                 ))}
               </select>
-              <small>This sheet should contain columns for Team Number and Team Name</small>
+              <small>
+                This sheet should contain columns for Team Number and Team Name
+              </small>
             </div>
           </div>
         )}
@@ -625,8 +717,10 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         {/* Step 5: Destination */}
         {currentStep === 'destination' && (
           <div>
-            <h4>{sheetType === 'seeding' ? 'Score Destination' : 'Bracket Sheet'}</h4>
-            
+            <h4>
+              {sheetType === 'seeding' ? 'Score Destination' : 'Bracket Sheet'}
+            </h4>
+
             {sheetType === 'seeding' ? (
               <div className="form-group">
                 <label>Score Destination Sheet *</label>
@@ -634,12 +728,14 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                   className="field-input"
                   value={destinationSheet?.id || ''}
                   onChange={(e) => {
-                    const sheet = spreadsheets.find(s => s.id === Number(e.target.value));
+                    const sheet = spreadsheets.find(
+                      (s) => s.id === Number(e.target.value),
+                    );
                     setDestinationSheet(sheet || null);
                   }}
                 >
                   <option value="">Select destination...</option>
-                  {getScoreSheets().map(sheet => (
+                  {getScoreSheets().map((sheet) => (
                     <option key={sheet.id} value={sheet.id}>
                       {sheet.spreadsheet_name} → {sheet.sheet_name}
                     </option>
@@ -654,18 +750,23 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                   className="field-input"
                   value={bracketSheet?.id || ''}
                   onChange={(e) => {
-                    const sheet = spreadsheets.find(s => s.id === Number(e.target.value));
+                    const sheet = spreadsheets.find(
+                      (s) => s.id === Number(e.target.value),
+                    );
                     setBracketSheet(sheet || null);
                   }}
                 >
                   <option value="">Select bracket...</option>
-                  {getBracketSheets().map(sheet => (
+                  {getBracketSheets().map((sheet) => (
                     <option key={sheet.id} value={sheet.id}>
                       {sheet.spreadsheet_name} → {sheet.sheet_name}
                     </option>
                   ))}
                 </select>
-                <small>The bracket sheet containing games and where winners will be written</small>
+                <small>
+                  The bracket sheet containing games and where winners will be
+                  written
+                </small>
               </div>
             )}
           </div>
@@ -675,13 +776,26 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
         {currentStep === 'review' && (
           <div>
             <h4>Review & Generate</h4>
-            <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
-              Review your selections below. Click "Generate" to create the score sheet.
+            <p
+              style={{
+                color: 'var(--secondary-color)',
+                marginBottom: '1.5rem',
+              }}
+            >
+              Review your selections below. Click "Generate" to create the score
+              sheet.
             </p>
-            
-            <div style={{ background: 'var(--bg-color)', padding: '1rem', borderRadius: '0.5rem' }}>
+
+            <div
+              style={{
+                background: 'var(--bg-color)',
+                padding: '1rem',
+                borderRadius: '0.5rem',
+              }}
+            >
               <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Type:</strong> {sheetType === 'seeding' ? 'Seeding' : 'Double Elimination'}
+                <strong>Type:</strong>{' '}
+                {sheetType === 'seeding' ? 'Seeding' : 'Double Elimination'}
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
                 <strong>Name:</strong> {name}
@@ -695,31 +809,53 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
                 <strong>Access Code:</strong> <code>{accessCode}</code>
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Field Template:</strong> {selectedTemplate?.name || 'Basic fields (no template)'}
+                <strong>Field Template:</strong>{' '}
+                {selectedTemplate?.name || 'Basic fields (no template)'}
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Teams Data:</strong> {dataSourceSheet?.spreadsheet_name} → {dataSourceSheet?.sheet_name}
+                <strong>Teams Data:</strong> {dataSourceSheet?.spreadsheet_name}{' '}
+                → {dataSourceSheet?.sheet_name}
               </div>
               {sheetType === 'seeding' && destinationSheet && (
                 <div>
-                  <strong>Score Destination:</strong> {destinationSheet.spreadsheet_name} → {destinationSheet.sheet_name}
+                  <strong>Score Destination:</strong>{' '}
+                  {destinationSheet.spreadsheet_name} →{' '}
+                  {destinationSheet.sheet_name}
                 </div>
               )}
               {sheetType === 'de' && bracketSheet && (
                 <div>
-                  <strong>Bracket:</strong> {bracketSheet.spreadsheet_name} → {bracketSheet.sheet_name}
+                  <strong>Bracket:</strong> {bracketSheet.spreadsheet_name} →{' '}
+                  {bracketSheet.sheet_name}
                 </div>
               )}
             </div>
 
-            <div style={{ marginTop: '1rem', padding: '1rem', background: 'var(--warning-color-light, rgba(245, 158, 11, 0.1))', borderRadius: '0.5rem' }}>
-              <strong>Note:</strong> This will generate a basic template. You can customize the scoring fields after creation by editing the JSON schema.
+            <div
+              style={{
+                marginTop: '1rem',
+                padding: '1rem',
+                background:
+                  'var(--warning-color-light, rgba(245, 158, 11, 0.1))',
+                borderRadius: '0.5rem',
+              }}
+            >
+              <strong>Note:</strong> This will generate a basic template. You
+              can customize the scoring fields after creation by editing the
+              JSON schema.
             </div>
           </div>
         )}
 
         {/* Navigation Buttons */}
-        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'space-between', marginTop: '2rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            justifyContent: 'space-between',
+            marginTop: '2rem',
+          }}
+        >
           <div>
             {currentStep !== 'type' && (
               <button className="btn btn-secondary" onClick={handleBack}>
@@ -740,4 +876,3 @@ export default function ScoreSheetWizard({ onComplete, onCancel }: ScoreSheetWiz
     </div>
   );
 }
-

@@ -7,7 +7,9 @@ interface ScoreSheetPreviewModalProps {
 }
 
 // Wrapper component that uses the existing TemplatePreviewModal
-export default function ScoreSheetPreviewModal({ scoreSheetId, onClose }: ScoreSheetPreviewModalProps) {
+export default function ScoreSheetPreviewModal({
+  scoreSheetId,
+  onClose,
+}: ScoreSheetPreviewModalProps) {
   return <TemplatePreviewModal templateId={scoreSheetId} onClose={onClose} />;
 }
-

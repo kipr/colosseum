@@ -66,7 +66,8 @@
 }
 
 @keyframes pulse {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 1;
     transform: scale(1);
   }
@@ -186,7 +187,7 @@
   color: #166534;
 }
 
-[data-theme="dark"] .token-status.valid {
+[data-theme='dark'] .token-status.valid {
   background-color: #14532d;
   color: #86efac;
 }
@@ -196,7 +197,7 @@
   color: #92400e;
 }
 
-[data-theme="dark"] .token-status.expired {
+[data-theme='dark'] .token-status.expired {
   background-color: #78350f;
   color: #fde68a;
 }
@@ -228,7 +229,7 @@
   margin-bottom: 1rem;
 }
 
-[data-theme="dark"] .error-message {
+[data-theme='dark'] .error-message {
   background-color: #7f1d1d;
 }
 

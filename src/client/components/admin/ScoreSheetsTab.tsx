@@ -26,12 +26,16 @@ interface FieldTemplate {
 export default function ScoreSheetsTab() {
   const [scoreSheets, setScoreSheets] = useState<ScoreSheet[]>([]);
   const [fieldTemplates, setFieldTemplates] = useState<FieldTemplate[]>([]);
-  const [editingScoreSheet, setEditingScoreSheet] = useState<number | null>(null);
-  const [previewingScoreSheet, setPreviewingScoreSheet] = useState<number | null>(null);
+  const [editingScoreSheet, setEditingScoreSheet] = useState<number | null>(
+    null,
+  );
+  const [previewingScoreSheet, setPreviewingScoreSheet] = useState<
+    number | null
+  >(null);
   const [showEditor, setShowEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<number | null>(null);
   const [showTemplateEditor, setShowTemplateEditor] = useState(false);
-  
+
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
@@ -42,7 +46,9 @@ export default function ScoreSheetsTab() {
 
   const loadScoreSheets = async () => {
     try {
-      const response = await fetch('/scoresheet/templates/admin', { credentials: 'include' });
+      const response = await fetch('/scoresheet/templates/admin', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to load score sheets');
       const data = await response.json();
       setScoreSheets(data);
@@ -53,12 +59,14 @@ export default function ScoreSheetsTab() {
 
   const loadFieldTemplates = async () => {
     try {
-      const response = await fetch('/field-templates', { credentials: 'include' });
-      
+      const response = await fetch('/field-templates', {
+        credentials: 'include',
+      });
+
       if (!response.ok) {
         throw new Error(`Failed to load field templates: ${response.status}`);
       }
-      
+
       const data = await response.json();
       setFieldTemplates(data);
     } catch (error: any) {
@@ -84,16 +92,17 @@ export default function ScoreSheetsTab() {
   const handleDeleteScoreSheet = async (id: number) => {
     const confirmed = await confirm({
       title: 'Delete Score Sheet',
-      message: 'Are you sure you want to delete this score sheet? This cannot be undone.',
+      message:
+        'Are you sure you want to delete this score sheet? This cannot be undone.',
       confirmText: 'Delete',
-      confirmStyle: 'danger'
+      confirmStyle: 'danger',
     });
     if (!confirmed) return;
-    
+
     try {
       const response = await fetch(`/scoresheet/templates/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to delete score sheet');
       loadScoreSheets();
@@ -124,14 +133,14 @@ export default function ScoreSheetsTab() {
       title: 'Delete Field Template',
       message: 'Are you sure you want to delete this field template?',
       confirmText: 'Delete',
-      confirmStyle: 'danger'
+      confirmStyle: 'danger',
     });
     if (!confirmed) return;
-    
+
     try {
       const response = await fetch(`/field-templates/${id}`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to delete template');
       loadFieldTemplates();
@@ -155,17 +164,20 @@ export default function ScoreSheetsTab() {
       <div className="card" style={{ marginBottom: '2rem' }}>
         <h3>Scoring Field Templates</h3>
         <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
-          Create reusable scoring field patterns that work for both seeding and DE score sheets.
-          These can be selected in the wizard to quickly generate score sheets.
+          Create reusable scoring field patterns that work for both seeding and
+          DE score sheets. These can be selected in the wizard to quickly
+          generate score sheets.
         </p>
-        
+
         <button className="btn btn-primary" onClick={handleCreateTemplate}>
           + Create Field Template
         </button>
-        
+
         <div style={{ marginTop: '1rem' }}>
           {fieldTemplates.length === 0 ? (
-            <p style={{ color: 'var(--secondary-color)' }}>No field templates created yet.</p>
+            <p style={{ color: 'var(--secondary-color)' }}>
+              No field templates created yet.
+            </p>
           ) : (
             <table>
               <thead>
@@ -177,21 +189,26 @@ export default function ScoreSheetsTab() {
                 </tr>
               </thead>
               <tbody>
-                {fieldTemplates.map(template => (
+                {fieldTemplates.map((template) => (
                   <tr key={template.id}>
                     <td>{template.name}</td>
                     <td>
                       {template.description || (
-                        <em style={{ color: 'var(--secondary-color)' }}>No description</em>
+                        <em style={{ color: 'var(--secondary-color)' }}>
+                          No description
+                        </em>
                       )}
                     </td>
                     <td>{formatDate(template.created_at)}</td>
                     <td>
-                      <button className="btn btn-secondary" onClick={() => handleEditTemplate(template.id)}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => handleEditTemplate(template.id)}
+                      >
                         Edit
                       </button>
-                      <button 
-                        className="btn btn-danger" 
+                      <button
+                        className="btn btn-danger"
                         onClick={() => handleDeleteTemplate(template.id)}
                         style={{ marginLeft: '0.5rem' }}
                       >
@@ -226,38 +243,51 @@ export default function ScoreSheetsTab() {
                 </tr>
               </thead>
               <tbody>
-                {scoreSheets.map(sheet => (
+                {scoreSheets.map((sheet) => (
                   <tr key={sheet.id}>
                     <td>{sheet.name}</td>
                     <td>
                       {sheet.description || (
-                        <em style={{ color: 'var(--secondary-color)' }}>No description</em>
+                        <em style={{ color: 'var(--secondary-color)' }}>
+                          No description
+                        </em>
                       )}
                     </td>
                     <td>
                       {sheet.spreadsheet_name || (
-                        <em style={{ color: 'var(--secondary-color)' }}>Not assigned</em>
+                        <em style={{ color: 'var(--secondary-color)' }}>
+                          Not assigned
+                        </em>
                       )}
                     </td>
                     <td>
-                      <code style={{ background: 'var(--bg-color)', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}>
+                      <code
+                        style={{
+                          background: 'var(--bg-color)',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '0.25rem',
+                        }}
+                      >
                         {sheet.access_code || 'N/A'}
                       </code>
                     </td>
                     <td>{formatDate(sheet.created_at)}</td>
                     <td>
-                      <button className="btn btn-primary" onClick={() => handlePreview(sheet.id)}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => handlePreview(sheet.id)}
+                      >
                         Preview
                       </button>
-                      <button 
-                        className="btn btn-secondary" 
+                      <button
+                        className="btn btn-secondary"
                         onClick={() => handleEdit(sheet.id)}
                         style={{ marginLeft: '0.5rem' }}
                       >
                         Edit
                       </button>
-                      <button 
-                        className="btn btn-danger" 
+                      <button
+                        className="btn btn-danger"
                         onClick={() => handleDeleteScoreSheet(sheet.id)}
                         style={{ marginLeft: '0.5rem' }}
                       >
@@ -300,10 +330,9 @@ export default function ScoreSheetsTab() {
           onSave={handleTemplateSaved}
         />
       )}
-      
+
       {ConfirmDialog}
       {toast.ToastContainer}
     </div>
   );
 }
-

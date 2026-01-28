@@ -2,115 +2,115 @@
 
 /* Table wrapper for horizontal scrolling on mobile */
 .table-wrapper {
-    width: 100%;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Two-panel layout for spreadsheets */
 .spreadsheets-layout {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
 }
 
 @media (max-width: 1024px) {
-    .spreadsheets-layout {
-        grid-template-columns: 1fr;
-    }
+  .spreadsheets-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Card headers */
 .card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .card-header h3 {
-    margin: 0;
-    font-size: 1.1rem;
+  margin: 0;
+  font-size: 1.1rem;
 }
 
 /* Spreadsheet/Sheet list items */
 .sheet-list-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.75rem;
-    border-bottom: 1px solid var(--border-color);
-    gap: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  gap: 0.5rem;
 }
 
 .sheet-list-item:last-child {
-    border-bottom: none;
+  border-bottom: none;
 }
 
 .sheet-info {
-    flex: 1;
-    min-width: 0;
+  flex: 1;
+  min-width: 0;
 }
 
 .sheet-name {
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sheet-meta {
-    font-size: 0.8rem;
-    color: var(--secondary-color);
+  font-size: 0.8rem;
+  color: var(--secondary-color);
 }
 
 .sheet-actions {
-    display: flex;
-    gap: 0.25rem;
-    flex-shrink: 0;
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
-    .card-header {
-        flex-direction: column;
-        align-items: flex-start;
-    }
+  .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 
-    .card-header .btn {
-        width: 100%;
-    }
+  .card-header .btn {
+    width: 100%;
+  }
 
-    .sheet-list-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 0.5rem;
-    }
+  .sheet-list-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
 
-    .sheet-actions {
-        width: 100%;
-        justify-content: flex-end;
-    }
+  .sheet-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 
-    .sheet-actions .btn {
-        flex: 1;
-        max-width: 100px;
-    }
+  .sheet-actions .btn {
+    flex: 1;
+    max-width: 100px;
+  }
 }
 
 @media (max-width: 480px) {
-    .sheet-list-item {
-        padding: 0.5rem;
-    }
+  .sheet-list-item {
+    padding: 0.5rem;
+  }
 
-    .sheet-name {
-        font-size: 0.9rem;
-    }
+  .sheet-name {
+    font-size: 0.9rem;
+  }
 
-    .sheet-actions .btn {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.75rem;
-        height: 30px;
-    }
+  .sheet-actions .btn {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    height: 30px;
+  }
 }

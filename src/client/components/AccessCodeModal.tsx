@@ -8,7 +8,12 @@ interface AccessCodeModalProps {
   onSuccess: (template: any) => void;
 }
 
-export default function AccessCodeModal({ templateId, templateName, onClose, onSuccess }: AccessCodeModalProps) {
+export default function AccessCodeModal({
+  templateId,
+  templateName,
+  onClose,
+  onSuccess,
+}: AccessCodeModalProps) {
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
 
@@ -22,11 +27,14 @@ export default function AccessCodeModal({ templateId, templateName, onClose, onS
     }
 
     try {
-      const response = await fetch(`/scoresheet/templates/${templateId}/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessCode })
-      });
+      const response = await fetch(
+        `/scoresheet/templates/${templateId}/verify`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ accessCode }),
+        },
+      );
 
       if (!response.ok) {
         if (response.status === 403) {
@@ -53,8 +61,14 @@ export default function AccessCodeModal({ templateId, templateName, onClose, onS
 
   return (
     <div className="modal show" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: '450px' }} onClick={(e) => e.stopPropagation()}>
-        <span className="close" onClick={onClose}>&times;</span>
+      <div
+        className="modal-content"
+        style={{ maxWidth: '450px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="close" onClick={onClose}>
+          &times;
+        </span>
         <h3>Enter Access Code</h3>
         <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
           Template: {templateName}
@@ -78,8 +92,18 @@ export default function AccessCodeModal({ templateId, templateName, onClose, onS
               {error}
             </div>
           )}
-          <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
-            <button type="button" className="btn btn-secondary" onClick={onClose}>
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={onClose}
+            >
               Cancel
             </button>
             <button type="submit" className="btn btn-primary">
@@ -91,4 +115,3 @@ export default function AccessCodeModal({ templateId, templateName, onClose, onS
     </div>
   );
 }
-

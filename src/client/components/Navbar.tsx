@@ -19,23 +19,38 @@ export default function Navbar() {
     <nav className="navbar">
       <div className="nav-container">
         <div className="nav-brand">
-          <h1>🏛️ Colosseum{location.pathname === '/admin' ? ' Admin' : location.pathname === '/judge' ? ' - Judge' : ''}</h1>
+          <h1>
+            🏛️ Colosseum
+            {location.pathname === '/admin'
+              ? ' Admin'
+              : location.pathname === '/judge'
+                ? ' - Judge'
+                : ''}
+          </h1>
         </div>
         <div className="nav-menu">
           <Link to="/" className={`nav-item ${isActive('/') ? 'active' : ''}`}>
             Home
           </Link>
-          <Link to="/judge" className={`nav-item ${isActive('/judge') ? 'active' : ''}`}>
+          <Link
+            to="/judge"
+            className={`nav-item ${isActive('/judge') ? 'active' : ''}`}
+          >
             Score Sheets
           </Link>
           {user && (
-            <Link to="/admin" className={`nav-item ${isActive('/admin') ? 'active' : ''}`}>
+            <Link
+              to="/admin"
+              className={`nav-item ${isActive('/admin') ? 'active' : ''}`}
+            >
               Admin
             </Link>
           )}
           <button className="nav-item theme-toggle" onClick={toggleTheme}>
             <span className="theme-icon">{theme === 'dark' ? '☀️' : '🌙'}</span>
-            <span className="theme-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+            <span className="theme-label">
+              {theme === 'dark' ? 'Light' : 'Dark'}
+            </span>
           </button>
           {user ? (
             <>
@@ -44,14 +59,15 @@ export default function Navbar() {
               </button>
               <span className="user-info">{user.name}</span>
             </>
-          ) : location.pathname === '/' && (
-            <button className="nav-item btn-primary" onClick={handleLogin}>
-              Login with Google
-            </button>
+          ) : (
+            location.pathname === '/' && (
+              <button className="nav-item btn-primary" onClick={handleLogin}>
+                Login with Google
+              </button>
+            )
           )}
         </div>
       </div>
     </nav>
   );
 }
-

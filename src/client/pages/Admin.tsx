@@ -21,12 +21,21 @@ export default function Admin() {
       localStorage.setItem('colosseum_last_admin_tab', 'scoresheets');
       return 'scoresheets';
     }
-    if (saved && (saved === 'spreadsheets' || saved === 'scoresheets' || saved === 'scoring' || saved === 'admins')) {
+    if (
+      saved &&
+      (saved === 'spreadsheets' ||
+        saved === 'scoresheets' ||
+        saved === 'scoring' ||
+        saved === 'admins')
+    ) {
       return saved as TabType;
     }
     return 'spreadsheets';
   });
-  const [tokenStatus, setTokenStatus] = useState<{ valid: boolean; message?: string } | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<{
+    valid: boolean;
+    message?: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -84,11 +93,14 @@ export default function Admin() {
   return (
     <div className="app">
       <Navbar />
-      
+
       {/* Token expiration warning banner */}
       {tokenStatus && !tokenStatus.valid && (
         <div className="reauth-banner">
-          <span>⚠️ Your Google authentication has expired. Please re-authenticate to continue using spreadsheet features.</span>
+          <span>
+            ⚠️ Your Google authentication has expired. Please re-authenticate to
+            continue using spreadsheet features.
+          </span>
           <button onClick={handleReauth} className="reauth-button">
             Re-authenticate with Google
           </button>
@@ -137,4 +149,3 @@ export default function Admin() {
     </div>
   );
 }
-

@@ -14,7 +14,12 @@ interface SheetSelectionModalProps {
   onSuccess: () => void;
 }
 
-export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, onClose, onSuccess }: SheetSelectionModalProps) {
+export default function SheetSelectionModal({
+  spreadsheetId,
+  spreadsheetName,
+  onClose,
+  onSuccess,
+}: SheetSelectionModalProps) {
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [selectedSheet, setSelectedSheet] = useState('');
   const [sheetPurpose, setSheetPurpose] = useState('scores');
@@ -26,9 +31,12 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
 
   const loadSheets = async () => {
     try {
-      const response = await fetch(`/admin/spreadsheets/${spreadsheetId}/sheets`, {
-        credentials: 'include'
-      });
+      const response = await fetch(
+        `/admin/spreadsheets/${spreadsheetId}/sheets`,
+        {
+          credentials: 'include',
+        },
+      );
       if (!response.ok) throw new Error('Failed to load sheets');
       const data = await response.json();
       setSheets(data.sort((a: Sheet, b: Sheet) => a.index - b.index));
@@ -59,7 +67,11 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ spreadsheetId, sheetName: selectedSheet, sheetPurpose })
+        body: JSON.stringify({
+          spreadsheetId,
+          sheetName: selectedSheet,
+          sheetPurpose,
+        }),
       });
 
       if (!response.ok) {
@@ -67,7 +79,9 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
         throw new Error(error.error || 'Failed to link spreadsheet');
       }
 
-      showSuccessMessage(`Sheet linked successfully as "${sheetPurpose}" source!`);
+      showSuccessMessage(
+        `Sheet linked successfully as "${sheetPurpose}" source!`,
+      );
       onSuccess();
     } catch (error: any) {
       console.error('Error linking spreadsheet:', error);
@@ -95,8 +109,14 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
 
   return (
     <div className="modal show" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: '500px' }} onClick={(e) => e.stopPropagation()}>
-        <span className="close" onClick={onClose}>&times;</span>
+      <div
+        className="modal-content"
+        style={{ maxWidth: '500px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="close" onClick={onClose}>
+          &times;
+        </span>
         <h3>Select Sheet</h3>
         <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
           Spreadsheet: {spreadsheetName}
@@ -111,7 +131,7 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
               value={selectedSheet}
               onChange={(e) => setSelectedSheet(e.target.value)}
             >
-              {sheets.map(sheet => (
+              {sheets.map((sheet) => (
                 <option key={sheet.sheetId} value={sheet.title}>
                   {sheet.title}
                 </option>
@@ -126,21 +146,38 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
             value={sheetPurpose}
             onChange={(e) => setSheetPurpose(e.target.value)}
           >
-            <option value="data">Data Source (for dropdowns like Teams list)</option>
-            <option value="scores">Score Submissions (where accepted seeding scores go)</option>
-            <option value="bracket">DE Bracket (for double elimination tournaments)</option>
+            <option value="data">
+              Data Source (for dropdowns like Teams list)
+            </option>
+            <option value="scores">
+              Score Submissions (where accepted seeding scores go)
+            </option>
+            <option value="bracket">
+              DE Bracket (for double elimination tournaments)
+            </option>
           </select>
           <small>
-            <strong>Data Source:</strong> Used to populate dropdowns (e.g., Teams sheet)<br/>
-            <strong>Score Submissions:</strong> Where accepted seeding scores are written<br/>
-            <strong>DE Bracket:</strong> Double elimination bracket - reads matchups & writes winners
+            <strong>Data Source:</strong> Used to populate dropdowns (e.g.,
+            Teams sheet)
+            <br />
+            <strong>Score Submissions:</strong> Where accepted seeding scores
+            are written
+            <br />
+            <strong>DE Bracket:</strong> Double elimination bracket - reads
+            matchups & writes winners
           </small>
         </div>
-        <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+        <div
+          style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}
+        >
           <button className="btn btn-secondary" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={loading}>
+          <button
+            className="btn btn-primary"
+            onClick={handleSubmit}
+            disabled={loading}
+          >
             Link Spreadsheet
           </button>
         </div>
@@ -148,4 +185,3 @@ export default function SheetSelectionModal({ spreadsheetId, spreadsheetName, on
     </div>
   );
 }
-

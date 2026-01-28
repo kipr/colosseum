@@ -14,7 +14,7 @@ export default function Scoresheet() {
   const loadTemplate = useCallback(() => {
     try {
       const templateData = sessionStorage.getItem('currentTemplate');
-      
+
       if (!templateData) {
         setError(true);
         setLoading(false);
@@ -22,7 +22,7 @@ export default function Scoresheet() {
       }
 
       const parsedTemplate = JSON.parse(templateData);
-      
+
       // Validate template has required structure
       if (!parsedTemplate.schema || !parsedTemplate.schema.fields) {
         console.error('Invalid template structure');
@@ -30,7 +30,7 @@ export default function Scoresheet() {
         setLoading(false);
         return;
       }
-      
+
       setTemplate(parsedTemplate);
       setError(false);
     } catch (err) {
@@ -44,15 +44,15 @@ export default function Scoresheet() {
   useEffect(() => {
     loadTemplate();
   }, [loadTemplate, retryCount]);
-  
+
   // Handle retry with fresh state
   const handleRetry = () => {
     setLoading(true);
     setError(false);
     setTemplate(null);
-    setRetryCount(prev => prev + 1);
+    setRetryCount((prev) => prev + 1);
   };
-  
+
   // Force reload the page to clear any stale state
   const handleForceReload = () => {
     window.location.reload();
@@ -84,7 +84,10 @@ export default function Scoresheet() {
             <button className="btn btn-secondary" onClick={handleForceReload}>
               Force Reload Page
             </button>
-            <button className="btn btn-secondary" onClick={() => navigate('/judge')}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigate('/judge')}
+            >
               Back to Templates
             </button>
           </div>
@@ -98,9 +101,11 @@ export default function Scoresheet() {
       <Navbar />
       <main className="container">
         {/* Use key with retryCount to force fresh component state on retry */}
-        <ScoresheetForm key={`scoresheet-${template.id}-${retryCount}`} template={template} />
+        <ScoresheetForm
+          key={`scoresheet-${template.id}-${retryCount}`}
+          template={template}
+        />
       </main>
     </div>
   );
 }
-

@@ -16,7 +16,9 @@ interface Template {
 export default function TemplatesTab() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<number | null>(null);
-  const [previewingTemplate, setPreviewingTemplate] = useState<number | null>(null);
+  const [previewingTemplate, setPreviewingTemplate] = useState<number | null>(
+    null,
+  );
   const [showEditor, setShowEditor] = useState(false);
 
   useEffect(() => {
@@ -25,7 +27,9 @@ export default function TemplatesTab() {
 
   const loadTemplates = async () => {
     try {
-      const response = await fetch('/scoresheet/templates/admin', { credentials: 'include' });
+      const response = await fetch('/scoresheet/templates/admin', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to load templates');
       const data = await response.json();
       setTemplates(data);
@@ -78,30 +82,46 @@ export default function TemplatesTab() {
                 </tr>
               </thead>
               <tbody>
-                {templates.map(template => (
+                {templates.map((template) => (
                   <tr key={template.id}>
                     <td>{template.name}</td>
                     <td>
                       {template.description || (
-                        <em style={{ color: 'var(--secondary-color)' }}>No description</em>
+                        <em style={{ color: 'var(--secondary-color)' }}>
+                          No description
+                        </em>
                       )}
                     </td>
                     <td>
                       {template.spreadsheet_name || (
-                        <em style={{ color: 'var(--secondary-color)' }}>Not assigned</em>
+                        <em style={{ color: 'var(--secondary-color)' }}>
+                          Not assigned
+                        </em>
                       )}
                     </td>
                     <td>
-                      <code style={{ background: 'var(--bg-color)', padding: '0.25rem 0.5rem', borderRadius: '0.25rem' }}>
+                      <code
+                        style={{
+                          background: 'var(--bg-color)',
+                          padding: '0.25rem 0.5rem',
+                          borderRadius: '0.25rem',
+                        }}
+                      >
                         {template.access_code || 'N/A'}
                       </code>
                     </td>
                     <td>{formatDate(template.created_at)}</td>
                     <td>
-                      <button className="btn btn-primary" onClick={() => handlePreview(template.id)}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => handlePreview(template.id)}
+                      >
                         Preview
                       </button>
-                      <button className="btn btn-secondary" onClick={() => handleEdit(template.id)}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => handleEdit(template.id)}
+                      >
                         Edit
                       </button>
                     </td>
@@ -133,4 +153,3 @@ export default function TemplatesTab() {
     </div>
   );
 }
-

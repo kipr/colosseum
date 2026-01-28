@@ -24,12 +24,14 @@ You can configure dropdown fields to pull their options from a Google Sheet inst
 ```
 
 **Properties:**
+
 - `sheetName` (required): Name of the sheet tab in your spreadsheet
 - `range` (optional): Cell range to read (e.g., "A1:B" for columns A and B). Defaults to all columns.
 - `labelField` (required): Column header name to use for the display label
 - `valueField` (required): Column header name to use for the stored value
 
 **How it works:**
+
 1. The app reads the specified sheet and range
 2. First row must contain column headers
 3. Each subsequent row becomes a dropdown option
@@ -70,16 +72,19 @@ You can make one field auto-populate based on another field's selection.
 ```
 
 **Cascades Properties:**
+
 - `targetField` (required): ID of the field to auto-populate
 - `sourceField` (required): Column name from the data source to use for population
 
 **How it works:**
+
 1. User selects a team number from the dropdown
 2. The app finds the matching row in the sheet data
 3. It extracts the value from the `sourceField` column (e.g., "Team Name")
 4. It automatically fills the `targetField` (team_name) with that value
 
 **Auto-populated field:**
+
 - Add `"autoPopulated": true` to the target field
 - This makes it read-only (users can't edit it)
 - It will be filled automatically when the source field changes
@@ -88,11 +93,11 @@ You can make one field auto-populate based on another field's selection.
 
 For the example above, your "Teams" sheet should look like:
 
-| Team Number | Team Name | School |
-|-------------|-----------|--------|
-| 101 | Robotics Wizards | Lincoln High |
-| 102 | Tech Titans | Washington Academy |
-| 103 | Code Crushers | Jefferson School |
+| Team Number | Team Name        | School             |
+| ----------- | ---------------- | ------------------ |
+| 101         | Robotics Wizards | Lincoln High       |
+| 102         | Tech Titans      | Washington Academy |
+| 103         | Code Crushers    | Jefferson School   |
 
 When a user selects "101" from the Team Number dropdown, "Robotics Wizards" automatically fills the Team Name field.
 
@@ -150,7 +155,7 @@ You can cascade multiple fields from one selection:
 ## Error Handling
 
 If the sheet or range cannot be read:
+
 - The dropdown will fall back to static options if provided
 - Otherwise, it will be empty with just "Select..." option
 - Check browser console for specific errors
-

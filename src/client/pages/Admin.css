@@ -1,226 +1,227 @@
 .admin-container {
-    padding: 0;
-    max-width: none;
-    flex: 1;
+  padding: 0;
+  max-width: none;
+  flex: 1;
 }
 
 .admin-layout {
-    display: flex;
-    gap: 0;
-    align-items: flex-start;
-    min-height: calc(100vh - 73px);
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+  min-height: calc(100vh - 73px);
 }
 
 .admin-sidebar {
-    flex: 0 0 250px;
-    background-color: var(--card-bg);
-    border-right: 1px solid var(--border-color);
-    padding: 1.5rem 1rem;
-    position: sticky;
-    top: 73px;
-    height: calc(100vh - 73px);
-    overflow-y: auto;
+  flex: 0 0 250px;
+  background-color: var(--card-bg);
+  border-right: 1px solid var(--border-color);
+  padding: 1.5rem 1rem;
+  position: sticky;
+  top: 73px;
+  height: calc(100vh - 73px);
+  overflow-y: auto;
 }
 
 .sidebar-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .sidebar-item {
-    padding: 0.75rem 1rem;
-    background: none;
-    border: none;
-    text-align: left;
-    cursor: pointer;
-    border-radius: 0.375rem;
-    font-size: 1rem;
-    transition: background-color 0.2s, color 0.2s;
-    color: var(--text-color);
+  padding: 0.75rem 1rem;
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 0.375rem;
+  font-size: 1rem;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
+  color: var(--text-color);
 }
 
 .sidebar-item:hover {
-    background-color: var(--bg-color);
+  background-color: var(--bg-color);
 }
 
 .sidebar-item.active {
-    background-color: var(--primary-color);
-    color: white;
+  background-color: var(--primary-color);
+  color: white;
 }
 
 .admin-content {
-    flex: 1;
-    padding: 2rem;
-    min-height: 500px;
+  flex: 1;
+  padding: 2rem;
+  min-height: 500px;
 }
 
 .tab-content {
-    display: none;
+  display: none;
 }
 
 .tab-content.active {
-    display: block;
+  display: block;
 }
 
 /* Template table specific styling */
 #templatesList table {
-    table-layout: auto;
+  table-layout: auto;
 }
 
 #templatesList table th:nth-child(1),
 #templatesList table td:nth-child(1) {
-    min-width: 200px;
-    word-wrap: break-word;
+  min-width: 200px;
+  word-wrap: break-word;
 }
 
 #templatesList table th:nth-child(2),
 #templatesList table td:nth-child(2) {
-    min-width: 200px;
-    word-wrap: break-word;
+  min-width: 200px;
+  word-wrap: break-word;
 }
 
 #templatesList table th:nth-child(3),
 #templatesList table td:nth-child(3) {
-    width: 130px;
-    white-space: nowrap;
+  width: 130px;
+  white-space: nowrap;
 }
 
 #templatesList table th:nth-child(4),
 #templatesList table td:nth-child(4) {
-    width: 110px;
-    white-space: nowrap;
+  width: 110px;
+  white-space: nowrap;
 }
 
 #templatesList table th:nth-child(5),
 #templatesList table td:nth-child(5) {
-    width: 180px;
-    white-space: nowrap;
+  width: 180px;
+  white-space: nowrap;
 }
 
 #templatesList table td:nth-child(5) {
-    padding: 0.5rem;
+  padding: 0.5rem;
 }
 
 #templatesList table td:nth-child(5) .btn {
-    display: inline-block;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.8rem;
-    white-space: nowrap;
-    margin-right: 0.25rem;
+  display: inline-block;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  margin-right: 0.25rem;
 }
 
 #templatesList table td:nth-child(5) .btn:last-child {
-    margin-right: 0;
+  margin-right: 0;
 }
 
 #templatesList table td code {
-    display: inline-block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (max-width: 900px) {
-    .admin-layout {
-        flex-direction: column;
-    }
+  .admin-layout {
+    flex-direction: column;
+  }
 
-    .admin-sidebar {
-        flex: none;
-        width: 100%;
-        position: relative;
-        top: 0;
-        height: auto;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        padding: 1rem;
-    }
+  .admin-sidebar {
+    flex: none;
+    width: 100%;
+    position: relative;
+    top: 0;
+    height: auto;
+    border-right: none;
+    border-bottom: 1px solid var(--border-color);
+    padding: 1rem;
+  }
 
-    .sidebar-menu {
-        flex-direction: row;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        justify-content: center;
-    }
+  .sidebar-menu {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    justify-content: center;
+  }
 
-    .sidebar-item {
-        padding: 0.5rem 1rem;
-        font-size: 0.9rem;
-    }
+  .sidebar-item {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+  }
 
-    .admin-content {
-        padding: 1rem;
-    }
+  .admin-content {
+    padding: 1rem;
+  }
 }
 
 @media (max-width: 480px) {
-    .admin-sidebar {
-        padding: 0.75rem;
-    }
+  .admin-sidebar {
+    padding: 0.75rem;
+  }
 
-    .sidebar-menu {
-        gap: 0.25rem;
-    }
+  .sidebar-menu {
+    gap: 0.25rem;
+  }
 
-    .sidebar-item {
-        padding: 0.5rem 0.75rem;
-        font-size: 0.8rem;
-    }
+  .sidebar-item {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.8rem;
+  }
 
-    .admin-content {
-        padding: 0.75rem;
-    }
+  .admin-content {
+    padding: 0.75rem;
+  }
 }
 
 /* Re-authentication banner */
 .reauth-banner {
-    background: linear-gradient(135deg, #fef3c7, #fde68a);
-    border-bottom: 2px solid #f59e0b;
-    padding: 0.75rem 1.5rem;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 1rem;
-    flex-wrap: wrap;
-    color: #92400e;
-    font-weight: 500;
+  background: linear-gradient(135deg, #fef3c7, #fde68a);
+  border-bottom: 2px solid #f59e0b;
+  padding: 0.75rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  color: #92400e;
+  font-weight: 500;
 }
 
 .reauth-banner span {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .reauth-button {
-    background: #f59e0b;
-    color: white;
-    border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 0.375rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background-color 0.2s;
+  background: #f59e0b;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
 .reauth-button:hover {
-    background: #d97706;
+  background: #d97706;
 }
 
 /* Dark mode adjustments for banner */
-[data-theme="dark"] .reauth-banner {
-    background: linear-gradient(135deg, #78350f, #92400e);
-    border-color: #f59e0b;
-    color: #fef3c7;
+[data-theme='dark'] .reauth-banner {
+  background: linear-gradient(135deg, #78350f, #92400e);
+  border-color: #f59e0b;
+  color: #fef3c7;
 }
 
-[data-theme="dark"] .reauth-button {
-    background: #f59e0b;
-    color: #78350f;
+[data-theme='dark'] .reauth-button {
+  background: #f59e0b;
+  color: #78350f;
 }
 
-[data-theme="dark"] .reauth-button:hover {
-    background: #fbbf24;
+[data-theme='dark'] .reauth-button:hover {
+  background: #fbbf24;
 }
-

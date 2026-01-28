@@ -34,17 +34,20 @@ if (isProduction) {
 }
 
 // Middleware
-app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:3000',
-  credentials: true
-}));
+app.use(
+  cors({
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    credentials: true,
+  }),
+);
 // Increase body size limit to 10MB for image uploads (game areas images stored as base64)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Session configuration
 const sessionConfig: session.SessionOptions = {
-  secret: process.env.SESSION_SECRET || 'colosseum-secret-key-change-in-production',
+  secret:
+    process.env.SESSION_SECRET || 'colosseum-secret-key-change-in-production',
   resave: false,
   saveUninitialized: false,
   proxy: isProduction, // Trust the reverse proxy (Cloud Run)
@@ -52,8 +55,8 @@ const sessionConfig: session.SessionOptions = {
     secure: isProduction, // Require HTTPS in production
     httpOnly: true,
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
-  }
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  },
 };
 
 // Configure session store based on environment
@@ -65,7 +68,7 @@ if (usePostgres) {
     sessionConfig.store = new PgSession({
       pool: pgPool,
       tableName: 'session',
-      createTableIfMissing: true
+      createTableIfMissing: true,
     });
     console.log('Using PostgreSQL session store');
   }
@@ -74,7 +77,7 @@ if (usePostgres) {
   const SQLiteStore = connectSqlite3(session);
   sessionConfig.store = new SQLiteStore({
     db: 'sessions.db',
-    dir: path.join(__dirname, '../../database')
+    dir: path.join(__dirname, '../../database'),
   }) as any;
   console.log('Using SQLite session store');
 }
@@ -93,12 +96,16 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
     // Update last activity (throttled to once per minute to reduce DB writes)
     const now = Date.now();
     const lastUpdate = (user as any)._lastActivityUpdate || 0;
-    if (now - lastUpdate > 60000) { // Only update once per minute
+    if (now - lastUpdate > 60000) {
+      // Only update once per minute
       (user as any)._lastActivityUpdate = now;
       try {
         const { getDatabase } = require('./database/connection');
         const db = await getDatabase();
-        await db.run('UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE id = ?', [user.id]);
+        await db.run(
+          'UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE id = ?',
+          [user.id],
+        );
       } catch (error) {
         // Silently fail - don't break requests if activity tracking fails
         console.error('Failed to update last activity:', error);
@@ -138,19 +145,30 @@ app.get('/health', (req: Request, res: Response) => {
 if (process.env.NODE_ENV === 'production') {
   // These are the React SPA routes - serve index.html for these exact paths
   const spaRoutes = ['/', '/admin', '/judge', '/scoresheet'];
-  
-  spaRoutes.forEach(route => {
+
+  spaRoutes.forEach((route) => {
     app.get(route, (req: Request, res: Response) => {
       res.sendFile(path.join(__dirname, '../client/index.html'));
     });
   });
-  
+
   // Catch-all for any other non-API routes (e.g., direct asset requests that miss static)
   app.get('/{*path}', (req: Request, res: Response, next: NextFunction) => {
     // Only serve React for paths that aren't handled by API routes
-    const apiPrefixes = ['/api', '/auth/', '/admin/', '/scoresheet/', '/data/', '/scores/', '/chat/', '/field-templates/'];
-    const isApiRoute = apiPrefixes.some(prefix => req.path.startsWith(prefix));
-    
+    const apiPrefixes = [
+      '/api',
+      '/auth/',
+      '/admin/',
+      '/scoresheet/',
+      '/data/',
+      '/scores/',
+      '/chat/',
+      '/field-templates/',
+    ];
+    const isApiRoute = apiPrefixes.some((prefix) =>
+      req.path.startsWith(prefix),
+    );
+
     if (!isApiRoute) {
       res.sendFile(path.join(__dirname, '../client/index.html'));
     } else {
@@ -163,7 +181,9 @@ if (process.env.NODE_ENV === 'production') {
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   console.error('Error:', err);
-  res.status(500).json({ error: 'Internal server error', message: err.message });
+  res
+    .status(500)
+    .json({ error: 'Internal server error', message: err.message });
 });
 
 // Initialize database and start server
@@ -178,7 +198,7 @@ async function startServer() {
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit',
-        hour12: true
+        hour12: true,
       });
       console.log(`\n🏛️  Colosseum server running on http://localhost:${PORT}`);
       console.log(`⏰  Server started at: ${timestamp}\n`);
@@ -190,4 +210,3 @@ async function startServer() {
 }
 
 startServer();
-

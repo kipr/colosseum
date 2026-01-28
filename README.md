@@ -17,6 +17,7 @@ A powerful web-based scoring application with Google Sheets integration, support
 ## Supported Field Types
 
 Score sheet templates support the following field types:
+
 - **Text** - Free-form text input
 - **Number** - Numeric input with min/max/step validation
 - **Dropdown** - Select from predefined options
@@ -69,17 +70,20 @@ ALLOWED_EMAIL_DOMAINS=yourdomain.org  # Optional: restrict admin access to speci
 ### 4. Run the Application
 
 **Development mode (runs both React + Express):**
+
 ```bash
 npm run dev
 ```
 
 This starts two servers:
+
 - **Vite dev server** (React frontend): `http://localhost:5173` - **Open this URL in your browser**
 - **Express API server** (Backend): `http://localhost:3000`
 
 The Vite server proxies API calls to Express automatically.
 
 **Production mode:**
+
 ```bash
 npm run build
 npm start
@@ -239,12 +243,14 @@ The application uses SQLite with the following tables:
 ## API Endpoints
 
 ### Authentication
+
 - `GET /auth/google` - Initiate Google OAuth
 - `GET /auth/google/callback` - OAuth callback
 - `GET /auth/user` - Get current user
 - `GET /auth/logout` - Logout
 
 ### Admin
+
 - `GET /admin/spreadsheets` - List linked spreadsheets
 - `GET /admin/drive/spreadsheets` - Browse Google Drive spreadsheets
 - `POST /admin/spreadsheets/link` - Link a spreadsheet
@@ -252,12 +258,14 @@ The application uses SQLite with the following tables:
 - `DELETE /admin/spreadsheets/:id` - Delete spreadsheet config
 
 ### Templates
+
 - `GET /scoresheet/templates` - List all templates
 - `GET /scoresheet/templates/:id` - Get template details
 - `POST /scoresheet/templates` - Create new template
 - `PUT /scoresheet/templates/:id` - Update template
 
 ### Scores
+
 - `POST /api/scores/submit` - Submit a score
 - `GET /api/scores/history` - Get score history
 - `GET /api/participants` - Get participants from spreadsheet
@@ -281,6 +289,7 @@ npm run build
 ```
 
 Builds both React frontend and Express backend:
+
 - React app → `dist/client/`
 - Express server → `dist/server/`
 
@@ -291,6 +300,7 @@ npm run dev
 ```
 
 Runs both servers concurrently:
+
 - **Vite** (React with HMR): http://localhost:5173 ← **Use this for development**
 - **Express** (API): http://localhost:3000
 
@@ -298,6 +308,7 @@ Changes to React components update instantly (Hot Module Replacement).
 Changes to Express server restart automatically (nodemon).
 
 **Individual servers:**
+
 ```bash
 npm run dev:client  # Vite only
 npm run dev:server  # Express only
@@ -306,15 +317,18 @@ npm run dev:server  # Express only
 ## Troubleshooting
 
 ### "Authentication required" errors
+
 - Ensure you're logged in with Google
 - Check that OAuth credentials are correctly configured
 - Verify redirect URI matches in Google Cloud Console
 
 ### "No active spreadsheet configuration found"
+
 - Link a spreadsheet in the Admin panel
 - Ensure the spreadsheet is marked as "Active"
 
 ### Scores not syncing to Google Sheets
+
 - Verify spreadsheet permissions (app needs write access)
 - Check that the sheet name matches exactly
 - Review browser console for API errors
@@ -330,4 +344,3 @@ ISC
 ## Support
 
 For issues or questions, please check the error logs or contact the development team.
-

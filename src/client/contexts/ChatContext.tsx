@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+  useCallback,
+  useRef,
+} from 'react';
 import { useAuth } from './AuthContext';
 
 interface ChatMessage {
@@ -45,7 +53,7 @@ const ADMIN_CHAT_ROOM_ID = '__ADMIN_ONLY__';
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
-  
+
   const [isOpen, setIsOpen] = useState(false);
   const [chatName, setChatNameState] = useState<string | null>(() => {
     // Initialize from localStorage for non-admin users
@@ -55,7 +63,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     return null;
   });
   const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
-  const [selectedSpreadsheet, setSelectedSpreadsheetState] = useState<Spreadsheet | null>(null);
+  const [selectedSpreadsheet, setSelectedSpreadsheetState] =
+    useState<Spreadsheet | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [view, setViewState] = useState<'list' | 'chat' | 'settings'>('list');
@@ -67,7 +76,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
     return 0;
   });
-  
+
   // Track if we've restored from localStorage
   const hasRestoredRef = useRef(false);
 
@@ -81,20 +90,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const needsNamePrompt = !isAdmin && !chatName;
 
   // Set chat name and persist for non-admins
-  const setChatName = useCallback((name: string) => {
-    setChatNameState(name);
-    if (!isAdmin) {
-      localStorage.setItem(CHAT_NAME_KEY, name);
-    }
-  }, [isAdmin]);
+  const setChatName = useCallback(
+    (name: string) => {
+      setChatNameState(name);
+      if (!isAdmin) {
+        localStorage.setItem(CHAT_NAME_KEY, name);
+      }
+    },
+    [isAdmin],
+  );
 
   // Wrapper for setSelectedSpreadsheet that also persists to localStorage
-  const setSelectedSpreadsheet = useCallback((spreadsheet: Spreadsheet | null) => {
-    setSelectedSpreadsheetState(spreadsheet);
-    if (spreadsheet) {
-      localStorage.setItem(LAST_CHAT_KEY, JSON.stringify(spreadsheet));
-    }
-  }, []);
+  const setSelectedSpreadsheet = useCallback(
+    (spreadsheet: Spreadsheet | null) => {
+      setSelectedSpreadsheetState(spreadsheet);
+      if (spreadsheet) {
+        localStorage.setItem(LAST_CHAT_KEY, JSON.stringify(spreadsheet));
+      }
+    },
+    [],
+  );
 
   // Wrapper for setView that handles persistence
   const setView = useCallback((newView: 'list' | 'chat' | 'settings') => {
@@ -109,7 +124,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Clear unread messages when chat is opened and we're viewing that chat
   const clearUnread = useCallback(() => {
     if (messages.length > 0) {
-      const latestId = Math.max(...messages.map(m => m.id));
+      const latestId = Math.max(...messages.map((m) => m.id));
       setLastSeenMessageId(latestId);
       localStorage.setItem(LAST_SEEN_MESSAGE_KEY, String(latestId));
     }
@@ -123,18 +138,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         const response = await fetch('/chat/spreadsheets');
         if (response.ok) {
           let data = await response.json();
-          
+
           // Add admin-only chat room at the top for admin users
           if (isAdmin) {
             const adminRoom: Spreadsheet = {
               spreadsheet_id: ADMIN_CHAT_ROOM_ID,
-              spreadsheet_name: '🔒 Admin Only'
+              spreadsheet_name: '🔒 Admin Only',
             };
             data = [adminRoom, ...data];
           }
-          
+
           setSpreadsheets(data);
-          
+
           // Restore last chat if not already restored
           if (!hasRestoredRef.current) {
             hasRestoredRef.current = true;
@@ -143,7 +158,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
               try {
                 const lastChat = JSON.parse(lastChatStr) as Spreadsheet;
                 // Verify this spreadsheet still exists in the list (or is admin chat for admins)
-                const exists = data.some((s: Spreadsheet) => s.spreadsheet_id === lastChat.spreadsheet_id);
+                const exists = data.some(
+                  (s: Spreadsheet) =>
+                    s.spreadsheet_id === lastChat.spreadsheet_id,
+                );
                 if (exists) {
                   setSelectedSpreadsheetState(lastChat);
                   setViewState('chat');
@@ -166,59 +184,63 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   // Refs to avoid recreating loadMessages on every state change
   const lastSeenMessageIdRef = useRef(lastSeenMessageId);
   const isOpenRef = useRef(isOpen);
-  
+
   // Keep refs in sync
   useEffect(() => {
     lastSeenMessageIdRef.current = lastSeenMessageId;
   }, [lastSeenMessageId]);
-  
+
   useEffect(() => {
     isOpenRef.current = isOpen;
   }, [isOpen]);
 
   // Load messages for selected spreadsheet
-  const loadMessages = useCallback(async (checkUnread = false) => {
-    if (!selectedSpreadsheet) return;
+  const loadMessages = useCallback(
+    async (checkUnread = false) => {
+      if (!selectedSpreadsheet) return;
 
-    if (!checkUnread) {
-      setIsLoading(true);
-    }
-    try {
-      // Use different endpoint for admin chat
-      const isAdminChat = selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
-      const url = isAdminChat 
-        ? '/chat/admin/messages'
-        : `/chat/messages/${selectedSpreadsheet.spreadsheet_id}`;
-      
-      const response = await fetch(url, { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json() as ChatMessage[];
-        setMessages(data);
-        
-        // Check for unread messages (new messages since last seen)
-        if (data.length > 0) {
-          const latestId = Math.max(...data.map(m => m.id));
-          if (latestId > lastSeenMessageIdRef.current) {
-            // Only show unread indicator if chat is closed
-            if (!isOpenRef.current) {
-              setHasUnreadMessages(true);
-            } else {
-              // If chat is open, update the last seen
-              setLastSeenMessageId(latestId);
-              localStorage.setItem(LAST_SEEN_MESSAGE_KEY, String(latestId));
-              lastSeenMessageIdRef.current = latestId;
+      if (!checkUnread) {
+        setIsLoading(true);
+      }
+      try {
+        // Use different endpoint for admin chat
+        const isAdminChat =
+          selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
+        const url = isAdminChat
+          ? '/chat/admin/messages'
+          : `/chat/messages/${selectedSpreadsheet.spreadsheet_id}`;
+
+        const response = await fetch(url, { credentials: 'include' });
+        if (response.ok) {
+          const data = (await response.json()) as ChatMessage[];
+          setMessages(data);
+
+          // Check for unread messages (new messages since last seen)
+          if (data.length > 0) {
+            const latestId = Math.max(...data.map((m) => m.id));
+            if (latestId > lastSeenMessageIdRef.current) {
+              // Only show unread indicator if chat is closed
+              if (!isOpenRef.current) {
+                setHasUnreadMessages(true);
+              } else {
+                // If chat is open, update the last seen
+                setLastSeenMessageId(latestId);
+                localStorage.setItem(LAST_SEEN_MESSAGE_KEY, String(latestId));
+                lastSeenMessageIdRef.current = latestId;
+              }
             }
           }
         }
+      } catch (error) {
+        console.error('Failed to load messages:', error);
+      } finally {
+        if (!checkUnread) {
+          setIsLoading(false);
+        }
       }
-    } catch (error) {
-      console.error('Failed to load messages:', error);
-    } finally {
-      if (!checkUnread) {
-        setIsLoading(false);
-      }
-    }
-  }, [selectedSpreadsheet]);
+    },
+    [selectedSpreadsheet],
+  );
 
   // Auto-load messages when spreadsheet is selected (poll always if a chat is remembered)
   useEffect(() => {
@@ -232,8 +254,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // Clear unread when opening chat
   useEffect(() => {
-    if (isOpen && selectedSpreadsheet && view === 'chat' && messages.length > 0) {
-      const latestId = Math.max(...messages.map(m => m.id));
+    if (
+      isOpen &&
+      selectedSpreadsheet &&
+      view === 'chat' &&
+      messages.length > 0
+    ) {
+      const latestId = Math.max(...messages.map((m) => m.id));
       setLastSeenMessageId(latestId);
       localStorage.setItem(LAST_SEEN_MESSAGE_KEY, String(latestId));
       setHasUnreadMessages(false);
@@ -241,50 +268,55 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   }, [isOpen, selectedSpreadsheet, view, messages]);
 
   // Send a message
-  const sendMessage = useCallback(async (message: string) => {
-    if (!selectedSpreadsheet || !effectiveChatName) return;
+  const sendMessage = useCallback(
+    async (message: string) => {
+      if (!selectedSpreadsheet || !effectiveChatName) return;
 
-    try {
-      const isAdminChat = selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
-      
-      // Use different endpoint and body for admin chat
-      const url = isAdminChat ? '/chat/admin/messages' : '/chat/messages';
-      const body = isAdminChat
-        ? { message }
-        : {
-            spreadsheetId: selectedSpreadsheet.spreadsheet_id,
-            senderName: effectiveChatName,
-            message,
-          };
-      
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(body),
-      });
+      try {
+        const isAdminChat =
+          selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
 
-      if (response.ok) {
-        const newMessage = await response.json();
-        setMessages(prev => [...prev, newMessage]);
+        // Use different endpoint and body for admin chat
+        const url = isAdminChat ? '/chat/admin/messages' : '/chat/messages';
+        const body = isAdminChat
+          ? { message }
+          : {
+              spreadsheetId: selectedSpreadsheet.spreadsheet_id,
+              senderName: effectiveChatName,
+              message,
+            };
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+
+        if (response.ok) {
+          const newMessage = await response.json();
+          setMessages((prev) => [...prev, newMessage]);
+        }
+      } catch (error) {
+        console.error('Failed to send message:', error);
       }
-    } catch (error) {
-      console.error('Failed to send message:', error);
-    }
-  }, [selectedSpreadsheet, effectiveChatName]);
+    },
+    [selectedSpreadsheet, effectiveChatName],
+  );
 
   // Clear all messages in the current chat (admin only)
   const clearChat = useCallback(async () => {
     if (!selectedSpreadsheet || !isAdmin) return;
 
     try {
-      const isAdminChat = selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
-      const url = isAdminChat 
+      const isAdminChat =
+        selectedSpreadsheet.spreadsheet_id === ADMIN_CHAT_ROOM_ID;
+      const url = isAdminChat
         ? '/chat/admin/messages'
         : `/chat/messages/${selectedSpreadsheet.spreadsheet_id}`;
-      
+
       const response = await fetch(url, {
         method: 'DELETE',
         credentials: 'include',
@@ -338,4 +370,3 @@ export function useChat() {
   }
   return context;
 }
-

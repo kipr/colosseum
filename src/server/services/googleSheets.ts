@@ -14,29 +14,29 @@ export async function listDrives(accessToken: string) {
     locations.push({
       id: 'my-drive',
       name: '📁 My Drive',
-      type: 'myDrive'
+      type: 'myDrive',
     });
 
     // Add "Shared with Me" location
     locations.push({
       id: 'shared-with-me',
       name: '👥 Shared with Me',
-      type: 'sharedWithMe'
+      type: 'sharedWithMe',
     });
 
     // List Shared Drives
     const sharedDrivesResponse = await drive.drives.list({
       auth,
       pageSize: 50,
-      fields: 'drives(id, name)'
+      fields: 'drives(id, name)',
     });
 
     if (sharedDrivesResponse.data.drives) {
-      sharedDrivesResponse.data.drives.forEach(sharedDrive => {
+      sharedDrivesResponse.data.drives.forEach((sharedDrive) => {
         locations.push({
           id: sharedDrive.id,
           name: `🏢 ${sharedDrive.name}`,
-          type: 'sharedDrive'
+          type: 'sharedDrive',
         });
       });
     }
@@ -48,7 +48,11 @@ export async function listDrives(accessToken: string) {
   }
 }
 
-export async function listSpreadsheets(accessToken: string, driveId?: string, driveType?: string) {
+export async function listSpreadsheets(
+  accessToken: string,
+  driveId?: string,
+  driveType?: string,
+) {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
@@ -59,12 +63,12 @@ export async function listSpreadsheets(accessToken: string, driveId?: string, dr
       q: query,
       fields: 'files(id, name, createdTime, modifiedTime, owners, shared)',
       orderBy: 'modifiedTime desc',
-      pageSize: 100
+      pageSize: 100,
     };
 
     // Handle different drive types
     if (driveType === 'sharedWithMe') {
-      options.q = query + " and sharedWithMe=true";
+      options.q = query + ' and sharedWithMe=true';
       options.corpora = 'user';
     } else if (driveType === 'sharedDrive' && driveId) {
       options.corpora = 'drive';
@@ -86,7 +90,10 @@ export async function listSpreadsheets(accessToken: string, driveId?: string, dr
   }
 }
 
-export async function getSpreadsheetInfo(accessToken: string, spreadsheetId: string) {
+export async function getSpreadsheetInfo(
+  accessToken: string,
+  spreadsheetId: string,
+) {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
@@ -94,15 +101,16 @@ export async function getSpreadsheetInfo(accessToken: string, spreadsheetId: str
     const response = await sheets.spreadsheets.get({
       auth,
       spreadsheetId,
-      fields: 'properties,sheets.properties'
+      fields: 'properties,sheets.properties',
     });
 
     return {
       title: response.data.properties?.title || 'Untitled',
-      sheets: response.data.sheets?.map(sheet => ({
-        title: sheet.properties?.title,
-        sheetId: sheet.properties?.sheetId
-      })) || []
+      sheets:
+        response.data.sheets?.map((sheet) => ({
+          title: sheet.properties?.title,
+          sheetId: sheet.properties?.sheetId,
+        })) || [],
     };
   } catch (error) {
     console.error('Error getting spreadsheet info:', error);
@@ -110,7 +118,10 @@ export async function getSpreadsheetInfo(accessToken: string, spreadsheetId: str
   }
 }
 
-export async function getSpreadsheetSheets(accessToken: string, spreadsheetId: string) {
+export async function getSpreadsheetSheets(
+  accessToken: string,
+  spreadsheetId: string,
+) {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
@@ -118,14 +129,16 @@ export async function getSpreadsheetSheets(accessToken: string, spreadsheetId: s
     const response = await sheets.spreadsheets.get({
       auth,
       spreadsheetId,
-      fields: 'sheets.properties(title,sheetId,index)'
+      fields: 'sheets.properties(title,sheetId,index)',
     });
 
-    return response.data.sheets?.map(sheet => ({
-      title: sheet.properties?.title || 'Untitled',
-      sheetId: sheet.properties?.sheetId,
-      index: sheet.properties?.index
-    })) || [];
+    return (
+      response.data.sheets?.map((sheet) => ({
+        title: sheet.properties?.title || 'Untitled',
+        sheetId: sheet.properties?.sheetId,
+        index: sheet.properties?.index,
+      })) || []
+    );
   } catch (error) {
     console.error('Error getting spreadsheet sheets:', error);
     throw new Error('Failed to get sheets from spreadsheet');
@@ -135,7 +148,7 @@ export async function getSpreadsheetSheets(accessToken: string, spreadsheetId: s
 export async function getParticipants(
   accessToken: string,
   spreadsheetId: string,
-  sheetName: string
+  sheetName: string,
 ): Promise<string[]> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
@@ -149,7 +162,7 @@ export async function getParticipants(
     });
 
     const values = response.data.values || [];
-    return values.map(row => row[0]).filter(Boolean);
+    return values.map((row) => row[0]).filter(Boolean);
   } catch (error) {
     console.error('Error getting participants:', error);
     throw new Error('Failed to get participants from spreadsheet');
@@ -159,7 +172,7 @@ export async function getParticipants(
 export async function getMatches(
   accessToken: string,
   spreadsheetId: string,
-  sheetName: string
+  sheetName: string,
 ): Promise<any[]> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
@@ -195,7 +208,7 @@ export async function submitScoreToSheet(
   accessToken: string,
   spreadsheetId: string,
   sheetName: string,
-  scoreValues: any[]
+  scoreValues: any[],
 ): Promise<void> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
@@ -210,8 +223,8 @@ export async function submitScoreToSheet(
       range: `${sheetName}!A:Z`,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values
-      }
+        values,
+      },
     });
   } catch (error) {
     console.error('Error submitting score to sheet:', error);
@@ -225,7 +238,7 @@ export async function updateTeamScore(
   sheetName: string,
   teamNumber: string,
   round: number,
-  totalScore: number | string  // Allow string for clearing cells
+  totalScore: number | string, // Allow string for clearing cells
 ): Promise<void> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
@@ -245,24 +258,31 @@ export async function updateTeamScore(
 
     // Find the header row and team row
     const headers = values[0];
-    
+
     // More flexible search for team number column
     const teamNumberColIndex = headers.findIndex((h: string) => {
-      const normalized = String(h || '').toLowerCase().trim();
-      return normalized.includes('team') && normalized.includes('number') ||
-             normalized === 'team #' ||
-             normalized === 'team number' ||
-             normalized === 'teamnumber';
+      const normalized = String(h || '')
+        .toLowerCase()
+        .trim();
+      return (
+        (normalized.includes('team') && normalized.includes('number')) ||
+        normalized === 'team #' ||
+        normalized === 'team number' ||
+        normalized === 'teamnumber'
+      );
     });
-    
+
     if (teamNumberColIndex === -1) {
       console.error('Available headers:', headers);
-      throw new Error(`Could not find Team Number column. Available columns: ${headers.join(', ')}`);
+      throw new Error(
+        `Could not find Team Number column. Available columns: ${headers.join(', ')}`,
+      );
     }
 
     // Find the team's row
-    const teamRowIndex = values.findIndex((row, idx) => 
-      idx > 0 && String(row[teamNumberColIndex]) === String(teamNumber)
+    const teamRowIndex = values.findIndex(
+      (row, idx) =>
+        idx > 0 && String(row[teamNumberColIndex]) === String(teamNumber),
     );
 
     if (teamRowIndex === -1) {
@@ -271,7 +291,9 @@ export async function updateTeamScore(
 
     // Find the correct round column (Seed 1, Seed 2, Seed 3)
     const roundColumnName = `Seed ${round}`;
-    const roundColIndex = headers.findIndex((h: string) => h === roundColumnName);
+    const roundColIndex = headers.findIndex(
+      (h: string) => h === roundColumnName,
+    );
 
     if (roundColIndex === -1) {
       throw new Error(`Column "${roundColumnName}" not found in sheet`);
@@ -288,8 +310,8 @@ export async function updateTeamScore(
       range: `${sheetName}!${columnLetter}${rowNumber}`,
       valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values: [[totalScore]]
-      }
+        values: [[totalScore]],
+      },
     });
   } catch (error: any) {
     console.error('Error updating team score:', error);
@@ -301,14 +323,14 @@ export async function getSheetData(
   accessToken: string,
   spreadsheetId: string,
   sheetName: string,
-  range?: string
+  range?: string,
 ): Promise<any[]> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
   try {
     const fullRange = range ? `${sheetName}!${range}` : `${sheetName}!A:Z`;
-    
+
     const response = await sheets.spreadsheets.values.get({
       auth,
       spreadsheetId,
@@ -323,7 +345,7 @@ export async function getSheetData(
     const rows = values.slice(1);
 
     // Convert to array of objects
-    return rows.map(row => {
+    return rows.map((row) => {
       const obj: any = {};
       headers.forEach((header, index) => {
         obj[header] = row[index] || '';
@@ -339,4 +361,3 @@ export async function getSheetData(
     throw new Error(`Failed to get data from spreadsheet: ${error.message}`);
   }
 }
-

@@ -28,47 +28,55 @@ interface AvailableSheet {
 
 export default function SpreadsheetsTab() {
   // Spreadsheets (first table)
-  const [linkedSpreadsheets, setLinkedSpreadsheets] = useState<LinkedSpreadsheet[]>([]);
-  const [selectedSpreadsheet, setSelectedSpreadsheet] = useState<LinkedSpreadsheet | null>(null);
-  
+  const [linkedSpreadsheets, setLinkedSpreadsheets] = useState<
+    LinkedSpreadsheet[]
+  >([]);
+  const [selectedSpreadsheet, setSelectedSpreadsheet] =
+    useState<LinkedSpreadsheet | null>(null);
+
   // Sheets for selected spreadsheet (second table)
   const [sheetConfigs, setSheetConfigs] = useState<SheetConfig[]>([]);
   const [availableSheets, setAvailableSheets] = useState<AvailableSheet[]>([]);
   const [loadingSheets, setLoadingSheets] = useState(false);
-  
+
   // Add sheet form
   const [showAddSheet, setShowAddSheet] = useState(false);
   const [newSheetName, setNewSheetName] = useState('');
   const [newSheetPurpose, setNewSheetPurpose] = useState('data');
-  
+
   // Drive selector
   const [showDriveSelector, setShowDriveSelector] = useState(false);
-  
+
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
   useEffect(() => {
     loadLinkedSpreadsheets();
-    
+
     // Auto-refresh every 10 seconds to sync across all admins
     const interval = setInterval(() => {
       loadLinkedSpreadsheets();
     }, 10000);
-    
+
     return () => clearInterval(interval);
   }, []);
 
   // Load unique spreadsheets (shared across all admins)
   const loadLinkedSpreadsheets = async () => {
     try {
-      const response = await fetch('/admin/spreadsheets/grouped?shared=true', { credentials: 'include' });
+      const response = await fetch('/admin/spreadsheets/grouped?shared=true', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to load spreadsheets');
       const data = await response.json();
       setLinkedSpreadsheets(data);
-      
+
       // If we had a selected spreadsheet, update it with fresh data
       if (selectedSpreadsheet) {
-        const updated = data.find((s: LinkedSpreadsheet) => s.spreadsheet_id === selectedSpreadsheet.spreadsheet_id);
+        const updated = data.find(
+          (s: LinkedSpreadsheet) =>
+            s.spreadsheet_id === selectedSpreadsheet.spreadsheet_id,
+        );
         if (updated) {
           setSelectedSpreadsheet(updated);
         } else {
@@ -85,9 +93,12 @@ export default function SpreadsheetsTab() {
   // Load sheet configs for selected spreadsheet (shared across all admins)
   const loadSheetConfigs = async (spreadsheetId: string) => {
     try {
-      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/configs?shared=true`, {
-        credentials: 'include'
-      });
+      const response = await fetch(
+        `/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/configs?shared=true`,
+        {
+          credentials: 'include',
+        },
+      );
       if (!response.ok) throw new Error('Failed to load sheet configs');
       const data = await response.json();
       setSheetConfigs(data);
@@ -100,12 +111,17 @@ export default function SpreadsheetsTab() {
   const loadAvailableSheets = async (spreadsheetId: string) => {
     try {
       setLoadingSheets(true);
-      const response = await fetch(`/admin/spreadsheets/${spreadsheetId}/sheets`, {
-        credentials: 'include'
-      });
+      const response = await fetch(
+        `/admin/spreadsheets/${spreadsheetId}/sheets`,
+        {
+          credentials: 'include',
+        },
+      );
       if (!response.ok) throw new Error('Failed to load sheets');
       const data = await response.json();
-      setAvailableSheets(data.sort((a: AvailableSheet, b: AvailableSheet) => a.index - b.index));
+      setAvailableSheets(
+        data.sort((a: AvailableSheet, b: AvailableSheet) => a.index - b.index),
+      );
     } catch (error) {
       console.error('Error loading available sheets:', error);
     } finally {
@@ -119,7 +135,7 @@ export default function SpreadsheetsTab() {
       const interval = setInterval(() => {
         loadSheetConfigs(selectedSpreadsheet.spreadsheet_id);
       }, 10000);
-      
+
       return () => clearInterval(interval);
     }
   }, [selectedSpreadsheet]);
@@ -143,10 +159,13 @@ export default function SpreadsheetsTab() {
   // Deactivate entire spreadsheet (all sheets) - shared across all admins
   const handleDeactivateSpreadsheet = async (spreadsheetId: string) => {
     try {
-      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/deactivate?shared=true`, {
-        method: 'PUT',
-        credentials: 'include'
-      });
+      const response = await fetch(
+        `/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}/deactivate?shared=true`,
+        {
+          method: 'PUT',
+          credentials: 'include',
+        },
+      );
       if (!response.ok) throw new Error('Failed to deactivate');
       await loadLinkedSpreadsheets();
       if (selectedSpreadsheet?.spreadsheet_id === spreadsheetId) {
@@ -162,19 +181,23 @@ export default function SpreadsheetsTab() {
   const handleDeleteSpreadsheet = async (spreadsheetId: string) => {
     const confirmed = await confirm({
       title: 'Unlink Spreadsheet',
-      message: 'Are you sure you want to unlink this spreadsheet and all its sheet configurations? This will affect all admins.',
+      message:
+        'Are you sure you want to unlink this spreadsheet and all its sheet configurations? This will affect all admins.',
       confirmText: 'Unlink',
-      confirmStyle: 'danger'
+      confirmStyle: 'danger',
     });
     if (!confirmed) return;
-    
+
     try {
-      const response = await fetch(`/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}?shared=true`, {
-        method: 'DELETE',
-        credentials: 'include'
-      });
+      const response = await fetch(
+        `/admin/spreadsheets/by-spreadsheet/${encodeURIComponent(spreadsheetId)}?shared=true`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        },
+      );
       if (!response.ok) throw new Error('Failed to delete');
-      
+
       if (selectedSpreadsheet?.spreadsheet_id === spreadsheetId) {
         setSelectedSpreadsheet(null);
         setSheetConfigs([]);
@@ -191,7 +214,7 @@ export default function SpreadsheetsTab() {
     try {
       const response = await fetch(`/admin/spreadsheets/${id}/activate`, {
         method: 'PUT',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to activate');
       await loadLinkedSpreadsheets();
@@ -209,7 +232,7 @@ export default function SpreadsheetsTab() {
     try {
       const response = await fetch(`/admin/spreadsheets/${id}/deactivate`, {
         method: 'PUT',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to deactivate');
       await loadLinkedSpreadsheets();
@@ -228,14 +251,14 @@ export default function SpreadsheetsTab() {
       title: 'Remove Sheet Configuration',
       message: 'Are you sure you want to remove this sheet configuration?',
       confirmText: 'Remove',
-      confirmStyle: 'danger'
+      confirmStyle: 'danger',
     });
     if (!confirmed) return;
-    
+
     try {
       const response = await fetch(`/admin/spreadsheets/${id}?shared=true`, {
         method: 'DELETE',
-        credentials: 'include'
+        credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to delete');
       await loadLinkedSpreadsheets();
@@ -261,8 +284,8 @@ export default function SpreadsheetsTab() {
           spreadsheetId: selectedSpreadsheet.spreadsheet_id,
           sheetName: newSheetName,
           sheetPurpose: newSheetPurpose,
-          isActive: true  // Start active so sheets work immediately
-        })
+          isActive: true, // Start active so sheets work immediately
+        }),
       });
 
       if (!response.ok) {
@@ -289,25 +312,32 @@ export default function SpreadsheetsTab() {
 
   const getPurposeLabel = (purpose: string) => {
     switch (purpose) {
-      case 'scores': return 'Score Submissions';
-      case 'bracket': return 'DE Bracket';
-      case 'data': return 'Data Source';
-      default: return purpose;
+      case 'scores':
+        return 'Score Submissions';
+      case 'bracket':
+        return 'DE Bracket';
+      case 'data':
+        return 'Data Source';
+      default:
+        return purpose;
     }
   };
 
   const getPurposeBadgeClass = (purpose: string) => {
     switch (purpose) {
-      case 'scores': return 'badge-success';
-      case 'bracket': return 'badge-primary';
-      default: return 'badge-warning';
+      case 'scores':
+        return 'badge-success';
+      case 'bracket':
+        return 'badge-primary';
+      default:
+        return 'badge-warning';
     }
   };
 
   // Filter out sheets that are already configured
   const getUnconfiguredSheets = () => {
-    const configuredNames = new Set(sheetConfigs.map(c => c.sheet_name));
-    return availableSheets.filter(s => !configuredNames.has(s.title));
+    const configuredNames = new Set(sheetConfigs.map((c) => c.sheet_name));
+    return availableSheets.filter((s) => !configuredNames.has(s.title));
   };
 
   return (
@@ -319,8 +349,8 @@ export default function SpreadsheetsTab() {
         <h3>
           {selectedSpreadsheet ? (
             <>
-              <button 
-                className="btn btn-secondary" 
+              <button
+                className="btn btn-secondary"
                 onClick={handleBackToSpreadsheets}
                 style={{ marginRight: '1rem' }}
               >
@@ -337,7 +367,10 @@ export default function SpreadsheetsTab() {
           // Show spreadsheets table
           <>
             {linkedSpreadsheets.length === 0 ? (
-              <p>No spreadsheets linked yet. Click "Link New Spreadsheet" below to get started.</p>
+              <p>
+                No spreadsheets linked yet. Click "Link New Spreadsheet" below
+                to get started.
+              </p>
             ) : (
               <table>
                 <thead>
@@ -349,20 +382,20 @@ export default function SpreadsheetsTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {linkedSpreadsheets.map(spreadsheet => (
+                  {linkedSpreadsheets.map((spreadsheet) => (
                     <tr key={spreadsheet.spreadsheet_id}>
                       <td>
-                        <button 
+                        <button
                           className="btn-link"
                           onClick={() => handleSelectSpreadsheet(spreadsheet)}
-                          style={{ 
-                            background: 'none', 
-                            border: 'none', 
-                            color: 'var(--primary-color)', 
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--primary-color)',
                             cursor: 'pointer',
                             textDecoration: 'underline',
                             padding: 0,
-                            font: 'inherit'
+                            font: 'inherit',
                           }}
                         >
                           {spreadsheet.spreadsheet_name}
@@ -371,13 +404,17 @@ export default function SpreadsheetsTab() {
                       <td>{spreadsheet.sheet_count}</td>
                       <td>
                         {spreadsheet.active_count > 0 ? (
-                          <span className="text-success">{spreadsheet.active_count} active</span>
+                          <span className="text-success">
+                            {spreadsheet.active_count} active
+                          </span>
                         ) : (
-                          <span style={{ color: 'var(--secondary-color)' }}>None active</span>
+                          <span style={{ color: 'var(--secondary-color)' }}>
+                            None active
+                          </span>
                         )}
                       </td>
                       <td>
-                        <button 
+                        <button
                           className="btn btn-primary"
                           onClick={() => handleSelectSpreadsheet(spreadsheet)}
                           style={{ marginRight: '0.5rem' }}
@@ -385,17 +422,23 @@ export default function SpreadsheetsTab() {
                           Manage Sheets
                         </button>
                         {spreadsheet.active_count > 0 && (
-                          <button 
+                          <button
                             className="btn btn-secondary"
-                            onClick={() => handleDeactivateSpreadsheet(spreadsheet.spreadsheet_id)}
+                            onClick={() =>
+                              handleDeactivateSpreadsheet(
+                                spreadsheet.spreadsheet_id,
+                              )
+                            }
                             style={{ marginRight: '0.5rem' }}
                           >
                             Deactivate All
                           </button>
                         )}
-                        <button 
+                        <button
                           className="btn btn-danger"
-                          onClick={() => handleDeleteSpreadsheet(spreadsheet.spreadsheet_id)}
+                          onClick={() =>
+                            handleDeleteSpreadsheet(spreadsheet.spreadsheet_id)
+                          }
                         >
                           Unlink
                         </button>
@@ -410,7 +453,10 @@ export default function SpreadsheetsTab() {
           // Show sheets table for selected spreadsheet
           <>
             {sheetConfigs.length === 0 ? (
-              <p>No sheets configured yet. Add sheets below to activate them for specific purposes.</p>
+              <p>
+                No sheets configured yet. Add sheets below to activate them for
+                specific purposes.
+              </p>
             ) : (
               <table>
                 <thead>
@@ -422,11 +468,13 @@ export default function SpreadsheetsTab() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sheetConfigs.map(config => (
+                  {sheetConfigs.map((config) => (
                     <tr key={config.id}>
                       <td>{config.sheet_name}</td>
                       <td>
-                        <span className={`badge ${getPurposeBadgeClass(config.sheet_purpose)}`}>
+                        <span
+                          className={`badge ${getPurposeBadgeClass(config.sheet_purpose)}`}
+                        >
                           {getPurposeLabel(config.sheet_purpose)}
                         </span>
                       </td>
@@ -434,12 +482,14 @@ export default function SpreadsheetsTab() {
                         {config.is_active ? (
                           <span className="text-success">Active</span>
                         ) : (
-                          <span style={{ color: 'var(--secondary-color)' }}>Inactive</span>
+                          <span style={{ color: 'var(--secondary-color)' }}>
+                            Inactive
+                          </span>
                         )}
                       </td>
                       <td>
                         {config.is_active ? (
-                          <button 
+                          <button
                             className="btn btn-secondary"
                             onClick={() => handleDeactivateSheet(config.id)}
                             style={{ marginRight: '0.5rem' }}
@@ -447,7 +497,7 @@ export default function SpreadsheetsTab() {
                             Deactivate
                           </button>
                         ) : (
-                          <button 
+                          <button
                             className="btn btn-primary"
                             onClick={() => handleActivateSheet(config.id)}
                             style={{ marginRight: '0.5rem' }}
@@ -455,7 +505,7 @@ export default function SpreadsheetsTab() {
                             Activate
                           </button>
                         )}
-                        <button 
+                        <button
                           className="btn btn-danger"
                           onClick={() => handleDeleteSheet(config.id)}
                         >
@@ -469,19 +519,40 @@ export default function SpreadsheetsTab() {
             )}
 
             {/* Add Sheet Section */}
-            <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)' }}>
+            <div
+              style={{
+                marginTop: '1.5rem',
+                paddingTop: '1rem',
+                borderTop: '1px solid var(--border-color)',
+              }}
+            >
               {showAddSheet ? (
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    gap: '0.5rem',
+                    alignItems: 'flex-end',
+                    flexWrap: 'wrap',
+                  }}
+                >
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Sheet</label>
+                    <label
+                      style={{
+                        display: 'block',
+                        marginBottom: '0.25rem',
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      Sheet
+                    </label>
                     <select
                       className="field-input"
                       value={newSheetName}
-                      onChange={e => setNewSheetName(e.target.value)}
+                      onChange={(e) => setNewSheetName(e.target.value)}
                       style={{ minWidth: '200px' }}
                     >
                       <option value="">Select a sheet...</option>
-                      {getUnconfiguredSheets().map(sheet => (
+                      {getUnconfiguredSheets().map((sheet) => (
                         <option key={sheet.sheetId} value={sheet.title}>
                           {sheet.title}
                         </option>
@@ -489,11 +560,19 @@ export default function SpreadsheetsTab() {
                     </select>
                   </div>
                   <div>
-                    <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem' }}>Purpose</label>
+                    <label
+                      style={{
+                        display: 'block',
+                        marginBottom: '0.25rem',
+                        fontSize: '0.875rem',
+                      }}
+                    >
+                      Purpose
+                    </label>
                     <select
                       className="field-input"
                       value={newSheetPurpose}
-                      onChange={e => setNewSheetPurpose(e.target.value)}
+                      onChange={(e) => setNewSheetPurpose(e.target.value)}
                       style={{ minWidth: '180px' }}
                     >
                       <option value="data">Data Source</option>
@@ -501,14 +580,14 @@ export default function SpreadsheetsTab() {
                       <option value="bracket">DE Bracket</option>
                     </select>
                   </div>
-                  <button 
+                  <button
                     className="btn btn-primary"
                     onClick={handleAddSheet}
                     disabled={!newSheetName}
                   >
                     Add Sheet
                   </button>
-                  <button 
+                  <button
                     className="btn btn-secondary"
                     onClick={() => {
                       setShowAddSheet(false);
@@ -520,19 +599,29 @@ export default function SpreadsheetsTab() {
                   </button>
                 </div>
               ) : (
-                <button 
+                <button
                   className="btn btn-primary"
                   onClick={() => setShowAddSheet(true)}
-                  disabled={loadingSheets || getUnconfiguredSheets().length === 0}
+                  disabled={
+                    loadingSheets || getUnconfiguredSheets().length === 0
+                  }
                 >
                   {loadingSheets ? 'Loading...' : '+ Add Sheet'}
                 </button>
               )}
-              {!loadingSheets && getUnconfiguredSheets().length === 0 && sheetConfigs.length > 0 && (
-                <p style={{ marginTop: '0.5rem', color: 'var(--secondary-color)', fontSize: '0.875rem' }}>
-                  All sheets in this spreadsheet have been configured.
-                </p>
-              )}
+              {!loadingSheets &&
+                getUnconfiguredSheets().length === 0 &&
+                sheetConfigs.length > 0 && (
+                  <p
+                    style={{
+                      marginTop: '0.5rem',
+                      color: 'var(--secondary-color)',
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    All sheets in this spreadsheet have been configured.
+                  </p>
+                )}
             </div>
           </>
         )}
@@ -542,18 +631,21 @@ export default function SpreadsheetsTab() {
       {!selectedSpreadsheet && (
         <div className="card">
           <h3>Link New Spreadsheet</h3>
-          <button className="btn btn-primary" onClick={() => setShowDriveSelector(!showDriveSelector)}>
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowDriveSelector(!showDriveSelector)}
+          >
             {showDriveSelector ? 'Hide' : 'Browse My Google Drive'}
           </button>
           {showDriveSelector && (
-            <DriveLocationSelector 
-              onSpreadsheetLinked={handleSpreadsheetLinked} 
+            <DriveLocationSelector
+              onSpreadsheetLinked={handleSpreadsheetLinked}
               linkSpreadsheetOnly={true}
             />
           )}
         </div>
       )}
-      
+
       {ConfirmDialog}
       {toast.ToastContainer}
     </div>

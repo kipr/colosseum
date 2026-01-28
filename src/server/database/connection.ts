@@ -15,16 +15,18 @@ let pgPool: Pool | null = null;
 function getPgPool(): Pool {
   if (!pgPool) {
     // Cloud SQL connection via Unix socket or TCP
-    const connectionConfig = process.env.DATABASE_URL 
+    const connectionConfig = process.env.DATABASE_URL
       ? { connectionString: process.env.DATABASE_URL }
       : {
           user: process.env.DB_USER || 'postgres',
           password: process.env.DB_PASSWORD,
           database: process.env.DB_NAME || 'colosseum',
           // Cloud SQL Unix socket path
-          host: process.env.DB_HOST || `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
+          host:
+            process.env.DB_HOST ||
+            `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
         };
-    
+
     pgPool = new Pool(connectionConfig);
   }
   return pgPool;
@@ -65,7 +67,7 @@ class SqliteAdapter implements Database {
   }
 }
 
-// PostgreSQL implementation  
+// PostgreSQL implementation
 class PostgresAdapter implements Database {
   constructor(private pool: Pool) {}
 
@@ -87,7 +89,7 @@ class PostgresAdapter implements Database {
 
   async run(sql: string, params?: any[]): Promise<DatabaseResult> {
     const convertedSql = this.convertPlaceholders(sql);
-    
+
     // For INSERT statements, try to get the lastID
     if (sql.trim().toUpperCase().startsWith('INSERT')) {
       const returningSQL = convertedSql.replace(/;?\s*$/, ' RETURNING id;');
@@ -100,7 +102,7 @@ class PostgresAdapter implements Database {
         return { changes: result.rowCount || 0 };
       }
     }
-    
+
     const result = await this.pool.query(convertedSql, params);
     return { changes: result.rowCount || 0 };
   }
@@ -131,7 +133,7 @@ export async function getDatabase(): Promise<Database> {
 
     sqliteDb = await open({
       filename: path.join(__dirname, '../../../database/colosseum.db'),
-      driver: sqlite3.Database
+      driver: sqlite3.Database,
     });
     dbAdapter = new SqliteAdapter(sqliteDb);
   }

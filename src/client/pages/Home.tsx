@@ -14,7 +14,7 @@ export default function Home() {
     if (searchParams.get('logged_in') === '1' && !loading) {
       // Clear the query param from URL
       window.history.replaceState({}, '', '/');
-      
+
       if (user) {
         // User is logged in, redirect to admin
         navigate('/admin', { replace: true });
@@ -52,14 +52,20 @@ export default function Home() {
               <img src="/images/botguy-red-trans-small.png" alt="Judge Icon" />
             </div>
             <h3>Judge / Scorer</h3>
-            <p>Access scoresheets to evaluate and score participants in competitions or events.</p>
+            <p>
+              Access scoresheets to evaluate and score participants in
+              competitions or events.
+            </p>
             <ul className="role-features">
               <li>✓ Fill out digital scoresheets</li>
               <li>✓ Submit scores directly to spreadsheets</li>
               <li>✓ Multiple scoresheet templates</li>
               <li>✓ Real-time scoring</li>
             </ul>
-            <button className="btn btn-primary btn-large" onClick={handleJudgeClick}>
+            <button
+              className="btn btn-primary btn-large"
+              onClick={handleJudgeClick}
+            >
               Enter as Judge
             </button>
           </div>
@@ -69,14 +75,20 @@ export default function Home() {
               <img src="/images/KIPR-Logo-bk-tiny.jpg" alt="Admin Icon" />
             </div>
             <h3>Administrator</h3>
-            <p>Manage spreadsheets, create scoresheet templates, and configure the application.</p>
+            <p>
+              Manage spreadsheets, create scoresheet templates, and configure
+              the application.
+            </p>
             <ul className="role-features">
               <li>✓ Link Google Spreadsheets</li>
               <li>✓ Create custom templates</li>
               <li>✓ View submission history</li>
               <li>✓ Manage configurations</li>
             </ul>
-            <button className="btn btn-secondary btn-large" onClick={handleAdminClick}>
+            <button
+              className="btn btn-secondary btn-large"
+              onClick={handleAdminClick}
+            >
               {user ? 'Go to Admin' : 'Login as Admin'}
             </button>
           </div>
@@ -85,4 +97,3 @@ export default function Home() {
     </div>
   );
 }
-

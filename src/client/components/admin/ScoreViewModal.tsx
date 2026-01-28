@@ -9,10 +9,16 @@ interface ScoreViewModalProps {
   onSave: () => void;
 }
 
-export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModalProps) {
+export default function ScoreViewModal({
+  score,
+  onClose,
+  onSave,
+}: ScoreViewModalProps) {
   const [template, setTemplate] = useState<any>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
-  const [calculatedValues, setCalculatedValues] = useState<Record<string, number>>({});
+  const [calculatedValues, setCalculatedValues] = useState<
+    Record<string, number>
+  >({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const isReadOnly = score.status !== 'pending';
@@ -33,18 +39,30 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
       const response = await fetch('/scoresheet/templates');
       if (!response.ok) throw new Error('Failed to load templates');
       const templates = await response.json();
-      
+
       // Find template by ID first (more reliable), then fall back to name
-      let foundTemplate = templates.find((t: any) => t.id === score.template_id);
+      let foundTemplate = templates.find(
+        (t: any) => t.id === score.template_id,
+      );
       if (!foundTemplate) {
-        foundTemplate = templates.find((t: any) => t.name === score.template_name);
+        foundTemplate = templates.find(
+          (t: any) => t.name === score.template_name,
+        );
       }
-      
+
       if (foundTemplate) {
         setTemplate(foundTemplate);
       } else {
-        console.error('Template not found. Score template_id:', score.template_id, 'template_name:', score.template_name);
-        console.error('Available templates:', templates.map((t: any) => ({ id: t.id, name: t.name })));
+        console.error(
+          'Template not found. Score template_id:',
+          score.template_id,
+          'template_name:',
+          score.template_name,
+        );
+        console.error(
+          'Available templates:',
+          templates.map((t: any) => ({ id: t.id, name: t.name })),
+        );
       }
     } catch (error) {
       console.error('Error loading template:', error);
@@ -55,17 +73,19 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
 
   const initializeFormData = () => {
     const data: Record<string, any> = {};
-    Object.entries(score.score_data).forEach(([fieldId, fieldData]: [string, any]) => {
-      data[fieldId] = fieldData.value;
-    });
+    Object.entries(score.score_data).forEach(
+      ([fieldId, fieldData]: [string, any]) => {
+        data[fieldId] = fieldData.value;
+      },
+    );
     setFormData(data);
   };
 
   const calculateAllFormulas = () => {
     if (!template?.schema?.fields) return;
-    
+
     const calculated: Record<string, number> = {};
-    
+
     template.schema.fields.forEach((field: any) => {
       if (field.type === 'calculated' && field.formula) {
         try {
@@ -76,24 +96,28 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
         }
       }
     });
-    
+
     setCalculatedValues(calculated);
   };
 
-  const evaluateFormula = (formula: string, data: Record<string, any>, calculated: Record<string, number>): number => {
+  const evaluateFormula = (
+    formula: string,
+    data: Record<string, any>,
+    calculated: Record<string, number>,
+  ): number => {
     let expression = formula;
     const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
     const uniqueFieldIds = Array.from(new Set(fieldIds));
-    
-    uniqueFieldIds.forEach(fieldId => {
+
+    uniqueFieldIds.forEach((fieldId) => {
       let value: any = 0;
-      
+
       if (calculated[fieldId] !== undefined) {
         value = calculated[fieldId];
       } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
         value = data[fieldId];
       }
-      
+
       let replacement: string;
       if (formula.includes(`${fieldId} ===`)) {
         replacement = `'${String(value)}'`;
@@ -104,11 +128,11 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
       } else {
         replacement = String(Number(value) || 0);
       }
-      
+
       const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
       expression = expression.replace(regex, replacement);
     });
-    
+
     try {
       // eslint-disable-next-line no-eval
       const result = eval(expression);
@@ -120,7 +144,7 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
 
   const handleInputChange = (fieldId: string, value: any) => {
     if (isReadOnly) return;
-    setFormData(prev => ({ ...prev, [fieldId]: value }));
+    setFormData((prev) => ({ ...prev, [fieldId]: value }));
   };
 
   const handleSave = async () => {
@@ -133,13 +157,18 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
     try {
       // Build updated score data with labels and types preserved
       const updatedScoreData: Record<string, any> = {};
-      
-      Object.entries(score.score_data).forEach(([fieldId, fieldData]: [string, any]) => {
-        updatedScoreData[fieldId] = {
-          ...fieldData,
-          value: formData[fieldId] !== undefined ? formData[fieldId] : fieldData.value
-        };
-      });
+
+      Object.entries(score.score_data).forEach(
+        ([fieldId, fieldData]: [string, any]) => {
+          updatedScoreData[fieldId] = {
+            ...fieldData,
+            value:
+              formData[fieldId] !== undefined
+                ? formData[fieldId]
+                : fieldData.value,
+          };
+        },
+      );
 
       // Update calculated values
       Object.entries(calculatedValues).forEach(([fieldId, value]) => {
@@ -152,7 +181,7 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ scoreData: updatedScoreData })
+        body: JSON.stringify({ scoreData: updatedScoreData }),
       });
 
       if (!response.ok) throw new Error('Failed to update score');
@@ -169,21 +198,39 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
 
   const renderField = (field: any) => {
     if (field.type === 'section_header') {
-      return <div key={field.id} className="section-header">{field.label}</div>;
+      return (
+        <div key={field.id} className="section-header">
+          {field.label}
+        </div>
+      );
     }
 
     if (field.type === 'group_header') {
-      return <div key={field.id} className="group-header">{field.label}</div>;
+      return (
+        <div key={field.id} className="group-header">
+          {field.label}
+        </div>
+      );
     }
 
     if (field.type === 'calculated') {
-      const calcValue = calculatedValues[field.id] !== undefined 
-        ? calculatedValues[field.id] 
-        : (score.score_data[field.id]?.value || 0);
-      const className = field.isGrandTotal ? 'grand-total-field' : field.isTotal ? 'total-field' : 'subtotal-field';
+      const calcValue =
+        calculatedValues[field.id] !== undefined
+          ? calculatedValues[field.id]
+          : score.score_data[field.id]?.value || 0;
+      const className = field.isGrandTotal
+        ? 'grand-total-field'
+        : field.isTotal
+          ? 'total-field'
+          : 'subtotal-field';
       return (
         <div key={field.id} className={`score-field ${className}`}>
-          <label className="score-label" style={{ fontWeight: field.isTotal || field.isGrandTotal ? 700 : 600 }}>
+          <label
+            className="score-label"
+            style={{
+              fontWeight: field.isTotal || field.isGrandTotal ? 700 : 600,
+            }}
+          >
             {field.label}
           </label>
           <div className="calculated-value">{calcValue}</div>
@@ -192,7 +239,10 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
     }
 
     const value = formData[field.id] !== undefined ? formData[field.id] : '';
-    const isCompact = field.type === 'number' || field.type === 'buttons' || field.type === 'checkbox';
+    const isCompact =
+      field.type === 'number' ||
+      field.type === 'buttons' ||
+      field.type === 'checkbox';
 
     if (field.isMultiplier) {
       return (
@@ -207,7 +257,10 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
     }
 
     return (
-      <div key={field.id} className={`score-field ${isCompact ? 'compact' : ''}`}>
+      <div
+        key={field.id}
+        className={`score-field ${isCompact ? 'compact' : ''}`}
+      >
         <label className="score-label">
           {field.label}
           {field.suffix && <span className="multiplier">{field.suffix}</span>}
@@ -219,7 +272,7 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
 
   const renderFieldInput = (field: any, value: any, isCompact: boolean) => {
     const disabled = isReadOnly || field.autoPopulated;
-    
+
     return (
       <>
         {field.type === 'text' && (
@@ -250,12 +303,15 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
           >
             <option value="">Select...</option>
             {field.options?.map((opt: any) => (
-              <option key={opt.value} value={opt.value}>{opt.label}</option>
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
             ))}
             {/* If the current value isn't in options, show it anyway */}
-            {value && !field.options?.some((opt: any) => String(opt.value) === String(value)) && (
-              <option value={value}>{value}</option>
-            )}
+            {value &&
+              !field.options?.some(
+                (opt: any) => String(opt.value) === String(value),
+              ) && <option value={value}>{value}</option>}
           </select>
         )}
         {field.type === 'buttons' && (
@@ -265,7 +321,9 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
                 key={opt.value}
                 type="button"
                 className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-                onClick={() => !isReadOnly && handleInputChange(field.id, opt.value)}
+                onClick={() =>
+                  !isReadOnly && handleInputChange(field.id, opt.value)
+                }
                 disabled={isReadOnly}
               >
                 {opt.label}
@@ -289,11 +347,13 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
   const renderFallbackScoreData = () => {
     return (
       <div className="scoresheet-form">
-        <div className="scoresheet-title">Score Details (Template Not Found)</div>
+        <div className="scoresheet-title">
+          Score Details (Template Not Found)
+        </div>
         <div className="scoresheet-header-fields">
           {Object.entries(score.score_data)
-            .filter(([_, data]: [string, any]) => 
-              ['team_number', 'team_name', 'round'].includes(_ as string)
+            .filter(([_, data]: [string, any]) =>
+              ['team_number', 'team_name', 'round'].includes(_ as string),
             )
             .map(([fieldId, data]: [string, any]) => (
               <div key={fieldId} className="score-field">
@@ -307,11 +367,14 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
               </div>
             ))}
         </div>
-        
+
         <div style={{ marginTop: '1rem' }}>
           {Object.entries(score.score_data)
-            .filter(([fieldId, _]: [string, any]) => 
-              !['team_number', 'team_name', 'round', 'grand_total'].includes(fieldId)
+            .filter(
+              ([fieldId, _]: [string, any]) =>
+                !['team_number', 'team_name', 'round', 'grand_total'].includes(
+                  fieldId,
+                ),
             )
             .map(([fieldId, data]: [string, any]) => (
               <div key={fieldId} className="score-field">
@@ -334,11 +397,15 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
               </div>
             ))}
         </div>
-        
+
         {score.score_data.grand_total && (
           <div className="score-field grand-total-field">
-            <label className="score-label">{score.score_data.grand_total.label}</label>
-            <div className="calculated-value">{score.score_data.grand_total.value}</div>
+            <label className="score-label">
+              {score.score_data.grand_total.label}
+            </label>
+            <div className="calculated-value">
+              {score.score_data.grand_total.value}
+            </div>
           </div>
         )}
       </div>
@@ -348,8 +415,13 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
   if (loading) {
     return (
       <div className="modal show" onClick={onClose}>
-        <div className="modal-content score-view-modal" onClick={(e) => e.stopPropagation()}>
-          <span className="close" onClick={onClose}>&times;</span>
+        <div
+          className="modal-content score-view-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="close" onClick={onClose}>
+            &times;
+          </span>
           <p>Loading scoresheet...</p>
         </div>
       </div>
@@ -360,13 +432,20 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
 
   return (
     <div className="modal show" onClick={onClose}>
-      <div className="modal-content score-view-modal" onClick={(e) => e.stopPropagation()}>
-        <span className="close" onClick={onClose}>&times;</span>
-        
+      <div
+        className="modal-content score-view-modal"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <span className="close" onClick={onClose}>
+          &times;
+        </span>
+
         <div className="score-view-header">
           <h3>{isReadOnly ? 'View Score' : 'Edit Score'}</h3>
           <div className="score-view-meta">
-            <span className={`badge badge-${score.status === 'accepted' ? 'success' : score.status === 'rejected' ? 'danger' : 'warning'}`}>
+            <span
+              className={`badge badge-${score.status === 'accepted' ? 'success' : score.status === 'rejected' ? 'danger' : 'warning'}`}
+            >
               {score.status.charAt(0).toUpperCase() + score.status.slice(1)}
             </span>
             <span>Submitted: {formatDateTime(score.created_at)}</span>
@@ -377,34 +456,56 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
           {!template || !schema ? (
             renderFallbackScoreData()
           ) : (
-            <div className="scoresheet-form" style={{ boxShadow: 'none', padding: 0 }}>
-              {schema.title && <div className="scoresheet-title">{schema.title}</div>}
+            <div
+              className="scoresheet-form"
+              style={{ boxShadow: 'none', padding: 0 }}
+            >
+              {schema.title && (
+                <div className="scoresheet-title">{schema.title}</div>
+              )}
 
               <div className="scoresheet-header-fields">
                 {schema.fields
-                  .filter((f: any) => !f.column && f.type !== 'section_header' && f.type !== 'group_header' && f.type !== 'calculated')
+                  .filter(
+                    (f: any) =>
+                      !f.column &&
+                      f.type !== 'section_header' &&
+                      f.type !== 'group_header' &&
+                      f.type !== 'calculated',
+                  )
                   .map(renderField)}
               </div>
 
               {schema.layout === 'two-column' ? (
                 <div className="scoresheet-columns">
                   <div className="scoresheet-column">
-                    {schema.fields.filter((f: any) => f.column === 'left').map(renderField)}
+                    {schema.fields
+                      .filter((f: any) => f.column === 'left')
+                      .map(renderField)}
                   </div>
                   <div className="scoresheet-column">
-                    {schema.fields.filter((f: any) => f.column === 'right').map(renderField)}
+                    {schema.fields
+                      .filter((f: any) => f.column === 'right')
+                      .map(renderField)}
                   </div>
                 </div>
               ) : (
                 <div>
                   {schema.fields
-                    .filter((f: any) => !f.column && f.type !== 'section_header' && f.type !== 'group_header')
+                    .filter(
+                      (f: any) =>
+                        !f.column &&
+                        f.type !== 'section_header' &&
+                        f.type !== 'group_header',
+                    )
                     .map(renderField)}
                 </div>
               )}
 
               {/* Render grand total */}
-              {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
+              {schema.fields
+                .filter((f: any) => f.isGrandTotal)
+                .map(renderField)}
             </div>
           )}
         </div>
@@ -414,7 +515,11 @@ export default function ScoreViewModal({ score, onClose, onSave }: ScoreViewModa
             {isReadOnly ? 'Close' : 'Cancel'}
           </button>
           {!isReadOnly && (
-            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            <button
+              className="btn btn-primary"
+              onClick={handleSave}
+              disabled={saving}
+            >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
           )}

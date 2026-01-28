@@ -12,7 +12,9 @@ const createProxyConfig = (target: string) => ({
       if (err.code === 'ECONNREFUSED') {
         if (res && res.writeHead) {
           res.writeHead(503, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Backend starting up, please wait...' }));
+          res.end(
+            JSON.stringify({ error: 'Backend starting up, please wait...' }),
+          );
         }
       }
     });
@@ -46,4 +48,3 @@ export default defineConfig({
     },
   },
 });
-
