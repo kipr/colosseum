@@ -45,7 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setServerAvailable(true);
       }
       setLoading(false);
-    } catch (error) {
+    } catch {
       // Server is unavailable (likely restarting)
       setServerAvailable(false);
 

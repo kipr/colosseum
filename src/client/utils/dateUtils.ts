@@ -73,7 +73,7 @@ export function formatDate(dateString: string | null | undefined): string {
     }
 
     return date.toLocaleDateString();
-  } catch (error) {
+  } catch {
     return dateString;
   }
 }
@@ -117,7 +117,7 @@ export function formatDateTimeVerbose(
       minute: '2-digit',
       timeZoneName: 'short',
     });
-  } catch (error) {
+  } catch {
     return dateString;
   }
 }

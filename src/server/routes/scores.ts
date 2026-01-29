@@ -1,7 +1,7 @@
 import express from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
-import { submitScoreToSheet, updateTeamScore } from '../services/googleSheets';
+import { updateTeamScore } from '../services/googleSheets';
 import {
   writeWinnerToBracket,
   clearWinnerFromBracket,
@@ -78,10 +78,10 @@ router.post(
       let accessToken: string;
       try {
         accessToken = await getValidAccessToken(config.owner_id);
-      } catch (tokenError: any) {
+      } catch (tokenError: unknown) {
         return res.status(401).json({
           error:
-            tokenError.message ||
+            (tokenError instanceof Error ? tokenError.message : null) ||
             'Token refresh failed. Admin needs to re-authenticate.',
           needsReauth: true,
         });
@@ -99,9 +99,9 @@ router.post(
       ): Promise<T> => {
         try {
           return await apiCall(accessToken);
-        } catch (apiError: any) {
-          const status =
-            apiError?.code || apiError?.status || apiError?.response?.status;
+        } catch (apiError: unknown) {
+          const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
+          const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
           if (status === 401) {
             accessToken = await forceRefreshToken(config.owner_id);
             return await apiCall(accessToken);
@@ -167,10 +167,10 @@ router.post(
         );
 
         res.json({ success: true });
-      } catch (sheetError: any) {
+      } catch (sheetError: unknown) {
         console.error('Error submitting to sheet:', sheetError);
         res.status(500).json({
-          error: sheetError.message || 'Failed to submit to spreadsheet',
+          error: (sheetError instanceof Error ? sheetError.message : null) || 'Failed to submit to spreadsheet',
         });
       }
     } catch (error) {
@@ -233,10 +233,10 @@ router.post(
           let accessToken: string;
           try {
             accessToken = await getValidAccessToken(config.owner_id);
-          } catch (tokenError: any) {
+          } catch (tokenError: unknown) {
             return res.status(401).json({
               error:
-                tokenError.message ||
+                (tokenError instanceof Error ? tokenError.message : null) ||
                 'Token refresh failed. Admin needs to re-authenticate.',
               needsReauth: true,
             });
@@ -253,11 +253,12 @@ router.post(
           ): Promise<T> => {
             try {
               return await apiCall(accessToken);
-            } catch (apiError: any) {
+            } catch (apiError: unknown) {
+              const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
               const status =
-                apiError?.code ||
-                apiError?.status ||
-                apiError?.response?.status;
+                apiErr?.code ||
+                apiErr?.status ||
+                apiErr?.response?.status;
               if (status === 401) {
                 accessToken = await forceRefreshToken(config.owner_id);
                 return await apiCall(accessToken);

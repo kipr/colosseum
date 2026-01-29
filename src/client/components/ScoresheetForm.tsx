@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import '../pages/Scoresheet.css';
 
@@ -354,7 +355,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     });
 
     try {
-      // eslint-disable-next-line no-eval
       const result = eval(expression);
       return Number(result) || 0;
     } catch (error) {

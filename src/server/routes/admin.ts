@@ -160,12 +160,14 @@ router.delete(
           'SELECT id FROM spreadsheet_configs WHERE spreadsheet_id = ?',
           [spreadsheetId],
         );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         configIds = configs.map((c: any) => c.id);
       } else {
         const configs = await db.all(
           'SELECT id FROM spreadsheet_configs WHERE spreadsheet_id = ? AND user_id = ?',
           [spreadsheetId, req.user.id],
         );
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         configIds = configs.map((c: any) => c.id);
       }
 
@@ -349,14 +351,15 @@ router.get(
       const accessToken = await getValidAccessToken(req.user.id);
       const sheets = await getSpreadsheetSheets(accessToken, spreadsheetId);
       res.json(sheets);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error getting spreadsheet sheets:', error);
       // Check for auth errors from Google API (401, invalid credentials, etc.)
+      const err = error as { message?: string; code?: number; status?: number };
       const isAuthError =
-        error.message?.includes('re-authenticate') ||
-        error.message?.includes('invalid authentication') ||
-        error.code === 401 ||
-        error.status === 401;
+        err.message?.includes('re-authenticate') ||
+        err.message?.includes('invalid authentication') ||
+        err.code === 401 ||
+        err.status === 401;
       if (isAuthError) {
         res.status(401).json({
           error:
@@ -383,13 +386,14 @@ router.get(
       const accessToken = await getValidAccessToken(req.user.id);
       const locations = await listDrives(accessToken);
       res.json(locations);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error listing drives:', error);
+      const err = error as { message?: string; code?: number; status?: number };
       const isAuthError =
-        error.message?.includes('re-authenticate') ||
-        error.message?.includes('invalid authentication') ||
-        error.code === 401 ||
-        error.status === 401;
+        err.message?.includes('re-authenticate') ||
+        err.message?.includes('invalid authentication') ||
+        err.code === 401 ||
+        err.status === 401;
       if (isAuthError) {
         res.status(401).json({
           error:
@@ -420,13 +424,14 @@ router.get(
         driveType as string,
       );
       res.json(spreadsheets);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error listing spreadsheets:', error);
+      const err = error as { message?: string; code?: number; status?: number };
       const isAuthError =
-        error.message?.includes('re-authenticate') ||
-        error.message?.includes('invalid authentication') ||
-        error.code === 401 ||
-        error.status === 401;
+        err.message?.includes('re-authenticate') ||
+        err.message?.includes('invalid authentication') ||
+        err.code === 401 ||
+        err.status === 401;
       if (isAuthError) {
         res.status(401).json({
           error:
@@ -669,6 +674,7 @@ router.get('/users', requireAuth, async (req: AuthRequest, res: Response) => {
 
     // Add activity status to each user
     const now = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const usersWithStatus = users.map((user: any) => {
       // Handle both Date objects (PostgreSQL) and strings (SQLite)
       let lastActivityTime: number | null = null;

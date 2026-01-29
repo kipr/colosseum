@@ -1,6 +1,6 @@
 import sqlite3 from 'sqlite3';
 import { open, Database as SqliteDatabase } from 'sqlite';
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import path from 'path';
 import fs from 'fs';
 
@@ -39,8 +39,11 @@ export interface DatabaseResult {
 }
 
 export interface Database {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   all<T = any>(sql: string, params?: any[]): Promise<T[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   run(sql: string, params?: any[]): Promise<DatabaseResult>;
   exec(sql: string): Promise<void>;
 }
@@ -49,14 +52,17 @@ export interface Database {
 class SqliteAdapter implements Database {
   constructor(private db: SqliteDatabase) {}
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async get<T = any>(sql: string, params?: any[]): Promise<T | undefined> {
     return this.db.get(sql, params);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async all<T = any>(sql: string, params?: any[]): Promise<T[]> {
     return this.db.all(sql, params);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async run(sql: string, params?: any[]): Promise<DatabaseResult> {
     const result = await this.db.run(sql, params);
     return { lastID: result.lastID, changes: result.changes };
@@ -77,16 +83,19 @@ class PostgresAdapter implements Database {
     return sql.replace(/\?/g, () => `$${++index}`);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async get<T = any>(sql: string, params?: any[]): Promise<T | undefined> {
     const result = await this.pool.query(this.convertPlaceholders(sql), params);
     return result.rows[0];
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async all<T = any>(sql: string, params?: any[]): Promise<T[]> {
     const result = await this.pool.query(this.convertPlaceholders(sql), params);
     return result.rows;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async run(sql: string, params?: any[]): Promise<DatabaseResult> {
     const convertedSql = this.convertPlaceholders(sql);
 
@@ -96,7 +105,7 @@ class PostgresAdapter implements Database {
       try {
         const result = await this.pool.query(returningSQL, params);
         return { lastID: result.rows[0]?.id, changes: result.rowCount || 0 };
-      } catch (e) {
+      } catch {
         // If RETURNING fails (no id column), just run normally
         const result = await this.pool.query(convertedSql, params);
         return { changes: result.rowCount || 0 };

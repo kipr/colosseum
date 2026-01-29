@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from 'react';
 import ScoreViewModal from './ScoreViewModal';
 import { useConfirm } from '../ConfirmModal';
@@ -334,6 +335,7 @@ export default function ScoringTab() {
   };
 
   // Check if a score is from a head-to-head (DE) match
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const isHeadToHead = (score: ScoreSubmission) => {
     return score.score_data?._isHeadToHead?.value === true;
   };

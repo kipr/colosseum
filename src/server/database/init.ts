@@ -1,4 +1,4 @@
-import { getDatabase } from './connection';
+import { getDatabase, Database } from './connection';
 import fs from 'fs';
 import path from 'path';
 
@@ -25,7 +25,7 @@ export async function initializeDatabase(): Promise<void> {
   console.log('✅ Database initialized successfully');
 }
 
-async function initializePostgres(db: any): Promise<void> {
+async function initializePostgres(db: Database): Promise<void> {
   // PostgreSQL schema
 
   // Users table
@@ -50,7 +50,7 @@ async function initializePostgres(db: any): Promise<void> {
     await db.exec(
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
     );
-  } catch (error) {
+  } catch {
     // Column might already exist or syntax not supported
   }
 
@@ -75,7 +75,7 @@ async function initializePostgres(db: any): Promise<void> {
     await db.exec(
       `ALTER TABLE spreadsheet_configs ADD COLUMN IF NOT EXISTS auto_accept BOOLEAN DEFAULT FALSE`,
     );
-  } catch (error) {
+  } catch {
     // Column might already exist
   }
 
@@ -186,7 +186,7 @@ async function initializePostgres(db: any): Promise<void> {
   );
 }
 
-async function initializeSQLite(db: any): Promise<void> {
+async function initializeSQLite(db: Database): Promise<void> {
   // SQLite schema (existing schema)
 
   // Users table
@@ -210,7 +210,7 @@ async function initializeSQLite(db: any): Promise<void> {
     await db.exec(
       `ALTER TABLE users ADD COLUMN last_activity DATETIME DEFAULT CURRENT_TIMESTAMP`,
     );
-  } catch (error) {
+  } catch {
     // Column might already exist
   }
 
@@ -237,7 +237,7 @@ async function initializeSQLite(db: any): Promise<void> {
       `ALTER TABLE spreadsheet_configs ADD COLUMN sheet_purpose TEXT DEFAULT 'scores'`,
     );
     console.log('✅ Added sheet_purpose column to spreadsheet_configs');
-  } catch (error) {
+  } catch {
     // Column already exists
   }
 
@@ -247,7 +247,7 @@ async function initializeSQLite(db: any): Promise<void> {
       `ALTER TABLE spreadsheet_configs ADD COLUMN auto_accept BOOLEAN DEFAULT 0`,
     );
     console.log('✅ Added auto_accept column to spreadsheet_configs');
-  } catch (error) {
+  } catch {
     // Column already exists
   }
 
@@ -255,7 +255,7 @@ async function initializeSQLite(db: any): Promise<void> {
   try {
     await db.exec(`ALTER TABLE users ADD COLUMN token_expires_at INTEGER`);
     console.log('✅ Added token_expires_at column to users');
-  } catch (error) {
+  } catch {
     // Column already exists
   }
 
@@ -278,6 +278,7 @@ async function initializeSQLite(db: any): Promise<void> {
     const tableInfo = await db.all(
       'PRAGMA table_info(scoresheet_field_templates)',
     );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasTypeColumn = tableInfo.some((col: any) => col.name === 'type');
 
     if (hasTypeColumn) {
@@ -307,7 +308,7 @@ async function initializeSQLite(db: any): Promise<void> {
         '✅ Scoresheet field templates table ready (no migration needed)',
       );
     }
-  } catch (error) {
+  } catch {
     console.log('✅ Scoresheet field templates table ready');
   }
 
@@ -332,7 +333,7 @@ async function initializeSQLite(db: any): Promise<void> {
     await db.exec(
       `ALTER TABLE scoresheet_templates ADD COLUMN access_code TEXT`,
     );
-  } catch (error) {}
+  } catch { /* Column already exists */ }
 
   // Add spreadsheet_config_id column if it doesn't exist
   try {
@@ -342,7 +343,7 @@ async function initializeSQLite(db: any): Promise<void> {
     console.log(
       '✅ Added spreadsheet_config_id column to scoresheet_templates',
     );
-  } catch (error) {}
+  } catch { /* Column already exists */ }
 
   // Score submissions
   await db.exec(`
@@ -370,10 +371,11 @@ async function initializeSQLite(db: any): Promise<void> {
   // Update score_submissions if needed
   try {
     const tableInfo = await db.all('PRAGMA table_info(score_submissions)');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasStatus = tableInfo.some((col: any) => col.name === 'status');
-    const hasReviewedBy = tableInfo.some(
-      (col: any) => col.name === 'reviewed_by',
-    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasReviewedBy = tableInfo.some((col: any) => col.name === 'reviewed_by');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userIdColumn = tableInfo.find((col: any) => col.name === 'user_id');
 
     if (
@@ -408,7 +410,7 @@ async function initializeSQLite(db: any): Promise<void> {
       `);
       console.log('✅ Updated score_submissions table with review columns');
     }
-  } catch (error) {}
+  } catch { /* Migration error */ }
 
   // Active sessions
   await db.exec(`

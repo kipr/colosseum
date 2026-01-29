@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 
 export interface AuthRequest extends Request {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   user?: any;
 }
 

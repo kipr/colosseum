@@ -69,11 +69,11 @@ router.get('/messages/:spreadsheetId', async (req: Request, res: Response) => {
       FROM chat_messages 
       WHERE spreadsheet_id = ?
     `;
-    const params: any[] = [spreadsheetId];
+    const params: (string | number)[] = [spreadsheetId];
 
     if (before) {
       query += ` AND id < ?`;
-      params.push(before);
+      params.push(String(before));
     }
 
     query += ` ORDER BY created_at DESC LIMIT ?`;
@@ -215,11 +215,11 @@ router.get(
       FROM chat_messages 
       WHERE spreadsheet_id = ?
     `;
-      const params: any[] = [ADMIN_CHAT_ROOM_ID];
+      const params: (string | number)[] = [ADMIN_CHAT_ROOM_ID];
 
       if (before) {
         query += ` AND id < ?`;
-        params.push(before);
+        params.push(String(before));
       }
 
       query += ` ORDER BY created_at DESC LIMIT ?`;

@@ -57,8 +57,18 @@ export async function listSpreadsheets(
   auth.setCredentials({ access_token: accessToken });
 
   try {
-    let query = "mimeType='application/vnd.google-apps.spreadsheet'";
-    const options: any = {
+    const query = "mimeType='application/vnd.google-apps.spreadsheet'";
+    const options: {
+      auth: typeof auth;
+      q: string;
+      fields: string;
+      orderBy: string;
+      pageSize: number;
+      corpora?: string;
+      driveId?: string;
+      includeItemsFromAllDrives?: boolean;
+      supportsAllDrives?: boolean;
+    } = {
       auth,
       q: query,
       fields: 'files(id, name, createdTime, modifiedTime, owners, shared)',
@@ -173,7 +183,7 @@ export async function getMatches(
   accessToken: string,
   spreadsheetId: string,
   sheetName: string,
-): Promise<any[]> {
+): Promise<Record<string, string | number>[]> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
@@ -188,9 +198,9 @@ export async function getMatches(
     const values = response.data.values || [];
     if (values.length === 0) return [];
 
-    const headers = values[0];
+    const headers = values[0] as string[];
     const matches = values.slice(1).map((row, index) => {
-      const match: any = { id: index + 1 };
+      const match: Record<string, string | number> = { id: index + 1 };
       headers.forEach((header, i) => {
         match[header] = row[i] || '';
       });
@@ -208,7 +218,7 @@ export async function submitScoreToSheet(
   accessToken: string,
   spreadsheetId: string,
   sheetName: string,
-  scoreValues: any[],
+  scoreValues: (string | number | boolean | null)[],
 ): Promise<void> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
@@ -313,9 +323,9 @@ export async function updateTeamScore(
         values: [[totalScore]],
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error updating team score:', error);
-    throw new Error(`Failed to update team score: ${error.message}`);
+    throw new Error(`Failed to update team score: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
@@ -324,7 +334,7 @@ export async function getSheetData(
   spreadsheetId: string,
   sheetName: string,
   range?: string,
-): Promise<any[]> {
+): Promise<Record<string, string>[]> {
   const auth = new google.auth.OAuth2();
   auth.setCredentials({ access_token: accessToken });
 
@@ -341,23 +351,24 @@ export async function getSheetData(
     if (values.length === 0) return [];
 
     // First row is headers
-    const headers = values[0];
+    const headers = values[0] as string[];
     const rows = values.slice(1);
 
     // Convert to array of objects
     return rows.map((row) => {
-      const obj: any = {};
+      const obj: Record<string, string> = {};
       headers.forEach((header, index) => {
         obj[header] = row[index] || '';
       });
       return obj;
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error getting sheet data:', error);
     console.error('Sheet name:', sheetName, 'Range:', range);
-    if (error.response) {
-      console.error('API Error:', error.response.status, error.response.data);
+    const err = error as { response?: { status?: number; data?: unknown }; message?: string };
+    if (err.response) {
+      console.error('API Error:', err.response.status, err.response.data);
     }
-    throw new Error(`Failed to get data from spreadsheet: ${error.message}`);
+    throw new Error(`Failed to get data from spreadsheet: ${err.message || 'Unknown error'}`);
   }
 }

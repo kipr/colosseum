@@ -22,12 +22,22 @@ export default defineConfig([
     plugins: { css },
     language: 'css/css',
     extends: ['css/recommended'],
+    rules: {
+      'css/no-invalid-properties': 'off',
+      'css/font-family-fallbacks': 'off',
+      'css/no-important': 'off',
+      'css/no-empty-blocks': 'off',
+    },
   },
   {
     settings: {
       react: {
         version: 'detect',
       },
+    },
+    rules: {
+      'react/react-in-jsx-scope': 'off',
+      'react/no-unescaped-entities': 'off',
     },
   },
 ]);

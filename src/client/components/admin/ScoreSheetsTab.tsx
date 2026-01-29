@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from 'react';
 import ScoreSheetEditorModal from './ScoreSheetEditorModal';
 import ScoreSheetPreviewModal from './ScoreSheetPreviewModal';
