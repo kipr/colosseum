@@ -78,7 +78,7 @@ if (usePostgres) {
   sessionConfig.store = new SQLiteStore({
     db: 'sessions.db',
     dir: path.join(__dirname, '../../database'),
-  }) as any;
+  }) as session.Store;
   console.log('Using SQLite session store');
 }
 
@@ -90,17 +90,21 @@ app.use(passport.session());
 setupPassport();
 
 // Activity tracking middleware - updates last_activity for authenticated users
+interface UserWithActivity {
+  id: number;
+  _lastActivityUpdate?: number;
+}
 app.use(async (req: Request, res: Response, next: NextFunction) => {
   if (req.isAuthenticated() && req.user) {
-    const user = req.user as any;
+    const user = req.user as UserWithActivity;
     // Update last activity (throttled to once per minute to reduce DB writes)
     const now = Date.now();
-    const lastUpdate = (user as any)._lastActivityUpdate || 0;
+    const lastUpdate = user._lastActivityUpdate || 0;
     if (now - lastUpdate > 60000) {
       // Only update once per minute
-      (user as any)._lastActivityUpdate = now;
+      user._lastActivityUpdate = now;
       try {
-        const { getDatabase } = require('./database/connection');
+        const { getDatabase } = await import('./database/connection');
         const db = await getDatabase();
         await db.run(
           'UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE id = ?',
@@ -179,7 +183,8 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Error handling middleware
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
   console.error('Error:', err);
   res
     .status(500)

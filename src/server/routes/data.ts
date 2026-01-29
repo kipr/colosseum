@@ -56,10 +56,10 @@ router.get(
       let accessToken;
       try {
         accessToken = await getValidAccessToken(config.user_id);
-      } catch (tokenError: any) {
+      } catch (tokenError: unknown) {
         return res.status(401).json({
           error:
-            tokenError.message ||
+            (tokenError instanceof Error ? tokenError.message : null) ||
             'Token refresh failed. Admin needs to re-authenticate.',
           needsReauth: true,
         });
@@ -74,9 +74,9 @@ router.get(
           sheetName,
           range as string,
         );
-      } catch (apiError: any) {
-        const status =
-          apiError?.code || apiError?.status || apiError?.response?.status;
+      } catch (apiError: unknown) {
+        const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
+        const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
         if (status === 401) {
           try {
             accessToken = await forceRefreshToken(config.user_id);
@@ -86,7 +86,7 @@ router.get(
               sheetName,
               range as string,
             );
-          } catch (retryError: any) {
+          } catch {
             return res.status(401).json({
               error: 'Token expired. Admin needs to re-authenticate.',
               needsReauth: true,
@@ -98,11 +98,11 @@ router.get(
       }
 
       res.json(data);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching sheet data:', error);
       res.status(500).json({
         error: 'Failed to fetch data from spreadsheet',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
         sheetName: req.params.sheetName,
       });
     }
@@ -171,10 +171,10 @@ router.get(
       let accessToken;
       try {
         accessToken = await getValidAccessToken(config.user_id);
-      } catch (tokenError: any) {
+      } catch (tokenError: unknown) {
         return res.status(401).json({
           error:
-            tokenError.message ||
+            (tokenError instanceof Error ? tokenError.message : null) ||
             'Token refresh failed. Admin needs to re-authenticate.',
           needsReauth: true,
         });
@@ -188,10 +188,10 @@ router.get(
           config.spreadsheet_id,
           sheetName,
         );
-      } catch (apiError: any) {
+      } catch (apiError: unknown) {
         // Check if it's a 401 error
-        const status =
-          apiError?.code || apiError?.status || apiError?.response?.status;
+        const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
+        const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
         if (status === 401) {
           // Force refresh token and retry
           try {
@@ -201,7 +201,7 @@ router.get(
               config.spreadsheet_id,
               sheetName,
             );
-          } catch (retryError: any) {
+          } catch {
             return res.status(401).json({
               error: 'Token expired. Admin needs to re-authenticate.',
               needsReauth: true,
@@ -213,11 +213,11 @@ router.get(
       }
 
       res.json(games);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching bracket games:', error);
       res.status(500).json({
         error: 'Failed to fetch bracket games',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   },
@@ -281,10 +281,10 @@ router.get(
       let accessToken;
       try {
         accessToken = await getValidAccessToken(config.user_id);
-      } catch (tokenError: any) {
+      } catch (tokenError: unknown) {
         return res.status(401).json({
           error:
-            tokenError.message ||
+            (tokenError instanceof Error ? tokenError.message : null) ||
             'Token refresh failed. Admin needs to re-authenticate.',
           needsReauth: true,
         });
@@ -299,9 +299,9 @@ router.get(
           sheetName,
           parseInt(gameNumber, 10),
         );
-      } catch (apiError: any) {
-        const status =
-          apiError?.code || apiError?.status || apiError?.response?.status;
+      } catch (apiError: unknown) {
+        const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
+        const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
         if (status === 401) {
           try {
             accessToken = await forceRefreshToken(config.user_id);
@@ -311,7 +311,7 @@ router.get(
               sheetName,
               parseInt(gameNumber, 10),
             );
-          } catch (retryError: any) {
+          } catch {
             return res.status(401).json({
               error: 'Token expired. Admin needs to re-authenticate.',
               needsReauth: true,
@@ -327,11 +327,11 @@ router.get(
       }
 
       res.json(game);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error fetching bracket game:', error);
       res.status(500).json({
         error: 'Failed to fetch bracket game',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
       });
     }
   },

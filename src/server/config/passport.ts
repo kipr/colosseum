@@ -40,12 +40,8 @@ export function setupPassport() {
           process.env.GOOGLE_CALLBACK_URL ||
           'http://localhost:3000/auth/google/callback',
       },
-      async (
-        accessToken: string,
-        refreshToken: string,
-        profile: any,
-        done: any,
-      ) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      async (accessToken: string, refreshToken: string, profile: any, done: any) => {
         try {
           const db = await getDatabase();
           const email = profile.emails?.[0]?.value;
@@ -125,6 +121,7 @@ export function setupPassport() {
     ),
   );
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   passport.serializeUser((user: any, done) => {
     done(null, user.id);
   });

@@ -69,11 +69,11 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     );
 
     res.json(template);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Error creating field template:', error);
     res.status(500).json({
       error: 'Failed to create field template',
-      details: error.message,
+      details: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 });

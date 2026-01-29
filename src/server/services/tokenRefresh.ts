@@ -86,8 +86,8 @@ export async function getValidAccessToken(userId: number): Promise<string> {
     try {
       const { accessToken } = await doTokenRefresh(userId, user.refresh_token);
       return accessToken;
-    } catch (error: any) {
-      console.error('Proactive token refresh failed:', error.message);
+    } catch (error: unknown) {
+      console.error('Proactive token refresh failed:', error instanceof Error ? error.message : error);
       throw new Error(
         'Token refresh failed. Please log out and log back in to re-authenticate with Google.',
       );
@@ -115,13 +115,13 @@ export async function getValidAccessToken(userId: number): Promise<string> {
     }
 
     return user.access_token;
-  } catch (error: any) {
+  } catch {
     // Token validation failed, try to force refresh
     try {
       const { accessToken } = await doTokenRefresh(userId, user.refresh_token);
       return accessToken;
-    } catch (refreshError: any) {
-      console.error('Token refresh failed:', refreshError.message);
+    } catch (refreshError: unknown) {
+      console.error('Token refresh failed:', refreshError instanceof Error ? refreshError.message : refreshError);
       throw new Error(
         'Token refresh failed. Please log out and log back in to re-authenticate with Google.',
       );
@@ -200,7 +200,7 @@ export async function refreshAccessTokenIfNeeded(
       return tokenInfo.token;
     }
     return accessToken;
-  } catch (error: any) {
+  } catch {
     // Token expired, try to refresh
     try {
       const { accessToken: newToken } = await doTokenRefresh(
@@ -208,8 +208,8 @@ export async function refreshAccessTokenIfNeeded(
         refreshToken,
       );
       return newToken;
-    } catch (refreshError: any) {
-      console.error('Failed to refresh token:', refreshError.message);
+    } catch (refreshError: unknown) {
+      console.error('Failed to refresh token:', refreshError instanceof Error ? refreshError.message : refreshError);
       throw new Error('Token refresh failed. Please log out and log back in.');
     }
   }
@@ -254,19 +254,20 @@ export async function withTokenRefresh<T>(
 
   try {
     return await apiCall(accessToken);
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Check if it's a 401 error (unauthorized/token expired)
-    const status = error?.code || error?.status || error?.response?.status;
+    const err = error as { code?: number; status?: number; response?: { status?: number } };
+    const status = err?.code || err?.status || err?.response?.status;
 
     if (status === 401) {
       // Force refresh the token and retry
       try {
         accessToken = await forceRefreshToken(userId);
         return await apiCall(accessToken);
-      } catch (retryError: any) {
+      } catch (retryError: unknown) {
         console.error(
           'API call failed after token refresh:',
-          retryError.message,
+          retryError instanceof Error ? retryError.message : retryError,
         );
         throw retryError;
       }

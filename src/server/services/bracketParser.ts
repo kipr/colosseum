@@ -1074,23 +1074,25 @@ export async function writeWinnerToBracket(
   }
 
   // Determine which team won based on the team number
-  let winnerRow = -1;
+  // (winnerRow is calculated for potential future use in determining advancement position)
+  let _winnerRow = -1;
   if (team1Info && team1Info.teamNumber === winnerTeamNumber) {
-    winnerRow = team1Row;
+    _winnerRow = team1Row;
   } else if (team2Info && team2Info.teamNumber === winnerTeamNumber) {
-    winnerRow = team2Row;
+    _winnerRow = team2Row;
   } else {
     // Try matching by display name
     if (team1Info && winnerDisplayName.includes(team1Info.teamNumber)) {
-      winnerRow = team1Row;
+      _winnerRow = team1Row;
     } else if (team2Info && winnerDisplayName.includes(team2Info.teamNumber)) {
-      winnerRow = team2Row;
+      _winnerRow = team2Row;
     } else {
       // Default to team1's row
-      winnerRow = team1Row;
+      _winnerRow = team1Row;
       console.warn(`Could not match winner to a team, using team1's row`);
     }
   }
+  void _winnerRow; // Suppress unused variable warning - reserved for future use
 
   // Find the advancement cell - look to the right of the game for the next game's team slot
   // Calculate the expected advancement row (midpoint between the two teams)

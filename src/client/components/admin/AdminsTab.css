@@ -174,6 +174,8 @@
 }
 
 .admin-meta {
+  /* Placeholder for admin metadata styling */
+  display: block;
 }
 
 .token-status {

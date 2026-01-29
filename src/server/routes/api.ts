@@ -1,11 +1,7 @@
-import express, { Request, Response } from 'express';
+import express from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
-import {
-  submitScoreToSheet,
-  getParticipants,
-  getMatches,
-} from '../services/googleSheets';
+import { getParticipants, getMatches } from '../services/googleSheets';
 
 const router = express.Router();
 

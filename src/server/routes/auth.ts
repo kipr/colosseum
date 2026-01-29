@@ -17,7 +17,7 @@ router.get('/google', (req, res, next) => {
     accessType: 'offline',
     prompt: 'consent', // Forces re-consent to ensure we get a fresh refresh token
     includeGrantedScopes: true,
-  } as any)(req, res, next);
+  } as passport.AuthenticateOptions & { accessType?: string; prompt?: string; includeGrantedScopes?: boolean })(req, res, next);
 });
 
 // Google OAuth callback
@@ -147,9 +147,15 @@ router.get('/logout', (req: Request, res: Response) => {
 });
 
 // Get current user
+interface AuthenticatedUser {
+  id: number;
+  email: string;
+  name?: string;
+  is_admin?: boolean;
+}
 router.get('/user', (req: Request, res: Response) => {
   if (req.isAuthenticated()) {
-    const user = req.user as any;
+    const user = req.user as AuthenticatedUser;
     res.json({
       id: user.id,
       email: user.email,
@@ -167,7 +173,7 @@ router.get('/check-tokens', async (req: Request, res: Response) => {
     return res.status(401).json({ error: 'Not authenticated' });
   }
 
-  const user = req.user as any;
+  const user = req.user as { id: number };
 
   try {
     // Import the token refresh function
@@ -180,11 +186,12 @@ router.get('/check-tokens', async (req: Request, res: Response) => {
       valid: true,
       message: 'Tokens are valid',
     });
-  } catch (error: any) {
-    console.error('Token check failed:', error.message);
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error('Token check failed:', errorMessage);
     res.json({
       valid: false,
-      message: error.message,
+      message: errorMessage,
       needsReauth: true,
     });
   }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
@@ -91,7 +92,7 @@ export default function ScoreViewModal({
         try {
           const result = evaluateFormula(field.formula, formData, calculated);
           calculated[field.id] = result;
-        } catch (error) {
+        } catch {
           calculated[field.id] = 0;
         }
       }
@@ -134,10 +135,9 @@ export default function ScoreViewModal({
     });
 
     try {
-      // eslint-disable-next-line no-eval
       const result = eval(expression);
       return Number(result) || 0;
-    } catch (error) {
+    } catch {
       return 0;
     }
   };
@@ -352,8 +352,8 @@ export default function ScoreViewModal({
         </div>
         <div className="scoresheet-header-fields">
           {Object.entries(score.score_data)
-            .filter(([_, data]: [string, any]) =>
-              ['team_number', 'team_name', 'round'].includes(_ as string),
+            .filter(([key]: [string, any]) =>
+              ['team_number', 'team_name', 'round'].includes(key),
             )
             .map(([fieldId, data]: [string, any]) => (
               <div key={fieldId} className="score-field">
@@ -371,7 +371,7 @@ export default function ScoreViewModal({
         <div style={{ marginTop: '1rem' }}>
           {Object.entries(score.score_data)
             .filter(
-              ([fieldId, _]: [string, any]) =>
+              ([fieldId]: [string, any]) =>
                 !['team_number', 'team_name', 'round', 'grand_total'].includes(
                   fieldId,
                 ),
