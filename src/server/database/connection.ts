@@ -144,6 +144,7 @@ export async function getDatabase(): Promise<Database> {
       filename: path.join(__dirname, '../../../database/colosseum.db'),
       driver: sqlite3.Database,
     });
+    await sqliteDb.exec('PRAGMA foreign_keys = ON;');
     dbAdapter = new SqliteAdapter(sqliteDb);
   }
 
