@@ -25,6 +25,7 @@ export async function initializeDatabase(): Promise<void> {
   console.log('✅ Database initialized successfully');
 }
 
+// TODO Update Postres schema
 async function initializePostgres(db: Database): Promise<void> {
   // PostgreSQL schema
 

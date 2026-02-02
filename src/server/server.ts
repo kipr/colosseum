@@ -22,6 +22,12 @@ import apiRoutes from './routes/api';
 import dataRoutes from './routes/data';
 import scoresRoutes from './routes/scores';
 import chatRoutes from './routes/chat';
+import eventsRoutes from './routes/events';
+import teamsRoutes from './routes/teams';
+import seedingRoutes from './routes/seeding';
+import bracketsRoutes from './routes/brackets';
+import queueRoutes from './routes/queue';
+import auditRoutes from './routes/audit';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -146,6 +152,12 @@ app.use('/api', apiRoutes);
 app.use('/data', dataRoutes);
 app.use('/scores', scoresRoutes);
 app.use('/chat', chatRoutes);
+app.use('/events', eventsRoutes);
+app.use('/teams', teamsRoutes);
+app.use('/seeding', seedingRoutes);
+app.use('/brackets', bracketsRoutes);
+app.use('/queue', queueRoutes);
+app.use('/audit', auditRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -175,6 +187,12 @@ if (process.env.NODE_ENV === 'production') {
       '/scores/',
       '/chat/',
       '/field-templates/',
+      '/events/',
+      '/teams/',
+      '/seeding/',
+      '/brackets/',
+      '/queue/',
+      '/audit/',
     ];
     const isApiRoute = apiPrefixes.some((prefix) =>
       req.path.startsWith(prefix),
