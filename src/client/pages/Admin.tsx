@@ -6,9 +6,10 @@ import SpreadsheetsTab from '../components/admin/SpreadsheetsTab';
 import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
 import ScoringTab from '../components/admin/ScoringTab';
 import AdminsTab from '../components/admin/AdminsTab';
+import EventsTab from '../components/admin/EventsTab';
 import './Admin.css';
 
-type TabType = 'spreadsheets' | 'scoresheets' | 'scoring' | 'admins';
+type TabType = 'events' | 'spreadsheets' | 'scoresheets' | 'scoring' | 'admins';
 
 // Sample hardcoded events for visual mockup
 const SAMPLE_EVENTS = [
@@ -65,14 +66,15 @@ export default function Admin() {
     }
     if (
       saved &&
-      (saved === 'spreadsheets' ||
+      (saved === 'events' ||
+        saved === 'spreadsheets' ||
         saved === 'scoresheets' ||
         saved === 'scoring' ||
         saved === 'admins')
     ) {
       return saved as TabType;
     }
-    return 'spreadsheets';
+    return 'events'; // Default to events now that we have it
   });
   const [tokenStatus, setTokenStatus] = useState<{
     valid: boolean;
@@ -136,60 +138,10 @@ export default function Admin() {
     }
   };
 
-  // Format date for display
-  const formatEventDate = (dateStr: string) => {
-    const date = new Date(dateStr + 'T00:00:00');
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
+  const handleEventChange = (eventId: number) => {
+    const event = SAMPLE_EVENTS.find((ev) => ev.id === eventId);
+    setSelectedEvent(event || null);
   };
-
-  // Render event selector dropdown at top of sidebar
-  const renderEventSelector = () => (
-    <div className="event-selector">
-      <div className="event-selector-header">
-        <span className="event-selector-label">Current Event</span>
-        <button
-          className="event-manage-link"
-          onClick={() => alert('Would open Events management')}
-        >
-          Manage
-        </button>
-      </div>
-      <select
-        className="event-selector-dropdown"
-        value={selectedEvent?.id || ''}
-        onChange={(e) => {
-          const event = SAMPLE_EVENTS.find(
-            (ev) => ev.id === Number(e.target.value),
-          );
-          setSelectedEvent(event || null);
-        }}
-      >
-        <option value="">Select an event...</option>
-        {SAMPLE_EVENTS.map((event) => (
-          <option key={event.id} value={event.id}>
-            {event.name} ({event.status})
-          </option>
-        ))}
-      </select>
-      {selectedEvent && (
-        <div className="event-selector-details">
-          <span
-            className={`event-status-badge ${getStatusBadgeClass(selectedEvent.status)}`}
-          >
-            {selectedEvent.status}
-          </span>
-          <span className="event-date">
-            {formatEventDate(selectedEvent.event_date)}
-          </span>
-          <span className="event-location">{selectedEvent.location}</span>
-        </div>
-      )}
-    </div>
-  );
 
   if (loading) {
     return (
@@ -208,7 +160,13 @@ export default function Admin() {
 
   return (
     <div className="app">
-      <Navbar />
+      <Navbar 
+        adminEventData={{
+          selectedEvent,
+          onEventChange: handleEventChange,
+          events: SAMPLE_EVENTS
+        }}
+      />
 
       {/* Token expiration warning banner */}
       {tokenStatus && !tokenStatus.valid && (
@@ -226,10 +184,13 @@ export default function Admin() {
       <main className="admin-container">
         <div className="admin-layout">
           <aside className="admin-sidebar">
-            {/* Event selector */}
-            {renderEventSelector()}
-
             <div className="sidebar-menu">
+              <button
+                className={`sidebar-item ${activeTab === 'events' ? 'active' : ''}`}
+                onClick={() => setActiveTab('events')}
+              >
+                📅 Events
+              </button>
               <button
                 className={`sidebar-item ${activeTab === 'spreadsheets' ? 'active' : ''}`}
                 onClick={() => setActiveTab('spreadsheets')}
@@ -261,6 +222,7 @@ export default function Admin() {
             {/* Content header with event badge (secondary indicator) */}
             <div className="admin-content-header">
               <h2>
+                {activeTab === 'events' && 'Manage Events'}
                 {activeTab === 'spreadsheets' && 'Spreadsheets'}
                 {activeTab === 'scoresheets' && 'Score Sheets'}
                 {activeTab === 'scoring' && 'Scoring'}
@@ -276,6 +238,7 @@ export default function Admin() {
               )}
             </div>
 
+            {activeTab === 'events' && <EventsTab />}
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
             {activeTab === 'scoring' && <ScoringTab />}
