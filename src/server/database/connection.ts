@@ -1,5 +1,5 @@
-import sqlite3 from 'sqlite3';
-import { open, Database as SqliteDatabase } from 'sqlite';
+import SQLite from 'better-sqlite3';
+import type { Database as SQLiteDatabase } from "better-sqlite3";
 import { Pool } from 'pg';
 import path from 'path';
 import fs from 'fs';
@@ -8,7 +8,7 @@ import fs from 'fs';
 const isProduction = process.env.NODE_ENV === 'production';
 const usePostgres = isProduction || !!process.env.DATABASE_URL;
 
-let sqliteDb: SqliteDatabase | null = null;
+let sqliteDb: SQLiteDatabase | null = null;
 let pgPool: Pool | null = null;
 
 // PostgreSQL connection pool
@@ -48,30 +48,75 @@ export interface Database {
   exec(sql: string): Promise<void>;
 }
 
-// SQLite implementation
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeParam(v: any): any {
+  // SQLite cannot bind undefined; treat it as NULL.
+  if (v === undefined) return null;
+
+  // Dates are common: store as ISO string (or v.getTime() if you prefer integers).
+  if (v instanceof Date) return v.toISOString();
+
+  // Booleans: SQLite doesn't have a real boolean type; use 0/1.
+  if (typeof v === "boolean") return v ? 1 : 0;
+
+  // Bigint is allowed by better-sqlite3, leave it.
+  // Numbers, strings, null, Buffers are allowed, leave them.
+  if (
+    v === null ||
+    typeof v === "number" ||
+    typeof v === "string" ||
+    typeof v === "bigint" ||
+    Buffer.isBuffer(v)
+  ) {
+    return v;
+  }
+
+  // If you *intend* to store JSON blobs, stringify objects/arrays.
+  // If not intended, you may prefer to throw instead to catch bugs earlier.
+  return JSON.stringify(v);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function normalizeParams(params: any[]): any[] {
+  return params.map(normalizeParam);
+}
+// SQLite implementation (better-sqlite3)
 class SqliteAdapter implements Database {
-  constructor(private db: SqliteDatabase) {}
+  private stmtCache = new Map<string, ReturnType<SQLiteDatabase["prepare"]>>();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async get<T = any>(sql: string, params?: any[]): Promise<T | undefined> {
-    return this.db.get(sql, params);
+  constructor(private db: SQLiteDatabase) {}
+
+  private stmt(sql: string) {
+    let s = this.stmtCache.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.stmtCache.set(sql, s);
+    }
+    return s;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async all<T = any>(sql: string, params?: any[]): Promise<T[]> {
-    return this.db.all(sql, params);
+  async get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
+    return this.stmt(sql).get(normalizeParams(params)) as T | undefined;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async run(sql: string, params?: any[]): Promise<DatabaseResult> {
-    const result = await this.db.run(sql, params);
-    return { lastID: result.lastID, changes: result.changes };
+  async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
+    return this.stmt(sql).all(normalizeParams(params)) as T[];
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async run(sql: string, params: any[] = []): Promise<DatabaseResult> {
+    const info = this.stmt(sql).run(normalizeParams(params));
+    return {
+      lastID: Number(info.lastInsertRowid),
+      changes: info.changes,
+    };
   }
 
   async exec(sql: string): Promise<void> {
-    await this.db.exec(sql);
-  }
-}
+    this.db.exec(sql);
+  }}
 
 // PostgreSQL implementation
 class PostgresAdapter implements Database {
@@ -140,11 +185,13 @@ export async function getDatabase(): Promise<Database> {
       fs.mkdirSync(dbDir, { recursive: true });
     }
 
-    sqliteDb = await open({
-      filename: path.join(__dirname, '../../../database/colosseum.db'),
-      driver: sqlite3.Database,
-    });
-    await sqliteDb.exec('PRAGMA foreign_keys = ON;');
+    // sqliteDb = await open({
+    //   filename: path.join(__dirname, '../../../database/colosseum.db'),
+    //   driver: sqlite3.Database,
+    // });
+    const sqliteDb = new SQLite(path.join(__dirname, '../../../database/colosseum.db'))
+    sqliteDb.pragma('foreign_keys = ON;');
+    sqliteDb.pragma('journal_mode = WAL')
     dbAdapter = new SqliteAdapter(sqliteDb);
   }
 

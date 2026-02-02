@@ -5,7 +5,8 @@ dotenv.config();
 
 import express, { Request, Response, NextFunction } from 'express';
 import session from 'express-session';
-import connectSqlite3 from 'connect-sqlite3';
+import BetterSqlite3 from "better-sqlite3";
+import { SqliteSessionStore } from "./session/SqliteSessionStore";
 import connectPgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import cors from 'cors';
@@ -73,15 +74,21 @@ if (usePostgres) {
     console.log('Using PostgreSQL session store');
   }
 } else {
-  // Use SQLite session store in development
-  const SQLiteStore = connectSqlite3(session);
-  sessionConfig.store = new SQLiteStore({
-    db: 'sessions.db',
-    dir: path.join(__dirname, '../../database'),
-  }) as session.Store;
-  console.log('Using SQLite session store');
-}
+  // Use SQLite session store in development (custom better-sqlite3 store)
+  const dbPath = path.join(__dirname, "../../database", "sessions.db");
 
+  const sqlite = new BetterSqlite3(dbPath);
+  sqlite.pragma("journal_mode = WAL");
+  sqlite.pragma("foreign_keys = ON");
+
+  sessionConfig.store = new SqliteSessionStore({
+    db: sqlite,
+    tableName: "sessions",
+    ttlMs: 7 * 24 * 60 * 60 * 1000, // keep in sync with cookie maxAge if you want
+  }) as session.Store;
+
+  console.log("Using SQLite session store (custom better-sqlite3)");
+}
 app.use(session(sessionConfig));
 
 // Passport initialization
