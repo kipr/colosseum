@@ -193,10 +193,10 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
     const values = updates.map(([, value]) => value);
 
-    const result = await db.run(
-      `UPDATE teams SET ${setClause} WHERE id = ?`,
-      [...values, id],
-    );
+    const result = await db.run(`UPDATE teams SET ${setClause} WHERE id = ?`, [
+      ...values,
+      id,
+    ]);
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Team not found' });

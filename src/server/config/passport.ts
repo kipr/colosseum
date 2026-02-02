@@ -41,7 +41,12 @@ export function setupPassport() {
           'http://localhost:3000/auth/google/callback',
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (accessToken: string, refreshToken: string, profile: any, done: any) => {
+      async (
+        accessToken: string,
+        refreshToken: string,
+        profile: any,
+        done: any,
+      ) => {
         try {
           const db = await getDatabase();
           const email = profile.emails?.[0]?.value;

@@ -17,7 +17,11 @@ router.get('/google', (req, res, next) => {
     accessType: 'offline',
     prompt: 'consent', // Forces re-consent to ensure we get a fresh refresh token
     includeGrantedScopes: true,
-  } as passport.AuthenticateOptions & { accessType?: string; prompt?: string; includeGrantedScopes?: boolean })(req, res, next);
+  } as passport.AuthenticateOptions & {
+    accessType?: string;
+    prompt?: string;
+    includeGrantedScopes?: boolean;
+  })(req, res, next);
 });
 
 // Google OAuth callback
@@ -187,7 +191,8 @@ router.get('/check-tokens', async (req: Request, res: Response) => {
       message: 'Tokens are valid',
     });
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
     console.error('Token check failed:', errorMessage);
     res.json({
       valid: false,

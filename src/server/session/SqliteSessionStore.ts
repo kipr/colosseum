@@ -1,5 +1,5 @@
-import session from "express-session";
-import type { Database as BetterSqliteDatabase } from "better-sqlite3";
+import session from 'express-session';
+import type { Database as BetterSqliteDatabase } from 'better-sqlite3';
 
 type SessionData = session.SessionData;
 
@@ -32,7 +32,7 @@ export class SqliteSessionStore extends session.Store {
   constructor(opts: SqliteSessionStoreOptions) {
     super();
     this.db = opts.db;
-    this.table = opts.tableName ?? "sessions";
+    this.table = opts.tableName ?? 'sessions';
     this.ttlMs = opts.ttlMs ?? 7 * 24 * 60 * 60 * 1000;
 
     // Create table
@@ -54,7 +54,9 @@ export class SqliteSessionStore extends session.Store {
        VALUES (?, ?, ?)
        ON CONFLICT(sid) DO UPDATE SET sess = excluded.sess, expires = excluded.expires`,
     );
-    this.stmtDestroy = this.db.prepare(`DELETE FROM ${this.table} WHERE sid = ?`);
+    this.stmtDestroy = this.db.prepare(
+      `DELETE FROM ${this.table} WHERE sid = ?`,
+    );
     this.stmtTouch = this.db.prepare(
       `UPDATE ${this.table} SET expires = ? WHERE sid = ?`,
     );
@@ -65,9 +67,14 @@ export class SqliteSessionStore extends session.Store {
 
   // express-session expects: cb(err, session|null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get(sid: string, cb: (err?: any, session?: SessionData | null) => void): void {
+  get(
+    sid: string,
+    cb: (err?: any, session?: SessionData | null) => void,
+  ): void {
     try {
-      const row = this.stmtGet.get(sid) as { sess: string; expires: number | null } | undefined;
+      const row = this.stmtGet.get(sid) as
+        | { sess: string; expires: number | null }
+        | undefined;
       if (!row) return cb(null, null);
 
       // If expired, delete and treat as missing.
@@ -135,7 +142,7 @@ export class SqliteSessionStore extends session.Store {
 
     // Otherwise derive from cookie.maxAge if available, else default TTL.
     const maxAge = sess.cookie?.maxAge;
-    const ttl = typeof maxAge === "number" ? maxAge : this.ttlMs;
+    const ttl = typeof maxAge === 'number' ? maxAge : this.ttlMs;
     return Date.now() + ttl;
   }
 }

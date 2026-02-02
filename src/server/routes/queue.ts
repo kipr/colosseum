@@ -76,7 +76,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     }
     if (queue_type === 'seeding' && (!seeding_team_id || !seeding_round)) {
       return res.status(400).json({
-        error: 'seeding_team_id and seeding_round are required for seeding queue type',
+        error:
+          'seeding_team_id and seeding_round are required for seeding queue type',
       });
     }
 
@@ -89,7 +90,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
         [bracket_game_id],
       );
       if (existing) {
-        return res.status(409).json({ error: 'This game is already in the queue' });
+        return res
+          .status(409)
+          .json({ error: 'This game is already in the queue' });
       }
     } else {
       const existing = await db.get(
@@ -242,33 +245,37 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // POST /queue/reorder - Reorder queue items
-router.post('/reorder', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { items } = req.body;
+router.post(
+  '/reorder',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { items } = req.body;
 
-    if (!Array.isArray(items) || items.length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'items array is required with {id, queue_position}' });
-    }
-
-    const db = await getDatabase();
-
-    for (const item of items) {
-      if (item.id === undefined || item.queue_position === undefined) {
-        continue;
+      if (!Array.isArray(items) || items.length === 0) {
+        return res
+          .status(400)
+          .json({ error: 'items array is required with {id, queue_position}' });
       }
-      await db.run('UPDATE game_queue SET queue_position = ? WHERE id = ?', [
-        item.queue_position,
-        item.id,
-      ]);
-    }
 
-    res.json({ message: 'Queue reordered', updated: items.length });
-  } catch (error) {
-    console.error('Error reordering queue:', error);
-    res.status(500).json({ error: 'Failed to reorder queue' });
-  }
-});
+      const db = await getDatabase();
+
+      for (const item of items) {
+        if (item.id === undefined || item.queue_position === undefined) {
+          continue;
+        }
+        await db.run('UPDATE game_queue SET queue_position = ? WHERE id = ?', [
+          item.queue_position,
+          item.id,
+        ]);
+      }
+
+      res.json({ message: 'Queue reordered', updated: items.length });
+    } catch (error) {
+      console.error('Error reordering queue:', error);
+      res.status(500).json({ error: 'Failed to reorder queue' });
+    }
+  },
+);
 
 export default router;

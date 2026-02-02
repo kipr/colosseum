@@ -87,7 +87,10 @@ export async function getValidAccessToken(userId: number): Promise<string> {
       const { accessToken } = await doTokenRefresh(userId, user.refresh_token);
       return accessToken;
     } catch (error: unknown) {
-      console.error('Proactive token refresh failed:', error instanceof Error ? error.message : error);
+      console.error(
+        'Proactive token refresh failed:',
+        error instanceof Error ? error.message : error,
+      );
       throw new Error(
         'Token refresh failed. Please log out and log back in to re-authenticate with Google.',
       );
@@ -121,7 +124,10 @@ export async function getValidAccessToken(userId: number): Promise<string> {
       const { accessToken } = await doTokenRefresh(userId, user.refresh_token);
       return accessToken;
     } catch (refreshError: unknown) {
-      console.error('Token refresh failed:', refreshError instanceof Error ? refreshError.message : refreshError);
+      console.error(
+        'Token refresh failed:',
+        refreshError instanceof Error ? refreshError.message : refreshError,
+      );
       throw new Error(
         'Token refresh failed. Please log out and log back in to re-authenticate with Google.',
       );
@@ -209,7 +215,10 @@ export async function refreshAccessTokenIfNeeded(
       );
       return newToken;
     } catch (refreshError: unknown) {
-      console.error('Failed to refresh token:', refreshError instanceof Error ? refreshError.message : refreshError);
+      console.error(
+        'Failed to refresh token:',
+        refreshError instanceof Error ? refreshError.message : refreshError,
+      );
       throw new Error('Token refresh failed. Please log out and log back in.');
     }
   }
@@ -256,7 +265,11 @@ export async function withTokenRefresh<T>(
     return await apiCall(accessToken);
   } catch (error: unknown) {
     // Check if it's a 401 error (unauthorized/token expired)
-    const err = error as { code?: number; status?: number; response?: { status?: number } };
+    const err = error as {
+      code?: number;
+      status?: number;
+      response?: { status?: number };
+    };
     const status = err?.code || err?.status || err?.response?.status;
 
     if (status === 401) {

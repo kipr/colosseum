@@ -75,8 +75,13 @@ router.get(
           range as string,
         );
       } catch (apiError: unknown) {
-        const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
-        const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
+        const apiErr = apiError as {
+          code?: number;
+          status?: number;
+          response?: { status?: number };
+        };
+        const status =
+          apiErr?.code || apiErr?.status || apiErr?.response?.status;
         if (status === 401) {
           try {
             accessToken = await forceRefreshToken(config.user_id);
@@ -190,8 +195,13 @@ router.get(
         );
       } catch (apiError: unknown) {
         // Check if it's a 401 error
-        const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
-        const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
+        const apiErr = apiError as {
+          code?: number;
+          status?: number;
+          response?: { status?: number };
+        };
+        const status =
+          apiErr?.code || apiErr?.status || apiErr?.response?.status;
         if (status === 401) {
           // Force refresh token and retry
           try {
@@ -300,8 +310,13 @@ router.get(
           parseInt(gameNumber, 10),
         );
       } catch (apiError: unknown) {
-        const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
-        const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
+        const apiErr = apiError as {
+          code?: number;
+          status?: number;
+          response?: { status?: number };
+        };
+        const status =
+          apiErr?.code || apiErr?.status || apiErr?.response?.status;
         if (status === 401) {
           try {
             accessToken = await forceRefreshToken(config.user_id);

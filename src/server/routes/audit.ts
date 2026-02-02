@@ -121,14 +121,8 @@ export async function createAuditEntry(
 // Note: This endpoint requires auth but is primarily for internal/admin use
 router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const {
-      event_id,
-      action,
-      entity_type,
-      entity_id,
-      old_value,
-      new_value,
-    } = req.body;
+    const { event_id, action, entity_type, entity_id, old_value, new_value } =
+      req.body;
 
     if (!action || !entity_type) {
       return res

@@ -10,6 +10,48 @@ import './Admin.css';
 
 type TabType = 'spreadsheets' | 'scoresheets' | 'scoring' | 'admins';
 
+// Sample hardcoded events for visual mockup
+const SAMPLE_EVENTS = [
+  {
+    id: 1,
+    name: '2026 Botball Regional',
+    event_date: '2026-02-14',
+    location: 'San Jose, CA',
+    status: 'live' as const,
+    teams_count: 24,
+    brackets_count: 1,
+  },
+  {
+    id: 2,
+    name: 'Practice Day',
+    event_date: '2026-02-13',
+    location: 'San Jose, CA',
+    status: 'setup' as const,
+    teams_count: 24,
+    brackets_count: 0,
+  },
+  {
+    id: 3,
+    name: '2025 Fall Regional',
+    event_date: '2025-10-20',
+    location: 'Los Angeles, CA',
+    status: 'archived' as const,
+    teams_count: 32,
+    brackets_count: 2,
+  },
+  {
+    id: 4,
+    name: '2025 Spring Championship',
+    event_date: '2025-04-15',
+    location: 'Seattle, WA',
+    status: 'archived' as const,
+    teams_count: 48,
+    brackets_count: 3,
+  },
+];
+
+type SampleEvent = (typeof SAMPLE_EVENTS)[number];
+
 export default function Admin() {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
@@ -36,6 +78,11 @@ export default function Admin() {
     valid: boolean;
     message?: string;
   } | null>(null);
+
+  // Event selector state
+  const [selectedEvent, setSelectedEvent] = useState<SampleEvent | null>(
+    SAMPLE_EVENTS[0],
+  );
 
   useEffect(() => {
     if (!loading && !user) {
@@ -75,6 +122,75 @@ export default function Admin() {
     window.location.href = '/auth/google';
   };
 
+  // Helper to get status badge styling
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'live':
+        return 'event-status-live';
+      case 'setup':
+        return 'event-status-setup';
+      case 'archived':
+        return 'event-status-archived';
+      default:
+        return '';
+    }
+  };
+
+  // Format date for display
+  const formatEventDate = (dateStr: string) => {
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
+  // Render event selector dropdown at top of sidebar
+  const renderEventSelector = () => (
+    <div className="event-selector">
+      <div className="event-selector-header">
+        <span className="event-selector-label">Current Event</span>
+        <button
+          className="event-manage-link"
+          onClick={() => alert('Would open Events management')}
+        >
+          Manage
+        </button>
+      </div>
+      <select
+        className="event-selector-dropdown"
+        value={selectedEvent?.id || ''}
+        onChange={(e) => {
+          const event = SAMPLE_EVENTS.find(
+            (ev) => ev.id === Number(e.target.value),
+          );
+          setSelectedEvent(event || null);
+        }}
+      >
+        <option value="">Select an event...</option>
+        {SAMPLE_EVENTS.map((event) => (
+          <option key={event.id} value={event.id}>
+            {event.name} ({event.status})
+          </option>
+        ))}
+      </select>
+      {selectedEvent && (
+        <div className="event-selector-details">
+          <span
+            className={`event-status-badge ${getStatusBadgeClass(selectedEvent.status)}`}
+          >
+            {selectedEvent.status}
+          </span>
+          <span className="event-date">
+            {formatEventDate(selectedEvent.event_date)}
+          </span>
+          <span className="event-location">{selectedEvent.location}</span>
+        </div>
+      )}
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="app">
@@ -110,6 +226,9 @@ export default function Admin() {
       <main className="admin-container">
         <div className="admin-layout">
           <aside className="admin-sidebar">
+            {/* Event selector */}
+            {renderEventSelector()}
+
             <div className="sidebar-menu">
               <button
                 className={`sidebar-item ${activeTab === 'spreadsheets' ? 'active' : ''}`}
@@ -139,6 +258,24 @@ export default function Admin() {
           </aside>
 
           <div className="admin-content">
+            {/* Content header with event badge (secondary indicator) */}
+            <div className="admin-content-header">
+              <h2>
+                {activeTab === 'spreadsheets' && 'Spreadsheets'}
+                {activeTab === 'scoresheets' && 'Score Sheets'}
+                {activeTab === 'scoring' && 'Scoring'}
+                {activeTab === 'admins' && 'Admins'}
+              </h2>
+              {selectedEvent && (
+                <div className="content-header-event-badge">
+                  <span
+                    className={`event-badge-status ${getStatusBadgeClass(selectedEvent.status)}`}
+                  />
+                  <span className="event-badge-name">{selectedEvent.name}</span>
+                </div>
+              )}
+            </div>
+
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
             {activeTab === 'scoring' && <ScoringTab />}

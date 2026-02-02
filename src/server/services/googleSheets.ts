@@ -325,7 +325,9 @@ export async function updateTeamScore(
     });
   } catch (error: unknown) {
     console.error('Error updating team score:', error);
-    throw new Error(`Failed to update team score: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(
+      `Failed to update team score: ${error instanceof Error ? error.message : 'Unknown error'}`,
+    );
   }
 }
 
@@ -365,10 +367,15 @@ export async function getSheetData(
   } catch (error: unknown) {
     console.error('Error getting sheet data:', error);
     console.error('Sheet name:', sheetName, 'Range:', range);
-    const err = error as { response?: { status?: number; data?: unknown }; message?: string };
+    const err = error as {
+      response?: { status?: number; data?: unknown };
+      message?: string;
+    };
     if (err.response) {
       console.error('API Error:', err.response.status, err.response.data);
     }
-    throw new Error(`Failed to get data from spreadsheet: ${err.message || 'Unknown error'}`);
+    throw new Error(
+      `Failed to get data from spreadsheet: ${err.message || 'Unknown error'}`,
+    );
   }
 }

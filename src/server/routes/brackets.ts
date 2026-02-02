@@ -99,7 +99,8 @@ router.get('/:id', async (req: Request, res: Response) => {
 // POST /brackets - Create bracket
 router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const { event_id, name, bracket_size, actual_team_count, status } = req.body;
+    const { event_id, name, bracket_size, actual_team_count, status } =
+      req.body;
 
     if (!event_id || !name || !bracket_size) {
       return res
@@ -221,10 +222,9 @@ router.post(
           return res.status(404).json({ error: 'Bracket not found' });
         }
 
-        const team = await db.get(
-          'SELECT event_id FROM teams WHERE id = ?',
-          [team_id],
-        );
+        const team = await db.get('SELECT event_id FROM teams WHERE id = ?', [
+          team_id,
+        ]);
         if (!team) {
           return res.status(400).json({ error: 'Team not found' });
         }
@@ -232,7 +232,9 @@ router.post(
         if (team.event_id !== bracket.event_id) {
           return res
             .status(400)
-            .json({ error: 'Team must belong to the same event as the bracket' });
+            .json({
+              error: 'Team must belong to the same event as the bracket',
+            });
         }
       }
 
@@ -258,12 +260,17 @@ router.post(
       if (errMsg.includes('UNIQUE constraint failed')) {
         return res
           .status(409)
-          .json({ error: 'Team or seed position already exists in this bracket' });
+          .json({
+            error: 'Team or seed position already exists in this bracket',
+          });
       }
       if (errMsg.includes('CHECK constraint failed')) {
         return res
           .status(400)
-          .json({ error: 'Invalid entry: bye requires null team_id, non-bye requires team_id' });
+          .json({
+            error:
+              'Invalid entry: bye requires null team_id, non-bye requires team_id',
+          });
       }
       res.status(500).json({ error: 'Failed to add bracket entry' });
     }
@@ -360,14 +367,15 @@ router.post(
       }
 
       for (const teamId of [team1_id, team2_id].filter(Boolean)) {
-        const team = await db.get(
-          'SELECT event_id FROM teams WHERE id = ?',
-          [teamId],
-        );
+        const team = await db.get('SELECT event_id FROM teams WHERE id = ?', [
+          teamId,
+        ]);
         if (team && team.event_id !== bracket.event_id) {
           return res
             .status(400)
-            .json({ error: 'Teams must belong to the same event as the bracket' });
+            .json({
+              error: 'Teams must belong to the same event as the bracket',
+            });
         }
       }
 
@@ -410,7 +418,9 @@ router.post(
           .json({ error: 'Game number already exists in this bracket' });
       }
       if (errMsg.includes('CHECK constraint failed')) {
-        return res.status(400).json({ error: 'Invalid status or bracket_side value' });
+        return res
+          .status(400)
+          .json({ error: 'Invalid status or bracket_side value' });
       }
       res.status(500).json({ error: 'Failed to create bracket game' });
     }
@@ -447,15 +457,19 @@ router.patch(
       }
 
       for (const [key, value] of updates) {
-        if (['team1_id', 'team2_id', 'winner_id', 'loser_id'].includes(key) && value) {
-          const team = await db.get(
-            'SELECT event_id FROM teams WHERE id = ?',
-            [value],
-          );
+        if (
+          ['team1_id', 'team2_id', 'winner_id', 'loser_id'].includes(key) &&
+          value
+        ) {
+          const team = await db.get('SELECT event_id FROM teams WHERE id = ?', [
+            value,
+          ]);
           if (team && team.event_id !== game.event_id) {
             return res
               .status(400)
-              .json({ error: 'Teams must belong to the same event as the bracket' });
+              .json({
+                error: 'Teams must belong to the same event as the bracket',
+              });
           }
         }
       }
@@ -481,7 +495,9 @@ router.patch(
       console.error('Error updating bracket game:', error);
       const errMsg = (error as Error).message || '';
       if (errMsg.includes('CHECK constraint failed')) {
-        return res.status(400).json({ error: 'Invalid status or bracket_side value' });
+        return res
+          .status(400)
+          .json({ error: 'Invalid status or bracket_side value' });
       }
       res.status(500).json({ error: 'Failed to update bracket game' });
     }
@@ -497,7 +513,9 @@ router.post(
       const { id } = req.params;
       const db = await getDatabase();
 
-      const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [id]);
+      const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
+        id,
+      ]);
       if (!game) {
         return res.status(404).json({ error: 'Game not found' });
       }
@@ -528,10 +546,10 @@ router.post(
 
       for (const update of updates) {
         const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
-        await db.run(
-          `UPDATE bracket_games SET ${column} = ? WHERE id = ?`,
-          [update.teamId, update.gameId],
-        );
+        await db.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
+          update.teamId,
+          update.gameId,
+        ]);
       }
 
       // Mark current game as completed

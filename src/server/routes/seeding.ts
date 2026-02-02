@@ -5,7 +5,11 @@ import { getDatabase } from '../database/connection';
 const router = express.Router();
 
 // Allowed fields for PATCH updates on seeding_scores
-const ALLOWED_SCORE_UPDATE_FIELDS = ['score', 'score_submission_id', 'scored_at'];
+const ALLOWED_SCORE_UPDATE_FIELDS = [
+  'score',
+  'score_submission_id',
+  'scored_at',
+];
 
 // GET /seeding/scores/team/:teamId - Get scores for team (public for judges)
 router.get('/scores/team/:teamId', async (req: Request, res: Response) => {
@@ -84,7 +88,9 @@ router.post('/scores', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Team does not exist' });
     }
     if (errMsg.includes('CHECK constraint failed')) {
-      return res.status(400).json({ error: 'Invalid round_number (must be > 0)' });
+      return res
+        .status(400)
+        .json({ error: 'Invalid round_number (must be > 0)' });
     }
     res.status(500).json({ error: 'Failed to submit seeding score' });
   }
@@ -183,10 +189,9 @@ router.post(
       const db = await getDatabase();
 
       // Get all teams for this event
-      const teams = await db.all(
-        'SELECT id FROM teams WHERE event_id = ?',
-        [eventId],
-      );
+      const teams = await db.all('SELECT id FROM teams WHERE event_id = ?', [
+        eventId,
+      ]);
 
       if (teams.length === 0) {
         return res.status(404).json({ error: 'No teams found for this event' });
@@ -230,7 +235,8 @@ router.post(
         if (a.seedAverage === null && b.seedAverage === null) return 0;
         if (a.seedAverage === null) return 1;
         if (b.seedAverage === null) return -1;
-        if (a.seedAverage !== b.seedAverage) return b.seedAverage - a.seedAverage;
+        if (a.seedAverage !== b.seedAverage)
+          return b.seedAverage - a.seedAverage;
         if (a.tiebreaker === null && b.tiebreaker === null) return 0;
         if (a.tiebreaker === null) return 1;
         if (b.tiebreaker === null) return -1;
@@ -238,7 +244,8 @@ router.post(
       });
 
       // Calculate raw seed score (normalized 0-1)
-      const maxAverage = rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
+      const maxAverage =
+        rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
 
       // Update rankings in database
       for (let i = 0; i < rankings.length; i++) {

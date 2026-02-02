@@ -1,5 +1,5 @@
 import SQLite from 'better-sqlite3';
-import type { Database as SQLiteDatabase } from "better-sqlite3";
+import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { Pool } from 'pg';
 import path from 'path';
 import fs from 'fs';
@@ -57,15 +57,15 @@ function normalizeParam(v: any): any {
   if (v instanceof Date) return v.toISOString();
 
   // Booleans: SQLite doesn't have a real boolean type; use 0/1.
-  if (typeof v === "boolean") return v ? 1 : 0;
+  if (typeof v === 'boolean') return v ? 1 : 0;
 
   // Bigint is allowed by better-sqlite3, leave it.
   // Numbers, strings, null, Buffers are allowed, leave them.
   if (
     v === null ||
-    typeof v === "number" ||
-    typeof v === "string" ||
-    typeof v === "bigint" ||
+    typeof v === 'number' ||
+    typeof v === 'string' ||
+    typeof v === 'bigint' ||
     Buffer.isBuffer(v)
   ) {
     return v;
@@ -82,7 +82,7 @@ function normalizeParams(params: any[]): any[] {
 }
 // SQLite implementation (better-sqlite3)
 class SqliteAdapter implements Database {
-  private stmtCache = new Map<string, ReturnType<SQLiteDatabase["prepare"]>>();
+  private stmtCache = new Map<string, ReturnType<SQLiteDatabase['prepare']>>();
 
   constructor(private db: SQLiteDatabase) {}
 
@@ -116,7 +116,8 @@ class SqliteAdapter implements Database {
 
   async exec(sql: string): Promise<void> {
     this.db.exec(sql);
-  }}
+  }
+}
 
 // PostgreSQL implementation
 class PostgresAdapter implements Database {
@@ -189,9 +190,11 @@ export async function getDatabase(): Promise<Database> {
     //   filename: path.join(__dirname, '../../../database/colosseum.db'),
     //   driver: sqlite3.Database,
     // });
-    const sqliteDb = new SQLite(path.join(__dirname, '../../../database/colosseum.db'))
+    const sqliteDb = new SQLite(
+      path.join(__dirname, '../../../database/colosseum.db'),
+    );
     sqliteDb.pragma('foreign_keys = ON;');
-    sqliteDb.pragma('journal_mode = WAL')
+    sqliteDb.pragma('journal_mode = WAL');
     dbAdapter = new SqliteAdapter(sqliteDb);
   }
 

@@ -100,8 +100,13 @@ router.post(
         try {
           return await apiCall(accessToken);
         } catch (apiError: unknown) {
-          const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
-          const status = apiErr?.code || apiErr?.status || apiErr?.response?.status;
+          const apiErr = apiError as {
+            code?: number;
+            status?: number;
+            response?: { status?: number };
+          };
+          const status =
+            apiErr?.code || apiErr?.status || apiErr?.response?.status;
           if (status === 401) {
             accessToken = await forceRefreshToken(config.owner_id);
             return await apiCall(accessToken);
@@ -170,7 +175,9 @@ router.post(
       } catch (sheetError: unknown) {
         console.error('Error submitting to sheet:', sheetError);
         res.status(500).json({
-          error: (sheetError instanceof Error ? sheetError.message : null) || 'Failed to submit to spreadsheet',
+          error:
+            (sheetError instanceof Error ? sheetError.message : null) ||
+            'Failed to submit to spreadsheet',
         });
       }
     } catch (error) {
@@ -254,11 +261,13 @@ router.post(
             try {
               return await apiCall(accessToken);
             } catch (apiError: unknown) {
-              const apiErr = apiError as { code?: number; status?: number; response?: { status?: number } };
+              const apiErr = apiError as {
+                code?: number;
+                status?: number;
+                response?: { status?: number };
+              };
               const status =
-                apiErr?.code ||
-                apiErr?.status ||
-                apiErr?.response?.status;
+                apiErr?.code || apiErr?.status || apiErr?.response?.status;
               if (status === 401) {
                 accessToken = await forceRefreshToken(config.owner_id);
                 return await apiCall(accessToken);
