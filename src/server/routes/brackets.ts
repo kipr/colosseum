@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
+import { resolveBracketByes } from '../services/bracketByeResolver';
 
 const router = express.Router();
 
@@ -655,7 +656,10 @@ router.post(
         );
       });
 
-      res.json({ message: 'Winner advanced', updates });
+      // Resolve any downstream bye chains that may have been created
+      const byeResolution = await resolveBracketByes(db, game.bracket_id);
+
+      res.json({ message: 'Winner advanced', updates, byeResolution });
     } catch (error) {
       console.error('Error advancing winner:', error);
       res.status(500).json({ error: 'Failed to advance winner' });
@@ -847,9 +851,13 @@ router.post(
         [id],
       );
 
+      // Fourth pass: Resolve bye chains (implicit byes from loser sources, etc.)
+      const byeResolution = await resolveBracketByes(db, parseInt(id, 10));
+
       res.json({
         message: 'Games generated successfully',
         gamesCreated: templates.length,
+        byeResolution,
       });
     } catch (error) {
       console.error('Error generating bracket games:', error);
@@ -963,11 +971,18 @@ router.post(
         }
       }
 
+      // Resolve any downstream bye chains that may have been created
+      const byeResolution = await resolveBracketByes(
+        db,
+        parseInt(bracketId, 10),
+      );
+
       res.json({
         message: 'Winner advanced successfully',
         winner_id,
         loser_id: loserId,
         updates,
+        byeResolution,
       });
     } catch (error) {
       console.error('Error advancing winner:', error);
