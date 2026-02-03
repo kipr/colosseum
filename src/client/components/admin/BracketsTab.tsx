@@ -2,76 +2,20 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { formatDateTime } from '../../utils/dateUtils';
+import {
+  Bracket,
+  BracketDetail,
+  BracketGame,
+  BracketStatus,
+  GameStatus,
+  STATUS_LABELS,
+  GAME_STATUS_LABELS,
+} from '../../types/brackets';
+import BracketLikeView from '../bracket/BracketLikeView';
 import '../Modal.css';
 import './BracketsTab.css';
 
-// Types
-interface Bracket {
-  id: number;
-  event_id: number;
-  name: string;
-  bracket_size: number;
-  actual_team_count: number | null;
-  status: BracketStatus;
-  created_by: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
-interface BracketEntry {
-  id: number;
-  bracket_id: number;
-  team_id: number | null;
-  seed_position: number;
-  initial_slot: number | null;
-  is_bye: boolean;
-  team_number?: number;
-  team_name?: string;
-  display_name?: string | null;
-}
-
-interface BracketGame {
-  id: number;
-  bracket_id: number;
-  game_number: number;
-  round_name: string | null;
-  round_number: number | null;
-  bracket_side: 'winners' | 'losers' | 'finals' | null;
-  team1_id: number | null;
-  team2_id: number | null;
-  team1_source: string | null;
-  team2_source: string | null;
-  status: GameStatus;
-  winner_id: number | null;
-  loser_id: number | null;
-  winner_advances_to_id: number | null;
-  loser_advances_to_id: number | null;
-  winner_slot: string | null;
-  loser_slot: string | null;
-  team1_score: number | null;
-  team2_score: number | null;
-  scheduled_time: string | null;
-  started_at: string | null;
-  completed_at: string | null;
-  // Joined team info
-  team1_number?: number;
-  team1_name?: string;
-  team1_display?: string | null;
-  team2_number?: number;
-  team2_name?: string;
-  team2_display?: string | null;
-  winner_number?: number;
-  winner_name?: string;
-  winner_display?: string | null;
-}
-
-interface BracketDetail extends Bracket {
-  entries: BracketEntry[];
-  games: BracketGame[];
-}
-
-type BracketStatus = 'setup' | 'in_progress' | 'completed';
-type GameStatus = 'pending' | 'ready' | 'in_progress' | 'completed' | 'bye';
+type DetailViewMode = 'management' | 'bracket';
 
 interface BracketsTabProps {
   selectedEventId: number | null;
@@ -84,20 +28,6 @@ interface BracketFormData {
 }
 
 const BRACKET_SIZES = [4, 8, 16, 32, 64];
-
-const STATUS_LABELS: Record<BracketStatus, string> = {
-  setup: 'Setup',
-  in_progress: 'In Progress',
-  completed: 'Completed',
-};
-
-const GAME_STATUS_LABELS: Record<GameStatus, string> = {
-  pending: 'Pending',
-  ready: 'Ready',
-  in_progress: 'In Progress',
-  completed: 'Completed',
-  bye: 'Bye',
-};
 
 function getStatusClass(status: BracketStatus): string {
   switch (status) {
@@ -159,6 +89,10 @@ export default function BracketsTab({ selectedEventId }: BracketsTabProps) {
   const [generatingEntries, setGeneratingEntries] = useState(false);
   const [generatingGames, setGeneratingGames] = useState(false);
   const [advancingWinner, setAdvancingWinner] = useState<number | null>(null);
+
+  // View mode state (management vs bracket-like view)
+  const [detailViewMode, setDetailViewMode] =
+    useState<DetailViewMode>('management');
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
@@ -639,10 +573,27 @@ export default function BracketsTab({ selectedEventId }: BracketsTabProps) {
               onClick={() => {
                 setSelectedBracketId(null);
                 setBracketDetail(null);
+                setDetailViewMode('management');
               }}
             >
               ← Back to List
             </button>
+            {bracketDetail && bracketDetail.games.length > 0 && (
+              <div className="view-mode-toggle">
+                <button
+                  className={`btn ${detailViewMode === 'management' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setDetailViewMode('management')}
+                >
+                  Management View
+                </button>
+                <button
+                  className={`btn ${detailViewMode === 'bracket' ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setDetailViewMode('bracket')}
+                >
+                  Bracket View
+                </button>
+              </div>
+            )}
           </div>
 
           {detailLoading ? (
@@ -712,204 +663,216 @@ export default function BracketsTab({ selectedEventId }: BracketsTabProps) {
                 </div>
               </div>
 
-              {/* Entries Section */}
-              <div className="card bracket-section">
-                <div className="bracket-section-header">
-                  <h4>Bracket Entries ({bracketDetail.entries.length})</h4>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleGenerateEntries}
-                    disabled={generatingEntries}
-                  >
-                    {generatingEntries
-                      ? 'Generating...'
-                      : bracketDetail.entries.length > 0
-                        ? 'Regenerate from Seeding'
-                        : 'Generate from Seeding'}
-                  </button>
+              {/* Bracket-like View */}
+              {detailViewMode === 'bracket' && (
+                <div className="card bracket-section">
+                  <BracketLikeView games={bracketDetail.games} />
                 </div>
+              )}
 
-                {bracketDetail.entries.length === 0 ? (
-                  <p style={{ color: 'var(--secondary-color)' }}>
-                    No entries yet. Click "Generate from Seeding" to populate
-                    entries from seeding rankings.
-                  </p>
-                ) : (
-                  <div className="entries-grid">
-                    {bracketDetail.entries.map((entry) => (
-                      <div
-                        key={entry.id}
-                        className={`entry-card ${entry.is_bye ? 'entry-bye' : ''}`}
+              {/* Management View: Entries + Games Sections */}
+              {detailViewMode === 'management' && (
+                <>
+                  {/* Entries Section */}
+                  <div className="card bracket-section">
+                    <div className="bracket-section-header">
+                      <h4>Bracket Entries ({bracketDetail.entries.length})</h4>
+                      <button
+                        className="btn btn-primary"
+                        onClick={handleGenerateEntries}
+                        disabled={generatingEntries}
                       >
-                        <span className="entry-seed">
-                          #{entry.seed_position}
-                        </span>
-                        {entry.is_bye ? (
-                          <span className="entry-bye-label">BYE</span>
-                        ) : (
-                          <span className="entry-team">
-                            <strong>{entry.team_number}</strong>{' '}
-                            {entry.team_name || entry.display_name}
-                          </span>
-                        )}
+                        {generatingEntries
+                          ? 'Generating...'
+                          : bracketDetail.entries.length > 0
+                            ? 'Regenerate from Seeding'
+                            : 'Generate from Seeding'}
+                      </button>
+                    </div>
+
+                    {bracketDetail.entries.length === 0 ? (
+                      <p style={{ color: 'var(--secondary-color)' }}>
+                        No entries yet. Click "Generate from Seeding" to
+                        populate entries from seeding rankings.
+                      </p>
+                    ) : (
+                      <div className="entries-grid">
+                        {bracketDetail.entries.map((entry) => (
+                          <div
+                            key={entry.id}
+                            className={`entry-card ${entry.is_bye ? 'entry-bye' : ''}`}
+                          >
+                            <span className="entry-seed">
+                              #{entry.seed_position}
+                            </span>
+                            {entry.is_bye ? (
+                              <span className="entry-bye-label">BYE</span>
+                            ) : (
+                              <span className="entry-team">
+                                <strong>{entry.team_number}</strong>{' '}
+                                {entry.team_name || entry.display_name}
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Games Section */}
-              <div className="card bracket-section">
-                <div className="bracket-section-header">
-                  <h4>Bracket Games ({bracketDetail.games.length})</h4>
-                  <button
-                    className="btn btn-primary"
-                    onClick={handleGenerateGames}
-                    disabled={
-                      generatingGames || bracketDetail.entries.length === 0
-                    }
-                    title={
-                      bracketDetail.entries.length === 0
-                        ? 'Generate entries first'
-                        : ''
-                    }
-                  >
-                    {generatingGames
-                      ? 'Generating...'
-                      : bracketDetail.games.length > 0
-                        ? 'Regenerate Games'
-                        : 'Generate Games'}
-                  </button>
-                </div>
+                  {/* Games Section */}
+                  <div className="card bracket-section">
+                    <div className="bracket-section-header">
+                      <h4>Bracket Games ({bracketDetail.games.length})</h4>
+                      <button
+                        className="btn btn-primary"
+                        onClick={handleGenerateGames}
+                        disabled={
+                          generatingGames || bracketDetail.entries.length === 0
+                        }
+                        title={
+                          bracketDetail.entries.length === 0
+                            ? 'Generate entries first'
+                            : ''
+                        }
+                      >
+                        {generatingGames
+                          ? 'Generating...'
+                          : bracketDetail.games.length > 0
+                            ? 'Regenerate Games'
+                            : 'Generate Games'}
+                      </button>
+                    </div>
 
-                {bracketDetail.games.length === 0 ? (
-                  <p style={{ color: 'var(--secondary-color)' }}>
-                    No games yet. Generate entries first, then click "Generate
-                    Games" to create the bracket structure.
-                  </p>
-                ) : (
-                  <div className="games-list">
-                    {/* Group games by bracket_side */}
-                    {['winners', 'losers', 'finals'].map((side) => {
-                      const sideGames = bracketDetail.games.filter(
-                        (g) => g.bracket_side === side,
-                      );
-                      if (sideGames.length === 0) return null;
+                    {bracketDetail.games.length === 0 ? (
+                      <p style={{ color: 'var(--secondary-color)' }}>
+                        No games yet. Generate entries first, then click
+                        "Generate Games" to create the bracket structure.
+                      </p>
+                    ) : (
+                      <div className="games-list">
+                        {/* Group games by bracket_side */}
+                        {['winners', 'losers', 'finals'].map((side) => {
+                          const sideGames = bracketDetail.games.filter(
+                            (g) => g.bracket_side === side,
+                          );
+                          if (sideGames.length === 0) return null;
 
-                      return (
-                        <div key={side} className="games-side-group">
-                          <h5 className="games-side-title">
-                            {side === 'winners'
-                              ? 'Winners Bracket'
-                              : side === 'losers'
-                                ? 'Losers Bracket'
-                                : 'Finals'}
-                          </h5>
-                          <table className="games-table">
-                            <thead>
-                              <tr>
-                                <th>Game</th>
-                                <th>Round</th>
-                                <th>Team 1</th>
-                                <th>Team 2</th>
-                                <th>Status</th>
-                                <th>Winner</th>
-                                <th>Actions</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {sideGames.map((game) => (
-                                <tr key={game.id}>
-                                  <td>
-                                    <strong>Game {game.game_number}</strong>
-                                  </td>
-                                  <td>{game.round_name || '—'}</td>
-                                  <td>
-                                    {renderTeamDisplay(
-                                      game.team1_id,
-                                      game.team1_number,
-                                      game.team1_name,
-                                      game.team1_display,
-                                    )}
-                                  </td>
-                                  <td>
-                                    {renderTeamDisplay(
-                                      game.team2_id,
-                                      game.team2_number,
-                                      game.team2_name,
-                                      game.team2_display,
-                                    )}
-                                  </td>
-                                  <td>
-                                    <span
-                                      className={`game-status-badge ${getGameStatusClass(game.status)}`}
-                                    >
-                                      {GAME_STATUS_LABELS[game.status]}
-                                    </span>
-                                  </td>
-                                  <td>
-                                    {game.winner_id
-                                      ? renderTeamDisplay(
-                                          game.winner_id,
-                                          game.winner_number,
-                                          game.winner_name,
-                                          game.winner_display,
-                                        )
-                                      : '—'}
-                                  </td>
-                                  <td>
-                                    {game.status !== 'completed' &&
-                                      game.status !== 'bye' &&
-                                      game.team1_id &&
-                                      game.team2_id && (
-                                        <div className="game-actions">
-                                          <button
-                                            className="btn btn-sm btn-success"
-                                            onClick={() =>
-                                              handleAdvanceWinner(
-                                                game,
-                                                game.team1_id!,
-                                              )
-                                            }
-                                            disabled={
-                                              advancingWinner === game.id
-                                            }
-                                            title={`${game.team1_number} wins`}
-                                          >
-                                            {advancingWinner === game.id
-                                              ? '...'
-                                              : `#${game.team1_number} Wins`}
-                                          </button>
-                                          <button
-                                            className="btn btn-sm btn-success"
-                                            onClick={() =>
-                                              handleAdvanceWinner(
-                                                game,
-                                                game.team2_id!,
-                                              )
-                                            }
-                                            disabled={
-                                              advancingWinner === game.id
-                                            }
-                                            title={`${game.team2_number} wins`}
-                                          >
-                                            {advancingWinner === game.id
-                                              ? '...'
-                                              : `#${game.team2_number} Wins`}
-                                          </button>
-                                        </div>
-                                      )}
-                                  </td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      );
-                    })}
+                          return (
+                            <div key={side} className="games-side-group">
+                              <h5 className="games-side-title">
+                                {side === 'winners'
+                                  ? 'Winners Bracket'
+                                  : side === 'losers'
+                                    ? 'Losers Bracket'
+                                    : 'Finals'}
+                              </h5>
+                              <table className="games-table">
+                                <thead>
+                                  <tr>
+                                    <th>Game</th>
+                                    <th>Round</th>
+                                    <th>Team 1</th>
+                                    <th>Team 2</th>
+                                    <th>Status</th>
+                                    <th>Winner</th>
+                                    <th>Actions</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sideGames.map((game) => (
+                                    <tr key={game.id}>
+                                      <td>
+                                        <strong>Game {game.game_number}</strong>
+                                      </td>
+                                      <td>{game.round_name || '—'}</td>
+                                      <td>
+                                        {renderTeamDisplay(
+                                          game.team1_id,
+                                          game.team1_number,
+                                          game.team1_name,
+                                          game.team1_display,
+                                        )}
+                                      </td>
+                                      <td>
+                                        {renderTeamDisplay(
+                                          game.team2_id,
+                                          game.team2_number,
+                                          game.team2_name,
+                                          game.team2_display,
+                                        )}
+                                      </td>
+                                      <td>
+                                        <span
+                                          className={`game-status-badge ${getGameStatusClass(game.status)}`}
+                                        >
+                                          {GAME_STATUS_LABELS[game.status]}
+                                        </span>
+                                      </td>
+                                      <td>
+                                        {game.winner_id
+                                          ? renderTeamDisplay(
+                                              game.winner_id,
+                                              game.winner_number,
+                                              game.winner_name,
+                                              game.winner_display,
+                                            )
+                                          : '—'}
+                                      </td>
+                                      <td>
+                                        {game.status !== 'completed' &&
+                                          game.status !== 'bye' &&
+                                          game.team1_id &&
+                                          game.team2_id && (
+                                            <div className="game-actions">
+                                              <button
+                                                className="btn btn-sm btn-success"
+                                                onClick={() =>
+                                                  handleAdvanceWinner(
+                                                    game,
+                                                    game.team1_id!,
+                                                  )
+                                                }
+                                                disabled={
+                                                  advancingWinner === game.id
+                                                }
+                                                title={`${game.team1_number} wins`}
+                                              >
+                                                {advancingWinner === game.id
+                                                  ? '...'
+                                                  : `#${game.team1_number} Wins`}
+                                              </button>
+                                              <button
+                                                className="btn btn-sm btn-success"
+                                                onClick={() =>
+                                                  handleAdvanceWinner(
+                                                    game,
+                                                    game.team2_id!,
+                                                  )
+                                                }
+                                                disabled={
+                                                  advancingWinner === game.id
+                                                }
+                                                title={`${game.team2_number} wins`}
+                                              >
+                                                {advancingWinner === game.id
+                                                  ? '...'
+                                                  : `#${game.team2_number} Wins`}
+                                              </button>
+                                            </div>
+                                          )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              )}
             </>
           ) : (
             <p>Bracket not found.</p>
