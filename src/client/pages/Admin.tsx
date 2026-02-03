@@ -8,6 +8,7 @@ import ScoringTab from '../components/admin/ScoringTab';
 import AdminsTab from '../components/admin/AdminsTab';
 import EventsTab from '../components/admin/EventsTab';
 import TeamsTab from '../components/admin/TeamsTab';
+import SeedingTab from '../components/admin/SeedingTab';
 import {
   Event,
   getEventStatusClass,
@@ -21,6 +22,7 @@ type TabType =
   | 'spreadsheets'
   | 'scoresheets'
   | 'scoring'
+  | 'seeding'
   | 'admins';
 
 const SELECTED_EVENT_KEY = 'colosseum_selected_event_id';
@@ -43,6 +45,7 @@ export default function Admin() {
         saved === 'spreadsheets' ||
         saved === 'scoresheets' ||
         saved === 'scoring' ||
+        saved === 'seeding' ||
         saved === 'admins')
     ) {
       return saved as TabType;
@@ -222,6 +225,12 @@ export default function Admin() {
                 🏆 Scoring
               </button>
               <button
+                className={`sidebar-item ${activeTab === 'seeding' ? 'active' : ''}`}
+                onClick={() => setActiveTab('seeding')}
+              >
+                🌱 Seeding
+              </button>
+              <button
                 className={`sidebar-item ${activeTab === 'admins' ? 'active' : ''}`}
                 onClick={() => setActiveTab('admins')}
               >
@@ -239,6 +248,7 @@ export default function Admin() {
                 {activeTab === 'spreadsheets' && 'Spreadsheets'}
                 {activeTab === 'scoresheets' && 'Score Sheets'}
                 {activeTab === 'scoring' && 'Scoring'}
+                {activeTab === 'seeding' && 'Seeding'}
                 {activeTab === 'admins' && 'Admins'}
               </h2>
               {selectedEvent && (
@@ -265,6 +275,12 @@ export default function Admin() {
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
             {activeTab === 'scoring' && <ScoringTab />}
+            {activeTab === 'seeding' && (
+              <SeedingTab
+                selectedEventId={selectedEvent?.id || null}
+                seedingRounds={selectedEvent?.seeding_rounds ?? 3}
+              />
+            )}
             {activeTab === 'admins' && <AdminsTab />}
           </div>
         </div>
