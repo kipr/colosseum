@@ -577,12 +577,6 @@ export default function TeamsTab({ selectedEventId }: TeamsTabProps) {
                 >
                   Team Name{getSortIndicator('team_name')}
                 </th>
-                <th
-                  className="sortable"
-                  onClick={() => handleSort('display_name')}
-                >
-                  Display Name{getSortIndicator('display_name')}
-                </th>
                 <th className="sortable" onClick={() => handleSort('status')}>
                   Status{getSortIndicator('status')}
                 </th>
@@ -600,11 +594,6 @@ export default function TeamsTab({ selectedEventId }: TeamsTabProps) {
                 <tr key={team.id}>
                   <td>{team.team_number}</td>
                   <td>{team.team_name}</td>
-                  <td>
-                    {team.display_name || (
-                      <em style={{ color: 'var(--secondary-color)' }}>—</em>
-                    )}
-                  </td>
                   <td>
                     <span
                       className={`team-status-badge ${getStatusClass(team.status)}`}
