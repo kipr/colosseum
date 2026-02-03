@@ -10,6 +10,7 @@ import EventsTab from '../components/admin/EventsTab';
 import TeamsTab from '../components/admin/TeamsTab';
 import SeedingTab from '../components/admin/SeedingTab';
 import BracketsTab from '../components/admin/BracketsTab';
+import QueueTab from '../components/admin/QueueTab';
 import {
   Event,
   getEventStatusClass,
@@ -25,6 +26,7 @@ type TabType =
   | 'scoring'
   | 'seeding'
   | 'brackets'
+  | 'queue'
   | 'admins';
 
 const SELECTED_EVENT_KEY = 'colosseum_selected_event_id';
@@ -49,6 +51,7 @@ export default function Admin() {
         saved === 'scoring' ||
         saved === 'seeding' ||
         saved === 'brackets' ||
+        saved === 'queue' ||
         saved === 'admins')
     ) {
       return saved as TabType;
@@ -240,6 +243,12 @@ export default function Admin() {
                 🏅 Brackets
               </button>
               <button
+                className={`sidebar-item ${activeTab === 'queue' ? 'active' : ''}`}
+                onClick={() => setActiveTab('queue')}
+              >
+                🎟️ Queue
+              </button>
+              <button
                 className={`sidebar-item ${activeTab === 'admins' ? 'active' : ''}`}
                 onClick={() => setActiveTab('admins')}
               >
@@ -259,6 +268,7 @@ export default function Admin() {
                 {activeTab === 'scoring' && 'Scoring'}
                 {activeTab === 'seeding' && 'Seeding'}
                 {activeTab === 'brackets' && 'Brackets'}
+                {activeTab === 'queue' && 'Queue'}
                 {activeTab === 'admins' && 'Admins'}
               </h2>
               {selectedEvent && (
@@ -293,6 +303,12 @@ export default function Admin() {
             )}
             {activeTab === 'brackets' && (
               <BracketsTab selectedEventId={selectedEvent?.id || null} />
+            )}
+            {activeTab === 'queue' && (
+              <QueueTab
+                selectedEventId={selectedEvent?.id || null}
+                seedingRounds={selectedEvent?.seeding_rounds ?? 3}
+              />
             )}
             {activeTab === 'admins' && <AdminsTab />}
           </div>

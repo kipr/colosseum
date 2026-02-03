@@ -151,7 +151,122 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// PATCH /queue/:id - Update queue item status
+// Shared reorder handler
+async function handleReorder(req: AuthRequest, res: Response) {
+  try {
+    const { items } = req.body;
+
+    if (!Array.isArray(items) || items.length === 0) {
+      return res
+        .status(400)
+        .json({ error: 'items array is required with {id, queue_position}' });
+    }
+
+    const db = await getDatabase();
+
+    // Filter valid items and execute all updates in a single transaction
+    const validItems = items.filter(
+      (item) => item.id !== undefined && item.queue_position !== undefined,
+    );
+
+    if (validItems.length > 0) {
+      await db.transaction((tx) => {
+        for (const item of validItems) {
+          tx.run('UPDATE game_queue SET queue_position = ? WHERE id = ?', [
+            item.queue_position,
+            item.id,
+          ]);
+        }
+      });
+    }
+
+    res.json({ message: 'Queue reordered', updated: validItems.length });
+  } catch (error) {
+    console.error('Error reordering queue:', error);
+    res.status(500).json({ error: 'Failed to reorder queue' });
+  }
+}
+
+// POST /queue/reorder - Reorder queue items (MUST be before /:id routes)
+router.post('/reorder', requireAuth, handleReorder);
+
+// PATCH /queue/reorder - Reorder queue items (alias for POST)
+router.patch('/reorder', requireAuth, handleReorder);
+
+// POST /queue/populate-from-bracket - Populate queue from bracket games
+router.post(
+  '/populate-from-bracket',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { event_id, bracket_id } = req.body;
+
+      if (!event_id || !bracket_id) {
+        return res
+          .status(400)
+          .json({ error: 'event_id and bracket_id are required' });
+      }
+
+      const db = await getDatabase();
+
+      // Verify bracket exists and belongs to the event
+      const bracket = await db.get(
+        'SELECT id, event_id FROM brackets WHERE id = ?',
+        [bracket_id],
+      );
+
+      if (!bracket) {
+        return res.status(404).json({ error: 'Bracket not found' });
+      }
+
+      if (bracket.event_id !== event_id) {
+        return res
+          .status(400)
+          .json({ error: 'Bracket does not belong to this event' });
+      }
+
+      // Get eligible bracket games:
+      // - status IN ('ready', 'pending')
+      // - both teams assigned (team1_id IS NOT NULL AND team2_id IS NOT NULL)
+      const eligibleGames = await db.all(
+        `SELECT id, game_number FROM bracket_games
+         WHERE bracket_id = ?
+           AND status IN ('ready', 'pending')
+           AND team1_id IS NOT NULL
+           AND team2_id IS NOT NULL
+         ORDER BY game_number ASC`,
+        [bracket_id],
+      );
+
+      // Replace: delete existing queue for this event
+      await db.run('DELETE FROM game_queue WHERE event_id = ?', [event_id]);
+
+      // Insert eligible games into queue
+      let created = 0;
+      for (let i = 0; i < eligibleGames.length; i++) {
+        const game = eligibleGames[i];
+        await db.run(
+          `INSERT INTO game_queue (
+             event_id, bracket_game_id, queue_type, queue_position, status
+           ) VALUES (?, ?, 'bracket', ?, 'queued')`,
+          [event_id, game.id, i + 1],
+        );
+        created++;
+      }
+
+      res.json({
+        message: 'Queue populated from bracket',
+        created,
+        bracketGamesTotal: eligibleGames.length,
+      });
+    } catch (error) {
+      console.error('Error populating queue from bracket:', error);
+      res.status(500).json({ error: 'Failed to populate queue from bracket' });
+    }
+  },
+);
+
+// PATCH /queue/:id - Update queue item status (MUST be after specific routes like /reorder)
 router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -243,45 +358,5 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Failed to remove from queue' });
   }
 });
-
-// POST /queue/reorder - Reorder queue items
-router.post(
-  '/reorder',
-  requireAuth,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { items } = req.body;
-
-      if (!Array.isArray(items) || items.length === 0) {
-        return res
-          .status(400)
-          .json({ error: 'items array is required with {id, queue_position}' });
-      }
-
-      const db = await getDatabase();
-
-      // Filter valid items and execute all updates in a single transaction
-      const validItems = items.filter(
-        (item) => item.id !== undefined && item.queue_position !== undefined,
-      );
-
-      if (validItems.length > 0) {
-        await db.transaction((tx) => {
-          for (const item of validItems) {
-            tx.run('UPDATE game_queue SET queue_position = ? WHERE id = ?', [
-              item.queue_position,
-              item.id,
-            ]);
-          }
-        });
-      }
-
-      res.json({ message: 'Queue reordered', updated: validItems.length });
-    } catch (error) {
-      console.error('Error reordering queue:', error);
-      res.status(500).json({ error: 'Failed to reorder queue' });
-    }
-  },
-);
 
 export default router;
