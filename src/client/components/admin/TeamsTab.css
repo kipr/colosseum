@@ -1,0 +1,211 @@
+.teams-tab {
+  width: 100%;
+}
+
+/* Controls section */
+.teams-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.teams-controls-left {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.teams-controls-right {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.teams-search {
+  width: 200px;
+}
+
+.teams-filter {
+  width: 160px;
+}
+
+/* Sortable headers */
+.sortable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+.sortable:hover {
+  background-color: var(--bg-color);
+}
+
+/* Team status badges */
+.team-status-badge {
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-registered {
+  background-color: #dbeafe;
+  color: #1e40af;
+}
+
+.status-checked-in {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status-no-show {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.status-withdrawn {
+  background-color: #e2e8f0;
+  color: #475569;
+}
+
+[data-theme='dark'] .status-registered {
+  background-color: #1e3a8a;
+  color: #93c5fd;
+}
+
+[data-theme='dark'] .status-checked-in {
+  background-color: #14532d;
+  color: #86efac;
+}
+
+[data-theme='dark'] .status-no-show {
+  background-color: #7f1d1d;
+  color: #fca5a5;
+}
+
+[data-theme='dark'] .status-withdrawn {
+  background-color: #334155;
+  color: #94a3b8;
+}
+
+/* Team actions */
+.team-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.team-actions .btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.8rem;
+  height: auto;
+}
+
+/* Summary */
+.teams-summary {
+  margin-top: 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.875rem;
+  color: var(--secondary-color);
+}
+
+/* Bulk import */
+.bulk-preview {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: var(--bg-color);
+  border-radius: 0.375rem;
+  border: 1px solid var(--border-color);
+}
+
+.bulk-preview h4 {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.bulk-preview-table {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.bulk-preview-table table {
+  margin-top: 0;
+  font-size: 0.875rem;
+}
+
+.bulk-errors {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #fee2e2;
+  border-radius: 0.375rem;
+  color: #991b1b;
+}
+
+[data-theme='dark'] .bulk-errors {
+  background-color: #450a0a;
+  color: #fca5a5;
+}
+
+.bulk-errors h4 {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.bulk-errors ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  font-size: 0.875rem;
+}
+
+.bulk-results {
+  margin-top: 1rem;
+  padding: 1rem;
+  background-color: #dbeafe;
+  border-radius: 0.375rem;
+  color: #1e40af;
+}
+
+[data-theme='dark'] .bulk-results {
+  background-color: #172554;
+  color: #93c5fd;
+}
+
+.bulk-results h4 {
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.bulk-results ul {
+  margin: 0.5rem 0 0;
+  padding-left: 1.5rem;
+  font-size: 0.875rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .teams-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .teams-controls-left,
+  .teams-controls-right {
+    width: 100%;
+  }
+
+  .teams-search,
+  .teams-filter {
+    flex: 1;
+    width: auto;
+  }
+
+  .team-actions {
+    flex-direction: column;
+  }
+}

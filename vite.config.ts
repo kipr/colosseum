@@ -41,7 +41,7 @@ export default defineConfig({
       '^/scores/.*': createProxyConfig('http://localhost:3000'),
       '^/chat/.*': createProxyConfig('http://localhost:3000'),
       '^/events(?:/.*)?$': createProxyConfig('http://localhost:3000'),
-      '^/teams/.*': createProxyConfig('http://localhost:3000'),
+      '^/teams(?:/.*)?$': createProxyConfig('http://localhost:3000'),
       '^/seeding/.*': createProxyConfig('http://localhost:3000'),
       '^/brackets/.*': createProxyConfig('http://localhost:3000'),
       '^/queue/.*': createProxyConfig('http://localhost:3000'),

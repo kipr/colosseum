@@ -7,6 +7,7 @@ import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
 import ScoringTab from '../components/admin/ScoringTab';
 import AdminsTab from '../components/admin/AdminsTab';
 import EventsTab from '../components/admin/EventsTab';
+import TeamsTab from '../components/admin/TeamsTab';
 import {
   Event,
   getEventStatusClass,
@@ -14,7 +15,13 @@ import {
 } from '../utils/eventStatus';
 import './Admin.css';
 
-type TabType = 'events' | 'spreadsheets' | 'scoresheets' | 'scoring' | 'admins';
+type TabType =
+  | 'events'
+  | 'teams'
+  | 'spreadsheets'
+  | 'scoresheets'
+  | 'scoring'
+  | 'admins';
 
 const SELECTED_EVENT_KEY = 'colosseum_selected_event_id';
 
@@ -32,6 +39,7 @@ export default function Admin() {
     if (
       saved &&
       (saved === 'events' ||
+        saved === 'teams' ||
         saved === 'spreadsheets' ||
         saved === 'scoresheets' ||
         saved === 'scoring' ||
@@ -190,6 +198,12 @@ export default function Admin() {
                 📅 Events
               </button>
               <button
+                className={`sidebar-item ${activeTab === 'teams' ? 'active' : ''}`}
+                onClick={() => setActiveTab('teams')}
+              >
+                👥 Teams
+              </button>
+              <button
                 className={`sidebar-item ${activeTab === 'spreadsheets' ? 'active' : ''}`}
                 onClick={() => setActiveTab('spreadsheets')}
               >
@@ -211,7 +225,7 @@ export default function Admin() {
                 className={`sidebar-item ${activeTab === 'admins' ? 'active' : ''}`}
                 onClick={() => setActiveTab('admins')}
               >
-                👥 Admins
+                🔐 Admins
               </button>
             </div>
           </aside>
@@ -221,6 +235,7 @@ export default function Admin() {
             <div className="admin-content-header">
               <h2>
                 {activeTab === 'events' && 'Manage Events'}
+                {activeTab === 'teams' && 'Teams'}
                 {activeTab === 'spreadsheets' && 'Spreadsheets'}
                 {activeTab === 'scoresheets' && 'Score Sheets'}
                 {activeTab === 'scoring' && 'Scoring'}
@@ -243,6 +258,9 @@ export default function Admin() {
                 selectedEventId={selectedEvent?.id || null}
                 onSelectEvent={handleEventChange}
               />
+            )}
+            {activeTab === 'teams' && (
+              <TeamsTab selectedEventId={selectedEvent?.id || null} />
             )}
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
