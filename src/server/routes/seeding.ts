@@ -243,17 +243,31 @@ router.post(
         return b.tiebreaker - a.tiebreaker;
       });
 
-      // Calculate raw seed score (normalized 0-1)
+      // Calculate raw seed score using official formula:
+      // SeedScore = (3/4) × ((n - SeedRank + 1) / n) + (1/4) × (TeamAverageSeedScore / MaxTournamentSeedScore)
+      // Where n = number of ranked teams, SeedRank = 1-based rank position
+
+      // Find the maximum seeding average (MaxTournamentSeedScore)
       const maxAverage =
         rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
+
+      // Count ranked teams (n)
+      const rankedTeams = rankings.filter((r) => r.seedAverage !== null);
+      const n = rankedTeams.length;
 
       // Update rankings in database using a single transaction
       await db.transaction((tx) => {
         for (let i = 0; i < rankings.length; i++) {
           const r = rankings[i];
           const seedRank = r.seedAverage !== null ? i + 1 : null;
-          const rawSeedScore =
-            r.seedAverage !== null ? r.seedAverage / maxAverage : null;
+
+          // Calculate seed score using official formula
+          let rawSeedScore: number | null = null;
+          if (r.seedAverage !== null && seedRank !== null && n > 0) {
+            const rankComponent = (3 / 4) * ((n - seedRank + 1) / n);
+            const scoreComponent = (1 / 4) * (r.seedAverage / maxAverage);
+            rawSeedScore = rankComponent + scoreComponent;
+          }
 
           tx.run(
             `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
