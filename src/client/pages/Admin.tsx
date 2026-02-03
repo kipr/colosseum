@@ -9,6 +9,7 @@ import AdminsTab from '../components/admin/AdminsTab';
 import EventsTab from '../components/admin/EventsTab';
 import TeamsTab from '../components/admin/TeamsTab';
 import SeedingTab from '../components/admin/SeedingTab';
+import BracketsTab from '../components/admin/BracketsTab';
 import {
   Event,
   getEventStatusClass,
@@ -23,6 +24,7 @@ type TabType =
   | 'scoresheets'
   | 'scoring'
   | 'seeding'
+  | 'brackets'
   | 'admins';
 
 const SELECTED_EVENT_KEY = 'colosseum_selected_event_id';
@@ -46,6 +48,7 @@ export default function Admin() {
         saved === 'scoresheets' ||
         saved === 'scoring' ||
         saved === 'seeding' ||
+        saved === 'brackets' ||
         saved === 'admins')
     ) {
       return saved as TabType;
@@ -231,6 +234,12 @@ export default function Admin() {
                 🌱 Seeding
               </button>
               <button
+                className={`sidebar-item ${activeTab === 'brackets' ? 'active' : ''}`}
+                onClick={() => setActiveTab('brackets')}
+              >
+                🏅 Brackets
+              </button>
+              <button
                 className={`sidebar-item ${activeTab === 'admins' ? 'active' : ''}`}
                 onClick={() => setActiveTab('admins')}
               >
@@ -249,6 +258,7 @@ export default function Admin() {
                 {activeTab === 'scoresheets' && 'Score Sheets'}
                 {activeTab === 'scoring' && 'Scoring'}
                 {activeTab === 'seeding' && 'Seeding'}
+                {activeTab === 'brackets' && 'Brackets'}
                 {activeTab === 'admins' && 'Admins'}
               </h2>
               {selectedEvent && (
@@ -280,6 +290,9 @@ export default function Admin() {
                 selectedEventId={selectedEvent?.id || null}
                 seedingRounds={selectedEvent?.seeding_rounds ?? 3}
               />
+            )}
+            {activeTab === 'brackets' && (
+              <BracketsTab selectedEventId={selectedEvent?.id || null} />
             )}
             {activeTab === 'admins' && <AdminsTab />}
           </div>
