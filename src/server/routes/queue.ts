@@ -260,17 +260,23 @@ router.post(
 
       const db = await getDatabase();
 
-      for (const item of items) {
-        if (item.id === undefined || item.queue_position === undefined) {
-          continue;
-        }
-        await db.run('UPDATE game_queue SET queue_position = ? WHERE id = ?', [
-          item.queue_position,
-          item.id,
-        ]);
+      // Filter valid items and execute all updates in a single transaction
+      const validItems = items.filter(
+        (item) => item.id !== undefined && item.queue_position !== undefined,
+      );
+
+      if (validItems.length > 0) {
+        await db.transaction((tx) => {
+          for (const item of validItems) {
+            tx.run('UPDATE game_queue SET queue_position = ? WHERE id = ?', [
+              item.queue_position,
+              item.id,
+            ]);
+          }
+        });
       }
 
-      res.json({ message: 'Queue reordered', updated: items.length });
+      res.json({ message: 'Queue reordered', updated: validItems.length });
     } catch (error) {
       console.error('Error reordering queue:', error);
       res.status(500).json({ error: 'Failed to reorder queue' });

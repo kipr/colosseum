@@ -38,6 +38,16 @@ export interface DatabaseResult {
   changes?: number;
 }
 
+/**
+ * Synchronous transaction interface for use inside Database.transaction() callbacks.
+ * Methods are synchronous because better-sqlite3's .transaction() requires a sync callback.
+ */
+export interface Transaction {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  run(sql: string, params?: any[]): DatabaseResult;
+  exec(sql: string): void;
+}
+
 export interface Database {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
@@ -46,6 +56,13 @@ export interface Database {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   run(sql: string, params?: any[]): Promise<DatabaseResult>;
   exec(sql: string): Promise<void>;
+  /**
+   * Execute a function inside a database transaction.
+   * The callback receives a Transaction object with synchronous methods.
+   * If the callback throws, the transaction is rolled back.
+   * If the callback returns successfully, the transaction is committed.
+   */
+  transaction<T>(fn: (tx: Transaction) => T): Promise<T>;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -117,6 +134,28 @@ class SqliteAdapter implements Database {
   async exec(sql: string): Promise<void> {
     this.db.exec(sql);
   }
+
+  async transaction<T>(fn: (tx: Transaction) => T): Promise<T> {
+    // Create a transaction object with synchronous methods
+    const tx: Transaction = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      run: (sql: string, params: any[] = []): DatabaseResult => {
+        const info = this.stmt(sql).run(normalizeParams(params));
+        return {
+          lastID: Number(info.lastInsertRowid),
+          changes: info.changes,
+        };
+      },
+      exec: (sql: string): void => {
+        this.db.exec(sql);
+      },
+    };
+
+    // Use better-sqlite3's .transaction() which wraps the callback in BEGIN/COMMIT
+    // and automatically rolls back on exception
+    const wrappedFn = this.db.transaction(() => fn(tx));
+    return Promise.resolve(wrappedFn());
+  }
 }
 
 // PostgreSQL implementation
@@ -164,6 +203,79 @@ class PostgresAdapter implements Database {
 
   async exec(sql: string): Promise<void> {
     await this.pool.query(sql);
+  }
+
+  async transaction<T>(fn: (tx: Transaction) => T): Promise<T> {
+    // Collect operations during the synchronous callback execution
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const operations: { type: 'run' | 'exec'; sql: string; params?: any[] }[] =
+      [];
+    const results: DatabaseResult[] = [];
+
+    const tx: Transaction = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      run: (sql: string, params?: any[]): DatabaseResult => {
+        const idx = operations.length;
+        operations.push({ type: 'run', sql, params });
+        // Return a placeholder result - actual results are populated after execution
+        // For synchronous API compatibility, we return an empty result
+        // The actual results will be available after the transaction completes
+        results[idx] = { changes: 0 };
+        return results[idx];
+      },
+      exec: (sql: string): void => {
+        operations.push({ type: 'exec', sql });
+      },
+    };
+
+    // Execute the callback synchronously to collect operations
+    const callbackResult = fn(tx);
+
+    // Now execute all operations within a single transaction
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (let i = 0; i < operations.length; i++) {
+        const op = operations[i];
+        const convertedSql = this.convertPlaceholders(op.sql);
+
+        if (op.type === 'run') {
+          // For INSERT statements, try to get the lastID
+          if (op.sql.trim().toUpperCase().startsWith('INSERT')) {
+            const returningSQL = convertedSql.replace(
+              /;?\s*$/,
+              ' RETURNING id;',
+            );
+            try {
+              const result = await client.query(returningSQL, op.params);
+              results[i] = {
+                lastID: result.rows[0]?.id,
+                changes: result.rowCount || 0,
+              };
+            } catch {
+              // If RETURNING fails (no id column), just run normally
+              const result = await client.query(convertedSql, op.params);
+              results[i] = { changes: result.rowCount || 0 };
+            }
+          } else {
+            const result = await client.query(convertedSql, op.params);
+            results[i] = { changes: result.rowCount || 0 };
+          }
+        } else {
+          // exec
+          await client.query(op.sql);
+        }
+      }
+
+      await client.query('COMMIT');
+      return callbackResult;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 }
 

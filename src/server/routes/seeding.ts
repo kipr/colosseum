@@ -247,24 +247,26 @@ router.post(
       const maxAverage =
         rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
 
-      // Update rankings in database
-      for (let i = 0; i < rankings.length; i++) {
-        const r = rankings[i];
-        const seedRank = r.seedAverage !== null ? i + 1 : null;
-        const rawSeedScore =
-          r.seedAverage !== null ? r.seedAverage / maxAverage : null;
+      // Update rankings in database using a single transaction
+      await db.transaction((tx) => {
+        for (let i = 0; i < rankings.length; i++) {
+          const r = rankings[i];
+          const seedRank = r.seedAverage !== null ? i + 1 : null;
+          const rawSeedScore =
+            r.seedAverage !== null ? r.seedAverage / maxAverage : null;
 
-        await db.run(
-          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
-           VALUES (?, ?, ?, ?, ?)
-           ON CONFLICT(team_id) DO UPDATE SET
-             seed_average = excluded.seed_average,
-             seed_rank = excluded.seed_rank,
-             raw_seed_score = excluded.raw_seed_score,
-             tiebreaker_value = excluded.tiebreaker_value`,
-          [r.teamId, r.seedAverage, seedRank, rawSeedScore, r.tiebreaker],
-        );
-      }
+          tx.run(
+            `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
+             VALUES (?, ?, ?, ?, ?)
+             ON CONFLICT(team_id) DO UPDATE SET
+               seed_average = excluded.seed_average,
+               seed_rank = excluded.seed_rank,
+               raw_seed_score = excluded.raw_seed_score,
+               tiebreaker_value = excluded.tiebreaker_value`,
+            [r.teamId, r.seedAverage, seedRank, rawSeedScore, r.tiebreaker],
+          );
+        }
+      });
 
       // Fetch and return updated rankings
       const updatedRankings = await db.all(

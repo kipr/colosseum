@@ -534,19 +534,22 @@ router.post(
         });
       }
 
-      for (const update of updates) {
-        const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
-        await db.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
-          update.teamId,
-          update.gameId,
-        ]);
-      }
+      // Execute all updates in a single transaction
+      await db.transaction((tx) => {
+        for (const update of updates) {
+          const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
+          tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
+            update.teamId,
+            update.gameId,
+          ]);
+        }
 
-      // Mark current game as completed
-      await db.run(
-        `UPDATE bracket_games SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [id],
-      );
+        // Mark current game as completed
+        tx.run(
+          `UPDATE bracket_games SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
+          [id],
+        );
+      });
 
       res.json({ message: 'Winner advanced', updates });
     } catch (error) {

@@ -124,10 +124,18 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Event does not exist' });
     }
 
-    const created: number[] = [];
     const errors: { index: number; error: string }[] = [];
 
-    // TODO Implement transactions in DB interface to turn this into a single transaction
+    // Phase 1: Pre-validate all teams in the payload
+    const validTeams: {
+      index: number;
+      team_number: number;
+      team_name: string;
+      display_name: string;
+      status: string;
+    }[] = [];
+    const teamNumbersInPayload = new Set<number>();
+
     for (let i = 0; i < teams.length; i++) {
       const { team_number, team_name, display_name, status } = teams[i];
 
@@ -139,36 +147,74 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
         continue;
       }
 
-      try {
-        const result = await db.run(
-          `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            event_id,
-            team_number,
-            team_name,
-            display_name || `${team_number} ${team_name}`,
-            status || 'registered',
-          ],
-        );
-        created.push(result.lastID as number);
-      } catch (err) {
-        const errMsg = (err as Error).message || '';
-        if (errMsg.includes('UNIQUE constraint failed')) {
-          errors.push({
-            index: i,
-            error: `Team number ${team_number} already exists`,
-          });
-        } else {
-          errors.push({ index: i, error: 'Failed to create team' });
-        }
+      // Check for duplicates within the payload itself
+      if (teamNumbersInPayload.has(team_number)) {
+        errors.push({
+          index: i,
+          error: `Duplicate team number ${team_number} in payload`,
+        });
+        continue;
       }
+      teamNumbersInPayload.add(team_number);
+
+      validTeams.push({
+        index: i,
+        team_number,
+        team_name,
+        display_name: display_name || `${team_number} ${team_name}`,
+        status: status || 'registered',
+      });
     }
 
-    res.status(201).json({
-      created: created.length,
-      errors: errors.length > 0 ? errors : undefined,
-    });
+    // Phase 2: Check for existing team numbers in the database
+    if (validTeams.length > 0) {
+      const existingTeams = await db.all<{ team_number: number }>(
+        `SELECT team_number FROM teams WHERE event_id = ? AND team_number IN (${validTeams.map(() => '?').join(',')})`,
+        [event_id, ...validTeams.map((t) => t.team_number)],
+      );
+      const existingNumbers = new Set(existingTeams.map((t) => t.team_number));
+
+      // Filter out teams that already exist
+      const teamsToInsert = validTeams.filter((t) => {
+        if (existingNumbers.has(t.team_number)) {
+          errors.push({
+            index: t.index,
+            error: `Team number ${t.team_number} already exists`,
+          });
+          return false;
+        }
+        return true;
+      });
+
+      // Phase 3: Insert all valid teams in a single transaction
+      if (teamsToInsert.length > 0) {
+        await db.transaction((tx) => {
+          for (const team of teamsToInsert) {
+            tx.run(
+              `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
+               VALUES (?, ?, ?, ?, ?)`,
+              [
+                event_id,
+                team.team_number,
+                team.team_name,
+                team.display_name,
+                team.status,
+              ],
+            );
+          }
+        });
+      }
+
+      res.status(201).json({
+        created: teamsToInsert.length,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    } else {
+      res.status(201).json({
+        created: 0,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+    }
   } catch (error) {
     console.error('Error bulk creating teams:', error);
     res.status(500).json({ error: 'Failed to bulk create teams' });
@@ -242,6 +288,65 @@ router.patch(
     } catch (error) {
       console.error('Error checking in team:', error);
       res.status(500).json({ error: 'Failed to check in team' });
+    }
+  },
+);
+
+// PATCH /teams/event/:eventId/check-in/bulk - Bulk check in teams by team numbers
+router.patch(
+  '/event/:eventId/check-in/bulk',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      const { team_numbers } = req.body;
+
+      if (!Array.isArray(team_numbers) || team_numbers.length === 0) {
+        return res
+          .status(400)
+          .json({ error: 'team_numbers array is required' });
+      }
+
+      const db = await getDatabase();
+
+      // Verify event exists
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        eventId,
+      ]);
+      if (!event) {
+        return res.status(400).json({ error: 'Event does not exist' });
+      }
+
+      // Find which team numbers exist for this event
+      const existingTeams = await db.all<{ id: number; team_number: number }>(
+        `SELECT id, team_number FROM teams WHERE event_id = ? AND team_number IN (${team_numbers.map(() => '?').join(',')})`,
+        [eventId, ...team_numbers],
+      );
+
+      const existingNumbers = new Set(existingTeams.map((t) => t.team_number));
+      const notFound = team_numbers.filter(
+        (n: number) => !existingNumbers.has(n),
+      );
+
+      // Update all found teams in a single transaction
+      if (existingTeams.length > 0) {
+        await db.transaction((tx) => {
+          for (const team of existingTeams) {
+            tx.run(
+              `UPDATE teams SET status = 'checked_in', checked_in_at = CURRENT_TIMESTAMP WHERE id = ?`,
+              [team.id],
+            );
+          }
+        });
+      }
+
+      res.json({
+        updated: existingTeams.length,
+        not_found: notFound.length > 0 ? notFound : undefined,
+      });
+    } catch (error) {
+      console.error('Error bulk checking in teams:', error);
+      res.status(500).json({ error: 'Failed to bulk check in teams' });
     }
   },
 );

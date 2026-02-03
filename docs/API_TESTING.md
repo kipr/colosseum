@@ -17,12 +17,14 @@ export COOKIE="connect.sid=COOKIE_VALUE"
 ## Events API
 
 ### List all events (auth required)
+
 ```bash
 curl -X GET http://localhost:3000/events \
   -H "Cookie: $COOKIE"
 ```
 
 ### Create an event (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/events \
   -H "Content-Type: application/json" \
@@ -37,12 +39,14 @@ curl -X POST http://localhost:3000/events \
 ```
 
 ### Get single event (auth required)
+
 ```bash
 curl -X GET http://localhost:3000/events/1 \
   -H "Cookie: $COOKIE"
 ```
 
 ### Update event (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/events/1 \
   -H "Content-Type: application/json" \
@@ -54,6 +58,7 @@ curl -X PATCH http://localhost:3000/events/1 \
 ```
 
 ### Delete event (auth required)
+
 ```bash
 curl -X DELETE http://localhost:3000/events/1 \
   -H "Cookie: $COOKIE"
@@ -62,16 +67,19 @@ curl -X DELETE http://localhost:3000/events/1 \
 ## Teams API
 
 ### List teams for event (public)
+
 ```bash
 curl -X GET http://localhost:3000/teams/event/1
 ```
 
 ### Get single team (public)
+
 ```bash
 curl -X GET http://localhost:3000/teams/1
 ```
 
 ### Create team (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/teams \
   -H "Content-Type: application/json" \
@@ -84,6 +92,7 @@ curl -X POST http://localhost:3000/teams \
 ```
 
 ### Bulk create teams (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/teams/bulk \
   -H "Content-Type: application/json" \
@@ -99,6 +108,7 @@ curl -X POST http://localhost:3000/teams/bulk \
 ```
 
 ### Update team (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/teams/1 \
   -H "Content-Type: application/json" \
@@ -109,12 +119,27 @@ curl -X PATCH http://localhost:3000/teams/1 \
 ```
 
 ### Check in team (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/teams/1/check-in \
   -H "Cookie: $COOKIE"
 ```
 
+### Bulk check in teams (auth required)
+
+```bash
+curl -X PATCH http://localhost:3000/teams/event/1/check-in/bulk \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{
+    "team_numbers": [101, 102, 103]
+  }'
+```
+
+Response: `{ "updated": 3 }` or `{ "updated": 2, "not_found": [103] }` if some teams don't exist.
+
 ### Delete team (auth required)
+
 ```bash
 curl -X DELETE http://localhost:3000/teams/1 \
   -H "Cookie: $COOKIE"
@@ -123,16 +148,19 @@ curl -X DELETE http://localhost:3000/teams/1 \
 ## Seeding API
 
 ### Get scores for team (public)
+
 ```bash
 curl -X GET http://localhost:3000/seeding/scores/team/1
 ```
 
 ### Get all scores for event (public)
+
 ```bash
 curl -X GET http://localhost:3000/seeding/scores/event/1
 ```
 
 ### Submit seeding score (public - for judges)
+
 ```bash
 curl -X POST http://localhost:3000/seeding/scores \
   -H "Content-Type: application/json" \
@@ -144,6 +172,7 @@ curl -X POST http://localhost:3000/seeding/scores \
 ```
 
 ### Update seeding score (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/seeding/scores/1 \
   -H "Content-Type: application/json" \
@@ -154,17 +183,20 @@ curl -X PATCH http://localhost:3000/seeding/scores/1 \
 ```
 
 ### Delete seeding score (auth required)
+
 ```bash
 curl -X DELETE http://localhost:3000/seeding/scores/1 \
   -H "Cookie: $COOKIE"
 ```
 
 ### Get rankings for event (public)
+
 ```bash
 curl -X GET http://localhost:3000/seeding/rankings/event/1
 ```
 
 ### Recalculate rankings (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/seeding/rankings/recalculate/1 \
   -H "Cookie: $COOKIE"
@@ -173,16 +205,19 @@ curl -X POST http://localhost:3000/seeding/rankings/recalculate/1 \
 ## Brackets API
 
 ### List brackets for event (public)
+
 ```bash
 curl -X GET http://localhost:3000/brackets/event/1
 ```
 
 ### Get bracket with entries and games (public)
+
 ```bash
 curl -X GET http://localhost:3000/brackets/1
 ```
 
 ### Create bracket (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/brackets \
   -H "Content-Type: application/json" \
@@ -195,6 +230,7 @@ curl -X POST http://localhost:3000/brackets \
 ```
 
 ### Update bracket (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/brackets/1 \
   -H "Content-Type: application/json" \
@@ -205,12 +241,14 @@ curl -X PATCH http://localhost:3000/brackets/1 \
 ```
 
 ### Delete bracket (auth required)
+
 ```bash
 curl -X DELETE http://localhost:3000/brackets/1 \
   -H "Cookie: $COOKIE"
 ```
 
 ### Add entry to bracket (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/brackets/1/entries \
   -H "Content-Type: application/json" \
@@ -222,6 +260,7 @@ curl -X POST http://localhost:3000/brackets/1/entries \
 ```
 
 ### Add bye entry to bracket (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/brackets/1/entries \
   -H "Content-Type: application/json" \
@@ -233,17 +272,20 @@ curl -X POST http://localhost:3000/brackets/1/entries \
 ```
 
 ### Remove entry from bracket (auth required)
+
 ```bash
 curl -X DELETE http://localhost:3000/brackets/1/entries/1 \
   -H "Cookie: $COOKIE"
 ```
 
 ### Get games for bracket (public)
+
 ```bash
 curl -X GET http://localhost:3000/brackets/1/games
 ```
 
 ### Create game in bracket (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/brackets/1/games \
   -H "Content-Type: application/json" \
@@ -259,6 +301,7 @@ curl -X POST http://localhost:3000/brackets/1/games \
 ```
 
 ### Update game (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/brackets/games/1 \
   -H "Content-Type: application/json" \
@@ -273,22 +316,26 @@ curl -X PATCH http://localhost:3000/brackets/games/1 \
 ```
 
 ### Advance winner (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/brackets/games/1/advance \
   -H "Cookie: $COOKIE"
 ```
 
 ### Get bracket templates (public)
+
 ```bash
 curl -X GET http://localhost:3000/brackets/templates
 ```
 
 ### Get bracket templates for size (public)
+
 ```bash
 curl -X GET "http://localhost:3000/brackets/templates?bracket_size=8"
 ```
 
 ### Create bracket template (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/brackets/templates \
   -H "Content-Type: application/json" \
@@ -310,16 +357,19 @@ curl -X POST http://localhost:3000/brackets/templates \
 ## Game Queue API
 
 ### Get queue for event (public)
+
 ```bash
 curl -X GET http://localhost:3000/queue/event/1
 ```
 
 ### Get queue filtered by status (public)
+
 ```bash
 curl -X GET "http://localhost:3000/queue/event/1?status=queued"
 ```
 
 ### Add seeding item to queue (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/queue \
   -H "Content-Type: application/json" \
@@ -333,6 +383,7 @@ curl -X POST http://localhost:3000/queue \
 ```
 
 ### Add bracket game to queue (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/queue \
   -H "Content-Type: application/json" \
@@ -345,6 +396,7 @@ curl -X POST http://localhost:3000/queue \
 ```
 
 ### Update queue item status (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/queue/1 \
   -H "Content-Type: application/json" \
@@ -356,6 +408,7 @@ curl -X PATCH http://localhost:3000/queue/1 \
 ```
 
 ### Call team/game (auth required)
+
 ```bash
 curl -X PATCH http://localhost:3000/queue/1/call \
   -H "Content-Type: application/json" \
@@ -366,6 +419,7 @@ curl -X PATCH http://localhost:3000/queue/1/call \
 ```
 
 ### Reorder queue (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/queue/reorder \
   -H "Content-Type: application/json" \
@@ -379,6 +433,7 @@ curl -X POST http://localhost:3000/queue/reorder \
 ```
 
 ### Remove from queue (auth required)
+
 ```bash
 curl -X DELETE http://localhost:3000/queue/1 \
   -H "Cookie: $COOKIE"
@@ -387,24 +442,28 @@ curl -X DELETE http://localhost:3000/queue/1 \
 ## Audit API
 
 ### Get audit log for event (auth required)
+
 ```bash
 curl -X GET http://localhost:3000/audit/event/1 \
   -H "Cookie: $COOKIE"
 ```
 
 ### Get audit log with filters (auth required)
+
 ```bash
 curl -X GET "http://localhost:3000/audit/event/1?action=score_submitted&limit=10" \
   -H "Cookie: $COOKIE"
 ```
 
 ### Get audit log for entity (auth required)
+
 ```bash
 curl -X GET http://localhost:3000/audit/entity/team/1 \
   -H "Cookie: $COOKIE"
 ```
 
 ### Create audit entry (auth required)
+
 ```bash
 curl -X POST http://localhost:3000/audit \
   -H "Content-Type: application/json" \
@@ -427,12 +486,14 @@ sqlite3 database/colosseum.db
 ```
 
 ### Verify Events
+
 ```sql
 SELECT * FROM events;
 SELECT COUNT(*) as event_count FROM events;
 ```
 
 ### Verify Teams
+
 ```sql
 SELECT * FROM teams;
 SELECT t.*, e.name as event_name FROM teams t JOIN events e ON t.event_id = e.id;
@@ -440,43 +501,48 @@ SELECT COUNT(*) as team_count FROM teams;
 ```
 
 ### Verify Seeding Scores
+
 ```sql
 SELECT * FROM seeding_scores;
-SELECT ss.*, t.team_number, t.team_name 
-FROM seeding_scores ss 
+SELECT ss.*, t.team_number, t.team_name
+FROM seeding_scores ss
 JOIN teams t ON ss.team_id = t.id;
 ```
 
 ### Verify Seeding Rankings
+
 ```sql
 SELECT * FROM seeding_rankings;
-SELECT sr.*, t.team_number, t.team_name 
-FROM seeding_rankings sr 
-JOIN teams t ON sr.team_id = t.id 
+SELECT sr.*, t.team_number, t.team_name
+FROM seeding_rankings sr
+JOIN teams t ON sr.team_id = t.id
 ORDER BY sr.seed_rank;
 ```
 
 ### Verify Brackets
+
 ```sql
 SELECT * FROM brackets;
-SELECT b.*, e.name as event_name 
-FROM brackets b 
+SELECT b.*, e.name as event_name
+FROM brackets b
 JOIN events e ON b.event_id = e.id;
 ```
 
 ### Verify Bracket Entries
+
 ```sql
 SELECT * FROM bracket_entries;
-SELECT be.*, t.team_number, t.team_name 
-FROM bracket_entries be 
+SELECT be.*, t.team_number, t.team_name
+FROM bracket_entries be
 LEFT JOIN teams t ON be.team_id = t.id;
 ```
 
 ### Verify Bracket Games
+
 ```sql
 SELECT * FROM bracket_games;
-SELECT bg.*, 
-       t1.team_number as team1, 
+SELECT bg.*,
+       t1.team_number as team1,
        t2.team_number as team2,
        w.team_number as winner
 FROM bracket_games bg
@@ -486,9 +552,10 @@ LEFT JOIN teams w ON bg.winner_id = w.id;
 ```
 
 ### Verify Game Queue
+
 ```sql
 SELECT * FROM game_queue;
-SELECT gq.*, 
+SELECT gq.*,
        bg.game_number,
        t.team_number as seeding_team
 FROM game_queue gq
@@ -498,16 +565,18 @@ ORDER BY gq.queue_position;
 ```
 
 ### Verify Bracket Templates
+
 ```sql
 SELECT * FROM bracket_templates ORDER BY bracket_size, game_number;
 ```
 
 ### Verify Audit Log
+
 ```sql
 SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 20;
-SELECT al.*, u.name as user_name 
-FROM audit_log al 
-LEFT JOIN users u ON al.user_id = u.id 
+SELECT al.*, u.name as user_name
+FROM audit_log al
+LEFT JOIN users u ON al.user_id = u.id
 ORDER BY al.created_at DESC;
 ```
 
@@ -535,6 +604,12 @@ curl -X POST http://localhost:3000/teams/bulk \
       {"team_number": 4, "team_name": "Delta"}
     ]
   }'
+
+# 2b. Bulk check in teams
+curl -X PATCH http://localhost:3000/teams/event/1/check-in/bulk \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{"team_numbers": [1, 2, 3, 4]}'
 
 # 3. Submit seeding scores (as judge - no auth)
 curl -X POST http://localhost:3000/seeding/scores -H "Content-Type: application/json" -d '{"team_id": 1, "round_number": 1, "score": 100}'
