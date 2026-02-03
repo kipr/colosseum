@@ -230,11 +230,9 @@ router.post(
         }
 
         if (team.event_id !== bracket.event_id) {
-          return res
-            .status(400)
-            .json({
-              error: 'Team must belong to the same event as the bracket',
-            });
+          return res.status(400).json({
+            error: 'Team must belong to the same event as the bracket',
+          });
         }
       }
 
@@ -258,19 +256,15 @@ router.post(
       console.error('Error adding bracket entry:', error);
       const errMsg = (error as Error).message || '';
       if (errMsg.includes('UNIQUE constraint failed')) {
-        return res
-          .status(409)
-          .json({
-            error: 'Team or seed position already exists in this bracket',
-          });
+        return res.status(409).json({
+          error: 'Team or seed position already exists in this bracket',
+        });
       }
       if (errMsg.includes('CHECK constraint failed')) {
-        return res
-          .status(400)
-          .json({
-            error:
-              'Invalid entry: bye requires null team_id, non-bye requires team_id',
-          });
+        return res.status(400).json({
+          error:
+            'Invalid entry: bye requires null team_id, non-bye requires team_id',
+        });
       }
       res.status(500).json({ error: 'Failed to add bracket entry' });
     }
@@ -371,11 +365,9 @@ router.post(
           teamId,
         ]);
         if (team && team.event_id !== bracket.event_id) {
-          return res
-            .status(400)
-            .json({
-              error: 'Teams must belong to the same event as the bracket',
-            });
+          return res.status(400).json({
+            error: 'Teams must belong to the same event as the bracket',
+          });
         }
       }
 
@@ -465,11 +457,9 @@ router.patch(
             value,
           ]);
           if (team && team.event_id !== game.event_id) {
-            return res
-              .status(400)
-              .json({
-                error: 'Teams must belong to the same event as the bracket',
-              });
+            return res.status(400).json({
+              error: 'Teams must belong to the same event as the bracket',
+            });
           }
         }
       }

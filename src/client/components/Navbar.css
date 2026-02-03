@@ -80,12 +80,16 @@
   color: var(--secondary-color);
 }
 
-.event-status-live {
+.event-status-active {
   background: #22c55e;
 }
 
 .event-status-setup {
   background: #f59e0b;
+}
+
+.event-status-complete {
+  background: #3b82f6;
 }
 
 .event-status-archived {

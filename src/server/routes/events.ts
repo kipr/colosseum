@@ -1,5 +1,5 @@
 import express, { Response } from 'express';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 
 const router = express.Router();
@@ -57,8 +57,8 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// POST /events - Create event
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
+// POST /events - Create event (admin only)
+router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { name, description, event_date, location, status, seeding_rounds } =
       req.body;
@@ -93,8 +93,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// PATCH /events/:id - Update event (partial)
-router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+// PATCH /events/:id - Update event (partial, admin only)
+router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -133,8 +133,8 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// DELETE /events/:id - Delete event
-router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+// DELETE /events/:id - Delete event (admin only)
+router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();

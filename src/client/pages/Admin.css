@@ -312,7 +312,7 @@
   letter-spacing: 0.05em;
 }
 
-.event-status-live {
+.event-status-active {
   background: #dcfce7;
   color: #166534;
 }
@@ -322,12 +322,17 @@
   color: #92400e;
 }
 
+.event-status-complete {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
 .event-status-archived {
   background: #e2e8f0;
   color: #64748b;
 }
 
-[data-theme='dark'] .event-status-live {
+[data-theme='dark'] .event-status-active {
   background: #14532d;
   color: #86efac;
 }
@@ -335,6 +340,11 @@
 [data-theme='dark'] .event-status-setup {
   background: #78350f;
   color: #fde68a;
+}
+
+[data-theme='dark'] .event-status-complete {
+  background: #1e3a8a;
+  color: #93c5fd;
 }
 
 [data-theme='dark'] .event-status-archived {
@@ -376,12 +386,16 @@
   border-radius: 50%;
 }
 
-.event-badge-status.event-status-live {
+.event-badge-status.event-status-active {
   background: #22c55e;
 }
 
 .event-badge-status.event-status-setup {
   background: #f59e0b;
+}
+
+.event-badge-status.event-status-complete {
+  background: #3b82f6;
 }
 
 .event-badge-status.event-status-archived {

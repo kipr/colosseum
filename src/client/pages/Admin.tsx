@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
@@ -7,51 +7,16 @@ import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
 import ScoringTab from '../components/admin/ScoringTab';
 import AdminsTab from '../components/admin/AdminsTab';
 import EventsTab from '../components/admin/EventsTab';
+import {
+  Event,
+  getEventStatusClass,
+  isEventActive,
+} from '../utils/eventStatus';
 import './Admin.css';
 
 type TabType = 'events' | 'spreadsheets' | 'scoresheets' | 'scoring' | 'admins';
 
-// Sample hardcoded events for visual mockup
-const SAMPLE_EVENTS = [
-  {
-    id: 1,
-    name: '2026 Botball Regional',
-    event_date: '2026-02-14',
-    location: 'San Jose, CA',
-    status: 'live' as const,
-    teams_count: 24,
-    brackets_count: 1,
-  },
-  {
-    id: 2,
-    name: 'Practice Day',
-    event_date: '2026-02-13',
-    location: 'San Jose, CA',
-    status: 'setup' as const,
-    teams_count: 24,
-    brackets_count: 0,
-  },
-  {
-    id: 3,
-    name: '2025 Fall Regional',
-    event_date: '2025-10-20',
-    location: 'Los Angeles, CA',
-    status: 'archived' as const,
-    teams_count: 32,
-    brackets_count: 2,
-  },
-  {
-    id: 4,
-    name: '2025 Spring Championship',
-    event_date: '2025-04-15',
-    location: 'Seattle, WA',
-    status: 'archived' as const,
-    teams_count: 48,
-    brackets_count: 3,
-  },
-];
-
-type SampleEvent = (typeof SAMPLE_EVENTS)[number];
+const SELECTED_EVENT_KEY = 'colosseum_selected_event_id';
 
 export default function Admin() {
   const { user, loading } = useAuth();
@@ -81,16 +46,58 @@ export default function Admin() {
     message?: string;
   } | null>(null);
 
-  // Event selector state
-  const [selectedEvent, setSelectedEvent] = useState<SampleEvent | null>(
-    SAMPLE_EVENTS[0],
-  );
+  // Events state - fetched from API
+  const [events, setEvents] = useState<Event[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+
+  // Fetch events from API
+  const fetchEvents = useCallback(async () => {
+    try {
+      const response = await fetch('/events', { credentials: 'include' });
+      if (!response.ok) {
+        throw new Error('Failed to fetch events');
+      }
+      const data: Event[] = await response.json();
+      setEvents(data);
+
+      // Restore selected event from localStorage or pick default
+      const savedEventId = localStorage.getItem(SELECTED_EVENT_KEY);
+      let eventToSelect: Event | null = null;
+
+      if (savedEventId) {
+        eventToSelect = data.find((e) => e.id === Number(savedEventId)) || null;
+      }
+
+      // If no saved selection or saved event not found, pick the most recent non-archived event
+      if (!eventToSelect) {
+        eventToSelect =
+          data.find((e) => isEventActive(e.status)) || data[0] || null;
+      }
+
+      setSelectedEvent(eventToSelect);
+      if (eventToSelect) {
+        localStorage.setItem(SELECTED_EVENT_KEY, String(eventToSelect.id));
+      }
+    } catch (error) {
+      console.error('Error fetching events:', error);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!loading && !user) {
       navigate('/');
     }
   }, [user, loading, navigate]);
+
+  // Fetch events when user is available
+  useEffect(() => {
+    if (user) {
+      fetchEvents();
+    }
+  }, [user, fetchEvents]);
 
   // Save active tab to localStorage whenever it changes
   useEffect(() => {
@@ -124,26 +131,17 @@ export default function Admin() {
     window.location.href = '/auth/google';
   };
 
-  // Helper to get status badge styling
-  const getStatusBadgeClass = (status: string) => {
-    switch (status) {
-      case 'live':
-        return 'event-status-live';
-      case 'setup':
-        return 'event-status-setup';
-      case 'archived':
-        return 'event-status-archived';
-      default:
-        return '';
+  const handleEventChange = (eventId: number) => {
+    const event = events.find((ev) => ev.id === eventId) || null;
+    setSelectedEvent(event);
+    if (event) {
+      localStorage.setItem(SELECTED_EVENT_KEY, String(event.id));
+    } else {
+      localStorage.removeItem(SELECTED_EVENT_KEY);
     }
   };
 
-  const handleEventChange = (eventId: number) => {
-    const event = SAMPLE_EVENTS.find((ev) => ev.id === eventId);
-    setSelectedEvent(event || null);
-  };
-
-  if (loading) {
+  if (loading || eventsLoading) {
     return (
       <div className="app">
         <Navbar />
@@ -160,11 +158,11 @@ export default function Admin() {
 
   return (
     <div className="app">
-      <Navbar 
+      <Navbar
         adminEventData={{
           selectedEvent,
           onEventChange: handleEventChange,
-          events: SAMPLE_EVENTS
+          events,
         }}
       />
 
@@ -231,14 +229,21 @@ export default function Admin() {
               {selectedEvent && (
                 <div className="content-header-event-badge">
                   <span
-                    className={`event-badge-status ${getStatusBadgeClass(selectedEvent.status)}`}
+                    className={`event-badge-status ${getEventStatusClass(selectedEvent.status)}`}
                   />
                   <span className="event-badge-name">{selectedEvent.name}</span>
                 </div>
               )}
             </div>
 
-            {activeTab === 'events' && <EventsTab />}
+            {activeTab === 'events' && (
+              <EventsTab
+                events={events}
+                refreshEvents={fetchEvents}
+                selectedEventId={selectedEvent?.id || null}
+                onSelectEvent={handleEventChange}
+              />
+            )}
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
             {activeTab === 'scoring' && <ScoringTab />}

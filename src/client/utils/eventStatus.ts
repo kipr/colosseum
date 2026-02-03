@@ -1,0 +1,81 @@
+/**
+ * Event status types and utilities
+ * These match the database CHECK constraint: status IN ('setup', 'active', 'complete', 'archived')
+ */
+
+export type EventStatus = 'setup' | 'active' | 'complete' | 'archived';
+
+export interface Event {
+  id: number;
+  name: string;
+  description: string | null;
+  event_date: string | null;
+  location: string | null;
+  status: EventStatus;
+  seeding_rounds: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get the CSS class for an event status badge/dot
+ */
+export function getEventStatusClass(status: EventStatus | string): string {
+  switch (status) {
+    case 'active':
+      return 'event-status-active';
+    case 'setup':
+      return 'event-status-setup';
+    case 'complete':
+      return 'event-status-complete';
+    case 'archived':
+      return 'event-status-archived';
+    default:
+      return '';
+  }
+}
+
+/**
+ * Get a human-readable label for an event status
+ */
+export function getEventStatusLabel(status: EventStatus | string): string {
+  switch (status) {
+    case 'setup':
+      return 'Setup';
+    case 'active':
+      return 'Active';
+    case 'complete':
+      return 'Complete';
+    case 'archived':
+      return 'Archived';
+    default:
+      return status;
+  }
+}
+
+/**
+ * Format an event date string for display
+ */
+export function formatEventDate(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+
+  try {
+    // Handle date-only strings (YYYY-MM-DD) by adding time to avoid timezone issues
+    const date = new Date(dateStr + 'T00:00:00');
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return dateStr;
+  }
+}
+
+/**
+ * Check if an event status is "active" (not archived or complete)
+ */
+export function isEventActive(status: EventStatus): boolean {
+  return status === 'setup' || status === 'active';
+}

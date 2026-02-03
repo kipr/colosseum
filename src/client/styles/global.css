@@ -115,6 +115,24 @@ body {
   background-color: #dc2626;
 }
 
+.btn-success {
+  background-color: #16a34a;
+  color: white;
+}
+
+.btn-success:hover {
+  background-color: #15803d;
+}
+
+.btn-warning {
+  background-color: #d97706;
+  color: white;
+}
+
+.btn-warning:hover {
+  background-color: #b45309;
+}
+
 .btn-delete {
   background-color: #7f1d1d;
   color: white;
