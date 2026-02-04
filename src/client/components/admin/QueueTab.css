@@ -30,6 +30,42 @@
   min-width: 140px;
 }
 
+/* Status filters */
+.status-filters {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.status-filter-pill {
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  transition: all 0.2s;
+}
+
+.status-filter-pill:hover {
+  background-color: var(--hover-bg);
+}
+
+.status-filter-pill.active {
+  border-color: transparent;
+  color: white;
+}
+
+/* Use specific colors for active states matching badges but solid */
+.status-filter-pill.active {
+  background-color: var(
+    --primary-color
+  ); /* Uniform color for all active pills */
+}
+
 /* Queue status badges */
 .queue-status-badge {
   display: inline-block;
@@ -160,6 +196,12 @@
 .queue-game-teams {
   font-size: 0.875rem;
   color: var(--secondary-color);
+}
+
+.queue-called-at {
+  font-size: 0.875rem;
+  color: var(--secondary-color);
+  white-space: nowrap;
 }
 
 /* Summary */

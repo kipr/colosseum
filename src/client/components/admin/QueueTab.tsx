@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { formatCalledAt } from '../../utils/dateUtils';
 import '../Modal.css';
 import './QueueTab.css';
 
@@ -73,15 +74,6 @@ interface QueueTabProps {
   seedingRounds: number;
 }
 
-const STATUS_OPTIONS: { value: QueueStatus | 'all'; label: string }[] = [
-  { value: 'queued', label: 'Pending' },
-  { value: 'called', label: 'Called' },
-  { value: 'in_progress', label: 'In Progress' },
-  { value: 'completed', label: 'Completed' },
-  { value: 'skipped', label: 'Skipped' },
-  { value: 'all', label: 'All Statuses' },
-];
-
 const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'all', label: 'All Types' },
   { value: 'seeding', label: 'Seeding' },
@@ -111,9 +103,11 @@ export default function QueueTab({
   // Queue state
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filterStatus, setFilterStatus] = useState<QueueStatus | 'all'>(
+  const [filterStatuses, setFilterStatuses] = useState<QueueStatus[]>([
     'queued',
-  );
+    'called',
+    'in_progress',
+  ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
 
   // Populate from bracket state
@@ -157,8 +151,14 @@ export default function QueueTab({
     setLoading(true);
     try {
       const params = new URLSearchParams();
-      if (filterStatus !== 'all') {
-        params.append('status', filterStatus);
+      // Only append status params if we are filtering (not all selected)
+      const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
+      const isAllSelected = filterStatuses.length === allStatuses.length;
+
+      if (!isAllSelected) {
+        filterStatuses.forEach((status) => {
+          params.append('status', status);
+        });
       }
       if (filterType !== 'all') {
         params.append('queue_type', filterType);
@@ -177,7 +177,7 @@ export default function QueueTab({
     } finally {
       setLoading(false);
     }
-  }, [selectedEventId, filterStatus, filterType]);
+  }, [selectedEventId, filterStatuses, filterType]);
 
   useEffect(() => {
     fetchQueue();
@@ -547,6 +547,34 @@ export default function QueueTab({
     );
   };
 
+  // Handle status toggle
+  const toggleStatus = (status: QueueStatus) => {
+    setFilterStatuses((prev) => {
+      let next;
+      if (prev.includes(status)) {
+        next = prev.filter((s) => s !== status);
+      } else {
+        next = [...prev, status];
+      }
+
+      // Guardrail: fallback to all if empty
+      if (next.length === 0) {
+        return Object.keys(STATUS_LABELS) as QueueStatus[];
+      }
+      return next;
+    });
+  };
+
+  const toggleAllStatuses = () => {
+    const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
+    if (filterStatuses.length === allStatuses.length) {
+      // If all are selected, revert to default set
+      setFilterStatuses(['queued', 'called', 'in_progress']);
+    } else {
+      setFilterStatuses(allStatuses);
+    }
+  };
+
   // No event selected
   if (!selectedEventId) {
     return (
@@ -611,19 +639,30 @@ export default function QueueTab({
               </option>
             ))}
           </select>
-          <select
-            className="field-input queue-filter"
-            value={filterStatus}
-            onChange={(e) =>
-              setFilterStatus(e.target.value as QueueStatus | 'all')
-            }
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
+
+          <div className="status-filters">
+            <button
+              className={`status-filter-pill ${
+                filterStatuses.length === Object.keys(STATUS_LABELS).length
+                  ? 'active'
+                  : ''
+              }`}
+              onClick={toggleAllStatuses}
+            >
+              All
+            </button>
+            {(Object.keys(STATUS_LABELS) as QueueStatus[]).map((status) => (
+              <button
+                key={status}
+                className={`status-filter-pill ${
+                  filterStatuses.includes(status) ? 'active' : ''
+                }`}
+                onClick={() => toggleStatus(status)}
+              >
+                {STATUS_LABELS[status]}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       </div>
 
@@ -633,7 +672,8 @@ export default function QueueTab({
           <p>Loading queue...</p>
         ) : queue.length === 0 ? (
           <p style={{ color: 'var(--secondary-color)' }}>
-            {filterStatus === 'all' && filterType === 'all'
+            {filterStatuses.length === Object.keys(STATUS_LABELS).length &&
+            filterType === 'all'
               ? 'Queue is empty. Use "Populate from Bracket" or add items manually.'
               : 'No queue items match the current filters.'}
           </p>
@@ -644,6 +684,7 @@ export default function QueueTab({
                 <th style={{ width: '50px' }}>#</th>
                 <th style={{ width: '80px' }}>Type</th>
                 <th>Details</th>
+                <th style={{ width: '120px' }}>Called At</th>
                 <th style={{ width: '100px' }}>Status</th>
                 <th style={{ width: '200px' }}>Actions</th>
                 <th style={{ width: '60px' }}>Order</th>
@@ -661,6 +702,9 @@ export default function QueueTab({
                     </span>
                   </td>
                   <td>{renderItemDetails(item)}</td>
+                  <td className="queue-called-at">
+                    {formatCalledAt(item.called_at)}
+                  </td>
                   <td>
                     <span
                       className={`queue-status-badge ${getStatusClass(item.status)}`}
@@ -714,7 +758,9 @@ export default function QueueTab({
         )}
         <div className="queue-summary">
           {queue.length} item{queue.length !== 1 ? 's' : ''} in queue
-          {(filterStatus !== 'all' || filterType !== 'all') && ' (filtered)'}
+          {(filterStatuses.length !== Object.keys(STATUS_LABELS).length ||
+            filterType !== 'all') &&
+            ' (filtered)'}
         </div>
       </div>
 

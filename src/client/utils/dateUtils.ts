@@ -121,3 +121,52 @@ export function formatDateTimeVerbose(
     return dateString;
   }
 }
+
+/**
+ * Formats a date string: time only if today, full date + time if different day.
+ */
+export function formatCalledAt(dateString: string | null | undefined): string {
+  if (!dateString) return '-';
+
+  try {
+    let normalizedDate = dateString;
+    if (
+      dateString.includes(' ') &&
+      !dateString.includes('Z') &&
+      !dateString.includes('+')
+    ) {
+      normalizedDate = dateString.replace(' ', 'T') + 'Z';
+    } else if (
+      !dateString.includes('Z') &&
+      !dateString.includes('+') &&
+      dateString.includes('T')
+    ) {
+      normalizedDate = dateString + 'Z';
+    }
+
+    const date = new Date(normalizedDate);
+    if (isNaN(date.getTime())) return dateString;
+
+    const now = new Date();
+    const isToday =
+      date.getDate() === now.getDate() &&
+      date.getMonth() === now.getMonth() &&
+      date.getFullYear() === now.getFullYear();
+
+    if (isToday) {
+      return date.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+
+    return date.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return dateString;
+  }
+}

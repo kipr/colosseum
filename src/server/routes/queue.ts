@@ -11,7 +11,7 @@ const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
 router.get('/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const { status, queue_type } = req.query;
+    const { queue_type } = req.query;
     const db = await getDatabase();
 
     let query = `
@@ -29,9 +29,25 @@ router.get('/event/:eventId', async (req: Request, res: Response) => {
     `;
     const params: (string | number)[] = [eventId];
 
-    if (status) {
-      query += ' AND gq.status = ?';
-      params.push(status as string);
+    const statusParam = req.query.status;
+    if (statusParam) {
+      let statuses: string[] = [];
+      if (Array.isArray(statusParam)) {
+        statuses = statusParam as string[];
+      } else if (typeof statusParam === 'string') {
+        if (statusParam.includes(',')) {
+          statuses = statusParam.split(',');
+        } else if (statusParam.includes('|')) {
+          statuses = statusParam.split('|');
+        } else {
+          statuses = [statusParam];
+        }
+      }
+
+      if (statuses.length > 0) {
+        query += ` AND gq.status IN (${statuses.map(() => '?').join(',')})`;
+        params.push(...statuses);
+      }
     }
 
     if (queue_type) {
