@@ -346,3 +346,11 @@ export async function closeDatabase(): Promise<void> {
   }
   dbAdapter = null;
 }
+
+/**
+ * TEST ONLY: Set a custom database adapter for route testing.
+ * Pass null to clear and allow normal initialization on next getDatabase() call.
+ */
+export function __setTestDatabaseAdapter(adapter: Database | null): void {
+  dbAdapter = adapter;
+}

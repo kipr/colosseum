@@ -475,9 +475,24 @@ export default function QueueTab({
         throw new Error(errorData.error || 'Failed to update status');
       }
 
-      // Optimistically update
+      const updatedItem = (await response.json()) as QueueItem;
       setQueue((prev) =>
-        prev.map((q) => (q.id === item.id ? { ...q, status: newStatus } : q)),
+        prev.map((q) =>
+          q.id === item.id
+            ? {
+                ...q,
+                status: updatedItem.status ?? newStatus,
+                called_at:
+                  newStatus === 'queued'
+                    ? null
+                    : (updatedItem.called_at ?? q.called_at),
+                table_number:
+                  newStatus === 'queued'
+                    ? null
+                    : (updatedItem.table_number ?? q.table_number),
+              }
+            : q,
+        ),
       );
     } catch (error) {
       console.error('Error updating status:', error);
