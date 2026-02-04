@@ -343,6 +343,21 @@ export default function SpreadsheetsTab() {
 
   return (
     <div>
+      <div
+        style={{
+          backgroundColor: 'var(--warning-bg, #fff3cd)',
+          border: '1px solid var(--warning-border, #ffc107)',
+          borderRadius: '4px',
+          padding: '1rem',
+          marginBottom: '1.5rem',
+        }}
+      >
+        <strong style={{ color: 'var(--warning-text, #856404)' }}>
+          Warning: The Google Sheets backend is deprecated. Database-backed
+          events should be preferred in all circumstances.
+        </strong>
+      </div>
+
       <h2>Google Spreadsheet Configuration</h2>
 
       {/* First Table: Linked Spreadsheets */}
