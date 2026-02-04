@@ -1,5 +1,9 @@
 import passport from 'passport';
-import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import {
+  Strategy as GoogleStrategy,
+  Profile,
+  VerifyCallback,
+} from 'passport-google-oauth20';
 import { getDatabase } from '../database/connection';
 
 // Allowed email domains for admin access
@@ -40,12 +44,11 @@ export function setupPassport() {
           process.env.GOOGLE_CALLBACK_URL ||
           'http://localhost:3000/auth/google/callback',
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       async (
         accessToken: string,
         refreshToken: string,
-        profile: any,
-        done: any,
+        profile: Profile,
+        done: VerifyCallback,
       ) => {
         try {
           const db = await getDatabase();

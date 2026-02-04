@@ -66,10 +66,9 @@ export class SqliteSessionStore extends session.Store {
   }
 
   // express-session expects: cb(err, session|null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get(
     sid: string,
-    cb: (err?: any, session?: SessionData | null) => void,
+    cb: (err?: Error | null, session?: SessionData | null) => void,
   ): void {
     try {
       const row = this.stmtGet.get(sid) as
@@ -88,7 +87,7 @@ export class SqliteSessionStore extends session.Store {
 
       return cb(null, parsed);
     } catch (err) {
-      return cb(err);
+      return cb(err instanceof Error ? err : new Error(String(err)));
     }
   }
 
