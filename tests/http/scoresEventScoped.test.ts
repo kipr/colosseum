@@ -1,0 +1,681 @@
+/**
+ * HTTP route tests for event-scoped scoring endpoints.
+ * Tests GET /scores/by-event/:eventId, POST /scores/:id/accept-event, POST /scores/:id/revert-event.
+ */
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createTestDb, TestDb } from '../sql/helpers/testDb';
+import { __setTestDatabaseAdapter } from '../../src/server/database/connection';
+import {
+  createTestApp,
+  startServer,
+  TestServerHandle,
+  http,
+} from './helpers/testServer';
+import {
+  seedEvent,
+  seedUser,
+  seedTeam,
+  seedBracket,
+  seedBracketGame,
+  seedScoresheetTemplate,
+  seedSpreadsheetConfig,
+  seedScoreSubmission,
+} from './helpers/seed';
+import scoresRoutes from '../../src/server/routes/scores';
+
+describe('Event-Scoped Scores Routes', () => {
+  let testDb: TestDb;
+
+  beforeEach(async () => {
+    testDb = await createTestDb();
+    __setTestDatabaseAdapter(testDb.db);
+  });
+
+  afterEach(async () => {
+    __setTestDatabaseAdapter(null);
+    testDb.close();
+  });
+
+  // ==========================================================================
+  // Authentication and Authorization Tests
+  // ==========================================================================
+
+  describe('Authentication Boundaries', () => {
+    describe('GET /scores/by-event/:eventId', () => {
+      it('returns 403 when not authenticated', async () => {
+        const app = createTestApp();
+        app.use('/scores', scoresRoutes);
+        const server = await startServer(app);
+
+        try {
+          const res = await http.get(`${server.baseUrl}/scores/by-event/1`);
+          expect(res.status).toBe(403);
+          expect((res.json as { error: string }).error).toContain(
+            'Admin access required',
+          );
+        } finally {
+          await server.close();
+        }
+      });
+
+      it('returns 403 when authenticated but not admin', async () => {
+        const app = createTestApp({ user: { id: 1, is_admin: false } });
+        app.use('/scores', scoresRoutes);
+        const server = await startServer(app);
+
+        try {
+          const res = await http.get(`${server.baseUrl}/scores/by-event/1`);
+          expect(res.status).toBe(403);
+          expect((res.json as { error: string }).error).toContain(
+            'Admin access required',
+          );
+        } finally {
+          await server.close();
+        }
+      });
+
+      it('returns 200 when admin', async () => {
+        const event = await seedEvent(testDb.db);
+        const app = createTestApp({ user: { id: 1, is_admin: true } });
+        app.use('/scores', scoresRoutes);
+        const server = await startServer(app);
+
+        try {
+          const res = await http.get(
+            `${server.baseUrl}/scores/by-event/${event.id}`,
+          );
+          expect(res.status).toBe(200);
+        } finally {
+          await server.close();
+        }
+      });
+    });
+
+    describe('POST /scores/:id/accept-event', () => {
+      it('returns 403 when not admin', async () => {
+        const app = createTestApp({ user: { id: 1, is_admin: false } });
+        app.use('/scores', scoresRoutes);
+        const server = await startServer(app);
+
+        try {
+          const res = await http.post(`${server.baseUrl}/scores/1/accept-event`);
+          expect(res.status).toBe(403);
+        } finally {
+          await server.close();
+        }
+      });
+    });
+
+    describe('POST /scores/:id/revert-event', () => {
+      it('returns 403 when not admin', async () => {
+        const app = createTestApp({ user: { id: 1, is_admin: false } });
+        app.use('/scores', scoresRoutes);
+        const server = await startServer(app);
+
+        try {
+          const res = await http.post(`${server.baseUrl}/scores/1/revert-event`);
+          expect(res.status).toBe(403);
+        } finally {
+          await server.close();
+        }
+      });
+    });
+  });
+
+  // ==========================================================================
+  // GET /scores/by-event/:eventId
+  // ==========================================================================
+
+  describe('GET /scores/by-event/:eventId', () => {
+    let server: TestServerHandle;
+
+    beforeEach(async () => {
+      const app = createTestApp({ user: { id: 1, is_admin: true } });
+      app.use('/scores', scoresRoutes);
+      server = await startServer(app);
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('returns 404 when event not found', async () => {
+      const res = await http.get(`${server.baseUrl}/scores/by-event/999`);
+      expect(res.status).toBe(404);
+      expect((res.json as { error: string }).error).toContain('Event not found');
+    });
+
+    it('returns empty array when no scores exist', async () => {
+      const event = await seedEvent(testDb.db);
+      const res = await http.get(`${server.baseUrl}/scores/by-event/${event.id}`);
+
+      expect(res.status).toBe(200);
+      const data = res.json as { rows: unknown[]; totalCount: number };
+      expect(data.rows).toEqual([]);
+      expect(data.totalCount).toBe(0);
+    });
+
+    it('returns scores with pagination info', async () => {
+      const user = await seedUser(testDb.db);
+      const event = await seedEvent(testDb.db);
+      const config = await seedSpreadsheetConfig(testDb.db, { user_id: user.id });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({ team_id: { value: 1 }, round: { value: 1 } }),
+        event_id: event.id,
+        score_type: 'seeding',
+      });
+
+      const res = await http.get(`${server.baseUrl}/scores/by-event/${event.id}`);
+
+      expect(res.status).toBe(200);
+      const data = res.json as {
+        rows: unknown[];
+        page: number;
+        limit: number;
+        totalCount: number;
+        totalPages: number;
+      };
+      expect(data.rows.length).toBe(1);
+      expect(data.page).toBe(1);
+      expect(data.totalCount).toBe(1);
+      expect(data.totalPages).toBe(1);
+    });
+
+    it('filters by status', async () => {
+      const user = await seedUser(testDb.db);
+      const event = await seedEvent(testDb.db);
+      const config = await seedSpreadsheetConfig(testDb.db, { user_id: user.id });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({}),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({}),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'accepted',
+      });
+
+      const res = await http.get(
+        `${server.baseUrl}/scores/by-event/${event.id}?status=pending`,
+      );
+
+      expect(res.status).toBe(200);
+      const data = res.json as { rows: { status: string }[]; totalCount: number };
+      expect(data.totalCount).toBe(1);
+      expect(data.rows[0].status).toBe('pending');
+    });
+
+    it('filters by score_type', async () => {
+      const user = await seedUser(testDb.db);
+      const event = await seedEvent(testDb.db);
+      const config = await seedSpreadsheetConfig(testDb.db, { user_id: user.id });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({}),
+        event_id: event.id,
+        score_type: 'seeding',
+      });
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({}),
+        event_id: event.id,
+        score_type: 'bracket',
+      });
+
+      const res = await http.get(
+        `${server.baseUrl}/scores/by-event/${event.id}?score_type=bracket`,
+      );
+
+      expect(res.status).toBe(200);
+      const data = res.json as {
+        rows: { score_type: string }[];
+        totalCount: number;
+      };
+      expect(data.totalCount).toBe(1);
+      expect(data.rows[0].score_type).toBe('bracket');
+    });
+  });
+
+  // ==========================================================================
+  // POST /scores/:id/accept-event
+  // ==========================================================================
+
+  describe('POST /scores/:id/accept-event', () => {
+    let server: TestServerHandle;
+    let adminUser: { id: number };
+
+    beforeEach(async () => {
+      adminUser = await seedUser(testDb.db, { is_admin: true });
+      const app = createTestApp({ user: { id: adminUser.id, is_admin: true } });
+      app.use('/scores', scoresRoutes);
+      server = await startServer(app);
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('returns 404 when score not found', async () => {
+      const res = await http.post(`${server.baseUrl}/scores/999/accept-event`);
+      expect(res.status).toBe(404);
+      expect((res.json as { error: string }).error).toContain('not found');
+    });
+
+    it('returns 400 when score is not event-scoped', async () => {
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({}),
+        event_id: null, // Not event-scoped
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain('not event-scoped');
+    });
+
+    it('returns 400 when score is already accepted', async () => {
+      const event = await seedEvent(testDb.db);
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({}),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'accepted',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain('already accepted');
+    });
+
+    it('accepts seeding score and creates seeding_score record', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 150 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(200);
+      const data = res.json as { success: boolean; scoreType: string };
+      expect(data.success).toBe(true);
+      expect(data.scoreType).toBe('seeding');
+
+      // Verify seeding_score was created
+      const seedingScore = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team.id, 1],
+      );
+      expect(seedingScore).toBeDefined();
+      expect(seedingScore.score).toBe(150);
+    });
+
+    it('accepts bracket score and sets winner', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'ready',
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          winner_team_id: { value: team1.id },
+          team1_score: { value: 100 },
+          team2_score: { value: 80 },
+        }),
+        event_id: event.id,
+        score_type: 'bracket',
+        bracket_game_id: game.id,
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(200);
+      const data = res.json as {
+        success: boolean;
+        scoreType: string;
+        winnerId: number;
+      };
+      expect(data.success).toBe(true);
+      expect(data.scoreType).toBe('bracket');
+      expect(data.winnerId).toBe(team1.id);
+
+      // Verify game was updated
+      const updatedGame = await testDb.db.get(
+        'SELECT * FROM bracket_games WHERE id = ?',
+        [game.id],
+      );
+      expect(updatedGame.winner_id).toBe(team1.id);
+      expect(updatedGame.status).toBe('completed');
+    });
+
+    it('returns 409 conflict when seeding score already exists', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      // Create existing seeding score
+      await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        [team.id, 1, 100],
+      );
+
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 150 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(409);
+      const data = res.json as { error: string; existingScore: number };
+      expect(data.existingScore).toBe(100);
+    });
+
+    it('overrides with force=true', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      // Create existing seeding score
+      await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        [team.id, 1, 100],
+      );
+
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 150 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+        { force: true },
+      );
+      expect(res.status).toBe(200);
+
+      // Verify score was overridden
+      const seedingScore = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team.id, 1],
+      );
+      expect(seedingScore.score).toBe(150);
+    });
+  });
+
+  // ==========================================================================
+  // POST /scores/:id/revert-event
+  // ==========================================================================
+
+  describe('POST /scores/:id/revert-event', () => {
+    let server: TestServerHandle;
+    let adminUser: { id: number };
+
+    beforeEach(async () => {
+      adminUser = await seedUser(testDb.db, { is_admin: true });
+      const app = createTestApp({ user: { id: adminUser.id, is_admin: true } });
+      app.use('/scores', scoresRoutes);
+      server = await startServer(app);
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('returns 404 when score not found', async () => {
+      const res = await http.post(`${server.baseUrl}/scores/999/revert-event`);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 400 when score is not accepted', async () => {
+      const event = await seedEvent(testDb.db);
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({}),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/revert-event`,
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain(
+        'Only accepted scores',
+      );
+    });
+
+    it('reverts seeding score and clears seeding_score record', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      // Create seeding score
+      const seedingScoreResult = await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        [team.id, 1, 150],
+      );
+
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        seeding_score_id: seedingScoreResult.lastID,
+        status: 'accepted',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/revert-event`,
+        { confirm: true },
+      );
+      expect(res.status).toBe(200);
+      const data = res.json as { success: boolean };
+      expect(data.success).toBe(true);
+
+      // Verify seeding_score was deleted
+      const seedingScore = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team.id, 1],
+      );
+      expect(seedingScore).toBeUndefined();
+
+      // Verify submission status was reverted
+      const submission = await testDb.db.get(
+        'SELECT * FROM score_submissions WHERE id = ?',
+        [score.id],
+      );
+      expect(submission.status).toBe('pending');
+    });
+
+    it('does dry-run for bracket cascade detection', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+
+      // Create game 1 (completed) and game 2 (pending, receives winner from game 1)
+      const game2 = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 2,
+        status: 'pending',
+      });
+
+      // Insert game 1 with winner advancement
+      await testDb.db.run(
+        `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, team1_id, team2_id, winner_id, status, winner_advances_to_id, winner_slot)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          bracket.id,
+          1,
+          'Round 1',
+          1,
+          team1.id,
+          team2.id,
+          team1.id,
+          'completed',
+          game2.id,
+          'team1',
+        ],
+      );
+      const game1 = await testDb.db.get(
+        'SELECT id FROM bracket_games WHERE bracket_id = ? AND game_number = 1',
+        [bracket.id],
+      );
+
+      // Update game 2 to have team1 (the winner) in team1 slot
+      await testDb.db.run('UPDATE bracket_games SET team1_id = ? WHERE id = ?', [
+        team1.id,
+        game2.id,
+      ]);
+
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          winner_team_id: { value: team1.id },
+        }),
+        event_id: event.id,
+        score_type: 'bracket',
+        bracket_game_id: game1.id,
+        status: 'accepted',
+      });
+
+      // Do dry run
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/revert-event`,
+        { dryRun: true },
+      );
+      expect(res.status).toBe(200);
+      const data = res.json as {
+        requiresConfirmation: boolean;
+        affectedGames: { id: number; game_number: number }[];
+      };
+      expect(data.requiresConfirmation).toBe(true);
+      expect(data.affectedGames.length).toBeGreaterThan(0);
+    });
+  });
+});

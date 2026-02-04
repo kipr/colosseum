@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import { recalculateSeedingRankings } from '../services/seedingRankings';
 
 const router = express.Router();
 
@@ -188,99 +189,12 @@ router.post(
       const { eventId } = req.params;
       const db = await getDatabase();
 
-      // Get all teams for this event
-      const teams = await db.all('SELECT id FROM teams WHERE event_id = ?', [
-        eventId,
-      ]);
+      // Recalculate using shared service
+      const result = await recalculateSeedingRankings(parseInt(eventId, 10));
 
-      if (teams.length === 0) {
+      if (result.teamsRanked === 0 && result.teamsUnranked === 0) {
         return res.status(404).json({ error: 'No teams found for this event' });
       }
-
-      // For each team, calculate their ranking based on seeding scores
-      // Algorithm: Average of top 2 of 3 scores (as per schema.md)
-      const rankings: {
-        teamId: number;
-        seedAverage: number | null;
-        tiebreaker: number | null;
-      }[] = [];
-
-      for (const team of teams) {
-        const scores = await db.all(
-          'SELECT score FROM seeding_scores WHERE team_id = ? AND score IS NOT NULL ORDER BY score DESC',
-          [team.id],
-        );
-
-        let seedAverage: number | null = null;
-        let tiebreaker: number | null = null;
-
-        if (scores.length >= 2) {
-          // Average of top 2 scores
-          seedAverage = (scores[0].score + scores[1].score) / 2;
-          // Tiebreaker: 3rd score if available, else sum of all
-          tiebreaker =
-            scores.length >= 3
-              ? scores[2].score
-              : scores.reduce((sum, s) => sum + s.score, 0);
-        } else if (scores.length === 1) {
-          seedAverage = scores[0].score;
-          tiebreaker = scores[0].score;
-        }
-
-        rankings.push({ teamId: team.id, seedAverage, tiebreaker });
-      }
-
-      // Sort by seed_average DESC, then tiebreaker DESC
-      rankings.sort((a, b) => {
-        if (a.seedAverage === null && b.seedAverage === null) return 0;
-        if (a.seedAverage === null) return 1;
-        if (b.seedAverage === null) return -1;
-        if (a.seedAverage !== b.seedAverage)
-          return b.seedAverage - a.seedAverage;
-        if (a.tiebreaker === null && b.tiebreaker === null) return 0;
-        if (a.tiebreaker === null) return 1;
-        if (b.tiebreaker === null) return -1;
-        return b.tiebreaker - a.tiebreaker;
-      });
-
-      // Calculate raw seed score using official formula:
-      // SeedScore = (3/4) × ((n - SeedRank + 1) / n) + (1/4) × (TeamAverageSeedScore / MaxTournamentSeedScore)
-      // Where n = number of ranked teams, SeedRank = 1-based rank position
-
-      // Find the maximum seeding average (MaxTournamentSeedScore)
-      const maxAverage =
-        rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
-
-      // Count ranked teams (n)
-      const rankedTeams = rankings.filter((r) => r.seedAverage !== null);
-      const n = rankedTeams.length;
-
-      // Update rankings in database using a single transaction
-      await db.transaction((tx) => {
-        for (let i = 0; i < rankings.length; i++) {
-          const r = rankings[i];
-          const seedRank = r.seedAverage !== null ? i + 1 : null;
-
-          // Calculate seed score using official formula
-          let rawSeedScore: number | null = null;
-          if (r.seedAverage !== null && seedRank !== null && n > 0) {
-            const rankComponent = (3 / 4) * ((n - seedRank + 1) / n);
-            const scoreComponent = (1 / 4) * (r.seedAverage / maxAverage);
-            rawSeedScore = rankComponent + scoreComponent;
-          }
-
-          tx.run(
-            `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
-             VALUES (?, ?, ?, ?, ?)
-             ON CONFLICT(team_id) DO UPDATE SET
-               seed_average = excluded.seed_average,
-               seed_rank = excluded.seed_rank,
-               raw_seed_score = excluded.raw_seed_score,
-               tiebreaker_value = excluded.tiebreaker_value`,
-            [r.teamId, r.seedAverage, seedRank, rawSeedScore, r.tiebreaker],
-          );
-        }
-      });
 
       // Fetch and return updated rankings
       const updatedRankings = await db.all(
@@ -295,6 +209,8 @@ router.post(
       res.json({
         message: 'Rankings recalculated',
         rankings: updatedRankings,
+        teamsRanked: result.teamsRanked,
+        teamsUnranked: result.teamsUnranked,
       });
     } catch (error) {
       console.error('Error recalculating rankings:', error);

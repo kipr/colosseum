@@ -276,3 +276,43 @@ export async function seedAuditLog(
   );
   return { id: result.lastID! };
 }
+
+export interface SeedScoreSubmissionData {
+  user_id?: number | null;
+  template_id: number;
+  spreadsheet_config_id: number;
+  participant_name?: string | null;
+  match_id?: string | null;
+  score_data: string;
+  status?: string;
+  event_id?: number | null;
+  bracket_game_id?: number | null;
+  seeding_score_id?: number | null;
+  score_type?: string | null;
+  game_queue_id?: number | null;
+}
+
+export async function seedScoreSubmission(
+  db: Database,
+  data: SeedScoreSubmissionData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO score_submissions (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      data.user_id ?? null,
+      data.template_id,
+      data.spreadsheet_config_id,
+      data.participant_name ?? null,
+      data.match_id ?? null,
+      data.score_data,
+      data.status ?? 'pending',
+      data.event_id ?? null,
+      data.bracket_game_id ?? null,
+      data.seeding_score_id ?? null,
+      data.score_type ?? null,
+      data.game_queue_id ?? null,
+    ],
+  );
+  return { id: result.lastID! };
+}

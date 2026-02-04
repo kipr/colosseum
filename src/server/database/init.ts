@@ -371,6 +371,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE SET NULL,
       seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
       score_type TEXT,
+      game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -380,7 +381,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
-  // Update score_submissions if needed
+  // Update score_submissions if needed (legacy migration for review columns)
   try {
     const tableInfo = await db.all('PRAGMA table_info(score_submissions)');
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -397,6 +398,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       !hasReviewedBy ||
       (userIdColumn && userIdColumn.notnull === 1)
     ) {
+      // Full rebuild preserving all columns including event-scoped and game_queue_id
       await db.exec(`
         CREATE TABLE score_submissions_new (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -410,6 +412,11 @@ export async function initializeSQLite(db: Database): Promise<void> {
           status TEXT DEFAULT 'pending',
           reviewed_by INTEGER,
           reviewed_at DATETIME,
+          event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE SET NULL,
+          seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
+          score_type TEXT,
+          game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -426,6 +433,16 @@ export async function initializeSQLite(db: Database): Promise<void> {
     }
   } catch {
     /* Migration error */
+  }
+
+  // Add game_queue_id column if it doesn't exist (Phase 6 migration)
+  try {
+    await db.exec(
+      `ALTER TABLE score_submissions ADD COLUMN game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL`,
+    );
+    console.log('✅ Added game_queue_id column to score_submissions');
+  } catch {
+    /* Column already exists */
   }
 
   // Active sessions
@@ -817,30 +834,111 @@ export async function initializeSQLite(db: Database): Promise<void> {
     END
   `);
 
-  // Create indexes (commented out for now)
-  /*
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_spreadsheet_configs_user ON spreadsheet_configs(user_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_active_sessions_user ON active_sessions(user_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_spreadsheet ON chat_messages(spreadsheet_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_teams_event ON teams(event_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(event_id, status)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_seeding_scores_team ON seeding_scores(team_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_seeding_rankings_rank ON seeding_rankings(seed_rank)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_brackets_event ON brackets(event_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_bracket_entries_bracket ON bracket_entries(bracket_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_bracket_games_bracket ON bracket_games(bracket_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_bracket_games_status ON bracket_games(bracket_id, status)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_bracket_games_team1 ON bracket_games(team1_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_bracket_games_team2 ON bracket_games(team2_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_score_details_submission ON score_details(score_submission_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_game_queue_event ON game_queue(event_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_game_queue_position ON game_queue(event_id, queue_position)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_bracket_templates_size ON bracket_templates(bracket_size)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_event ON audit_log(event_id)`);
-  await db.exec(`CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)`);
-  */
+  // ============================================================================
+  // INDEXES
+  // ============================================================================
+
+  // Core indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_spreadsheet_configs_user ON spreadsheet_configs(user_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_active_sessions_user ON active_sessions(user_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_spreadsheet ON chat_messages(spreadsheet_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)`,
+  );
+
+  // Event/team indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_teams_event ON teams(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(event_id, status)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_seeding_scores_team ON seeding_scores(team_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_seeding_rankings_rank ON seeding_rankings(seed_rank)`,
+  );
+
+  // Bracket indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_brackets_event ON brackets(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_entries_bracket ON bracket_entries(bracket_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_bracket ON bracket_games(bracket_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_status ON bracket_games(bracket_id, status)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team1 ON bracket_games(team1_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team2 ON bracket_games(team2_id)`,
+  );
+
+  // Bracket revert traversal indexes (team source lookups)
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team1_source ON bracket_games(bracket_id, team1_source)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team2_source ON bracket_games(bracket_id, team2_source)`,
+  );
+
+  // Queue indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_event ON game_queue(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_position ON game_queue(event_id, queue_position)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
+  );
+
+  // Score submissions event-scoped indexes (Phase 6)
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_event_status ON score_submissions(event_id, status, created_at DESC)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_event_type ON score_submissions(event_id, score_type, created_at DESC)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_game_queue ON score_submissions(game_queue_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_bracket_game ON score_submissions(bracket_game_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_seeding_score ON score_submissions(seeding_score_id)`,
+  );
+
+  // Other indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_details_submission ON score_details(score_submission_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_templates_size ON bracket_templates(bracket_size)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_audit_log_event ON audit_log(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)`,
+  );
 }

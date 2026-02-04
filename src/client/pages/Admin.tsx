@@ -294,7 +294,9 @@ export default function Admin() {
             )}
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
-            {activeTab === 'scoring' && <ScoringTab />}
+            {activeTab === 'scoring' && (
+              <ScoringTab selectedEventId={selectedEvent?.id || null} />
+            )}
             {activeTab === 'seeding' && (
               <SeedingTab
                 selectedEventId={selectedEvent?.id || null}

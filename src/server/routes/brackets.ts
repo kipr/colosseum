@@ -3,6 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
+import { recalculateSeedingRankings } from '../services/seedingRankings';
 
 const router = express.Router();
 
@@ -321,6 +322,12 @@ router.post(
           entriesCount: existingEntries.length,
         });
       }
+
+      // Recalculate seeding rankings before fetching (ensures fresh data)
+      const recalcResult = await recalculateSeedingRankings(bracket.event_id);
+      console.log(
+        `Recalculated rankings for event ${bracket.event_id}: ${recalcResult.teamsRanked} ranked, ${recalcResult.teamsUnranked} unranked`,
+      );
 
       // Get ranked teams for this event
       const rankedTeams = await db.all(
