@@ -187,7 +187,10 @@ async function initializePostgres(db: Database): Promise<void> {
   );
 }
 
-async function initializeSQLite(db: Database): Promise<void> {
+/**
+ * Initialize SQLite schema. Exported for use by tests with in-memory databases.
+ */
+export async function initializeSQLite(db: Database): Promise<void> {
   // SQLite schema (existing schema)
 
   // Users table

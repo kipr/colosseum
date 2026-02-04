@@ -124,6 +124,11 @@ export default function QueueTab({
   );
   const [populating, setPopulating] = useState(false);
 
+  // Populate from seeding state
+  const [showPopulateSeedingModal, setShowPopulateSeedingModal] =
+    useState(false);
+  const [populatingSeeding, setPopulatingSeeding] = useState(false);
+
   // Add seeding modal state
   const [showAddSeedingModal, setShowAddSeedingModal] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -281,6 +286,50 @@ export default function QueueTab({
       );
     } finally {
       setPopulating(false);
+    }
+  };
+
+  // Handle populate from seeding
+  const handlePopulateFromSeeding = async () => {
+    if (!selectedEventId) return;
+
+    const confirmed = await confirm({
+      title: 'Populate Queue from Seeding',
+      message:
+        'This will replace the current queue with all unplayed seeding rounds. Continue?',
+      confirmText: 'Populate',
+      confirmStyle: 'warning',
+    });
+
+    if (!confirmed) return;
+
+    setPopulatingSeeding(true);
+    try {
+      const response = await fetch('/queue/populate-from-seeding', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          event_id: selectedEventId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to populate queue');
+      }
+
+      const data = await response.json();
+      toast.success(`Added ${data.created} seeding rounds to the queue`);
+      setShowPopulateSeedingModal(false);
+      await fetchQueue();
+    } catch (error) {
+      console.error('Error populating queue from seeding:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to populate queue',
+      );
+    } finally {
+      setPopulatingSeeding(false);
     }
   };
 
@@ -526,6 +575,12 @@ export default function QueueTab({
             Populate from Bracket
           </button>
           <button
+            className="btn btn-primary"
+            onClick={() => setShowPopulateSeedingModal(true)}
+          >
+            Populate from Seeding
+          </button>
+          <button
             className="btn btn-secondary"
             onClick={() => {
               fetchTeams();
@@ -736,6 +791,64 @@ export default function QueueTab({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Populate from Seeding Modal */}
+      {showPopulateSeedingModal && (
+        <div
+          className="modal show"
+          onClick={() => setShowPopulateSeedingModal(false)}
+        >
+          <div
+            className="modal-content"
+            style={{ maxWidth: '500px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span
+              className="close"
+              onClick={() => setShowPopulateSeedingModal(false)}
+            >
+              &times;
+            </span>
+            <h3>Populate Queue from Seeding</h3>
+            <p
+              style={{
+                color: 'var(--secondary-color)',
+                marginBottom: '1.5rem',
+              }}
+            >
+              This will replace the current queue with all unplayed seeding
+              rounds (team + round combinations that don&apos;t have a score
+              yet).
+            </p>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1.5rem',
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowPopulateSeedingModal(false)}
+                disabled={populatingSeeding}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handlePopulateFromSeeding}
+                disabled={populatingSeeding}
+              >
+                {populatingSeeding ? 'Populating...' : 'Populate Queue'}
+              </button>
+            </div>
           </div>
         </div>
       )}

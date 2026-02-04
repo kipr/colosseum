@@ -266,6 +266,99 @@ router.post(
   },
 );
 
+// POST /queue/populate-from-seeding - Populate queue from unplayed seeding rounds
+router.post(
+  '/populate-from-seeding',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { event_id } = req.body;
+
+      if (!event_id) {
+        return res.status(400).json({ error: 'event_id is required' });
+      }
+
+      const db = await getDatabase();
+
+      // Get event and seeding_rounds count
+      const event = await db.get(
+        'SELECT id, seeding_rounds FROM events WHERE id = ?',
+        [event_id],
+      );
+
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const seedingRounds = event.seeding_rounds || 3;
+
+      // Get all teams for this event
+      const teams = await db.all(
+        'SELECT id, team_number FROM teams WHERE event_id = ? ORDER BY team_number ASC',
+        [event_id],
+      );
+
+      if (teams.length === 0) {
+        return res.status(400).json({ error: 'No teams found for this event' });
+      }
+
+      // Get all scored seeding rounds (team_id + round_number with non-null score)
+      const teamIds = teams.map((t: { id: number }) => t.id);
+      const scoredRounds = await db.all(
+        `SELECT team_id, round_number FROM seeding_scores
+         WHERE team_id IN (${teamIds.map(() => '?').join(',')})
+           AND score IS NOT NULL`,
+        teamIds,
+      );
+
+      // Build a set of "team_id:round" for scored rounds
+      const scoredSet = new Set(
+        scoredRounds.map(
+          (s: { team_id: number; round_number: number }) =>
+            `${s.team_id}:${s.round_number}`,
+        ),
+      );
+
+      // Build list of unplayed seeding rounds
+      const unplayedRounds: { team_id: number; round: number }[] = [];
+      for (const team of teams) {
+        for (let round = 1; round <= seedingRounds; round++) {
+          const key = `${team.id}:${round}`;
+          if (!scoredSet.has(key)) {
+            unplayedRounds.push({ team_id: team.id, round });
+          }
+        }
+      }
+
+      // Replace: delete existing queue for this event
+      await db.run('DELETE FROM game_queue WHERE event_id = ?', [event_id]);
+
+      // Insert unplayed seeding rounds into queue
+      let created = 0;
+      for (let i = 0; i < unplayedRounds.length; i++) {
+        const item = unplayedRounds[i];
+        await db.run(
+          `INSERT INTO game_queue (
+             event_id, seeding_team_id, seeding_round, queue_type, queue_position, status
+           ) VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+          [event_id, item.team_id, item.round, i + 1],
+        );
+        created++;
+      }
+
+      res.json({
+        message: 'Queue populated from seeding',
+        created,
+        totalTeams: teams.length,
+        totalRounds: seedingRounds,
+      });
+    } catch (error) {
+      console.error('Error populating queue from seeding:', error);
+      res.status(500).json({ error: 'Failed to populate queue from seeding' });
+    }
+  },
+);
+
 // PATCH /queue/:id - Update queue item status (MUST be after specific routes like /reorder)
 router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {

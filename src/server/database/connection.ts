@@ -321,6 +321,20 @@ export function getPostgresPool(): Pool | null {
   return null;
 }
 
+/**
+ * Create a SQLite Database adapter from a better-sqlite3 Database instance.
+ * Useful for tests that want to use an in-memory database.
+ */
+export function createSqliteDatabase(db: SQLiteDatabase): Database {
+  db.pragma('foreign_keys = ON;');
+  return new SqliteAdapter(db);
+}
+
+/**
+ * Export normalizeParam for unit testing.
+ */
+export { normalizeParam };
+
 export async function closeDatabase(): Promise<void> {
   if (sqliteDb) {
     await sqliteDb.close();
