@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS teams (
     display_name TEXT,                           -- Computed or custom: "859 ACES Robotics" (optional shorthand)
     status TEXT DEFAULT 'registered'
         CHECK (status IN ('registered', 'checked_in', 'no_show', 'withdrawn')),
-    checked_in_at DATETIME,                      -- When the team checked in
+    checked_in_at DATETIME,                      -- When the team checked in (cleared if status -> registered/no_show)
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(event_id, team_number)
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS seeding_scores (
     round_number INTEGER NOT NULL CHECK (round_number > 0),               -- 1, 2, or 3
     score INTEGER,                               -- NULL if not yet scored
     score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
-    scored_at DATETIME,
+    scored_at DATETIME,                          -- Cleared if score -> NULL
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(team_id, round_number)
@@ -183,8 +183,8 @@ CREATE TABLE IF NOT EXISTS bracket_games (
     
     -- Timing
     scheduled_time DATETIME,                     -- Optional scheduled start
-    started_at DATETIME,
-    completed_at DATETIME,
+    started_at DATETIME,                         -- Cleared if status -> pending/ready
+    completed_at DATETIME,                       -- Cleared if status -> pending/ready/in_progress
     
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -255,7 +255,7 @@ CREATE TABLE IF NOT EXISTS game_queue (
     queue_position INTEGER NOT NULL,             -- Order in queue
     status TEXT DEFAULT 'queued'
         CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
-    called_at DATETIME,                          -- When announced/called
+    called_at DATETIME,                          -- When announced/called (cleared if status -> queued)
     table_number INTEGER,                        -- Which scoring table
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -328,5 +328,11 @@ BEGIN
   SET updated_at = CURRENT_TIMESTAMP
   WHERE id = NEW.id;
 END;
+
+-- Timestamp Cleanup Triggers (enforced by SQLite)
+-- 1. teams: Clear checked_in_at when status -> registered/no_show
+-- 2. game_queue: Clear called_at when status -> queued
+-- 3. seeding_scores: Clear scored_at when score -> NULL
+-- 4. bracket_games: Clear started_at/completed_at on status rollback
 
 ```

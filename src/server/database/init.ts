@@ -748,6 +748,75 @@ export async function initializeSQLite(db: Database): Promise<void> {
     `);
   }
 
+  // ============================================================================
+  // TRIGGERS FOR TIMESTAMP CLEANUP
+  // ============================================================================
+
+  // Clear teams.checked_in_at when status changes back to registered or no_show
+  await db.exec(`
+    CREATE TRIGGER IF NOT EXISTS teams_clear_checked_in_at_on_status
+    AFTER UPDATE OF status ON teams
+    FOR EACH ROW
+    WHEN NEW.status IN ('registered', 'no_show') AND NEW.checked_in_at IS NOT NULL
+    BEGIN
+      UPDATE teams
+      SET checked_in_at = NULL
+      WHERE id = NEW.id;
+    END
+  `);
+
+  // Clear game_queue.called_at when status changes back to queued
+  await db.exec(`
+    CREATE TRIGGER IF NOT EXISTS game_queue_clear_called_at_on_queued
+    AFTER UPDATE OF status ON game_queue
+    FOR EACH ROW
+    WHEN NEW.status = 'queued' AND NEW.called_at IS NOT NULL
+    BEGIN
+      UPDATE game_queue
+      SET called_at = NULL
+      WHERE id = NEW.id;
+    END
+  `);
+
+  // Clear seeding_scores.scored_at when score is removed
+  await db.exec(`
+    CREATE TRIGGER IF NOT EXISTS seeding_scores_clear_scored_at_when_score_null
+    AFTER UPDATE OF score ON seeding_scores
+    FOR EACH ROW
+    WHEN NEW.score IS NULL AND (NEW.scored_at IS NOT NULL OR NEW.score_submission_id IS NOT NULL)
+    BEGIN
+      UPDATE seeding_scores
+      SET scored_at = NULL, score_submission_id = NULL
+      WHERE id = NEW.id;
+    END
+  `);
+
+  // Clear bracket_games timestamps when status is rolled back to pending/ready
+  await db.exec(`
+    CREATE TRIGGER IF NOT EXISTS bracket_games_clear_times_on_status_rollback
+    AFTER UPDATE OF status ON bracket_games
+    FOR EACH ROW
+    WHEN NEW.status IN ('pending', 'ready') AND (NEW.started_at IS NOT NULL OR NEW.completed_at IS NOT NULL)
+    BEGIN
+      UPDATE bracket_games
+      SET started_at = NULL, completed_at = NULL
+      WHERE id = NEW.id;
+    END
+  `);
+
+  // Clear bracket_games.completed_at when status is rolled back to in_progress
+  await db.exec(`
+    CREATE TRIGGER IF NOT EXISTS bracket_games_clear_completed_at_on_in_progress
+    AFTER UPDATE OF status ON bracket_games
+    FOR EACH ROW
+    WHEN NEW.status = 'in_progress' AND NEW.completed_at IS NOT NULL
+    BEGIN
+      UPDATE bracket_games
+      SET completed_at = NULL
+      WHERE id = NEW.id;
+    END
+  `);
+
   // Create indexes (commented out for now)
   /*
   await db.exec(`CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`);

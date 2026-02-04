@@ -125,6 +125,19 @@ curl -X PATCH http://localhost:3000/teams/1/check-in \
   -H "Cookie: $COOKIE"
 ```
 
+### Undo Check-in (auth required)
+
+Set status back to `registered` (automatically clears `checked_in_at` timestamp):
+
+```bash
+curl -X PATCH http://localhost:3000/teams/1 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{
+    "status": "registered"
+  }'
+```
+
 ### Bulk check in teams (auth required)
 
 ```bash
@@ -415,6 +428,19 @@ curl -X PATCH http://localhost:3000/queue/1/call \
   -H "Cookie: $COOKIE" \
   -d '{
     "table_number": 2
+  }'
+```
+
+### Uncall team (auth required)
+
+Reset status to `queued` (automatically clears `called_at` timestamp):
+
+```bash
+curl -X PATCH http://localhost:3000/queue/1 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{
+    "status": "queued"
   }'
 ```
 
