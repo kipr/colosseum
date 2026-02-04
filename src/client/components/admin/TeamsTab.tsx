@@ -191,6 +191,13 @@ export default function TeamsTab({ selectedEventId }: TeamsTabProps) {
     errors: BulkImportError[];
   } | null>(null);
 
+  // Bulk check-in state
+  const [showBulkCheckIn, setShowBulkCheckIn] = useState(false);
+  const [bulkCheckInSelected, setBulkCheckInSelected] = useState<Set<number>>(
+    new Set(),
+  );
+  const [bulkCheckingIn, setBulkCheckingIn] = useState(false);
+
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
@@ -500,6 +507,79 @@ export default function TeamsTab({ selectedEventId }: TeamsTabProps) {
     setBulkResults(null);
   };
 
+  // Bulk check-in handlers
+  const registeredTeams = useMemo(
+    () => teams.filter((t) => t.status === 'registered'),
+    [teams],
+  );
+
+  const handleOpenBulkCheckIn = () => {
+    // Pre-select all registered teams
+    setBulkCheckInSelected(new Set(registeredTeams.map((t) => t.team_number)));
+    setShowBulkCheckIn(true);
+  };
+
+  const handleCloseBulkCheckIn = () => {
+    setShowBulkCheckIn(false);
+    setBulkCheckInSelected(new Set());
+  };
+
+  const handleToggleBulkCheckInTeam = (teamNumber: number) => {
+    setBulkCheckInSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(teamNumber)) {
+        next.delete(teamNumber);
+      } else {
+        next.add(teamNumber);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAllBulkCheckIn = () => {
+    setBulkCheckInSelected(new Set(registeredTeams.map((t) => t.team_number)));
+  };
+
+  const handleSelectNoneBulkCheckIn = () => {
+    setBulkCheckInSelected(new Set());
+  };
+
+  const handleBulkCheckIn = async () => {
+    if (bulkCheckInSelected.size === 0 || !selectedEventId) return;
+
+    setBulkCheckingIn(true);
+    try {
+      const response = await fetch(
+        `/teams/event/${selectedEventId}/check-in/bulk`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            team_numbers: Array.from(bulkCheckInSelected),
+          }),
+        },
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to check in teams');
+      }
+
+      const data = await response.json();
+      toast.success(`Checked in ${data.updated} team(s)`);
+      handleCloseBulkCheckIn();
+      await fetchTeams();
+    } catch (error) {
+      console.error('Error bulk checking in teams:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to check in teams',
+      );
+    } finally {
+      setBulkCheckingIn(false);
+    }
+  };
+
   if (!selectedEventId) {
     return (
       <div className="teams-tab">
@@ -525,6 +605,18 @@ export default function TeamsTab({ selectedEventId }: TeamsTabProps) {
             onClick={() => setShowBulkImport(true)}
           >
             Bulk Import
+          </button>
+          <button
+            className="btn btn-success"
+            onClick={handleOpenBulkCheckIn}
+            disabled={registeredTeams.length === 0}
+            title={
+              registeredTeams.length === 0
+                ? 'No registered teams to check in'
+                : `Check in ${registeredTeams.length} registered team(s)`
+            }
+          >
+            Bulk Check-In
           </button>
         </div>
         <div className="teams-controls-right">
@@ -916,6 +1008,117 @@ export default function TeamsTab({ selectedEventId }: TeamsTabProps) {
                 {bulkImporting
                   ? 'Importing...'
                   : `Import ${bulkParsed.length} Team(s)`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Check-In Modal */}
+      {showBulkCheckIn && (
+        <div className="modal show" onClick={handleCloseBulkCheckIn}>
+          <div
+            className="modal-content"
+            style={{ maxWidth: '600px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="close" onClick={handleCloseBulkCheckIn}>
+              &times;
+            </span>
+            <h3>Bulk Check-In Teams</h3>
+            <p
+              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
+            >
+              Select the registered teams you want to check in. All teams are
+              selected by default.
+            </p>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                marginBottom: '1rem',
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleSelectAllBulkCheckIn}
+                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleSelectNoneBulkCheckIn}
+                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+              >
+                Select None
+              </button>
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  color: 'var(--secondary-color)',
+                  fontSize: '0.875rem',
+                  alignSelf: 'center',
+                }}
+              >
+                {bulkCheckInSelected.size} of {registeredTeams.length} selected
+              </span>
+            </div>
+
+            <div className="bulk-checkin-list">
+              {registeredTeams.length === 0 ? (
+                <p style={{ color: 'var(--secondary-color)' }}>
+                  No registered teams to check in.
+                </p>
+              ) : (
+                registeredTeams.map((team) => (
+                  <label key={team.id} className="bulk-checkin-item">
+                    <input
+                      type="checkbox"
+                      checked={bulkCheckInSelected.has(team.team_number)}
+                      onChange={() =>
+                        handleToggleBulkCheckInTeam(team.team_number)
+                      }
+                    />
+                    <span className="bulk-checkin-team-number">
+                      {team.team_number}
+                    </span>
+                    <span className="bulk-checkin-team-name">
+                      {team.team_name}
+                    </span>
+                  </label>
+                ))
+              )}
+            </div>
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1.5rem',
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleCloseBulkCheckIn}
+                disabled={bulkCheckingIn}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-success"
+                onClick={handleBulkCheckIn}
+                disabled={bulkCheckingIn || bulkCheckInSelected.size === 0}
+              >
+                {bulkCheckingIn
+                  ? 'Checking In...'
+                  : `Check In ${bulkCheckInSelected.size} Team(s)`}
               </button>
             </div>
           </div>
