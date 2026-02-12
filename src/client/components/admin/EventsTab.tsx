@@ -8,6 +8,7 @@ import {
   getEventStatusClass,
   getEventStatusLabel,
   formatEventDate,
+  isEventActive,
 } from '../../utils/eventStatus';
 import '../Modal.css';
 
@@ -15,7 +16,7 @@ interface EventsTabProps {
   events: Event[];
   refreshEvents: () => Promise<void>;
   selectedEventId: number | null;
-  onSelectEvent: (eventId: number) => void;
+  onSelectEvent: (eventId: number | null) => void;
 }
 
 interface EventFormData {
@@ -159,6 +160,62 @@ export default function EventsTab({
       console.error('Error updating event status:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to update status',
+      );
+    }
+  };
+
+  const getFallbackSelectionAfterDelete = (deletedEventId: number) => {
+    const remainingEvents = events.filter(
+      (event) => event.id !== deletedEventId,
+    );
+    if (remainingEvents.length === 0) return null;
+
+    const preferredEvent =
+      remainingEvents.find((event) => isEventActive(event.status)) ||
+      remainingEvents[0];
+    return preferredEvent.id;
+  };
+
+  const handleDelete = async (event: Event) => {
+    const isDeletingSelected = event.id === selectedEventId;
+    const confirmed = await confirm({
+      title: 'Delete Event',
+      message: isDeletingSelected
+        ? `Delete "${event.name}"? This event is currently selected and your selection will move to another event (or clear if none remain).`
+        : `Delete "${event.name}"? This action cannot be undone.`,
+      confirmText: 'Delete',
+      confirmStyle: 'danger',
+    });
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/events/${event.id}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        let errorMessage = 'Failed to delete event';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          // 204/empty and non-json responses are fine; keep default message.
+        }
+        throw new Error(errorMessage);
+      }
+
+      const fallbackEventId = isDeletingSelected
+        ? getFallbackSelectionAfterDelete(event.id)
+        : selectedEventId;
+
+      await refreshEvents();
+      onSelectEvent(fallbackEventId);
+      toast.success('Event deleted!');
+    } catch (error) {
+      console.error('Error deleting event:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to delete event',
       );
     }
   };
@@ -326,6 +383,12 @@ export default function EventsTab({
                   onClick={() => handleEdit(selectedEvent)}
                 >
                   Edit
+                </button>
+                <button
+                  className="btn btn-danger"
+                  onClick={() => handleDelete(selectedEvent)}
+                >
+                  Delete
                 </button>
                 {getStatusActions(selectedEvent).map((action) => (
                   <button
@@ -503,6 +566,13 @@ export default function EventsTab({
                         title="Edit event details"
                       >
                         Edit
+                      </button>
+                      <button
+                        className="btn btn-danger"
+                        onClick={() => handleDelete(event)}
+                        title="Delete this event"
+                      >
+                        Delete
                       </button>
                       {getStatusActions(event).map((action) => (
                         <button

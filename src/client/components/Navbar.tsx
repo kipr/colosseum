@@ -13,7 +13,7 @@ import './Navbar.css';
 interface NavbarProps {
   adminEventData?: {
     selectedEvent: Event | null;
-    onEventChange: (eventId: number) => void;
+    onEventChange: (eventId: number | null) => void;
     events: Event[];
   };
 }

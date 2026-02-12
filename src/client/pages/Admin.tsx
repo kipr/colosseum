@@ -148,8 +148,9 @@ export default function Admin() {
     window.location.href = '/auth/google';
   };
 
-  const handleEventChange = (eventId: number) => {
-    const event = events.find((ev) => ev.id === eventId) || null;
+  const handleEventChange = (eventId: number | null) => {
+    const event =
+      eventId === null ? null : events.find((ev) => ev.id === eventId) || null;
     setSelectedEvent(event);
     if (event) {
       localStorage.setItem(SELECTED_EVENT_KEY, String(event.id));

@@ -31,7 +31,7 @@ Implement the event-centric admin UI so every tab is scoped to the selected even
 - Step 1.1: Events list table exists with key fields and status badges; event load uses API.
 - Step 1.2: Create event flow implemented (`POST /events`), with refresh and select-new behavior.
 - Step 1.3: Edit event flow implemented (`PATCH /events/:id`), with refresh.
-- Step 1.4: **Not implemented in UI** as planned. API supports `DELETE /events/:id`, but EventsTab does not expose a delete action.
+- Step 1.4: Implemented in UI. `EventsTab` now exposes a delete action wired to `DELETE /events/:id`.
 - Step 1.5 (optional): Not implemented (no dedicated event detail/quick stats view).
 
 #### Phase 2: Teams Tab - **Complete with minor deviation**
@@ -80,9 +80,9 @@ Implement the event-centric admin UI so every tab is scoped to the selected even
 - Wire `EventProvider` into app/admin composition and refactor Admin/Navbar/tab consumers to use `useEvent`.
 - Remove duplicated event state logic and reconcile status label mapping to one source of truth.
 
-#### Priority Correction C (Phase 1 cleanup)
-- Add planned delete action in `EventsTab` using existing `DELETE /events/:id`.
-- Ensure selection behavior is explicit when deleting currently selected event.
+#### Priority Correction C (Phase 1 cleanup) - **Complete**
+- Added planned delete action in `EventsTab` using existing `DELETE /events/:id`.
+- Selection behavior is explicit when deleting the currently selected event (fallback select active/setup event, then first remaining, else clear selection).
 
 #### Phase 7 (Templates) correction
 - Schema/table exists (`event_scoresheet_templates`), but CRUD/UI are still missing.
