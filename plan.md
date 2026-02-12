@@ -6,6 +6,105 @@ Implement the event-centric admin UI so every tab is scoped to the selected even
 
 ---
 
+## Implementation Reality Check (Updated Feb 12, 2026)
+
+### Evaluation of the statement: "completed up to phase 6"
+
+**Assessment: Partially true, but not fully accurate.**
+
+- Most of the user-facing work for Phases 1-6 exists in code.
+- However, Phase 0 was not completed as originally designed (EventContext was created but is not wired into Admin/Navbar).
+- Phase 1 is missing the planned delete action in the Events UI.
+- Phase 6 supports event-scoped review/approval in Admin, but score submission still uses legacy `/api/scores/submit` payloads and does not yet reliably write event-scoped linkage fields (`event_id`, `score_type`, `bracket_game_id`, `game_queue_id`) at submit time.
+
+### As-Built Status Through Phase 6
+
+#### Phase 0: Foundation (Event Context) - **Partial**
+- Step 0.1: `EventContext` was created with the planned shape (plus `error` and `selectEventById`).
+- Step 0.2: Admin event selector is API-backed (`GET /events`) and persists selection in `localStorage`.
+- Step 0.2 deviation: Navbar still receives `adminEventData` prop; it does **not** consume `EventContext`.
+- Step 0.3: Event type alignment exists in utility/type files; status enum is aligned to API values.
+- Step 0.3 deviation: status label mapping is inconsistent (`active -> Active` in current UI helpers; separate context file maps to `Live` but is unused).
+- Step 0.4: "No event selected" handling is implemented across event-scoped tabs, and first/last event auto-selection exists in Admin.
+
+#### Phase 1: Events Tab - **Mostly complete**
+- Step 1.1: Events list table exists with key fields and status badges; event load uses API.
+- Step 1.2: Create event flow implemented (`POST /events`), with refresh and select-new behavior.
+- Step 1.3: Edit event flow implemented (`PATCH /events/:id`), with refresh.
+- Step 1.4: **Not implemented in UI** as planned. API supports `DELETE /events/:id`, but EventsTab does not expose a delete action.
+- Step 1.5 (optional): Not implemented (no dedicated event detail/quick stats view).
+
+#### Phase 2: Teams Tab - **Complete with minor deviation**
+- Steps 2.1-2.4 and 2.6 implemented (`GET /teams/event/:eventId`, create/edit/bulk/delete).
+- Step 2.5 implemented via available endpoints and UI actions:
+  - quick check-in action uses `PATCH /teams/:id/check-in`
+  - general status changes are available via edit form (`PATCH /teams/:id`)
+- Minor deviation: no dedicated `PATCH /teams/:id/status` endpoint was added; existing PATCH endpoint is used instead.
+
+#### Phase 3: Seeding Tab - **Complete**
+- Steps 3.1-3.4 implemented: scores/rankings views, calculate/recalculate rankings, inline score editing with save/upsert.
+- Step 3.5 partially addressed at data level (`score_submission_id` supported), but no prominent UI link-out workflow was added.
+
+#### Phase 4: Brackets Tab - **Complete with endpoint variation**
+- Steps 4.1-4.4 and 4.6-4.9 implemented (list/create/detail/generate entries/generate games/advance winner/edit/delete).
+- Step 4.5 implemented functionally through `POST /brackets/:id/entries/generate` seeded from rankings.
+- Deviation: planned `POST /brackets/templates/seed` endpoint was not added; equivalent behavior is covered by existing generation flow.
+
+#### Phase 5: Queue Tab - **Complete plus extra**
+- Steps 5.1-5.7 implemented (event queue list, populate, add entries, reorder, status updates, remove).
+- Extra: `POST /queue/populate-from-seeding` was added and wired in UI.
+
+#### Phase 6: Scoring Tab Migration - **Partial**
+- Steps 6.1-6.4 implemented in Admin UI:
+  - dual mode (`spreadsheet` vs `event`)
+  - event-scoped score list (`GET /scores/by-event/:eventId`)
+  - event filters and score type context display
+- Step 6.5 mostly implemented:
+  - event-scoped accept/revert flows exist (`POST /scores/:id/accept-event`, `POST /scores/:id/revert-event`)
+  - bracket advancement is handled in accept-event path
+- Key remaining gap:
+  - judge submission path (`POST /api/scores/submit`) still writes legacy payload and does not consistently populate event-scoped submission linkage fields required for full DB-backed flow.
+
+### Course Corrections for Remaining Phases
+
+#### Priority Correction A (Before/with Phase 7)
+- Implement event-scoped score submission contract in `POST /api/scores/submit` (or new endpoint) so submissions can include and persist:
+  - `event_id`
+  - `score_type` (`seeding` or `bracket`)
+  - `bracket_game_id` and/or seeding linkage
+  - `game_queue_id` when applicable
+- Update judge/scoresheet clients to send these fields.
+- This should be treated as a blocker for claiming full migration.
+
+#### Priority Correction B (Phase 0 debt cleanup)
+- Wire `EventProvider` into app/admin composition and refactor Admin/Navbar/tab consumers to use `useEvent`.
+- Remove duplicated event state logic and reconcile status label mapping to one source of truth.
+
+#### Priority Correction C (Phase 1 cleanup)
+- Add planned delete action in `EventsTab` using existing `DELETE /events/:id`.
+- Ensure selection behavior is explicit when deleting currently selected event.
+
+#### Phase 7 (Templates) correction
+- Schema/table exists (`event_scoresheet_templates`), but CRUD/UI are still missing.
+- Build event-template routes and UI first; then integrate judge template listing by selected event.
+
+#### Phase 8 (Audit) correction
+- Backend route exists (`GET /audit/event/:eventId` with filters/pagination params), but no admin tab exists.
+- Add Audit tab UI and hook into current sidebar model.
+
+#### Phase 9 (Sidebar) correction
+- Sidebar currently includes: Events, Teams, Spreadsheets, Score Sheets, Scoring, Seeding, Brackets, Queue, Admins.
+- Missing planned tabs: Audit and Templates (event-template-specific).
+- Add disabled/empty-state behavior consistently for all event-scoped tabs after EventContext refactor.
+
+#### Phase 10 (Judge) correction
+- Judge page still loads generic `/scoresheet/templates` and is not event-driven.
+- Introduce event selection and event-template filtering; then queue integration (`GET /queue/event/:eventId`) and DB participants (`GET /teams/event/:eventId`).
+
+---
+
+---
+
 ## Phase 0: Foundation (Event Context)
 
 **Goal:** Event selector and shared event context work end-to-end.
@@ -420,5 +519,15 @@ Before implementation, confirm:
 - `PATCH /teams/:id/status` – or equivalent for status updates  
 - Event-scoped scores: `GET /scores/by-event/:eventId` or equivalent  
 - `event_scoresheet_templates` – CRUD endpoints if not present  
+
+### Verification Update (as implemented)
+
+- `POST /brackets/:id/entries/generate`: **Implemented** and in use by Brackets UI (`force=true` supported for replace).
+- `POST /brackets/templates/seed`: **Not implemented as a separate endpoint**. Functional equivalent is handled via `/:id/entries/generate`.
+- `POST /queue/populate-from-bracket`: **Implemented** and in use.
+- `PATCH /queue/reorder`: **Implemented** (also `POST /queue/reorder` alias). Payload format is `{ items: [{ id, queue_position }] }`.
+- `PATCH /teams/:id/status`: **Not implemented as dedicated route**. Existing `PATCH /teams/:id` supports `status`; check-in shortcut routes also exist.
+- Event-scoped scores endpoint: **Implemented** at `GET /scores/by-event/:eventId` (admin-protected, paginated, filterable).
+- `event_scoresheet_templates` CRUD: **Still missing** (table exists in schema, routes/UI not yet added).
 
 I can expand any phase into more granular tasks or adjust the plan for your codebase structure.
