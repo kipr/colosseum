@@ -2,23 +2,50 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useEvent } from '../contexts/EventContext';
 import {
-  Event,
   getEventStatusClass,
   getEventStatusLabel,
   formatEventDate,
 } from '../utils/eventStatus';
 import './Navbar.css';
 
-interface NavbarProps {
-  adminEventData?: {
-    selectedEvent: Event | null;
-    onEventChange: (eventId: number | null) => void;
-    events: Event[];
-  };
+function AdminEventSelector() {
+  const { selectedEvent, events, selectEventById } = useEvent();
+
+  return (
+    <div className="nav-event-selector">
+      <select
+        className="event-dropdown"
+        value={selectedEvent?.id || ''}
+        onChange={(e) =>
+          selectEventById(e.target.value ? Number(e.target.value) : null)
+        }
+      >
+        <option value="">Select an event...</option>
+        {events.map((event) => (
+          <option key={event.id} value={event.id}>
+            {event.name} ({getEventStatusLabel(event.status)})
+          </option>
+        ))}
+      </select>
+      {selectedEvent && (
+        <div className="event-details-mini">
+          <span
+            className={`status-dot ${getEventStatusClass(selectedEvent.status)}`}
+          ></span>
+          {selectedEvent.event_date && (
+            <span className="event-date-mini">
+              {formatEventDate(selectedEvent.event_date)}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
-export default function Navbar({ adminEventData }: NavbarProps) {
+export default function Navbar() {
   const location = useLocation();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -43,36 +70,7 @@ export default function Navbar({ adminEventData }: NavbarProps) {
           </Link>
         </div>
 
-        {adminEventData && (
-          <div className="nav-event-selector">
-            <select
-              className="event-dropdown"
-              value={adminEventData.selectedEvent?.id || ''}
-              onChange={(e) =>
-                adminEventData.onEventChange(Number(e.target.value))
-              }
-            >
-              <option value="">Select an event...</option>
-              {adminEventData.events.map((event) => (
-                <option key={event.id} value={event.id}>
-                  {event.name} ({getEventStatusLabel(event.status)})
-                </option>
-              ))}
-            </select>
-            {adminEventData.selectedEvent && (
-              <div className="event-details-mini">
-                <span
-                  className={`status-dot ${getEventStatusClass(adminEventData.selectedEvent.status)}`}
-                ></span>
-                {adminEventData.selectedEvent.event_date && (
-                  <span className="event-date-mini">
-                    {formatEventDate(adminEventData.selectedEvent.event_date)}
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        {location.pathname === '/admin' && <AdminEventSelector />}
 
         <div className="nav-menu">
           <button className="nav-item theme-toggle" onClick={toggleTheme}>

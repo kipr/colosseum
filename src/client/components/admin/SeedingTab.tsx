@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useToast } from '../Toast';
+import { useEvent } from '../../contexts/EventContext';
 import './SeedingTab.css';
 
 interface Team {
@@ -37,15 +38,10 @@ interface TeamRowData {
   ranking: SeedingRanking | null;
 }
 
-interface SeedingTabProps {
-  selectedEventId: number | null;
-  seedingRounds: number;
-}
-
-export default function SeedingTab({
-  selectedEventId,
-  seedingRounds,
-}: SeedingTabProps) {
+export default function SeedingTab() {
+  const { selectedEvent } = useEvent();
+  const selectedEventId = selectedEvent?.id ?? null;
+  const seedingRounds = selectedEvent?.seeding_rounds ?? 3;
   const [teams, setTeams] = useState<Team[]>([]);
   const [scores, setScores] = useState<SeedingScore[]>([]);
   const [rankings, setRankings] = useState<SeedingRanking[]>([]);

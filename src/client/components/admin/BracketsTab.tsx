@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
 import {
   Bracket,
@@ -16,10 +17,6 @@ import '../Modal.css';
 import './BracketsTab.css';
 
 type DetailViewMode = 'management' | 'bracket';
-
-interface BracketsTabProps {
-  selectedEventId: number | null;
-}
 
 interface BracketFormData {
   name: string;
@@ -65,7 +62,9 @@ const defaultFormData: BracketFormData = {
   actual_team_count: '',
 };
 
-export default function BracketsTab({ selectedEventId }: BracketsTabProps) {
+export default function BracketsTab() {
+  const { selectedEvent } = useEvent();
+  const selectedEventId = selectedEvent?.id ?? null;
   // List state
   const [brackets, setBrackets] = useState<Bracket[]>([]);
   const [loading, setLoading] = useState(false);

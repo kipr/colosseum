@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
 import '../Modal.css';
 import './TeamsTab.css';
@@ -18,10 +19,6 @@ interface Team {
 }
 
 type TeamStatus = 'registered' | 'checked_in' | 'no_show' | 'withdrawn';
-
-interface TeamsTabProps {
-  selectedEventId: number | null;
-}
 
 interface TeamFormData {
   team_number: string;
@@ -166,7 +163,9 @@ function parseTeamsText(text: string): {
   return { teams, errors };
 }
 
-export default function TeamsTab({ selectedEventId }: TeamsTabProps) {
+export default function TeamsTab() {
+  const { selectedEvent } = useEvent();
+  const selectedEventId = selectedEvent?.id ?? null;
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<TeamStatus | 'all'>('all');

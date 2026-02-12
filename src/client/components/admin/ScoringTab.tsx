@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import ScoreViewModal from './ScoreViewModal';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
 
 interface SpreadsheetConfig {
@@ -59,11 +60,9 @@ interface AffectedGame {
 
 type ViewMode = 'spreadsheet' | 'event';
 
-interface ScoringTabProps {
-  selectedEventId: number | null;
-}
-
-export default function ScoringTab({ selectedEventId }: ScoringTabProps) {
+export default function ScoringTab() {
+  const { selectedEvent } = useEvent();
+  const selectedEventId = selectedEvent?.id ?? null;
   // View mode: spreadsheet (legacy) or event (new)
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
     const saved = localStorage.getItem('colosseum_scoring_view_mode');

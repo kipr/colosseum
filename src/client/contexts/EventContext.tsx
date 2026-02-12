@@ -6,48 +6,17 @@ import React, {
   useCallback,
   ReactNode,
 } from 'react';
-
-// Event type matching the API schema
-export interface Event {
-  id: number;
-  name: string;
-  description: string | null;
-  event_date: string | null;
-  location: string | null;
-  status: 'setup' | 'active' | 'complete' | 'archived';
-  seeding_rounds: number;
-  created_by: number | null;
-  created_at: string;
-  updated_at: string;
-  // Optional aggregated counts (computed client-side or via API extension)
-  teams_count?: number;
-  brackets_count?: number;
-}
-
-// Status display mapping: API status -> UI label
-export const STATUS_LABELS: Record<Event['status'], string> = {
-  setup: 'Setup',
-  active: 'Live',
-  complete: 'Complete',
-  archived: 'Archived',
-};
-
-// Status options for forms
-export const STATUS_OPTIONS: { value: Event['status']; label: string }[] = [
-  { value: 'setup', label: 'Setup' },
-  { value: 'active', label: 'Live' },
-  { value: 'complete', label: 'Complete' },
-  { value: 'archived', label: 'Archived' },
-];
+import { useAuth } from './AuthContext';
+import { Event, isEventActive } from '../utils/eventStatus';
 
 interface EventContextType {
   selectedEvent: Event | null;
   events: Event[];
   loading: boolean;
   error: string | null;
-  refreshEvents: () => Promise<void>;
+  refreshEvents: () => Promise<Event[]>;
   setSelectedEvent: (event: Event | null) => void;
-  selectEventById: (id: number) => void;
+  selectEventById: (id: number | null) => void;
 }
 
 const EventContext = createContext<EventContextType | undefined>(undefined);
@@ -55,6 +24,7 @@ const EventContext = createContext<EventContextType | undefined>(undefined);
 const LOCAL_STORAGE_KEY = 'colosseum_selected_event_id';
 
 export function EventProvider({ children }: { children: ReactNode }) {
+  const { user, loading: authLoading } = useAuth();
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEventState] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,8 +32,16 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const [initialized, setInitialized] = useState(false);
 
   const refreshEvents = useCallback(async () => {
+    if (!user) {
+      setEvents([]);
+      setSelectedEventState(null);
+      setLoading(false);
+      return [];
+    }
+
     try {
       setError(null);
+      setLoading(true);
       const response = await fetch('/events', {
         credentials: 'include',
       });
@@ -72,7 +50,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         throw new Error('Failed to fetch events');
       }
 
-      const data = await response.json();
+      const data: Event[] = await response.json();
       setEvents(data);
       return data;
     } catch (err) {
@@ -84,7 +62,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user]);
 
   // Set selected event and persist to localStorage
   const setSelectedEvent = useCallback((event: Event | null) => {
@@ -98,9 +76,14 @@ export function EventProvider({ children }: { children: ReactNode }) {
 
   // Select event by ID (useful for dropdown changes)
   const selectEventById = useCallback(
-    (id: number) => {
-      const event = events.find((e) => e.id === id);
-      setSelectedEvent(event || null);
+    (id: number | null) => {
+      if (id === null) {
+        setSelectedEvent(null);
+        return;
+      }
+
+      const event = events.find((e) => e.id === id) || null;
+      setSelectedEvent(event);
     },
     [events, setSelectedEvent],
   );
@@ -108,6 +91,16 @@ export function EventProvider({ children }: { children: ReactNode }) {
   // Initial load
   useEffect(() => {
     const initializeEvents = async () => {
+      if (authLoading) return;
+
+      if (!user) {
+        setEvents([]);
+        setSelectedEventState(null);
+        setLoading(false);
+        setInitialized(false);
+        return;
+      }
+
       const fetchedEvents = await refreshEvents();
 
       // Try to restore last selected event from localStorage
@@ -119,21 +112,27 @@ export function EventProvider({ children }: { children: ReactNode }) {
         if (savedEvent) {
           setSelectedEventState(savedEvent);
         } else {
-          // Saved event no longer exists, auto-select first event
-          setSelectedEventState(fetchedEvents[0]);
-          localStorage.setItem(LOCAL_STORAGE_KEY, String(fetchedEvents[0].id));
+          // Saved event no longer exists, prefer active/setup event then fallback.
+          const nextEvent =
+            fetchedEvents.find((event) => isEventActive(event.status)) ||
+            fetchedEvents[0];
+          setSelectedEventState(nextEvent);
+          localStorage.setItem(LOCAL_STORAGE_KEY, String(nextEvent.id));
         }
       } else if (fetchedEvents.length > 0) {
-        // No saved selection, auto-select first event
-        setSelectedEventState(fetchedEvents[0]);
-        localStorage.setItem(LOCAL_STORAGE_KEY, String(fetchedEvents[0].id));
+        // No saved selection, prefer active/setup event then fallback.
+        const nextEvent =
+          fetchedEvents.find((event) => isEventActive(event.status)) ||
+          fetchedEvents[0];
+        setSelectedEventState(nextEvent);
+        localStorage.setItem(LOCAL_STORAGE_KEY, String(nextEvent.id));
       }
 
       setInitialized(true);
     };
 
     initializeEvents();
-  }, [refreshEvents]);
+  }, [authLoading, refreshEvents, user]);
 
   // Update selectedEvent if it was edited/deleted
   useEffect(() => {

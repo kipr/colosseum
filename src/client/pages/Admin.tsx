@@ -1,6 +1,7 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
 import SpreadsheetsTab from '../components/admin/SpreadsheetsTab';
 import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
@@ -11,11 +12,7 @@ import TeamsTab from '../components/admin/TeamsTab';
 import SeedingTab from '../components/admin/SeedingTab';
 import BracketsTab from '../components/admin/BracketsTab';
 import QueueTab from '../components/admin/QueueTab';
-import {
-  Event,
-  getEventStatusClass,
-  isEventActive,
-} from '../utils/eventStatus';
+import { getEventStatusClass } from '../utils/eventStatus';
 import './Admin.css';
 
 type TabType =
@@ -29,10 +26,9 @@ type TabType =
   | 'queue'
   | 'admins';
 
-const SELECTED_EVENT_KEY = 'colosseum_selected_event_id';
-
 export default function Admin() {
   const { user, loading } = useAuth();
+  const { selectedEvent, loading: eventsLoading } = useEvent();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<TabType>(() => {
     // Initialize from localStorage
@@ -63,58 +59,11 @@ export default function Admin() {
     message?: string;
   } | null>(null);
 
-  // Events state - fetched from API
-  const [events, setEvents] = useState<Event[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
-  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-
-  // Fetch events from API
-  const fetchEvents = useCallback(async () => {
-    try {
-      const response = await fetch('/events', { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error('Failed to fetch events');
-      }
-      const data: Event[] = await response.json();
-      setEvents(data);
-
-      // Restore selected event from localStorage or pick default
-      const savedEventId = localStorage.getItem(SELECTED_EVENT_KEY);
-      let eventToSelect: Event | null = null;
-
-      if (savedEventId) {
-        eventToSelect = data.find((e) => e.id === Number(savedEventId)) || null;
-      }
-
-      // If no saved selection or saved event not found, pick the most recent non-archived event
-      if (!eventToSelect) {
-        eventToSelect =
-          data.find((e) => isEventActive(e.status)) || data[0] || null;
-      }
-
-      setSelectedEvent(eventToSelect);
-      if (eventToSelect) {
-        localStorage.setItem(SELECTED_EVENT_KEY, String(eventToSelect.id));
-      }
-    } catch (error) {
-      console.error('Error fetching events:', error);
-    } finally {
-      setEventsLoading(false);
-    }
-  }, []);
-
   useEffect(() => {
     if (!loading && !user) {
       navigate('/');
     }
   }, [user, loading, navigate]);
-
-  // Fetch events when user is available
-  useEffect(() => {
-    if (user) {
-      fetchEvents();
-    }
-  }, [user, fetchEvents]);
 
   // Save active tab to localStorage whenever it changes
   useEffect(() => {
@@ -148,17 +97,6 @@ export default function Admin() {
     window.location.href = '/auth/google';
   };
 
-  const handleEventChange = (eventId: number | null) => {
-    const event =
-      eventId === null ? null : events.find((ev) => ev.id === eventId) || null;
-    setSelectedEvent(event);
-    if (event) {
-      localStorage.setItem(SELECTED_EVENT_KEY, String(event.id));
-    } else {
-      localStorage.removeItem(SELECTED_EVENT_KEY);
-    }
-  };
-
   if (loading || eventsLoading) {
     return (
       <div className="app">
@@ -176,13 +114,7 @@ export default function Admin() {
 
   return (
     <div className="app">
-      <Navbar
-        adminEventData={{
-          selectedEvent,
-          onEventChange: handleEventChange,
-          events,
-        }}
-      />
+      <Navbar />
 
       {/* Token expiration warning banner */}
       {tokenStatus && !tokenStatus.valid && (
@@ -282,37 +214,14 @@ export default function Admin() {
               )}
             </div>
 
-            {activeTab === 'events' && (
-              <EventsTab
-                events={events}
-                refreshEvents={fetchEvents}
-                selectedEventId={selectedEvent?.id || null}
-                onSelectEvent={handleEventChange}
-              />
-            )}
-            {activeTab === 'teams' && (
-              <TeamsTab selectedEventId={selectedEvent?.id || null} />
-            )}
+            {activeTab === 'events' && <EventsTab />}
+            {activeTab === 'teams' && <TeamsTab />}
             {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
-            {activeTab === 'scoring' && (
-              <ScoringTab selectedEventId={selectedEvent?.id || null} />
-            )}
-            {activeTab === 'seeding' && (
-              <SeedingTab
-                selectedEventId={selectedEvent?.id || null}
-                seedingRounds={selectedEvent?.seeding_rounds ?? 3}
-              />
-            )}
-            {activeTab === 'brackets' && (
-              <BracketsTab selectedEventId={selectedEvent?.id || null} />
-            )}
-            {activeTab === 'queue' && (
-              <QueueTab
-                selectedEventId={selectedEvent?.id || null}
-                seedingRounds={selectedEvent?.seeding_rounds ?? 3}
-              />
-            )}
+            {activeTab === 'scoring' && <ScoringTab />}
+            {activeTab === 'seeding' && <SeedingTab />}
+            {activeTab === 'brackets' && <BracketsTab />}
+            {activeTab === 'queue' && <QueueTab />}
             {activeTab === 'admins' && <AdminsTab />}
           </div>
         </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useEvent } from '../../contexts/EventContext';
 import { formatDate } from '../../utils/dateUtils';
 import {
   Event,
@@ -11,13 +12,6 @@ import {
   isEventActive,
 } from '../../utils/eventStatus';
 import '../Modal.css';
-
-interface EventsTabProps {
-  events: Event[];
-  refreshEvents: () => Promise<void>;
-  selectedEventId: number | null;
-  onSelectEvent: (eventId: number | null) => void;
-}
 
 interface EventFormData {
   name: string;
@@ -35,12 +29,8 @@ const defaultFormData: EventFormData = {
   seeding_rounds: 3,
 };
 
-export default function EventsTab({
-  events,
-  refreshEvents,
-  selectedEventId,
-  onSelectEvent,
-}: EventsTabProps) {
+export default function EventsTab() {
+  const { events, refreshEvents, selectedEvent, selectEventById } = useEvent();
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [formData, setFormData] = useState<EventFormData>(defaultFormData);
@@ -117,7 +107,7 @@ export default function EventsTab({
 
       // If this is a new event, select it
       if (!editingEvent && savedEvent.id) {
-        onSelectEvent(savedEvent.id);
+        selectEventById(savedEvent.id);
       }
     } catch (error) {
       console.error('Error saving event:', error);
@@ -177,7 +167,7 @@ export default function EventsTab({
   };
 
   const handleDelete = async (event: Event) => {
-    const isDeletingSelected = event.id === selectedEventId;
+    const isDeletingSelected = event.id === selectedEvent?.id;
     const confirmed = await confirm({
       title: 'Delete Event',
       message: isDeletingSelected
@@ -207,10 +197,10 @@ export default function EventsTab({
 
       const fallbackEventId = isDeletingSelected
         ? getFallbackSelectionAfterDelete(event.id)
-        : selectedEventId;
+        : (selectedEvent?.id ?? null);
 
       await refreshEvents();
-      onSelectEvent(fallbackEventId);
+      selectEventById(fallbackEventId);
       toast.success('Event deleted!');
     } catch (error) {
       console.error('Error deleting event:', error);
@@ -276,11 +266,8 @@ export default function EventsTab({
     return actions;
   };
 
-  // Get the currently selected event object
-  const selectedEvent = events.find((e) => e.id === selectedEventId) || null;
-
   // Filter out the selected event from the table list
-  const otherEvents = filteredEvents.filter((e) => e.id !== selectedEventId);
+  const otherEvents = filteredEvents.filter((e) => e.id !== selectedEvent?.id);
 
   return (
     <div>
@@ -555,7 +542,7 @@ export default function EventsTab({
                     >
                       <button
                         className="btn btn-primary"
-                        onClick={() => onSelectEvent(event.id)}
+                        onClick={() => selectEventById(event.id)}
                         title="Select this event to work on"
                       >
                         Select

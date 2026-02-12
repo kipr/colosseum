@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useEvent } from '../../contexts/EventContext';
 import { formatCalledAt } from '../../utils/dateUtils';
 import '../Modal.css';
 import './QueueTab.css';
@@ -69,11 +70,6 @@ type QueueStatus =
   | 'skipped';
 type QueueType = 'seeding' | 'bracket';
 
-interface QueueTabProps {
-  selectedEventId: number | null;
-  seedingRounds: number;
-}
-
 const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'all', label: 'All Types' },
   { value: 'seeding', label: 'Seeding' },
@@ -96,10 +92,10 @@ const STATUS_LABELS: Record<QueueStatus, string> = {
   skipped: 'Skipped',
 };
 
-export default function QueueTab({
-  selectedEventId,
-  seedingRounds,
-}: QueueTabProps) {
+export default function QueueTab() {
+  const { selectedEvent } = useEvent();
+  const selectedEventId = selectedEvent?.id ?? null;
+  const seedingRounds = selectedEvent?.seeding_rounds ?? 3;
   // Queue state
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);

@@ -22,7 +22,7 @@ Implement the event-centric admin UI so every tab is scoped to the selected even
 #### Phase 0: Foundation (Event Context) - **Partial**
 - Step 0.1: `EventContext` was created with the planned shape (plus `error` and `selectEventById`).
 - Step 0.2: Admin event selector is API-backed (`GET /events`) and persists selection in `localStorage`.
-- Step 0.2 deviation: Navbar still receives `adminEventData` prop; it does **not** consume `EventContext`.
+- Step 0.2 Navbar consumes `EventContext`.
 - Step 0.3: Event type alignment exists in utility/type files; status enum is aligned to API values.
 - Step 0.3 deviation: status label mapping is inconsistent (`active -> Active` in current UI helpers; separate context file maps to `Live` but is unused).
 - Step 0.4: "No event selected" handling is implemented across event-scoped tabs, and first/last event auto-selection exists in Admin.
@@ -76,9 +76,9 @@ Implement the event-centric admin UI so every tab is scoped to the selected even
 - Update judge/scoresheet clients to send these fields.
 - This should be treated as a blocker for claiming full migration.
 
-#### Priority Correction B (Phase 0 debt cleanup)
-- Wire `EventProvider` into app/admin composition and refactor Admin/Navbar/tab consumers to use `useEvent`.
-- Remove duplicated event state logic and reconcile status label mapping to one source of truth.
+#### Priority Correction B (Phase 0 debt cleanup) - **Complete**
+- Wired `EventProvider` into app/admin composition and refactored Admin/Navbar/event-scoped tab consumers to use `useEvent`.
+- Removed duplicated admin event state logic and reconciled event status label usage to a single source in `eventStatus` utilities.
 
 #### Priority Correction C (Phase 1 cleanup) - **Complete**
 - Added planned delete action in `EventsTab` using existing `DELETE /events/:id`.
