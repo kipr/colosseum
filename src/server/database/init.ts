@@ -648,6 +648,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
   // ============================================================================
 
   // Link templates to events for event-specific scoring rules
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS event_scoresheet_templates (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -657,7 +658,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
         CHECK (template_type IN ('seeding', 'bracket')),
       is_default BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(event_id, template_id)
+      UNIQUE(event_id, template_id, template_type)
     )
   `);
 

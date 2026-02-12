@@ -228,6 +228,7 @@ CREATE INDEX IF NOT EXISTS idx_score_details_submission ON score_details(score_s
 -- ============================================================================
 
 -- Link templates to events for event-specific scoring rules
+-- Same template can serve both seeding and bracket within one event
 CREATE TABLE IF NOT EXISTS event_scoresheet_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -236,7 +237,7 @@ CREATE TABLE IF NOT EXISTS event_scoresheet_templates (
         CHECK (template_type IN ('seeding', 'bracket')),
     is_default BOOLEAN DEFAULT FALSE,            -- Default template for this type
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(event_id, template_id)
+    UNIQUE(event_id, template_id, template_type)
 );
 
 -- ============================================================================
