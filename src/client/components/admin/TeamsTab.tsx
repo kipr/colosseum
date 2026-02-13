@@ -475,18 +475,23 @@ export default function TeamsTab() {
       }
 
       const data = await response.json();
+      const importErrors: BulkImportError[] = data.errors || [];
       setBulkResults({
         created: data.created,
-        errors: data.errors || [],
+        errors: importErrors,
       });
 
       if (data.created > 0) {
         toast.success(`Imported ${data.created} team(s)`);
         await fetchTeams();
+        if (importErrors.length === 0) {
+          handleCloseBulkImport();
+          return;
+        }
       }
 
-      if (data.errors && data.errors.length > 0) {
-        toast.warning(`${data.errors.length} team(s) failed to import`);
+      if (importErrors.length > 0) {
+        toast.warning(`${importErrors.length} team(s) failed to import`);
       }
     } catch (error) {
       console.error('Error importing teams:', error);

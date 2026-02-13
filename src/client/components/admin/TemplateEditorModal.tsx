@@ -2,12 +2,6 @@
 import React, { useEffect, useState } from 'react';
 import '../Modal.css';
 
-interface SpreadsheetConfig {
-  id: number;
-  spreadsheet_name: string;
-  sheet_name: string;
-}
-
 interface TemplateEditorModalProps {
   templateId: number | null;
   eventId: number;
@@ -20,6 +14,12 @@ interface TemplateEditorModalProps {
     schema: any;
     spreadsheetConfigId: number | '' | null;
   };
+}
+
+interface Bracket {
+  id: number;
+  name: string;
+  bracket_size: number;
 }
 
 export default function TemplateEditorModal({
@@ -36,13 +36,45 @@ export default function TemplateEditorModal({
   const [spreadsheetConfigId, setSpreadsheetConfigId] = useState<
     number | '' | null
   >('');
-  const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
   const [loading, setLoading] = useState(!!templateId);
   const [gameAreasImage, setGameAreasImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [brackets, setBrackets] = useState<Bracket[]>([]);
+  const [selectedBracketId, setSelectedBracketId] = useState<number | ''>('');
+  const [isBracketScoreSheet, setIsBracketScoreSheet] = useState(false);
+
+  const updateBracketStateFromSchema = (schemaData: any) => {
+    const isBracket =
+      schemaData?.bracketSource?.type === 'db' ||
+      schemaData?.mode === 'head-to-head';
+    setIsBracketScoreSheet(isBracket);
+
+    if (isBracket) {
+      setSelectedBracketId(schemaData?.bracketSource?.bracketId ?? '');
+    } else {
+      setSelectedBracketId('');
+    }
+  };
+
+  const loadBrackets = async () => {
+    try {
+      const response = await fetch(`/brackets/event/${eventId}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to load brackets');
+      const data = await response.json();
+      setBrackets(data);
+    } catch (error) {
+      console.error('Error loading brackets:', error);
+      setBrackets([]);
+    }
+  };
 
   useEffect(() => {
-    loadSpreadsheets();
+    loadBrackets();
+  }, [eventId]);
+
+  useEffect(() => {
     if (templateId) {
       loadTemplate();
     } else if (initialData) {
@@ -52,6 +84,7 @@ export default function TemplateEditorModal({
       setAccessCode(initialData.accessCode);
       setSchema(JSON.stringify(initialData.schema, null, 2));
       setSpreadsheetConfigId(initialData.spreadsheetConfigId ?? '');
+      updateBracketStateFromSchema(initialData.schema);
       // Load game areas image from schema if present
       if (initialData.schema?.gameAreasImage) {
         setGameAreasImage(initialData.schema.gameAreasImage);
@@ -75,25 +108,10 @@ export default function TemplateEditorModal({
           2,
         ),
       );
+      setIsBracketScoreSheet(false);
+      setSelectedBracketId('');
     }
   }, [templateId, initialData]);
-
-  const loadSpreadsheets = async () => {
-    try {
-      // Load all spreadsheet configs (no deduplication - we want individual sheets)
-      const response = await fetch('/admin/spreadsheets', {
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        console.error('Failed to load spreadsheets, status:', response.status);
-        throw new Error('Failed to load spreadsheets');
-      }
-      const data = await response.json();
-      setSpreadsheets(data);
-    } catch (error) {
-      console.error('Error loading spreadsheets:', error);
-    }
-  };
 
   const loadTemplate = async () => {
     try {
@@ -111,6 +129,7 @@ export default function TemplateEditorModal({
         setGameAreasImage(template.schema.gameAreasImage);
       }
       setSchema(JSON.stringify(template.schema, null, 2));
+      updateBracketStateFromSchema(template.schema);
       setSpreadsheetConfigId(template.spreadsheet_config_id || '');
     } catch (error) {
       console.error('Error loading template:', error);
@@ -169,6 +188,19 @@ export default function TemplateEditorModal({
 
     try {
       const parsedSchema = JSON.parse(schema);
+
+      if (
+        (parsedSchema?.bracketSource?.type === 'db' ||
+          parsedSchema?.mode === 'head-to-head') &&
+        !selectedBracketId
+      ) {
+        alert('Please select a bracket for this bracket score sheet.');
+        return;
+      }
+
+      if (parsedSchema?.bracketSource?.type === 'db') {
+        parsedSchema.bracketSource.bracketId = selectedBracketId || null;
+      }
 
       // Add game areas image to schema if present
       if (gameAreasImage) {
@@ -273,29 +305,6 @@ export default function TemplateEditorModal({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
               />
-            </div>
-            <div className="form-group">
-              <label>Destination Sheet</label>
-              <select
-                className="field-input"
-                value={spreadsheetConfigId}
-                onChange={(e) =>
-                  setSpreadsheetConfigId(
-                    e.target.value ? parseInt(e.target.value) : '',
-                  )
-                }
-              >
-                <option value="">-- Select Sheet --</option>
-                {spreadsheets.map((config) => (
-                  <option key={config.id} value={config.id}>
-                    {config.spreadsheet_name} → {config.sheet_name} (
-                    {config.sheet_purpose})
-                  </option>
-                ))}
-              </select>
-              <small>
-                The sheet where scores will be written (or bracket sheet for DE)
-              </small>
             </div>
             <div className="form-group">
               <label>
@@ -407,12 +416,57 @@ export default function TemplateEditorModal({
                 className="field-input"
                 rows={12}
                 value={schema}
-                onChange={(e) => setSchema(e.target.value)}
+                onChange={(e) => {
+                  const nextSchema = e.target.value;
+                  setSchema(nextSchema);
+
+                  try {
+                    const parsedSchema = JSON.parse(nextSchema);
+                    updateBracketStateFromSchema(parsedSchema);
+                  } catch {
+                    // Keep current bracket UI state while JSON is temporarily invalid
+                  }
+                }}
                 required
                 style={{ fontFamily: 'monospace', fontSize: '0.9rem' }}
               />
               <small>Define fields, types, and options in JSON format</small>
             </div>
+            {isBracketScoreSheet && (
+              <div className="form-group">
+                <label>
+                  Bracket{' '}
+                  <span style={{ color: 'var(--danger-color)' }}>*</span>
+                </label>
+                <select
+                  className="field-input"
+                  value={selectedBracketId}
+                  onChange={(e) =>
+                    setSelectedBracketId(
+                      e.target.value ? Number(e.target.value) : '',
+                    )
+                  }
+                  required
+                >
+                  <option value="">Select bracket...</option>
+                  {brackets.length === 0 ? (
+                    <option value="" disabled>
+                      No brackets found for this event. Create one first.
+                    </option>
+                  ) : (
+                    brackets.map((bracket) => (
+                      <option key={bracket.id} value={bracket.id}>
+                        {bracket.name} ({bracket.bracket_size}-team)
+                      </option>
+                    ))
+                  )}
+                </select>
+                <small>
+                  This score sheet will read and write results for the selected
+                  bracket.
+                </small>
+              </div>
+            )}
             <button type="submit" className="btn btn-primary">
               {templateId ? 'Update Score Sheet' : 'Create Score Sheet'}
             </button>

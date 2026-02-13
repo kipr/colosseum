@@ -46,7 +46,6 @@ export default function SeedingTab() {
   const [scores, setScores] = useState<SeedingScore[]>([]);
   const [rankings, setRankings] = useState<SeedingRanking[]>([]);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [recalculating, setRecalculating] = useState(false);
 
   // Sorting state for Seeding Scores table
@@ -54,11 +53,6 @@ export default function SeedingTab() {
   type SortDirection = 'asc' | 'desc';
   const [sortField, setSortField] = useState<SortField>('team_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-
-  // For inline editing
-  const [editingCell, setEditingCell] = useState<string | null>(null); // "teamId:round"
-  const [editValue, setEditValue] = useState<string>('');
-  const inputRef = useRef<HTMLInputElement>(null);
 
   // Debounce recalculation after saves
   const recalcTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -111,14 +105,6 @@ export default function SeedingTab() {
   useEffect(() => {
     loadData();
   }, [loadData]);
-
-  // Focus input when editing starts
-  useEffect(() => {
-    if (editingCell && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editingCell]);
 
   // Build merged data for display
   const buildTeamRowData = useCallback((): TeamRowData[] => {
@@ -180,82 +166,6 @@ export default function SeedingTab() {
     return sortDirection === 'asc' ? ' ▲' : ' ▼';
   };
 
-  // Handle cell click to start editing
-  const handleCellClick = (
-    teamId: number,
-    round: number,
-    currentScore: number | null,
-  ) => {
-    const cellKey = `${teamId}:${round}`;
-    setEditingCell(cellKey);
-    setEditValue(currentScore !== null ? String(currentScore) : '');
-  };
-
-  // Save score via API
-  const saveScore = async (teamId: number, round: number, value: string) => {
-    const scoreValue = value.trim() === '' ? null : parseFloat(value);
-
-    // Validate if not null
-    if (scoreValue !== null && isNaN(scoreValue)) {
-      toast.error('Please enter a valid number');
-      return false;
-    }
-
-    setSaving(true);
-    try {
-      const response = await fetch('/seeding/scores', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          team_id: teamId,
-          round_number: round,
-          score: scoreValue,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save score');
-      }
-
-      // Update local scores state
-      const savedScore: SeedingScore = await response.json();
-
-      setScores((prev) => {
-        // Remove old score for this team+round if exists
-        const filtered = prev.filter(
-          (s) => !(s.team_id === teamId && s.round_number === round),
-        );
-        // Add the new score
-        return [...filtered, savedScore];
-      });
-
-      // Schedule recalculation (debounced)
-      scheduleRecalculation();
-
-      return true;
-    } catch (error) {
-      console.error('Error saving score:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to save score',
-      );
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Debounced recalculation
-  const scheduleRecalculation = () => {
-    if (recalcTimeoutRef.current) {
-      clearTimeout(recalcTimeoutRef.current);
-    }
-    recalcTimeoutRef.current = setTimeout(() => {
-      recalculateRankings();
-    }, 500); // 500ms debounce
-  };
-
   // Recalculate rankings
   const recalculateRankings = async () => {
     if (!selectedEventId) return;
@@ -289,29 +199,6 @@ export default function SeedingTab() {
     }
   };
 
-  // Handle input blur or Enter key
-  const handleInputBlur = async () => {
-    if (!editingCell) return;
-
-    const [teamIdStr, roundStr] = editingCell.split(':');
-    const teamId = parseInt(teamIdStr, 10);
-    const round = parseInt(roundStr, 10);
-
-    await saveScore(teamId, round, editValue);
-    setEditingCell(null);
-    setEditValue('');
-  };
-
-  const handleInputKeyDown = async (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      await handleInputBlur();
-    } else if (e.key === 'Escape') {
-      setEditingCell(null);
-      setEditValue('');
-    }
-  };
-
   // Manual recalculate button handler
   const handleRecalculateClick = async () => {
     // Clear any pending debounced recalc
@@ -331,42 +218,6 @@ export default function SeedingTab() {
       }
     };
   }, []);
-
-  // Render score cell (editable or display)
-  const renderScoreCell = (
-    teamId: number,
-    round: number,
-    score: SeedingScore | null,
-  ) => {
-    const cellKey = `${teamId}:${round}`;
-    const isEditing = editingCell === cellKey;
-    const scoreValue = score?.score ?? null;
-
-    if (isEditing) {
-      return (
-        <input
-          ref={inputRef}
-          type="text"
-          className="seeding-score-input"
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onBlur={handleInputBlur}
-          onKeyDown={handleInputKeyDown}
-          disabled={saving}
-        />
-      );
-    }
-
-    return (
-      <span
-        className="seeding-score-value"
-        onClick={() => handleCellClick(teamId, round, scoreValue)}
-        title="Click to edit"
-      >
-        {scoreValue !== null ? scoreValue : '—'}
-      </span>
-    );
-  };
 
   if (!selectedEventId) {
     return (
@@ -398,11 +249,9 @@ export default function SeedingTab() {
               <div>
                 <h3>Seeding Scores</h3>
                 <p className="seeding-section-description">
-                  Click on any score cell to edit. Rankings auto-update after
-                  each change.
+                  Seeding scores for each team and round.
                 </p>
               </div>
-              {saving && <span className="seeding-status">Saving...</span>}
             </div>
             <div className="table-responsive">
               <table className="seeding-table">
@@ -438,7 +287,7 @@ export default function SeedingTab() {
                         const scoreRecord = row.scores.get(round) || null;
                         return (
                           <td key={round} className="score-cell">
-                            {renderScoreCell(row.team.id, round, scoreRecord)}
+                            {scoreRecord?.score ?? '—'}
                           </td>
                         );
                       })}
