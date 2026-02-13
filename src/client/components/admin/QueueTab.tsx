@@ -529,27 +529,34 @@ export default function QueueTab() {
   };
 
   // Render item details
+  const renderTeamNumber = (item: QueueItem) => {
+    if (item.queue_type === 'seeding') {
+      return item.seeding_team_number ?? '-';
+    }
+
+    const team1Number = item.team1_number ?? '-';
+    const team2Number = item.team2_number ?? '-';
+    return `${team1Number} vs ${team2Number}`;
+  };
+
   const renderItemDetails = (item: QueueItem) => {
     if (item.queue_type === 'seeding') {
-      const teamName =
-        item.seeding_team_name || item.seeding_team_display || '';
+      const teamName = item.seeding_team_name || '';
       return (
         <div className="queue-game-details">
-          <span className="queue-game-title">
-            #{item.seeding_team_number} {teamName}
-          </span>
+          <span className="queue-game-title">{teamName}</span>
           <span className="queue-game-teams">Round {item.seeding_round}</span>
         </div>
       );
     }
 
     // Bracket game
-    const team1Name = item.team1_name || item.team1_display || '';
-    const team2Name = item.team2_name || item.team2_display || '';
+    const team1Name = item.team1_name || '';
+    const team2Name = item.team2_name || '';
     return (
       <div className="queue-game-details">
         <span className="queue-game-title">
-          #{item.team1_number} {team1Name} vs #{item.team2_number} {team2Name}
+          {team1Name} vs {team2Name}
         </span>
         <span className="queue-game-teams">
           Game {item.game_number}
@@ -694,8 +701,9 @@ export default function QueueTab() {
             <thead>
               <tr>
                 <th style={{ width: '50px' }}>#</th>
-                <th style={{ width: '80px' }}>Type</th>
+                <th style={{ width: '120px' }}>Team #</th>
                 <th>Details</th>
+                <th style={{ width: '80px' }}>Type</th>
                 <th style={{ width: '120px' }}>Called At</th>
                 <th style={{ width: '100px' }}>Status</th>
                 <th style={{ width: '200px' }}>Actions</th>
@@ -706,6 +714,8 @@ export default function QueueTab() {
               {queue.map((item, index) => (
                 <tr key={item.id}>
                   <td className="queue-position">{item.queue_position}</td>
+                  <td>{renderTeamNumber(item)}</td>
+                  <td>{renderItemDetails(item)}</td>
                   <td>
                     <span
                       className={`queue-type-badge ${getTypeClass(item.queue_type)}`}
@@ -713,7 +723,6 @@ export default function QueueTab() {
                       {item.queue_type}
                     </span>
                   </td>
-                  <td>{renderItemDetails(item)}</td>
                   <td className="queue-called-at">
                     {formatCalledAt(item.called_at)}
                   </td>
