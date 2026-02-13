@@ -12,6 +12,7 @@ import TeamsTab from '../components/admin/TeamsTab';
 import SeedingTab from '../components/admin/SeedingTab';
 import BracketsTab from '../components/admin/BracketsTab';
 import QueueTab from '../components/admin/QueueTab';
+import AuditTab from '../components/admin/AuditTab';
 import { getEventStatusClass } from '../utils/eventStatus';
 import './Admin.css';
 
@@ -24,7 +25,8 @@ type TabType =
   | 'seeding'
   | 'brackets'
   | 'queue'
-  | 'admins';
+  | 'admins'
+  | 'audit';
 
 export default function Admin() {
   const { user, loading } = useAuth();
@@ -48,7 +50,8 @@ export default function Admin() {
         saved === 'seeding' ||
         saved === 'brackets' ||
         saved === 'queue' ||
-        saved === 'admins')
+        saved === 'admins' ||
+        saved === 'audit')
     ) {
       return saved as TabType;
     }
@@ -187,6 +190,12 @@ export default function Admin() {
               >
                 🔐 Admins
               </button>
+              <button
+                className={`sidebar-item ${activeTab === 'audit' ? 'active' : ''}`}
+                onClick={() => setActiveTab('audit')}
+              >
+                📋 Audit
+              </button>
             </div>
           </aside>
 
@@ -203,6 +212,7 @@ export default function Admin() {
                 {activeTab === 'brackets' && 'Brackets'}
                 {activeTab === 'queue' && 'Queue'}
                 {activeTab === 'admins' && 'Admins'}
+                {activeTab === 'audit' && 'Audit'}
               </h2>
               {selectedEvent && (
                 <div className="content-header-event-badge">
@@ -223,6 +233,7 @@ export default function Admin() {
             {activeTab === 'brackets' && <BracketsTab />}
             {activeTab === 'queue' && <QueueTab />}
             {activeTab === 'admins' && <AdminsTab />}
+            {activeTab === 'audit' && <AuditTab onNavigateTab={setActiveTab} />}
           </div>
         </div>
       </main>

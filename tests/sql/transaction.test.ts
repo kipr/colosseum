@@ -41,7 +41,9 @@ describe('Transaction Behavior', () => {
     });
 
     // All teams should be present
-    const teams = await testDb.db.all(`SELECT * FROM teams ORDER BY team_number`);
+    const teams = await testDb.db.all(
+      `SELECT * FROM teams ORDER BY team_number`,
+    );
     expect(teams).toHaveLength(3);
     expect(teams[0].team_number).toBe(100);
     expect(teams[1].team_number).toBe(200);

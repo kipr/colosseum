@@ -315,7 +315,9 @@ describe('Events Routes', () => {
       const res = await http.get(`${server.baseUrl}/events/999`);
 
       expect(res.status).toBe(404);
-      expect((res.json as { error: string }).error).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('returns the event when found', async () => {
@@ -367,7 +369,9 @@ describe('Events Routes', () => {
       const res = await http.post(`${server.baseUrl}/events`, {});
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('name is required');
+      expect((res.json as { error: string }).error).toContain(
+        'name is required',
+      );
     });
 
     it('creates event with defaults', async () => {
@@ -450,7 +454,9 @@ describe('Events Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('No valid fields');
+      expect((res.json as { error: string }).error).toContain(
+        'No valid fields',
+      );
     });
 
     it('returns 404 when event not found', async () => {
@@ -459,7 +465,9 @@ describe('Events Routes', () => {
       });
 
       expect(res.status).toBe(404);
-      expect((res.json as { error: string }).error).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('updates name successfully', async () => {

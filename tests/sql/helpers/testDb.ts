@@ -4,7 +4,10 @@
  */
 import SQLite from 'better-sqlite3';
 import type { Database as SQLiteDatabase } from 'better-sqlite3';
-import { createSqliteDatabase, Database } from '../../../src/server/database/connection';
+import {
+  createSqliteDatabase,
+  Database,
+} from '../../../src/server/database/connection';
 import { initializeSQLite } from '../../../src/server/database/init';
 
 export interface TestDb {

@@ -105,7 +105,9 @@ describe('Queue Routes', () => {
         status: 'called',
       });
 
-      const res = await http.get(`${baseUrl}/queue/event/${event.id}?status=queued`);
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?status=queued`,
+      );
 
       expect(res.status).toBe(200);
       const items = res.json as { status: string }[];
@@ -278,7 +280,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('bracket_game_id');
+      expect((res.json as { error: string }).error).toContain(
+        'bracket_game_id',
+      );
     });
 
     it('returns 400 when seeding fields missing for seeding type', async () => {
@@ -289,7 +293,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('seeding_team_id');
+      expect((res.json as { error: string }).error).toContain(
+        'seeding_team_id',
+      );
     });
 
     it('creates seeding queue item with auto position', async () => {
@@ -375,7 +381,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain('already in the queue');
+      expect((res.json as { error: string }).error).toContain(
+        'already in the queue',
+      );
     });
 
     it('returns 409 when seeding round already queued', async () => {
@@ -403,7 +411,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain('already in the queue');
+      expect((res.json as { error: string }).error).toContain(
+        'already in the queue',
+      );
     });
   });
 
@@ -543,7 +553,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(404);
-      expect((res.json as { error: string }).error).toContain('Bracket not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Bracket not found',
+      );
     });
 
     it('returns 400 when bracket belongs to different event', async () => {
@@ -678,7 +690,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(404);
-      expect((res.json as { error: string }).error).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('returns 400 when no teams found for event', async () => {
@@ -743,7 +757,10 @@ describe('Queue Routes', () => {
 
       // Verify the queue items
       const getRes = await http.get(`${baseUrl}/queue/event/${event.id}`);
-      const items = getRes.json as { seeding_team_id: number; seeding_round: number }[];
+      const items = getRes.json as {
+        seeding_team_id: number;
+        seeding_round: number;
+      }[];
       expect(items.length).toBe(2);
       expect(items[0].seeding_team_id).toBe(team.id);
       expect(items[0].seeding_round).toBe(1);
@@ -790,7 +807,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('No valid fields');
+      expect((res.json as { error: string }).error).toContain(
+        'No valid fields',
+      );
     });
 
     it('returns 404 when item not found', async () => {
@@ -879,7 +898,10 @@ describe('Queue Routes', () => {
       const unauthServer = await startServer(unauthApp);
 
       try {
-        const res = await http.patch(`${unauthServer.baseUrl}/queue/1/call`, {});
+        const res = await http.patch(
+          `${unauthServer.baseUrl}/queue/1/call`,
+          {},
+        );
         expect(res.status).toBe(401);
       } finally {
         await unauthServer.close();

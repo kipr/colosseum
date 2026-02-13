@@ -2,6 +2,8 @@ import express from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { getParticipants, getMatches } from '../services/googleSheets';
+import { createAuditEntry } from './audit';
+import { toAuditJson } from '../utils/auditJson';
 
 const router = express.Router();
 
@@ -154,6 +156,27 @@ router.post(
         'SELECT * FROM score_submissions WHERE id = ?',
         [result.lastID],
       );
+
+      // Audit event-scoped submissions only (skip legacy spreadsheet path)
+      if (isDbBacked && submission) {
+        await createAuditEntry(db, {
+          event_id: eventId,
+          user_id: null,
+          action: 'score_submitted',
+          entity_type: 'score_submission',
+          entity_id: submission.id,
+          old_value: null,
+          new_value: toAuditJson({
+            id: submission.id,
+            event_id: submission.event_id,
+            score_type: submission.score_type,
+            status: submission.status,
+            score_data: submission.score_data,
+          }),
+          ip_address: req.ip ?? null,
+        });
+      }
+
       res.json(submission);
     } catch (error) {
       console.error('Error submitting score:', error);

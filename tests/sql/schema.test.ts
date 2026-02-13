@@ -103,10 +103,20 @@ describe('Schema Constraints', () => {
       ).rejects.toThrow(/CHECK constraint failed/);
 
       // Valid statuses should work
-      for (const status of ['registered', 'checked_in', 'no_show', 'withdrawn']) {
+      for (const status of [
+        'registered',
+        'checked_in',
+        'no_show',
+        'withdrawn',
+      ]) {
         await testDb.db.run(
           `INSERT INTO teams (event_id, team_number, team_name, status) VALUES (?, ?, ?, ?)`,
-          [eventResult.lastID, Math.floor(Math.random() * 10000) + 1, `Team ${status}`, status],
+          [
+            eventResult.lastID,
+            Math.floor(Math.random() * 10000) + 1,
+            `Team ${status}`,
+            status,
+          ],
         );
       }
     });
@@ -280,7 +290,10 @@ describe('Schema Constraints', () => {
         [eventId, gameId],
       );
 
-      const entry = await testDb.db.get(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      const entry = await testDb.db.get(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
       expect(entry.queue_type).toBe('bracket');
       expect(entry.bracket_game_id).toBe(gameId);
     });
@@ -292,7 +305,10 @@ describe('Schema Constraints', () => {
         [eventId, teamId],
       );
 
-      const entry = await testDb.db.get(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      const entry = await testDb.db.get(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
       expect(entry.queue_type).toBe('seeding');
       expect(entry.seeding_team_id).toBe(teamId);
       expect(entry.seeding_round).toBe(2);
@@ -303,18 +319,18 @@ describe('Schema Constraints', () => {
     it('should enforce CHECK on status values', async () => {
       // Invalid status should fail
       await expect(
-        testDb.db.run(
-          `INSERT INTO events (name, status) VALUES (?, ?)`,
-          ['Test Event', 'invalid_status'],
-        ),
+        testDb.db.run(`INSERT INTO events (name, status) VALUES (?, ?)`, [
+          'Test Event',
+          'invalid_status',
+        ]),
       ).rejects.toThrow(/CHECK constraint failed/);
 
       // Valid statuses should work
       for (const status of ['setup', 'active', 'complete', 'archived']) {
-        await testDb.db.run(
-          `INSERT INTO events (name, status) VALUES (?, ?)`,
-          [`Event ${status}`, status],
-        );
+        await testDb.db.run(`INSERT INTO events (name, status) VALUES (?, ?)`, [
+          `Event ${status}`,
+          status,
+        ]);
       }
 
       const events = await testDb.db.all(`SELECT * FROM events`);
@@ -349,7 +365,9 @@ describe('Schema Constraints', () => {
       expect(teams).toHaveLength(1);
 
       // Delete event
-      await testDb.db.run(`DELETE FROM events WHERE id = ?`, [eventResult.lastID]);
+      await testDb.db.run(`DELETE FROM events WHERE id = ?`, [
+        eventResult.lastID,
+      ]);
 
       // Team should be deleted too (CASCADE)
       teams = await testDb.db.all(`SELECT * FROM teams`);

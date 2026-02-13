@@ -124,7 +124,6 @@ describe('Queue Population from Seeding', () => {
 
   describe('basic population', () => {
     it('should create queue entries for all unplayed rounds', async () => {
-      
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const team1 = await createTeam(100);
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -138,7 +137,10 @@ describe('Queue Population from Seeding', () => {
       expect(result.totalTeams).toBe(2);
       expect(result.totalRounds).toBe(3);
 
-      const queue = await testDb.db.all(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      const queue = await testDb.db.all(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
       expect(queue).toHaveLength(6);
     });
 
@@ -157,7 +159,10 @@ describe('Queue Population from Seeding', () => {
       // Total: 5
       expect(result.created).toBe(5);
 
-      const queue = await testDb.db.all(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      const queue = await testDb.db.all(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
       expect(queue).toHaveLength(5);
 
       // Verify team 1 round 1 is not in queue
@@ -180,7 +185,10 @@ describe('Queue Population from Seeding', () => {
 
       expect(result.created).toBe(0);
 
-      const queue = await testDb.db.all(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      const queue = await testDb.db.all(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
       expect(queue).toHaveLength(0);
     });
   });
@@ -239,7 +247,10 @@ describe('Queue Population from Seeding', () => {
 
       // First population
       await populateQueueFromSeeding();
-      let queue = await testDb.db.all(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      let queue = await testDb.db.all(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
       expect(queue).toHaveLength(3);
 
       // Add a score
@@ -247,7 +258,10 @@ describe('Queue Population from Seeding', () => {
 
       // Re-populate - should only have 2 entries now
       await populateQueueFromSeeding();
-      queue = await testDb.db.all(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      queue = await testDb.db.all(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
       expect(queue).toHaveLength(2);
     });
   });
@@ -258,7 +272,10 @@ describe('Queue Population from Seeding', () => {
 
       await populateQueueFromSeeding();
 
-      const queue = await testDb.db.all(`SELECT * FROM game_queue WHERE event_id = ?`, [eventId]);
+      const queue = await testDb.db.all(
+        `SELECT * FROM game_queue WHERE event_id = ?`,
+        [eventId],
+      );
 
       for (const item of queue) {
         expect(item.queue_type).toBe('seeding');
@@ -288,7 +305,9 @@ describe('Queue Population from Seeding', () => {
   describe('event configuration', () => {
     it('should respect event seeding_rounds setting', async () => {
       // Update event to have 5 seeding rounds
-      await testDb.db.run(`UPDATE events SET seeding_rounds = 5 WHERE id = ?`, [eventId]);
+      await testDb.db.run(`UPDATE events SET seeding_rounds = 5 WHERE id = ?`, [
+        eventId,
+      ]);
 
       await createTeam(100);
 
@@ -301,7 +320,9 @@ describe('Queue Population from Seeding', () => {
 
   describe('edge cases', () => {
     it('should handle event with no teams', async () => {
-      await expect(populateQueueFromSeeding()).rejects.toThrow('No teams found');
+      await expect(populateQueueFromSeeding()).rejects.toThrow(
+        'No teams found',
+      );
     });
 
     it('should handle partial scoring across teams', async () => {

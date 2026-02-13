@@ -1,6 +1,8 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import { createAuditEntry } from './audit';
+import { toAuditJson } from '../utils/auditJson';
 
 const router = express.Router();
 
@@ -84,6 +86,18 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     const team = await db.get('SELECT * FROM teams WHERE id = ?', [
       result.lastID,
     ]);
+
+    await createAuditEntry(db, {
+      event_id: event_id,
+      user_id: req.user?.id ?? null,
+      action: 'team_added',
+      entity_type: 'team',
+      entity_id: team?.id ?? result.lastID ?? null,
+      old_value: null,
+      new_value: toAuditJson(team),
+      ip_address: req.ip ?? null,
+    });
+
     res.status(201).json(team);
   } catch (error) {
     console.error('Error creating team:', error);
@@ -187,10 +201,11 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
       });
 
       // Phase 3: Insert all valid teams in a single transaction
+      const createdTeamIds: number[] = [];
       if (teamsToInsert.length > 0) {
         await db.transaction((tx) => {
           for (const team of teamsToInsert) {
-            tx.run(
+            const insertResult = tx.run(
               `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
                VALUES (?, ?, ?, ?, ?)`,
               [
@@ -201,7 +216,23 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
                 team.status,
               ],
             );
+            if (insertResult.lastID) createdTeamIds.push(insertResult.lastID);
           }
+        });
+
+        await createAuditEntry(db, {
+          event_id,
+          user_id: req.user?.id ?? null,
+          action: 'teams_bulk_added',
+          entity_type: 'teams',
+          entity_id: null,
+          old_value: null,
+          new_value: toAuditJson({
+            created_count: teamsToInsert.length,
+            created_team_ids: createdTeamIds,
+            errors: errors.length > 0 ? errors : undefined,
+          }),
+          ip_address: req.ip ?? null,
         });
       }
 
@@ -227,6 +258,11 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    const oldTeam = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+    if (!oldTeam) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
     // Filter to only allowed fields
     const updates = Object.entries(req.body).filter(([key]) =>
       ALLOWED_UPDATE_FIELDS.includes(key),
@@ -249,6 +285,18 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     }
 
     const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+
+    await createAuditEntry(db, {
+      event_id: oldTeam.event_id,
+      user_id: req.user?.id ?? null,
+      action: 'team_updated',
+      entity_type: 'team',
+      entity_id: Number(id),
+      old_value: toAuditJson(oldTeam),
+      new_value: toAuditJson(team),
+      ip_address: req.ip ?? null,
+    });
+
     res.json(team);
   } catch (error) {
     console.error('Error updating team:', error);
@@ -274,6 +322,11 @@ router.patch(
       const { id } = req.params;
       const db = await getDatabase();
 
+      const oldTeam = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+      if (!oldTeam) {
+        return res.status(404).json({ error: 'Team not found' });
+      }
+
       const result = await db.run(
         `UPDATE teams SET status = 'checked_in', checked_in_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [id],
@@ -284,6 +337,18 @@ router.patch(
       }
 
       const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+
+      await createAuditEntry(db, {
+        event_id: oldTeam.event_id,
+        user_id: req.user?.id ?? null,
+        action: 'team_checked_in',
+        entity_type: 'team',
+        entity_id: Number(id),
+        old_value: toAuditJson(oldTeam),
+        new_value: toAuditJson(team),
+        ip_address: req.ip ?? null,
+      });
+
       res.json(team);
     } catch (error) {
       console.error('Error checking in team:', error);
@@ -338,6 +403,21 @@ router.patch(
             );
           }
         });
+
+        await createAuditEntry(db, {
+          event_id: Number(eventId),
+          user_id: req.user?.id ?? null,
+          action: 'teams_bulk_checked_in',
+          entity_type: 'teams',
+          entity_id: null,
+          old_value: null,
+          new_value: toAuditJson({
+            updated_count: existingTeams.length,
+            updated_team_ids: existingTeams.map((t) => t.id),
+            not_found: notFound.length > 0 ? notFound : undefined,
+          }),
+          ip_address: req.ip ?? null,
+        });
       }
 
       res.json({
@@ -357,8 +437,23 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    const oldTeam = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+
     // DELETE is idempotent - return 204 regardless of whether row existed
     await db.run('DELETE FROM teams WHERE id = ?', [id]);
+
+    if (oldTeam) {
+      await createAuditEntry(db, {
+        event_id: oldTeam.event_id,
+        user_id: req.user?.id ?? null,
+        action: 'team_deleted',
+        entity_type: 'team',
+        entity_id: Number(id),
+        old_value: toAuditJson(oldTeam),
+        new_value: null,
+        ip_address: req.ip ?? null,
+      });
+    }
 
     res.status(204).send();
   } catch (error) {

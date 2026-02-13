@@ -181,11 +181,17 @@ describe('Bracket Template Seeding', () => {
           }
 
           // Validate winner/loser references point to existing games
-          if (template.team1_source.startsWith('winner:') || template.team1_source.startsWith('loser:')) {
+          if (
+            template.team1_source.startsWith('winner:') ||
+            template.team1_source.startsWith('loser:')
+          ) {
             const gameNum = parseInt(template.team1_source.split(':')[1], 10);
             expect(gameNumbers.has(gameNum)).toBe(true);
           }
-          if (template.team2_source.startsWith('winner:') || template.team2_source.startsWith('loser:')) {
+          if (
+            template.team2_source.startsWith('winner:') ||
+            template.team2_source.startsWith('loser:')
+          ) {
             const gameNum = parseInt(template.team2_source.split(':')[1], 10);
             expect(gameNumbers.has(gameNum)).toBe(true);
           }
@@ -223,9 +229,15 @@ describe('Bracket Template Seeding', () => {
     });
 
     it('should throw for unsupported bracket sizes', () => {
-      expect(() => generateDEBracketTemplates(3)).toThrow(/Unsupported bracket size/);
-      expect(() => generateDEBracketTemplates(10)).toThrow(/Unsupported bracket size/);
-      expect(() => generateDEBracketTemplates(128)).toThrow(/Unsupported bracket size/);
+      expect(() => generateDEBracketTemplates(3)).toThrow(
+        /Unsupported bracket size/,
+      );
+      expect(() => generateDEBracketTemplates(10)).toThrow(
+        /Unsupported bracket size/,
+      );
+      expect(() => generateDEBracketTemplates(128)).toThrow(
+        /Unsupported bracket size/,
+      );
     });
   });
 });

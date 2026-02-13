@@ -98,7 +98,9 @@ describe('Event-Scoped Scores Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.post(`${server.baseUrl}/scores/1/accept-event`);
+          const res = await http.post(
+            `${server.baseUrl}/scores/1/accept-event`,
+          );
           expect(res.status).toBe(403);
         } finally {
           await server.close();
@@ -113,7 +115,9 @@ describe('Event-Scoped Scores Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.post(`${server.baseUrl}/scores/1/revert-event`);
+          const res = await http.post(
+            `${server.baseUrl}/scores/1/revert-event`,
+          );
           expect(res.status).toBe(403);
         } finally {
           await server.close();
@@ -142,12 +146,16 @@ describe('Event-Scoped Scores Routes', () => {
     it('returns 404 when event not found', async () => {
       const res = await http.get(`${server.baseUrl}/scores/by-event/999`);
       expect(res.status).toBe(404);
-      expect((res.json as { error: string }).error).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('returns empty array when no scores exist', async () => {
       const event = await seedEvent(testDb.db);
-      const res = await http.get(`${server.baseUrl}/scores/by-event/${event.id}`);
+      const res = await http.get(
+        `${server.baseUrl}/scores/by-event/${event.id}`,
+      );
 
       expect(res.status).toBe(200);
       const data = res.json as { rows: unknown[]; totalCount: number };
@@ -158,18 +166,25 @@ describe('Event-Scoped Scores Routes', () => {
     it('returns scores with pagination info', async () => {
       const user = await seedUser(testDb.db);
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, { user_id: user.id });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: user.id,
+      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
         spreadsheet_config_id: config.id,
-        score_data: JSON.stringify({ team_id: { value: 1 }, round: { value: 1 } }),
+        score_data: JSON.stringify({
+          team_id: { value: 1 },
+          round: { value: 1 },
+        }),
         event_id: event.id,
         score_type: 'seeding',
       });
 
-      const res = await http.get(`${server.baseUrl}/scores/by-event/${event.id}`);
+      const res = await http.get(
+        `${server.baseUrl}/scores/by-event/${event.id}`,
+      );
 
       expect(res.status).toBe(200);
       const data = res.json as {
@@ -188,7 +203,9 @@ describe('Event-Scoped Scores Routes', () => {
     it('filters by status', async () => {
       const user = await seedUser(testDb.db);
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, { user_id: user.id });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: user.id,
+      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       await seedScoreSubmission(testDb.db, {
@@ -213,7 +230,10 @@ describe('Event-Scoped Scores Routes', () => {
       );
 
       expect(res.status).toBe(200);
-      const data = res.json as { rows: { status: string }[]; totalCount: number };
+      const data = res.json as {
+        rows: { status: string }[];
+        totalCount: number;
+      };
       expect(data.totalCount).toBe(1);
       expect(data.rows[0].status).toBe('pending');
     });
@@ -221,7 +241,9 @@ describe('Event-Scoped Scores Routes', () => {
     it('filters by score_type', async () => {
       const user = await seedUser(testDb.db);
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, { user_id: user.id });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: user.id,
+      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       await seedScoreSubmission(testDb.db, {
@@ -259,12 +281,17 @@ describe('Event-Scoped Scores Routes', () => {
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
         spreadsheet_config_id: null,
-        score_data: JSON.stringify({ team_id: { value: 1 }, round: { value: 1 } }),
+        score_data: JSON.stringify({
+          team_id: { value: 1 },
+          round: { value: 1 },
+        }),
         event_id: event.id,
         score_type: 'seeding',
       });
 
-      const res = await http.get(`${server.baseUrl}/scores/by-event/${event.id}`);
+      const res = await http.get(
+        `${server.baseUrl}/scores/by-event/${event.id}`,
+      );
 
       expect(res.status).toBe(200);
       const data = res.json as {
@@ -317,7 +344,9 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/${score.id}/accept-event`,
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('not event-scoped');
+      expect((res.json as { error: string }).error).toContain(
+        'not event-scoped',
+      );
     });
 
     it('returns 400 when score is already accepted', async () => {
@@ -339,7 +368,9 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/${score.id}/accept-event`,
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('already accepted');
+      expect((res.json as { error: string }).error).toContain(
+        'already accepted',
+      );
     });
 
     it('accepts seeding score and creates seeding_score record', async () => {
@@ -380,6 +411,12 @@ describe('Event-Scoped Scores Routes', () => {
       );
       expect(seedingScore).toBeDefined();
       expect(seedingScore.score).toBe(150);
+
+      const auditLogs = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+        [event.id, 'score_accepted', 'score_submission', score.id],
+      );
+      expect(auditLogs.length).toBe(1);
     });
 
     it('accepts bracket score and sets winner', async () => {
@@ -438,6 +475,18 @@ describe('Event-Scoped Scores Routes', () => {
       );
       expect(updatedGame.winner_id).toBe(team1.id);
       expect(updatedGame.status).toBe('completed');
+
+      const scoreAcceptedLogs = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+        [event.id, 'score_accepted', 'score_submission', score.id],
+      );
+      expect(scoreAcceptedLogs.length).toBe(1);
+
+      const bracketGameLogs = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+        [event.id, 'bracket_game_completed', 'bracket_game', game.id],
+      );
+      expect(bracketGameLogs.length).toBe(1);
     });
 
     it('returns 409 conflict when seeding score already exists', async () => {
@@ -707,6 +756,23 @@ describe('Event-Scoped Scores Routes', () => {
         [score.id],
       );
       expect(submission.status).toBe('pending');
+
+      const scoreRevertedLogs = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+        [event.id, 'score_reverted', 'score_submission', score.id],
+      );
+      expect(scoreRevertedLogs.length).toBe(1);
+
+      const seedingClearedLogs = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+        [
+          event.id,
+          'seeding_score_cleared',
+          'seeding_score',
+          seedingScoreResult.lastID,
+        ],
+      );
+      expect(seedingClearedLogs.length).toBe(1);
     });
 
     it('reverts DB-backed seeding score (spreadsheet_config_id null)', async () => {
@@ -754,6 +820,23 @@ describe('Event-Scoped Scores Routes', () => {
         [score.id],
       );
       expect(submission.status).toBe('pending');
+
+      const scoreRevertedLogs = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+        [event.id, 'score_reverted', 'score_submission', score.id],
+      );
+      expect(scoreRevertedLogs.length).toBe(1);
+
+      const seedingClearedLogs = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+        [
+          event.id,
+          'seeding_score_cleared',
+          'seeding_score',
+          seedingScoreResult.lastID,
+        ],
+      );
+      expect(seedingClearedLogs.length).toBe(1);
     });
 
     it('does dry-run for bracket cascade detection', async () => {
@@ -798,10 +881,10 @@ describe('Event-Scoped Scores Routes', () => {
       );
 
       // Update game 2 to have team1 (the winner) in team1 slot
-      await testDb.db.run('UPDATE bracket_games SET team1_id = ? WHERE id = ?', [
-        team1.id,
-        game2.id,
-      ]);
+      await testDb.db.run(
+        'UPDATE bracket_games SET team1_id = ? WHERE id = ?',
+        [team1.id, game2.id],
+      );
 
       const config = await seedSpreadsheetConfig(testDb.db, {
         user_id: adminUser.id,

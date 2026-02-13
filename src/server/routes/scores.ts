@@ -1,6 +1,8 @@
 import express from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import { createAuditEntry } from './audit';
+import { toAuditJson } from '../utils/auditJson';
 import { updateTeamScore } from '../services/googleSheets';
 import {
   writeWinnerToBracket,
@@ -254,6 +256,21 @@ router.post(
           );
         }
 
+        const updatedScore = await db.get(
+          'SELECT * FROM score_submissions WHERE id = ?',
+          [id],
+        );
+        await createAuditEntry(db, {
+          event_id: score.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'score_accepted',
+          entity_type: 'score_submission',
+          entity_id: Number(id),
+          old_value: toAuditJson(score),
+          new_value: toAuditJson(updatedScore),
+          ip_address: req.ip ?? null,
+        });
+
         return res.json({
           success: true,
           scoreType: 'seeding',
@@ -393,6 +410,36 @@ router.post(
 
         // Resolve any bye chains
         const byeResolution = await resolveBracketByes(db, game.bracket_id);
+
+        const updatedScore = await db.get(
+          'SELECT * FROM score_submissions WHERE id = ?',
+          [id],
+        );
+        const updatedGame = await db.get(
+          'SELECT * FROM bracket_games WHERE id = ?',
+          [bracketGameId],
+        );
+
+        await createAuditEntry(db, {
+          event_id: score.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'score_accepted',
+          entity_type: 'score_submission',
+          entity_id: Number(id),
+          old_value: toAuditJson(score),
+          new_value: toAuditJson(updatedScore),
+          ip_address: req.ip ?? null,
+        });
+        await createAuditEntry(db, {
+          event_id: score.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'bracket_game_completed',
+          entity_type: 'bracket_game',
+          entity_id: bracketGameId,
+          old_value: toAuditJson(game),
+          new_value: toAuditJson(updatedGame),
+          ip_address: req.ip ?? null,
+        });
 
         return res.json({
           success: true,
@@ -728,6 +775,20 @@ router.post(
              WHERE id = ?`,
             [id],
           );
+          const updatedScore = await db.get(
+            'SELECT * FROM score_submissions WHERE id = ?',
+            [id],
+          );
+          await createAuditEntry(db, {
+            event_id: score.event_id,
+            user_id: req.user?.id ?? null,
+            action: 'score_reverted',
+            entity_type: 'score_submission',
+            entity_id: Number(id),
+            old_value: toAuditJson(score),
+            new_value: toAuditJson(updatedScore),
+            ip_address: req.ip ?? null,
+          });
           return res.json({ success: true, scoreType: 'seeding' });
         }
 
@@ -743,6 +804,11 @@ router.post(
           });
         }
 
+        const oldSeedingScore = await db.get(
+          'SELECT * FROM seeding_scores WHERE id = ?',
+          [seedingScoreId],
+        );
+
         // Clear the seeding score and reset submission
         await db.transaction((tx) => {
           tx.run('DELETE FROM seeding_scores WHERE id = ?', [seedingScoreId]);
@@ -752,6 +818,31 @@ router.post(
              WHERE id = ?`,
             [id],
           );
+        });
+
+        const updatedScore = await db.get(
+          'SELECT * FROM score_submissions WHERE id = ?',
+          [id],
+        );
+        await createAuditEntry(db, {
+          event_id: score.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'score_reverted',
+          entity_type: 'score_submission',
+          entity_id: Number(id),
+          old_value: toAuditJson(score),
+          new_value: toAuditJson(updatedScore),
+          ip_address: req.ip ?? null,
+        });
+        await createAuditEntry(db, {
+          event_id: score.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'seeding_score_cleared',
+          entity_type: 'seeding_score',
+          entity_id: seedingScoreId,
+          old_value: toAuditJson(oldSeedingScore),
+          new_value: null,
+          ip_address: req.ip ?? null,
         });
 
         return res.json({
@@ -773,6 +864,20 @@ router.post(
              WHERE id = ?`,
             [id],
           );
+          const updatedScore = await db.get(
+            'SELECT * FROM score_submissions WHERE id = ?',
+            [id],
+          );
+          await createAuditEntry(db, {
+            event_id: score.event_id,
+            user_id: req.user?.id ?? null,
+            action: 'score_reverted',
+            entity_type: 'score_submission',
+            entity_id: Number(id),
+            old_value: toAuditJson(score),
+            new_value: toAuditJson(updatedScore),
+            ip_address: req.ip ?? null,
+          });
           return res.json({ success: true, scoreType: 'bracket' });
         }
 
@@ -793,6 +898,20 @@ router.post(
              WHERE id = ?`,
             [id],
           );
+          const updatedScore = await db.get(
+            'SELECT * FROM score_submissions WHERE id = ?',
+            [id],
+          );
+          await createAuditEntry(db, {
+            event_id: score.event_id,
+            user_id: req.user?.id ?? null,
+            action: 'score_reverted',
+            entity_type: 'score_submission',
+            entity_id: Number(id),
+            old_value: toAuditJson(score),
+            new_value: toAuditJson(updatedScore),
+            ip_address: req.ip ?? null,
+          });
           return res.json({ success: true, scoreType: 'bracket' });
         }
 
@@ -890,6 +1009,21 @@ router.post(
              WHERE id = ?`,
             [id],
           );
+        });
+
+        const updatedScore = await db.get(
+          'SELECT * FROM score_submissions WHERE id = ?',
+          [id],
+        );
+        await createAuditEntry(db, {
+          event_id: score.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'score_reverted',
+          entity_type: 'score_submission',
+          entity_id: Number(id),
+          old_value: toAuditJson(score),
+          new_value: toAuditJson(updatedScore),
+          ip_address: req.ip ?? null,
         });
 
         return res.json({
@@ -1066,12 +1200,37 @@ router.post(
       const { id } = req.params;
       const db = await getDatabase();
 
+      const oldScore = await db.get(
+        'SELECT * FROM score_submissions WHERE id = ?',
+        [id],
+      );
+      if (!oldScore) {
+        return res.status(404).json({ error: 'Score not found' });
+      }
+
       await db.run(
         `UPDATE score_submissions 
        SET status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
         [req.user.id, id],
       );
+
+      if (oldScore.event_id) {
+        const updatedScore = await db.get(
+          'SELECT * FROM score_submissions WHERE id = ?',
+          [id],
+        );
+        await createAuditEntry(db, {
+          event_id: oldScore.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'score_rejected',
+          entity_type: 'score_submission',
+          entity_id: Number(id),
+          old_value: toAuditJson(oldScore),
+          new_value: toAuditJson(updatedScore),
+          ip_address: req.ip ?? null,
+        });
+      }
 
       res.json({ success: true });
     } catch (error) {
@@ -1217,12 +1376,37 @@ router.put(
       const { scoreData } = req.body;
       const db = await getDatabase();
 
+      const oldScore = await db.get(
+        'SELECT * FROM score_submissions WHERE id = ?',
+        [id],
+      );
+      if (!oldScore) {
+        return res.status(404).json({ error: 'Score not found' });
+      }
+
       await db.run(
         `UPDATE score_submissions 
        SET score_data = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
         [JSON.stringify(scoreData), id],
       );
+
+      if (oldScore.event_id) {
+        const updatedScore = await db.get(
+          'SELECT * FROM score_submissions WHERE id = ?',
+          [id],
+        );
+        await createAuditEntry(db, {
+          event_id: oldScore.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'score_updated',
+          entity_type: 'score_submission',
+          entity_id: Number(id),
+          old_value: toAuditJson(oldScore),
+          new_value: toAuditJson(updatedScore),
+          ip_address: req.ip ?? null,
+        });
+      }
 
       res.json({ success: true });
     } catch (error) {
@@ -1241,7 +1425,25 @@ router.delete(
       const { id } = req.params;
       const db = await getDatabase();
 
+      const oldScore = await db.get(
+        'SELECT * FROM score_submissions WHERE id = ?',
+        [id],
+      );
+
       await db.run('DELETE FROM score_submissions WHERE id = ?', [id]);
+
+      if (oldScore?.event_id) {
+        await createAuditEntry(db, {
+          event_id: oldScore.event_id,
+          user_id: req.user?.id ?? null,
+          action: 'score_deleted',
+          entity_type: 'score_submission',
+          entity_id: Number(id),
+          old_value: toAuditJson(oldScore),
+          new_value: null,
+          ip_address: req.ip ?? null,
+        });
+      }
 
       res.json({ success: true });
     } catch (error) {

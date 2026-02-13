@@ -255,24 +255,43 @@ export interface SeedAuditLogData {
   entity_id?: number | null;
   old_value?: string | null;
   new_value?: string | null;
+  created_at?: string | null;
 }
 
 export async function seedAuditLog(
   db: Database,
   data: SeedAuditLogData,
 ): Promise<{ id: number }> {
+  const hasCreatedAt = data.created_at != null && data.created_at !== '';
+  const columns = hasCreatedAt
+    ? 'event_id, user_id, action, entity_type, entity_id, old_value, new_value, created_at'
+    : 'event_id, user_id, action, entity_type, entity_id, old_value, new_value';
+  const placeholders = hasCreatedAt
+    ? '?, ?, ?, ?, ?, ?, ?, ?'
+    : '?, ?, ?, ?, ?, ?, ?';
+  const values = hasCreatedAt
+    ? [
+        data.event_id ?? null,
+        data.user_id ?? null,
+        data.action,
+        data.entity_type,
+        data.entity_id ?? null,
+        data.old_value ?? null,
+        data.new_value ?? null,
+        data.created_at,
+      ]
+    : [
+        data.event_id ?? null,
+        data.user_id ?? null,
+        data.action,
+        data.entity_type,
+        data.entity_id ?? null,
+        data.old_value ?? null,
+        data.new_value ?? null,
+      ];
   const result = await db.run(
-    `INSERT INTO audit_log (event_id, user_id, action, entity_type, entity_id, old_value, new_value)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [
-      data.event_id ?? null,
-      data.user_id ?? null,
-      data.action,
-      data.entity_type,
-      data.entity_id ?? null,
-      data.old_value ?? null,
-      data.new_value ?? null,
-    ],
+    `INSERT INTO audit_log (${columns}) VALUES (${placeholders})`,
+    values,
   );
   return { id: result.lastID! };
 }

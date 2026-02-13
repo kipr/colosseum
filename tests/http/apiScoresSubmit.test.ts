@@ -343,7 +343,10 @@ describe('API Score Submit Routes', () => {
 
         expect(scoreData.points).toBe(100);
         expect(scoreData.bonus).toBe(25);
-        expect(scoreData._isHeadToHead).toEqual({ value: true, type: 'boolean' });
+        expect(scoreData._isHeadToHead).toEqual({
+          value: true,
+          type: 'boolean',
+        });
         expect(scoreData._bracketSource).toEqual({
           value: { bracketId: 5, gameId: 10 },
           type: 'object',
@@ -372,8 +375,14 @@ describe('API Score Submit Routes', () => {
         const submission = res.json as { score_data: string };
         const scoreData = JSON.parse(submission.score_data);
 
-        expect(scoreData._isHeadToHead).toEqual({ value: false, type: 'boolean' });
-        expect(scoreData._bracketSource).toEqual({ value: null, type: 'object' });
+        expect(scoreData._isHeadToHead).toEqual({
+          value: false,
+          type: 'boolean',
+        });
+        expect(scoreData._bracketSource).toEqual({
+          value: null,
+          type: 'object',
+        });
       });
     });
 
@@ -496,6 +505,16 @@ describe('API Score Submit Routes', () => {
           (res.json as { score_data: string }).score_data,
         );
         expect(scoreData.team_id?.value).toBe(team.id);
+
+        const auditLogs = await testDb.db.all(
+          'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+          [event.id, 'score_submitted', 'score_submission', submission.id],
+        );
+        expect(auditLogs.length).toBe(1);
+        expect(auditLogs[0].event_id).toBe(event.id);
+        expect(auditLogs[0].action).toBe('score_submitted');
+        expect(auditLogs[0].entity_type).toBe('score_submission');
+        expect(auditLogs[0].entity_id).toBe(submission.id);
       });
 
       it('resolves team_number to team_id when team_id not provided', async () => {
@@ -560,7 +579,9 @@ describe('API Score Submit Routes', () => {
         });
 
         expect(res.status).toBe(400);
-        expect((res.json as { error: string }).error).toContain('Invalid event');
+        expect((res.json as { error: string }).error).toContain(
+          'Invalid event',
+        );
       });
 
       it('returns 400 when team not found for event (team_number)', async () => {

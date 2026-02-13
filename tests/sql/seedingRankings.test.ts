@@ -252,7 +252,10 @@ describe('Seeding Rankings Calculation', () => {
 
       await recalculateRankings();
 
-      const rankings = await testDb.db.all<{ team_id: number; seed_rank: number }>(
+      const rankings = await testDb.db.all<{
+        team_id: number;
+        seed_rank: number;
+      }>(
         `SELECT team_id, seed_rank FROM seeding_rankings ORDER BY seed_rank ASC`,
       );
 
@@ -280,7 +283,10 @@ describe('Seeding Rankings Calculation', () => {
 
       await recalculateRankings();
 
-      const rankings = await testDb.db.all<{ team_id: number; seed_rank: number }>(
+      const rankings = await testDb.db.all<{
+        team_id: number;
+        seed_rank: number;
+      }>(
         `SELECT team_id, seed_rank FROM seeding_rankings ORDER BY seed_rank ASC`,
       );
 
