@@ -10,6 +10,7 @@ interface SpreadsheetConfig {
 
 interface TemplateEditorModalProps {
   templateId: number | null;
+  eventId: number;
   onClose: () => void;
   onSave: () => void;
   initialData?: {
@@ -23,6 +24,7 @@ interface TemplateEditorModalProps {
 
 export default function TemplateEditorModal({
   templateId,
+  eventId,
   onClose,
   onSave,
   initialData,
@@ -190,6 +192,7 @@ export default function TemplateEditorModal({
           accessCode,
           schema: parsedSchema,
           spreadsheetConfigId: spreadsheetConfigId || null,
+          eventId,
         }),
       });
 

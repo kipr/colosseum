@@ -219,6 +219,30 @@ export async function seedScoresheetTemplate(
   return { id: result.lastID! };
 }
 
+export interface SeedEventScoresheetTemplateData {
+  event_id: number;
+  template_id: number;
+  template_type: 'seeding' | 'bracket';
+  is_default?: boolean;
+}
+
+export async function seedEventScoresheetTemplate(
+  db: Database,
+  data: SeedEventScoresheetTemplateData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type, is_default)
+     VALUES (?, ?, ?, ?)`,
+    [
+      data.event_id,
+      data.template_id,
+      data.template_type,
+      data.is_default ?? false,
+    ],
+  );
+  return { id: result.lastID! };
+}
+
 export interface SeedSpreadsheetConfigData {
   user_id: number;
   spreadsheet_id?: string;
