@@ -792,7 +792,6 @@ describe('Queue Routes', () => {
         event_id: event.id,
         team_number: 101,
       });
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const team2 = await seedTeam(testDb.db, {
         event_id: event.id,
         team_number: 102,
@@ -819,6 +818,18 @@ describe('Queue Routes', () => {
       expect(result.created).toBe(5);
       expect(result.totalTeams).toBe(2);
       expect(result.totalRounds).toBe(3);
+
+      const getRes = await http.get(`${baseUrl}/queue/event/${event.id}`);
+      const items = getRes.json as {
+        seeding_team_id: number;
+        seeding_round: number;
+      }[];
+      expect(items.length).toBe(5);
+      // team1 round1 is scored, so first two items should be round 1 for remaining teams.
+      expect(items[0].seeding_team_id).toBe(team2.id);
+      expect(items[0].seeding_round).toBe(1);
+      expect(items[1].seeding_team_id).toBe(team1.id);
+      expect(items[1].seeding_round).toBe(2);
     });
 
     it('respects event seeding_rounds setting', async () => {

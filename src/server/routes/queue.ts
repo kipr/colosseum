@@ -48,8 +48,8 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
   );
 
   const allCombos: { team_id: number; round: number; scored: boolean }[] = [];
-  for (const team of teams) {
-    for (let round = 1; round <= seedingRounds; round++) {
+  for (let round = 1; round <= seedingRounds; round++) {
+    for (const team of teams) {
       allCombos.push({
         team_id: team.id,
         round,
@@ -510,8 +510,8 @@ router.post(
 
       // Build list of unplayed seeding rounds
       const unplayedRounds: { team_id: number; round: number }[] = [];
-      for (const team of teams) {
-        for (let round = 1; round <= seedingRounds; round++) {
+      for (let round = 1; round <= seedingRounds; round++) {
+        for (const team of teams) {
           const key = `${team.id}:${round}`;
           if (!scoredSet.has(key)) {
             unplayedRounds.push({ team_id: team.id, round });

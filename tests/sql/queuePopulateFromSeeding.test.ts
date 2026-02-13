@@ -90,8 +90,8 @@ describe('Queue Population from Seeding', () => {
     );
 
     const unplayedRounds: { team_id: number; round: number }[] = [];
-    for (const team of teams) {
-      for (let round = 1; round <= seedingRounds; round++) {
+    for (let round = 1; round <= seedingRounds; round++) {
+      for (const team of teams) {
         const key = `${team.id}:${round}`;
         if (!scoredSet.has(key)) {
           unplayedRounds.push({ team_id: team.id, round });
@@ -211,7 +211,7 @@ describe('Queue Population from Seeding', () => {
       }
     });
 
-    it('should order by team number then round', async () => {
+    it('should order by round then team number', async () => {
       const team1 = await createTeam(100);
       const team2 = await createTeam(200);
 
@@ -226,18 +226,18 @@ describe('Queue Population from Seeding', () => {
         [eventId],
       );
 
-      // Should be: team1-r1, team1-r2, team1-r3, team2-r1, team2-r2, team2-r3
+      // Should be: team1-r1, team2-r1, team1-r2, team2-r2, team1-r3, team2-r3
       expect(queue[0].seeding_team_id).toBe(team1);
       expect(queue[0].seeding_round).toBe(1);
 
-      expect(queue[1].seeding_team_id).toBe(team1);
-      expect(queue[1].seeding_round).toBe(2);
+      expect(queue[1].seeding_team_id).toBe(team2);
+      expect(queue[1].seeding_round).toBe(1);
 
       expect(queue[2].seeding_team_id).toBe(team1);
-      expect(queue[2].seeding_round).toBe(3);
+      expect(queue[2].seeding_round).toBe(2);
 
       expect(queue[3].seeding_team_id).toBe(team2);
-      expect(queue[3].seeding_round).toBe(1);
+      expect(queue[3].seeding_round).toBe(2);
     });
   });
 
