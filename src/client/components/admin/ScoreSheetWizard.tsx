@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
+import { useEvent } from '../../contexts/EventContext';
 import '../Modal.css';
 
 interface SpreadsheetConfig {
@@ -24,18 +25,12 @@ interface ScoreSheetWizardProps {
     description: string;
     accessCode: string;
     schema: any;
-    spreadsheetConfigId: number | '';
+    spreadsheetConfigId: number | '' | null;
   }) => void;
   onCancel: () => void;
 }
 
-type StepType =
-  | 'type'
-  | 'template'
-  | 'basic'
-  | 'datasource'
-  | 'destination'
-  | 'review';
+type StepType = 'type' | 'template' | 'basic' | 'destination' | 'review';
 type SheetType = 'seeding' | 'de';
 
 export default function ScoreSheetWizard({
@@ -53,10 +48,9 @@ export default function ScoreSheetWizard({
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
 
-  // Data sources
+  // Data sources (teams come from DB via selected event)
+  const { selectedEvent } = useEvent();
   const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
-  const [dataSourceSheet, setDataSourceSheet] =
-    useState<SpreadsheetConfig | null>(null);
   const [destinationSheet, setDestinationSheet] =
     useState<SpreadsheetConfig | null>(null); // For seeding only
   const [bracketSheet, setBracketSheet] = useState<SpreadsheetConfig | null>(
@@ -106,8 +100,6 @@ export default function ScoreSheetWizard({
     }
   };
 
-  const getDataSheets = () =>
-    spreadsheets.filter((s) => s.sheet_purpose === 'data');
   const getScoreSheets = () =>
     spreadsheets.filter((s) => s.sheet_purpose === 'scores');
   const getBracketSheets = () =>
@@ -125,24 +117,26 @@ export default function ScoreSheetWizard({
     const schema: any = {
       layout: 'two-column',
       title: name || 'Seeding Score Sheet',
+      eventId: selectedEvent?.id ?? null,
+      scoreDestination: 'db',
       fields: [],
     };
 
-    // Add team selection fields (always included)
+    // Add team selection fields (always included) - teams from DB
     schema.fields.push({
       id: 'team_number',
       label: 'Team Number',
       type: 'dropdown',
       required: true,
       dataSource: {
-        sheetName: dataSourceSheet?.sheet_name || 'Teams',
-        range: 'A1:B',
-        labelField: 'Team Number',
-        valueField: 'Team Number',
+        type: 'db',
+        eventId: selectedEvent?.id,
+        labelField: 'team_number',
+        valueField: 'team_number',
       },
       cascades: {
         targetField: 'team_name',
-        sourceField: 'Team Name',
+        sourceField: 'team_name',
       },
     });
 
@@ -231,14 +225,17 @@ export default function ScoreSheetWizard({
       layout: 'two-column',
       mode: 'head-to-head',
       title: name || 'Double Elimination Score Sheet',
+      eventId: selectedEvent?.id ?? null,
+      scoreDestination: 'db',
       bracketSource: {
         sheetName: bracketSheet?.sheet_name || 'DE 16 Team',
         purpose: 'bracket',
       },
       teamsDataSource: {
-        sheetName: dataSourceSheet?.sheet_name || 'Teams',
-        teamNumberField: 'Team Number',
-        teamNameField: 'Team Name',
+        type: 'db',
+        eventId: selectedEvent?.id,
+        teamNumberField: 'team_number',
+        teamNameField: 'team_name',
       },
       fields: [],
     };
@@ -405,19 +402,19 @@ export default function ScoreSheetWizard({
         alert('Please fill in Name and Access Code');
         return;
       }
-      setCurrentStep('datasource');
-    } else if (currentStep === 'datasource') {
-      if (!dataSourceSheet) {
-        alert('Please select a data source sheet for team information');
+      if (!selectedEvent?.id) {
+        alert('Please select an event first. Teams are loaded from the event.');
         return;
       }
-      setCurrentStep('destination');
+      // Seeding: scores go to DB, skip destination step
+      // DE: need bracket sheet for games
+      if (sheetType === 'seeding') {
+        setCurrentStep('review');
+      } else {
+        setCurrentStep('destination');
+      }
     } else if (currentStep === 'destination') {
-      if (sheetType === 'seeding' && !destinationSheet) {
-        alert('Please select a destination sheet where scores will be written');
-        return;
-      }
-      if (sheetType === 'de' && !bracketSheet) {
+      if (!bracketSheet) {
         alert('Please select a bracket sheet');
         return;
       }
@@ -425,16 +422,14 @@ export default function ScoreSheetWizard({
     } else if (currentStep === 'review') {
       // Generate and complete
       const schema = generateSchema();
+      // Seeding: DB backend, no spreadsheet. DE: bracket sheet for games
       onComplete({
         name,
         description,
         accessCode,
         schema,
-        // Use destinationSheet for seeding, bracketSheet for DE
         spreadsheetConfigId:
-          sheetType === 'seeding'
-            ? destinationSheet?.id || ''
-            : bracketSheet?.id || '',
+          sheetType === 'seeding' ? null : bracketSheet?.id || '',
       });
     }
   };
@@ -444,26 +439,22 @@ export default function ScoreSheetWizard({
       setCurrentStep('type');
     } else if (currentStep === 'basic') {
       setCurrentStep('template');
-    } else if (currentStep === 'datasource') {
-      setCurrentStep('basic');
     } else if (currentStep === 'destination') {
-      setCurrentStep('datasource');
+      setCurrentStep('basic');
     } else if (currentStep === 'review') {
-      setCurrentStep('destination');
+      setCurrentStep(sheetType === 'seeding' ? 'basic' : 'destination');
     }
   };
 
   const getStepNumber = () => {
-    const steps: StepType[] = [
-      'type',
-      'template',
-      'basic',
-      'datasource',
-      'destination',
-      'review',
-    ];
+    const steps: StepType[] =
+      sheetType === 'seeding'
+        ? ['type', 'template', 'basic', 'review']
+        : ['type', 'template', 'basic', 'destination', 'review'];
     return steps.indexOf(currentStep) + 1;
   };
+
+  const getTotalSteps = () => (sheetType === 'seeding' ? 4 : 5);
 
   return (
     <div
@@ -483,7 +474,7 @@ export default function ScoreSheetWizard({
         <div
           style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}
         >
-          Step {getStepNumber()} of 6
+          Step {getStepNumber()} of {getTotalSteps()}
         </div>
 
         {/* Step 1: Choose Type */}
@@ -642,6 +633,29 @@ export default function ScoreSheetWizard({
         {currentStep === 'basic' && (
           <div>
             <h4>Basic Information</h4>
+            {selectedEvent ? (
+              <p
+                style={{
+                  color: 'var(--secondary-color)',
+                  marginBottom: '1rem',
+                  fontSize: '0.9rem',
+                }}
+              >
+                Teams will be loaded from event:{' '}
+                <strong>{selectedEvent.name}</strong>
+              </p>
+            ) : (
+              <p
+                style={{
+                  color: 'var(--warning-color, #f59e0b)',
+                  marginBottom: '1rem',
+                  fontSize: '0.9rem',
+                }}
+              >
+                Please select an event in the sidebar. Teams are loaded from the
+                selected event.
+              </p>
+            )}
             <div className="form-group">
               <label>Score Sheet Name *</label>
               <input
@@ -678,44 +692,7 @@ export default function ScoreSheetWizard({
           </div>
         )}
 
-        {/* Step 4: Data Source */}
-        {currentStep === 'datasource' && (
-          <div>
-            <h4>Data Source</h4>
-            <p
-              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
-            >
-              Select the sheet containing team information (Team Numbers and
-              Names).
-            </p>
-
-            <div className="form-group">
-              <label>Teams Data Sheet *</label>
-              <select
-                className="field-input"
-                value={dataSourceSheet?.id || ''}
-                onChange={(e) => {
-                  const sheet = spreadsheets.find(
-                    (s) => s.id === Number(e.target.value),
-                  );
-                  setDataSourceSheet(sheet || null);
-                }}
-              >
-                <option value="">Select data source...</option>
-                {getDataSheets().map((sheet) => (
-                  <option key={sheet.id} value={sheet.id}>
-                    {sheet.spreadsheet_name} → {sheet.sheet_name}
-                  </option>
-                ))}
-              </select>
-              <small>
-                This sheet should contain columns for Team Number and Team Name
-              </small>
-            </div>
-          </div>
-        )}
-
-        {/* Step 5: Destination */}
+        {/* Step 4: Destination */}
         {currentStep === 'destination' && (
           <div>
             <h4>
@@ -814,14 +791,12 @@ export default function ScoreSheetWizard({
                 {selectedTemplate?.name || 'Basic fields (no template)'}
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Teams Data:</strong> {dataSourceSheet?.spreadsheet_name}{' '}
-                → {dataSourceSheet?.sheet_name}
+                <strong>Teams:</strong> Database (Event:{' '}
+                {selectedEvent?.name || selectedEvent?.id || 'N/A'})
               </div>
-              {sheetType === 'seeding' && destinationSheet && (
-                <div>
-                  <strong>Score Destination:</strong>{' '}
-                  {destinationSheet.spreadsheet_name} →{' '}
-                  {destinationSheet.sheet_name}
+              {sheetType === 'seeding' && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <strong>Score Destination:</strong> Database ( seeding_scores)
                 </div>
               )}
               {sheetType === 'de' && bracketSheet && (

@@ -251,6 +251,29 @@ describe('Event-Scoped Scores Routes', () => {
       expect(data.totalCount).toBe(1);
       expect(data.rows[0].score_type).toBe('bracket');
     });
+
+    it('returns DB-backed scores (spreadsheet_config_id null)', async () => {
+      const event = await seedEvent(testDb.db);
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: null,
+        score_data: JSON.stringify({ team_id: { value: 1 }, round: { value: 1 } }),
+        event_id: event.id,
+        score_type: 'seeding',
+      });
+
+      const res = await http.get(`${server.baseUrl}/scores/by-event/${event.id}`);
+
+      expect(res.status).toBe(200);
+      const data = res.json as {
+        rows: { spreadsheet_config_id: number | null }[];
+        totalCount: number;
+      };
+      expect(data.totalCount).toBe(1);
+      expect(data.rows[0].spreadsheet_config_id).toBeNull();
+    });
   });
 
   // ==========================================================================
@@ -498,6 +521,91 @@ describe('Event-Scoped Scores Routes', () => {
       );
       expect(seedingScore.score).toBe(150);
     });
+
+    it('accepts DB-backed seeding score (spreadsheet_config_id null)', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 5,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: null,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 175 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(200);
+      const data = res.json as { success: boolean; scoreType: string };
+      expect(data.success).toBe(true);
+      expect(data.scoreType).toBe('seeding');
+
+      const seedingScore = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team.id, 1],
+      );
+      expect(seedingScore).toBeDefined();
+      expect(seedingScore.score).toBe(175);
+    });
+
+    it('returns 400 when seeding score missing team_id', async () => {
+      const event = await seedEvent(testDb.db);
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: null,
+        score_data: JSON.stringify({
+          round: { value: 1 },
+          grand_total: { value: 100 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain('team_id');
+    });
+
+    it('returns 400 when seeding score missing round_number', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: null,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          grand_total: { value: 100 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain('round_number');
+    });
   });
 
   // ==========================================================================
@@ -594,6 +702,53 @@ describe('Event-Scoped Scores Routes', () => {
       expect(seedingScore).toBeUndefined();
 
       // Verify submission status was reverted
+      const submission = await testDb.db.get(
+        'SELECT * FROM score_submissions WHERE id = ?',
+        [score.id],
+      );
+      expect(submission.status).toBe('pending');
+    });
+
+    it('reverts DB-backed seeding score (spreadsheet_config_id null)', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      const seedingScoreResult = await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        [team.id, 1, 120],
+      );
+
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: null,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        seeding_score_id: seedingScoreResult.lastID,
+        status: 'accepted',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/revert-event`,
+        { confirm: true },
+      );
+      expect(res.status).toBe(200);
+      const data = res.json as { success: boolean };
+      expect(data.success).toBe(true);
+
+      const seedingScore = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team.id, 1],
+      );
+      expect(seedingScore).toBeUndefined();
+
       const submission = await testDb.db.get(
         'SELECT * FROM score_submissions WHERE id = ?',
         [score.id],

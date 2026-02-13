@@ -13,6 +13,8 @@ import {
 } from './helpers/testServer';
 import {
   seedUser,
+  seedEvent,
+  seedTeam,
   seedScoresheetTemplate,
   seedSpreadsheetConfig,
 } from './helpers/seed';
@@ -89,7 +91,7 @@ describe('API Score Submit Routes', () => {
 
         expect(res.status).toBe(400);
         expect((res.json as { error: string }).error).toContain(
-          'Template not found or has no owner',
+          'Template not found',
         );
       });
 
@@ -107,7 +109,7 @@ describe('API Score Submit Routes', () => {
 
         expect(res.status).toBe(400);
         expect((res.json as { error: string }).error).toContain(
-          'Template not found or has no owner',
+          'Template has no owner',
         );
       });
     });
@@ -441,6 +443,202 @@ describe('API Score Submit Routes', () => {
         };
         expect(submission.participant_name).toBeNull();
         expect(submission.match_id).toBeNull();
+      });
+    });
+
+    // ==========================================================================
+    // DB-Backed (Event-Scoped) Submission
+    // ==========================================================================
+
+    describe('DB-Backed (Event-Scoped) Submission', () => {
+      it('creates event-scoped seeding score with team_id (no spreadsheet)', async () => {
+        const event = await seedEvent(testDb.db);
+        const team = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 42,
+          team_name: 'Test Team',
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Seeding Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Test Team',
+          matchId: '1',
+          scoreData: {
+            team_id: { value: team.id, type: 'number' },
+            team_number: { value: 42, type: 'text' },
+            team_name: { value: 'Test Team', type: 'text' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 150, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as {
+          id: number;
+          spreadsheet_config_id: number | null;
+          event_id: number | null;
+          score_type: string | null;
+          status: string;
+        };
+        expect(submission.spreadsheet_config_id).toBeNull();
+        expect(submission.event_id).toBe(event.id);
+        expect(submission.score_type).toBe('seeding');
+        expect(submission.status).toBe('pending');
+
+        const scoreData = JSON.parse(
+          (res.json as { score_data: string }).score_data,
+        );
+        expect(scoreData.team_id?.value).toBe(team.id);
+      });
+
+      it('resolves team_number to team_id when team_id not provided', async () => {
+        const event = await seedEvent(testDb.db);
+        const team = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 7,
+          team_name: 'Lucky Seven',
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Seeding Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Lucky Seven',
+          matchId: '2',
+          scoreData: {
+            team_number: { value: 7, type: 'text' },
+            team_name: { value: 'Lucky Seven', type: 'text' },
+            round: { value: 2, type: 'number' },
+            grand_total: { value: 200, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as {
+          spreadsheet_config_id: number | null;
+          event_id: number | null;
+          score_type: string | null;
+        };
+        expect(submission.spreadsheet_config_id).toBeNull();
+        expect(submission.event_id).toBe(event.id);
+        expect(submission.score_type).toBe('seeding');
+
+        const scoreData = JSON.parse(
+          (res.json as { score_data: string }).score_data,
+        );
+        expect(scoreData.team_id?.value).toBe(team.id);
+      });
+
+      it('returns 400 when event does not exist', async () => {
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            team_id: { value: 1, type: 'number' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 100, type: 'calculated' },
+          },
+          eventId: 99999,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain('Invalid event');
+      });
+
+      it('returns 400 when team not found for event (team_number)', async () => {
+        const event = await seedEvent(testDb.db);
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            team_number: { value: 999, type: 'text' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 100, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'Team not found',
+        );
+      });
+
+      it('returns 400 when team_id missing and team_number missing', async () => {
+        const event = await seedEvent(testDb.db);
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 100, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'Team not found',
+        );
+      });
+
+      it('uses legacy spreadsheet path when eventId/scoreType not provided', async () => {
+        const user = await seedUser(testDb.db);
+        const config = await seedSpreadsheetConfig(testDb.db, {
+          user_id: user.id,
+          is_active: true,
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'Legacy Template',
+          created_by: user.id,
+          spreadsheet_config_id: config.id,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: { points: 50 },
+          // No eventId, no scoreType - should use spreadsheet path
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as {
+          spreadsheet_config_id: number | null;
+          event_id: number | null;
+          score_type: string | null;
+        };
+        expect(submission.spreadsheet_config_id).toBe(config.id);
+        expect(submission.event_id).toBeNull();
+        expect(submission.score_type).toBeNull();
       });
     });
   });

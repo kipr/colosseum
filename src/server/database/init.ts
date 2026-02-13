@@ -354,12 +354,13 @@ export async function initializeSQLite(db: Database): Promise<void> {
   }
 
   // Score submissions (enhanced with event/bracket context from spec)
+  // spreadsheet_config_id nullable for DB-backed (event-scoped) scores
   await db.exec(`
     CREATE TABLE IF NOT EXISTS score_submissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
       template_id INTEGER NOT NULL,
-      spreadsheet_config_id INTEGER NOT NULL,
+      spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id) ON DELETE SET NULL,
       participant_name TEXT,
       match_id TEXT,
       score_data TEXT NOT NULL,
@@ -443,6 +444,50 @@ export async function initializeSQLite(db: Database): Promise<void> {
     console.log('✅ Added game_queue_id column to score_submissions');
   } catch {
     /* Column already exists */
+  }
+
+  // Make spreadsheet_config_id nullable for DB-backed scores (event-scoped)
+  try {
+    const tableInfo = await db.all<{ name: string; notnull: number }>(
+      'PRAGMA table_info(score_submissions)',
+    );
+    const configCol = tableInfo.find((c) => c.name === 'spreadsheet_config_id');
+    if (configCol && configCol.notnull === 1) {
+      await db.exec(`
+        CREATE TABLE score_submissions_db_backend (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER,
+          template_id INTEGER NOT NULL,
+          spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id) ON DELETE SET NULL,
+          participant_name TEXT,
+          match_id TEXT,
+          score_data TEXT NOT NULL,
+          submitted_to_sheet BOOLEAN DEFAULT 0,
+          status TEXT DEFAULT 'pending',
+          reviewed_by INTEGER,
+          reviewed_at DATETIME,
+          event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE SET NULL,
+          seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
+          score_type TEXT,
+          game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
+          FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
+          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+        );
+        INSERT INTO score_submissions_db_backend SELECT * FROM score_submissions;
+        DROP TABLE score_submissions;
+        ALTER TABLE score_submissions_db_backend RENAME TO score_submissions;
+      `);
+      console.log(
+        '✅ Made spreadsheet_config_id nullable for DB-backed scores',
+      );
+    }
+  } catch {
+    /* Migration error or already applied */
   }
 
   // Active sessions

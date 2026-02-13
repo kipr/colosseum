@@ -130,10 +130,24 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   // Load teams data for looking up full team names in head-to-head mode
   const loadTeamsData = async () => {
     try {
-      // Use the teamsDataSource from the schema, or default to "Teams"
       const teamsConfig = schema.teamsDataSource;
-      const sheetName = teamsConfig?.sheetName || 'Teams';
 
+      // DB backend: load teams from event
+      if (teamsConfig?.type === 'db' && teamsConfig?.eventId) {
+        const response = await fetch(`/teams/event/${teamsConfig.eventId}`, {
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          console.error('Failed to load teams data from DB');
+          return;
+        }
+        const data = await response.json();
+        setTeamsData(data);
+        return;
+      }
+
+      // Legacy: spreadsheet-based teams
+      const sheetName = teamsConfig?.sheetName || 'Teams';
       const url = `/data/sheet-data/${sheetName}?templateId=${template.id}`;
       const response = await fetch(url);
 
@@ -170,17 +184,26 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       const storedNumberAlt2 = String(
         parseInt(t['Team Number'], 10) || t['Team Number'],
       );
+      const storedNumberAlt3 = String(
+        parseInt(t['team_number'], 10) || t['team_number'],
+      );
 
       return (
         storedNumber === normalizedTeamNumber ||
         storedNumberAlt1 === normalizedTeamNumber ||
-        storedNumberAlt2 === normalizedTeamNumber
+        storedNumberAlt2 === normalizedTeamNumber ||
+        storedNumberAlt3 === normalizedTeamNumber
       );
     });
 
     if (team) {
       return (
-        team[teamNameField] || team['Team Name'] || team['Name'] || teamNumber
+        team[teamNameField] ||
+        team['Team Name'] ||
+        team['Name'] ||
+        team['team_name'] ||
+        team['display_name'] ||
+        teamNumber
       );
     }
 
@@ -204,7 +227,50 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     for (const field of fieldsWithDataSource) {
       try {
-        const { sheetName, range, labelField } = field.dataSource;
+        const ds = field.dataSource;
+
+        // DB backend: load teams from event for dropdown
+        if (ds.type === 'db' && ds.eventId) {
+          const response = await fetch(`/teams/event/${ds.eventId}`, {
+            credentials: 'include',
+          });
+          if (!response.ok) {
+            console.error(`Failed to load ${field.id} from DB`);
+            continue;
+          }
+          let data = await response.json();
+          const labelField = ds.labelField || 'team_number';
+          const valueField = ds.valueField || 'team_number';
+
+          // Map DB format to dropdown format (labelField/valueField for cascades)
+          // Include id for score submission (team_id for seeding_scores)
+          data = data.map((t: any) => ({
+            [labelField]: String(t.team_number),
+            [valueField]: String(t.team_number),
+            team_name: t.team_name || t.display_name,
+            team_id: t.id,
+            'Team Number': String(t.team_number),
+            'Team Name': t.team_name || t.display_name,
+          }));
+
+          data = data.sort((a: any, b: any) => {
+            const aVal = String(a[labelField] || '');
+            const bVal = String(b[labelField] || '');
+            const aNum = parseFloat(aVal);
+            const bNum = parseFloat(bVal);
+            if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+            return aVal.localeCompare(bVal, undefined, {
+              numeric: true,
+              sensitivity: 'base',
+            });
+          });
+
+          setDynamicData((prev) => ({ ...prev, [field.id]: data }));
+          continue;
+        }
+
+        // Legacy: spreadsheet-based data
+        const { sheetName, range, labelField } = ds;
         const url = `/data/sheet-data/${sheetName}?range=${range || ''}&templateId=${template.id}`;
         const response = await fetch(url);
 
@@ -454,6 +520,26 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       matchId = scoreData['round']?.value || '';
     }
 
+    // For DB-backed seeding: include event_id, team_id for correct storage
+    const eventId = schema.eventId ?? null;
+    const scoreDestination = schema.scoreDestination;
+    const isDbBacked = scoreDestination === 'db' && eventId && !isHeadToHead;
+
+    if (isDbBacked && scoreData.team_number?.value) {
+      const teamNumber = String(scoreData.team_number.value);
+      const teamOptions = dynamicData.team_number || [];
+      const selectedTeam = teamOptions.find(
+        (t: any) => String(t.team_number || t['Team Number']) === teamNumber,
+      );
+      if (selectedTeam?.team_id) {
+        scoreData.team_id = {
+          label: 'Team ID',
+          value: selectedTeam.team_id,
+          type: 'number',
+        };
+      }
+    }
+
     try {
       const response = await fetch('/api/scores/submit', {
         method: 'POST',
@@ -465,6 +551,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           scoreData,
           isHeadToHead,
           bracketSource: isHeadToHead ? schema.bracketSource : null,
+          eventId: isDbBacked ? eventId : undefined,
+          scoreType: isDbBacked ? 'seeding' : undefined,
         }),
       });
 

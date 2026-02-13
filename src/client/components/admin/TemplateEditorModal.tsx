@@ -17,7 +17,7 @@ interface TemplateEditorModalProps {
     description: string;
     accessCode: string;
     schema: any;
-    spreadsheetConfigId: number | '';
+    spreadsheetConfigId: number | '' | null;
   };
 }
 
@@ -31,9 +31,9 @@ export default function TemplateEditorModal({
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [schema, setSchema] = useState('');
-  const [spreadsheetConfigId, setSpreadsheetConfigId] = useState<number | ''>(
-    '',
-  );
+  const [spreadsheetConfigId, setSpreadsheetConfigId] = useState<
+    number | '' | null
+  >('');
   const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
   const [loading, setLoading] = useState(!!templateId);
   const [gameAreasImage, setGameAreasImage] = useState<string | null>(null);
@@ -49,7 +49,7 @@ export default function TemplateEditorModal({
       setDescription(initialData.description);
       setAccessCode(initialData.accessCode);
       setSchema(JSON.stringify(initialData.schema, null, 2));
-      setSpreadsheetConfigId(initialData.spreadsheetConfigId);
+      setSpreadsheetConfigId(initialData.spreadsheetConfigId ?? '');
       // Load game areas image from schema if present
       if (initialData.schema?.gameAreasImage) {
         setGameAreasImage(initialData.schema.gameAreasImage);

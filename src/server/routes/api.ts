@@ -17,6 +17,8 @@ router.post(
         scoreData,
         isHeadToHead,
         bracketSource,
+        eventId,
+        scoreType,
       } = req.body;
 
       if (!templateId || !scoreData) {
@@ -27,83 +29,126 @@ router.post(
 
       const db = await getDatabase();
 
-      // Get the template to find who created it and which sheet it's linked to
+      // Get the template
       const template = await db.get(
         'SELECT id, name, created_by, spreadsheet_config_id FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
 
-      if (!template || !template.created_by) {
-        return res
-          .status(400)
-          .json({ error: 'Template not found or has no owner' });
+      if (!template) {
+        return res.status(400).json({ error: 'Template not found' });
       }
 
-      // Get the spreadsheet config - prefer template's linked config if set
-      let config;
-      if (template.spreadsheet_config_id) {
-        // Use the specific sheet linked to this template
-        config = await db.get(
-          'SELECT * FROM spreadsheet_configs WHERE id = ?',
-          [template.spreadsheet_config_id],
+      // DB-backed (event-scoped) submission: resolve team_id if needed
+      const attemptingDbBacked = eventId && scoreType === 'seeding';
+      let resolvedTeamId = scoreData.team_id?.value;
+      if (
+        attemptingDbBacked &&
+        !resolvedTeamId &&
+        scoreData.team_number?.value
+      ) {
+        const team = await db.get(
+          'SELECT id FROM teams WHERE event_id = ? AND team_number = ?',
+          [eventId, scoreData.team_number.value],
         );
+        resolvedTeamId = team?.id;
+      }
+      const isDbBacked = attemptingDbBacked && resolvedTeamId;
 
-        if (!config || !config.is_active) {
-          return res.status(400).json({
-            error: config
-              ? 'The sheet linked to this score sheet is not active. Please activate it in Admin > Spreadsheets.'
-              : 'The sheet linked to this score sheet no longer exists.',
-          });
-        }
-      } else {
-        // Fallback: Find an active sheet with the appropriate purpose
-        if (isHeadToHead && bracketSource) {
-          config = await db.get(
-            `SELECT * FROM spreadsheet_configs 
-           WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'bracket'
-           LIMIT 1`,
-            [template.created_by],
-          );
-        } else {
-          config = await db.get(
-            `SELECT * FROM spreadsheet_configs 
-           WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'scores'
-           LIMIT 1`,
-            [template.created_by],
-          );
-        }
+      let spreadsheetConfigId: number | null = null;
 
-        if (!config) {
+      if (attemptingDbBacked) {
+        const event = await db.get('SELECT id FROM events WHERE id = ?', [
+          eventId,
+        ]);
+        if (!event) {
+          return res.status(400).json({ error: 'Invalid event' });
+        }
+        if (!resolvedTeamId) {
           return res
             .status(400)
-            .json({ error: 'No active spreadsheet configuration found' });
+            .json({ error: 'Team not found for event. Check team number.' });
         }
+      }
+
+      if (isDbBacked) {
+        // Scores go to seeding_scores table; no spreadsheet
+      } else {
+        // Legacy: spreadsheet-based submission
+        if (!template.created_by) {
+          return res
+            .status(400)
+            .json({ error: 'Template has no owner for spreadsheet config' });
+        }
+
+        let config;
+        if (template.spreadsheet_config_id) {
+          config = await db.get(
+            'SELECT * FROM spreadsheet_configs WHERE id = ?',
+            [template.spreadsheet_config_id],
+          );
+          if (!config || !config.is_active) {
+            return res.status(400).json({
+              error: config
+                ? 'The sheet linked to this score sheet is not active.'
+                : 'The sheet linked to this score sheet no longer exists.',
+            });
+          }
+        } else {
+          if (isHeadToHead && bracketSource) {
+            config = await db.get(
+              `SELECT * FROM spreadsheet_configs 
+             WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'bracket'
+             LIMIT 1`,
+              [template.created_by],
+            );
+          } else {
+            config = await db.get(
+              `SELECT * FROM spreadsheet_configs 
+             WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'scores'
+             LIMIT 1`,
+              [template.created_by],
+            );
+          }
+          if (!config) {
+            return res
+              .status(400)
+              .json({ error: 'No active spreadsheet configuration found' });
+          }
+        }
+        spreadsheetConfigId = config.id;
       }
 
       // Add metadata to score data for head-to-head
-      const enrichedScoreData = {
+      const enrichedScoreData: Record<string, unknown> = {
         ...scoreData,
         _isHeadToHead: { value: isHeadToHead || false, type: 'boolean' },
         _bracketSource: { value: bracketSource || null, type: 'object' },
       };
+      if (isDbBacked && resolvedTeamId) {
+        enrichedScoreData.team_id = {
+          label: 'Team ID',
+          value: resolvedTeamId,
+          type: 'number',
+        };
+      }
 
-      // Save to database (use null for user_id since judge isn't logged in)
+      // Build insert - event-scoped uses null for spreadsheet_config_id
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, event_id, score_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null,
           templateId,
-          config.id,
+          spreadsheetConfigId,
           participantName,
           matchId,
           JSON.stringify(enrichedScoreData),
+          isDbBacked ? eventId : null,
+          isDbBacked ? scoreType : null,
         ],
       );
-
-      // Don't auto-submit to sheet - wait for admin approval
-      // Score is saved with submitted_to_sheet = 0 and pending status
 
       const submission = await db.get(
         'SELECT * FROM score_submissions WHERE id = ?',

@@ -280,7 +280,7 @@ export async function seedAuditLog(
 export interface SeedScoreSubmissionData {
   user_id?: number | null;
   template_id: number;
-  spreadsheet_config_id: number;
+  spreadsheet_config_id?: number | null;
   participant_name?: string | null;
   match_id?: string | null;
   score_data: string;
@@ -302,7 +302,7 @@ export async function seedScoreSubmission(
     [
       data.user_id ?? null,
       data.template_id,
-      data.spreadsheet_config_id,
+      data.spreadsheet_config_id ?? null,
       data.participant_name ?? null,
       data.match_id ?? null,
       data.score_data,
