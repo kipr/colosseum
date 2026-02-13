@@ -247,18 +247,6 @@
   font-style: italic;
 }
 
-/* Game actions */
-.game-actions {
-  display: flex;
-  gap: 0.25rem;
-  flex-wrap: wrap;
-}
-
-.btn-sm {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-}
-
 /* Create bracket team selection table */
 .bracket-create-teams-table {
   width: 100%;

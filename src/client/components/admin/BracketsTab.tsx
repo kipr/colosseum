@@ -6,7 +6,6 @@ import { formatDateTime } from '../../utils/dateUtils';
 import {
   Bracket,
   BracketDetail,
-  BracketGame,
   BracketStatus,
   GameStatus,
   STATUS_LABELS,
@@ -137,7 +136,6 @@ export default function BracketsTab() {
   // Action states
   const [generatingEntries, setGeneratingEntries] = useState(false);
   const [generatingGames, setGeneratingGames] = useState(false);
-  const [advancingWinner, setAdvancingWinner] = useState<number | null>(null);
 
   // View mode state (management vs bracket-like view)
   const [detailViewMode, setDetailViewMode] =
@@ -463,11 +461,11 @@ export default function BracketsTab() {
     const hasGames = bracketDetail.games.length > 0;
     if (hasGames) {
       const confirmed = await confirm({
-        title: 'Regenerate Games',
+        title: 'Danger: Regenerate Games',
         message:
-          'This bracket already has games. Regenerating will replace them. Continue?',
-        confirmText: 'Regenerate',
-        confirmStyle: 'warning',
+          'This will clear ALL bracket games, removing all progress and all recorded games. This cannot be undone. Continue?',
+        confirmText: 'Clear ALL Games and Regenerate',
+        confirmStyle: 'danger',
       });
       if (!confirmed) return;
     }
@@ -495,42 +493,6 @@ export default function BracketsTab() {
       );
     } finally {
       setGeneratingGames(false);
-    }
-  };
-
-  // Advance winner
-  const handleAdvanceWinner = async (game: BracketGame, winnerId: number) => {
-    if (!bracketDetail) return;
-
-    setAdvancingWinner(game.id);
-    try {
-      const response = await fetch(
-        `/brackets/${bracketDetail.id}/advance-winner`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            game_id: game.id,
-            winner_id: winnerId,
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to advance winner');
-      }
-
-      toast.success('Winner advanced!');
-      await fetchBracketDetail(bracketDetail.id);
-    } catch (error) {
-      console.error('Error advancing winner:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to advance winner',
-      );
-    } finally {
-      setAdvancingWinner(null);
     }
   };
 
@@ -794,17 +756,17 @@ export default function BracketsTab() {
                   <div className="card bracket-section">
                     <div className="bracket-section-header">
                       <h4>Bracket Entries ({bracketDetail.entries.length})</h4>
-                      <button
-                        className="btn btn-primary"
-                        onClick={handleGenerateEntries}
-                        disabled={generatingEntries}
-                      >
-                        {generatingEntries
-                          ? 'Generating...'
-                          : bracketDetail.entries.length > 0
-                            ? 'Regenerate from Seeding'
+                      {bracketDetail.entries.length === 0 && (
+                        <button
+                          className="btn btn-primary"
+                          onClick={handleGenerateEntries}
+                          disabled={generatingEntries}
+                        >
+                          {generatingEntries
+                            ? 'Generating...'
                             : 'Generate from Seeding'}
-                      </button>
+                        </button>
+                      )}
                     </div>
 
                     {bracketDetail.entries.length === 0 ? (
@@ -841,7 +803,7 @@ export default function BracketsTab() {
                     <div className="bracket-section-header">
                       <h4>Bracket Games ({bracketDetail.games.length})</h4>
                       <button
-                        className="btn btn-primary"
+                        className={`btn ${bracketDetail.games.length > 0 ? 'btn-danger' : 'btn-primary'}`}
                         onClick={handleGenerateGames}
                         disabled={
                           generatingGames || bracketDetail.entries.length === 0
@@ -855,7 +817,7 @@ export default function BracketsTab() {
                         {generatingGames
                           ? 'Generating...'
                           : bracketDetail.games.length > 0
-                            ? 'Regenerate Games'
+                            ? 'Clear ALL Games and Regenerate'
                             : 'Generate Games'}
                       </button>
                     </div>
@@ -892,7 +854,6 @@ export default function BracketsTab() {
                                     <th>Team 2</th>
                                     <th>Status</th>
                                     <th>Winner</th>
-                                    <th>Actions</th>
                                   </tr>
                                 </thead>
                                 <tbody>
@@ -934,49 +895,6 @@ export default function BracketsTab() {
                                               game.winner_display,
                                             )
                                           : '—'}
-                                      </td>
-                                      <td>
-                                        {game.status !== 'completed' &&
-                                          game.status !== 'bye' &&
-                                          game.team1_id &&
-                                          game.team2_id && (
-                                            <div className="game-actions">
-                                              <button
-                                                className="btn btn-sm btn-success"
-                                                onClick={() =>
-                                                  handleAdvanceWinner(
-                                                    game,
-                                                    game.team1_id!,
-                                                  )
-                                                }
-                                                disabled={
-                                                  advancingWinner === game.id
-                                                }
-                                                title={`${game.team1_number} wins`}
-                                              >
-                                                {advancingWinner === game.id
-                                                  ? '...'
-                                                  : `#${game.team1_number} Wins`}
-                                              </button>
-                                              <button
-                                                className="btn btn-sm btn-success"
-                                                onClick={() =>
-                                                  handleAdvanceWinner(
-                                                    game,
-                                                    game.team2_id!,
-                                                  )
-                                                }
-                                                disabled={
-                                                  advancingWinner === game.id
-                                                }
-                                                title={`${game.team2_number} wins`}
-                                              >
-                                                {advancingWinner === game.id
-                                                  ? '...'
-                                                  : `#${game.team2_number} Wins`}
-                                              </button>
-                                            </div>
-                                          )}
                                       </td>
                                     </tr>
                                   ))}
