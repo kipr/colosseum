@@ -963,7 +963,34 @@ export default function BracketsTab() {
               ) : (
                 <>
                   <div className="form-group">
-                    <label>Select Teams</label>
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: '0.5rem',
+                      }}
+                    >
+                      <label style={{ marginBottom: 0 }}>Select Teams</label>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          const availableTeamIds = createTeams
+                            .filter(
+                              (team) =>
+                                !createAssigned.some(
+                                  (assigned) => assigned.team_id === team.id,
+                                ),
+                            )
+                            .map((team) => team.id);
+                          setSelectedTeamIds(new Set(availableTeamIds));
+                        }}
+                        disabled={createTeams.length === 0}
+                      >
+                        Select All Available
+                      </button>
+                    </div>
                     <div
                       className="table-responsive"
                       style={{ maxHeight: '300px', overflow: 'auto' }}
