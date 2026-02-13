@@ -85,9 +85,25 @@
    DESKTOP BRACKET TREE LAYOUT (FLEXBOX)
    ============================================ */
 
-.bracket-tree-container {
-  overflow-x: auto;
+.bracket-tree-scroll {
+  overflow: auto;
+  position: relative;
   padding: 1rem 0;
+}
+
+.bracket-tree-content {
+  position: relative;
+  width: fit-content;
+  height: fit-content;
+}
+
+.bracket-connectors {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  color: var(--connector-color, var(--border-color));
 }
 
 .bracket-tree {
@@ -100,6 +116,8 @@
   gap: 0;
   min-width: fit-content;
   align-items: stretch;
+  position: relative;
+  z-index: 1;
 }
 
 /* Round column */
@@ -145,65 +163,6 @@
   align-items: center;
   position: relative;
   min-height: var(--match-height);
-}
-
-/* ============================================
-   CONNECTOR LINES
-   ============================================ */
-
-.match-connector {
-  position: absolute;
-  left: var(--match-width);
-  top: 0;
-  bottom: 0;
-  width: var(--round-gap);
-  pointer-events: none;
-}
-
-/* Horizontal line OUT from match center */
-.connector-h-out {
-  position: absolute;
-  left: 0;
-  top: 50%;
-  width: 50%;
-  height: 1px;
-  background: var(--connector-color);
-}
-
-/* Vertical line - extends from match center towards the junction */
-.connector-vertical {
-  position: absolute;
-  left: 50%;
-  width: 1px;
-  background: var(--connector-color);
-  transform: translateX(-50%);
-}
-
-/* Goes DOWN: from match center to bottom of cell (junction with next match) */
-.connector-vertical.goes-down {
-  top: 50%;
-  bottom: 0;
-}
-
-/* Goes UP: from top of cell (junction point) to match center */
-.connector-vertical.goes-up {
-  top: 0;
-  bottom: 50%;
-}
-
-/* Horizontal line IN to next round match (at junction point - bottom of even matches) */
-.connector-h-in {
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  width: 50%;
-  height: 1px;
-  background: var(--connector-color);
-}
-
-/* Hide connectors on last round */
-.match-cell.last-round .match-connector {
-  display: none;
 }
 
 /* ============================================
@@ -411,10 +370,4 @@
 
 [data-theme='dark'] .round-chooser {
   background: var(--card-bg);
-}
-
-[data-theme='dark'] .connector-horizontal,
-[data-theme='dark'] .match-wrapper .match-connector::before,
-[data-theme='dark'] .match-wrapper .match-connector::after {
-  background: var(--border-color);
 }

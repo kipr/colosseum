@@ -1,4 +1,11 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useCallback,
+} from 'react';
 import {
   BracketGame,
   BracketSide,
@@ -6,6 +13,16 @@ import {
   GAME_STATUS_DISPLAY_LABELS,
   BRACKET_SIDE_LABELS,
 } from '../../types/brackets';
+import {
+  BracketAnchorRegistryProvider,
+  useBracketAnchorRegistry,
+} from './BracketAnchorRegistry';
+import {
+  buildWinnerEdges,
+  computeConnectorPaths,
+  buildGameAnchorPoints,
+  type GameAnchorPoints,
+} from './bracketConnectors';
 import './BracketLikeView.css';
 
 interface BracketLikeViewProps {
@@ -29,6 +46,141 @@ function getTeamDisplayName(
   teamDisplay?: string | null,
 ): string {
   return teamName || teamDisplay || '';
+}
+
+interface BracketTreeDesktopProps {
+  rounds: RoundData[];
+  renderMatchCard: (
+    game: BracketGame,
+    isLastRound: boolean,
+    matchIndex: number,
+  ) => React.ReactNode;
+}
+
+function BracketTreeDesktop({
+  rounds,
+  renderMatchCard,
+}: BracketTreeDesktopProps) {
+  const { register, getAnchors } = useBracketAnchorRegistry();
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [connectorPaths, setConnectorPaths] = useState<string[]>([]);
+  const [layoutTick, setLayoutTick] = useState(0);
+
+  const visibleGames = useMemo(() => rounds.flatMap((r) => r.games), [rounds]);
+
+  const edges = useMemo(() => buildWinnerEdges(visibleGames), [visibleGames]);
+
+  useLayoutEffect(() => {
+    const contentEl = contentRef.current;
+    if (!contentEl) return;
+
+    const contentRect = contentEl.getBoundingClientRect();
+    const anchors = getAnchors();
+    const anchorPointsByGameId = new Map<number, GameAnchorPoints>();
+
+    for (const game of visibleGames) {
+      const entry = anchors.get(game.id);
+      if (!entry) continue;
+
+      const team1Rect = entry.team1?.getBoundingClientRect?.() ?? null;
+      const team2Rect = entry.team2?.getBoundingClientRect?.() ?? null;
+      const pts = buildGameAnchorPoints(
+        team1Rect,
+        team2Rect,
+        contentRect.left,
+        contentRect.top,
+      );
+      if (pts) {
+        anchorPointsByGameId.set(game.id, pts);
+      }
+    }
+
+    const paths = computeConnectorPaths(edges, anchorPointsByGameId);
+    setConnectorPaths(paths);
+  }, [visibleGames, edges, getAnchors, layoutTick]);
+
+  useEffect(() => {
+    const contentEl = contentRef.current;
+    if (!contentEl) return;
+
+    const ro = new ResizeObserver(() => {
+      setLayoutTick((t) => t + 1);
+    });
+    ro.observe(contentEl);
+    return () => ro.disconnect();
+  }, []);
+
+  const registerTeam1 = useCallback(
+    (gameId: number) => (el: HTMLElement | null) => {
+      register(gameId, 'team1', el);
+    },
+    [register],
+  );
+  const registerTeam2 = useCallback(
+    (gameId: number) => (el: HTMLElement | null) => {
+      register(gameId, 'team2', el);
+    },
+    [register],
+  );
+
+  return (
+    <div className="bracket-tree-scroll">
+      <div ref={contentRef} className="bracket-tree-content">
+        <svg
+          className="bracket-connectors"
+          aria-hidden="true"
+          style={{ pointerEvents: 'none' }}
+        >
+          {connectorPaths.map((d, i) => (
+            <path
+              key={i}
+              d={d}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          ))}
+        </svg>
+        <div
+          className="bracket-tree"
+          style={
+            {
+              '--total-rounds': rounds.length,
+              '--first-round-matches': rounds[0]?.games.length || 1,
+            } as React.CSSProperties
+          }
+        >
+          {rounds.map((round, roundIndex) => {
+            const isLastRound = roundIndex === rounds.length - 1;
+
+            return (
+              <div
+                key={round.roundNumber}
+                className={`bracket-round round-${roundIndex + 1}`}
+              >
+                <div className="round-header">{round.roundName}</div>
+                <div className="round-matches-flex">
+                  {round.games.map((game, matchIndex) => (
+                    <div
+                      key={game.id}
+                      className={`match-cell ${isLastRound ? 'last-round' : ''}`}
+                    >
+                      {renderMatchCard(game, isLastRound, matchIndex, {
+                        registerTeam1: registerTeam1(game.id),
+                        registerTeam2: registerTeam2(game.id),
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function BracketLikeView({
@@ -105,11 +257,17 @@ export default function BracketLikeView({
     setSelectedRoundIndex(0);
   }, [selectedSide]);
 
+  type AnchorRefs = {
+    registerTeam1: (el: HTMLElement | null) => void;
+    registerTeam2: (el: HTMLElement | null) => void;
+  };
+
   // Render a single match card
   const renderMatchCard = (
     game: BracketGame,
     isLastRound: boolean,
     matchIndex: number,
+    anchorRefs?: AnchorRefs,
   ) => {
     const isTeam1Winner = game.winner_id === game.team1_id && game.winner_id;
     const isTeam2Winner = game.winner_id === game.team2_id && game.winner_id;
@@ -129,6 +287,7 @@ export default function BracketLikeView({
 
         {/* Team 1 row */}
         <div
+          ref={anchorRefs?.registerTeam1}
           className={`match-team-row ${isTeam1Winner ? 'winner' : ''} ${isCompleted && !isTeam1Winner ? 'loser' : ''} ${!game.team1_id ? 'tbd' : ''}`}
         >
           <span className="team-seed">
@@ -153,6 +312,7 @@ export default function BracketLikeView({
 
         {/* Team 2 row */}
         <div
+          ref={anchorRefs?.registerTeam2}
           className={`match-team-row ${isTeam2Winner ? 'winner' : ''} ${isCompleted && !isTeam2Winner ? 'loser' : ''} ${!game.team2_id ? 'tbd' : ''}`}
         >
           <span className="team-seed">
@@ -244,58 +404,13 @@ export default function BracketLikeView({
           )}
         </div>
       ) : (
-        // Desktop: Full bracket tree layout with grid positioning
-        <div className="bracket-tree-container">
-          <div
-            className="bracket-tree"
-            style={
-              {
-                '--total-rounds': rounds.length,
-                '--first-round-matches': rounds[0]?.games.length || 1,
-              } as React.CSSProperties
-            }
-          >
-            {rounds.map((round, roundIndex) => {
-              const isLastRound = roundIndex === rounds.length - 1;
-
-              return (
-                <div
-                  key={round.roundNumber}
-                  className={`bracket-round round-${roundIndex + 1}`}
-                >
-                  <div className="round-header">{round.roundName}</div>
-                  <div className="round-matches-flex">
-                    {round.games.map((game, matchIndex) => {
-                      // Determine connector direction (even = down, odd = up)
-                      const isEvenMatch = matchIndex % 2 === 0;
-
-                      return (
-                        <div
-                          key={game.id}
-                          className={`match-cell ${isLastRound ? 'last-round' : ''}`}
-                        >
-                          {renderMatchCard(game, isLastRound, matchIndex)}
-                          {/* Connector lines (not on last round) */}
-                          {!isLastRound && (
-                            <div className="match-connector">
-                              <div className="connector-h-out"></div>
-                              <div
-                                className={`connector-vertical ${isEvenMatch ? 'goes-down' : 'goes-up'}`}
-                              ></div>
-                              {isEvenMatch && (
-                                <div className="connector-h-in"></div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        // Desktop: Full bracket tree layout with SVG connectors
+        <BracketAnchorRegistryProvider>
+          <BracketTreeDesktop
+            rounds={rounds}
+            renderMatchCard={renderMatchCard}
+          />
+        </BracketAnchorRegistryProvider>
       )}
     </div>
   );
