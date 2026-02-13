@@ -22,6 +22,7 @@ router.post(
         eventId,
         scoreType,
         game_queue_id,
+        bracket_game_id,
       } = req.body;
 
       if (!templateId || !scoreData) {
@@ -42,11 +43,11 @@ router.post(
         return res.status(400).json({ error: 'Template not found' });
       }
 
-      // DB-backed (event-scoped) submission: resolve team_id if needed
-      const attemptingDbBacked = eventId && scoreType === 'seeding';
+      // DB-backed (event-scoped) submission: resolve team_id if needed (seeding)
+      const attemptingDbBackedSeeding = eventId && scoreType === 'seeding';
       let resolvedTeamId = scoreData.team_id?.value;
       if (
-        attemptingDbBacked &&
+        attemptingDbBackedSeeding &&
         !resolvedTeamId &&
         scoreData.team_number?.value
       ) {
@@ -56,11 +57,44 @@ router.post(
         );
         resolvedTeamId = team?.id;
       }
-      const isDbBacked = attemptingDbBacked && resolvedTeamId;
+      const isDbBackedSeeding = attemptingDbBackedSeeding && resolvedTeamId;
+
+      // DB-backed bracket submission: validate bracket_game_id belongs to event
+      const attemptingDbBackedBracket =
+        eventId && scoreType === 'bracket' && bracket_game_id != null;
+      let isDbBackedBracket = false;
+      if (attemptingDbBackedBracket) {
+        const event = await db.get('SELECT id FROM events WHERE id = ?', [
+          eventId,
+        ]);
+        if (!event) {
+          return res.status(400).json({ error: 'Invalid event' });
+        }
+        const game = await db.get(
+          `SELECT bg.id FROM bracket_games bg
+           JOIN brackets b ON bg.bracket_id = b.id
+           WHERE bg.id = ? AND b.event_id = ?`,
+          [bracket_game_id, eventId],
+        );
+        if (!game) {
+          return res.status(400).json({
+            error: 'Bracket game not found or does not belong to this event',
+          });
+        }
+        isDbBackedBracket = true;
+      }
+
+      if (eventId && scoreType === 'bracket' && bracket_game_id == null) {
+        return res.status(400).json({
+          error: 'bracket_game_id is required for DB-backed bracket submission',
+        });
+      }
+
+      const isDbBacked = isDbBackedSeeding || isDbBackedBracket;
 
       let spreadsheetConfigId: number | null = null;
 
-      if (attemptingDbBacked) {
+      if (attemptingDbBackedSeeding) {
         const event = await db.get('SELECT id FROM events WHERE id = ?', [
           eventId,
         ]);
@@ -75,7 +109,7 @@ router.post(
       }
 
       if (isDbBacked) {
-        // Scores go to seeding_scores table; no spreadsheet
+        // Scores go to DB (seeding_scores or bracket_games); no spreadsheet
       } else {
         // Legacy: spreadsheet-based submission
         if (!template.created_by) {
@@ -139,8 +173,8 @@ router.post(
       // Build insert - event-scoped uses null for spreadsheet_config_id
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null,
           templateId,
@@ -151,6 +185,7 @@ router.post(
           isDbBacked ? eventId : null,
           isDbBacked ? scoreType : null,
           game_queue_id ?? null,
+          isDbBackedBracket ? bracket_game_id : null,
         ],
       );
 

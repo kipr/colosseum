@@ -12,6 +12,15 @@ interface SpreadsheetConfig {
   is_active: boolean;
 }
 
+interface Bracket {
+  id: number;
+  event_id: number;
+  name: string;
+  bracket_size: number;
+  actual_team_count: number | null;
+  status: string;
+}
+
 interface FieldTemplate {
   id: number;
   name: string;
@@ -53,14 +62,19 @@ export default function ScoreSheetWizard({
   const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
   const [destinationSheet, setDestinationSheet] =
     useState<SpreadsheetConfig | null>(null); // For seeding only
-  const [bracketSheet, setBracketSheet] = useState<SpreadsheetConfig | null>(
-    null,
-  ); // For DE only
+  const [selectedBracket, setSelectedBracket] = useState<Bracket | null>(null); // For DE only (DB bracket)
+  const [brackets, setBrackets] = useState<Bracket[]>([]);
 
   useEffect(() => {
     loadSpreadsheets();
     loadFieldTemplates();
   }, []);
+
+  useEffect(() => {
+    if (currentStep === 'destination' && selectedEvent?.id) {
+      loadBrackets();
+    }
+  }, [currentStep, selectedEvent?.id]);
 
   // Load field templates when entering template step
   useEffect(() => {
@@ -100,10 +114,27 @@ export default function ScoreSheetWizard({
     }
   };
 
+  const loadBrackets = async () => {
+    if (!selectedEvent?.id) return;
+    try {
+      const response = await fetch(`/brackets/event/${selectedEvent.id}`, {
+        credentials: 'include',
+      });
+      if (!response.ok) throw new Error('Failed to load brackets');
+      const data = await response.json();
+      setBrackets(data);
+      if (!data.some((b: Bracket) => b.id === selectedBracket?.id)) {
+        setSelectedBracket(null);
+      }
+    } catch (error) {
+      console.error('Error loading brackets:', error);
+      setBrackets([]);
+      setSelectedBracket(null);
+    }
+  };
+
   const getScoreSheets = () =>
     spreadsheets.filter((s) => s.sheet_purpose === 'scores');
-  const getBracketSheets = () =>
-    spreadsheets.filter((s) => s.sheet_purpose === 'bracket');
 
   const generateSchema = () => {
     if (sheetType === 'seeding') {
@@ -228,8 +259,8 @@ export default function ScoreSheetWizard({
       eventId: selectedEvent?.id ?? null,
       scoreDestination: 'db',
       bracketSource: {
-        sheetName: bracketSheet?.sheet_name || 'DE 16 Team',
-        purpose: 'bracket',
+        type: 'db',
+        bracketId: selectedBracket?.id ?? null,
       },
       teamsDataSource: {
         type: 'db',
@@ -248,7 +279,6 @@ export default function ScoreSheetWizard({
       required: true,
       dataSource: {
         type: 'bracket',
-        sheetName: bracketSheet?.sheet_name || 'DE 16 Team',
       },
       cascades: {
         team_a_number: 'team1.teamNumber',
@@ -414,22 +444,25 @@ export default function ScoreSheetWizard({
         setCurrentStep('destination');
       }
     } else if (currentStep === 'destination') {
-      if (!bracketSheet) {
-        alert('Please select a bracket sheet');
+      if (!selectedBracket) {
+        alert(
+          brackets.length === 0
+            ? 'No brackets found for this event. Create a bracket first.'
+            : 'Please select a bracket',
+        );
         return;
       }
       setCurrentStep('review');
     } else if (currentStep === 'review') {
       // Generate and complete
       const schema = generateSchema();
-      // Seeding: DB backend, no spreadsheet. DE: bracket sheet for games
+      // Seeding and DE: DB backend, no spreadsheet linkage
       onComplete({
         name,
         description,
         accessCode,
         schema,
-        spreadsheetConfigId:
-          sheetType === 'seeding' ? null : bracketSheet?.id || '',
+        spreadsheetConfigId: null,
       });
     }
   };
@@ -723,27 +756,31 @@ export default function ScoreSheetWizard({
               </div>
             ) : (
               <div className="form-group">
-                <label>Bracket Sheet *</label>
+                <label>Bracket *</label>
                 <select
                   className="field-input"
-                  value={bracketSheet?.id || ''}
+                  value={selectedBracket?.id || ''}
                   onChange={(e) => {
-                    const sheet = spreadsheets.find(
-                      (s) => s.id === Number(e.target.value),
-                    );
-                    setBracketSheet(sheet || null);
+                    const id = Number(e.target.value);
+                    const bracket = brackets.find((b) => b.id === id) || null;
+                    setSelectedBracket(bracket);
                   }}
                 >
                   <option value="">Select bracket...</option>
-                  {getBracketSheets().map((sheet) => (
-                    <option key={sheet.id} value={sheet.id}>
-                      {sheet.spreadsheet_name} → {sheet.sheet_name}
+                  {brackets.length === 0 ? (
+                    <option value="" disabled>
+                      No brackets found for this event. Create a bracket first.
                     </option>
-                  ))}
+                  ) : (
+                    brackets.map((bracket) => (
+                      <option key={bracket.id} value={bracket.id}>
+                        {bracket.name} ({bracket.bracket_size}-team)
+                      </option>
+                    ))
+                  )}
                 </select>
                 <small>
-                  The bracket sheet containing games and where winners will be
-                  written
+                  Games and winners are stored in the database for this bracket
                 </small>
               </div>
             )}
@@ -799,10 +836,10 @@ export default function ScoreSheetWizard({
                   <strong>Score Destination:</strong> Database ( seeding_scores)
                 </div>
               )}
-              {sheetType === 'de' && bracketSheet && (
-                <div>
-                  <strong>Bracket:</strong> {bracketSheet.spreadsheet_name} →{' '}
-                  {bracketSheet.sheet_name}
+              {sheetType === 'de' && selectedBracket && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <strong>Bracket:</strong> {selectedBracket.name} (
+                  {selectedBracket.bracket_size}-team)
                 </div>
               )}
             </div>

@@ -8,6 +8,7 @@ interface BracketGame {
   team2: { teamNumber: string; displayName: string } | null;
   hasWinner?: boolean;
   winner?: string;
+  bracketGameId?: number; // DB bracket_games.id for DB-backed submissions
 }
 
 interface ScoresheetFormProps {
@@ -151,18 +152,59 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const loadBracketGames = async () => {
     try {
-      const { sheetName } = schema.bracketSource;
-      const url = `/data/bracket-games/${sheetName}?templateId=${template.id}`;
-      const response = await fetch(url);
+      const bracketSource = schema.bracketSource;
+      if (!bracketSource) return;
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Failed to load bracket games:', errorData);
-        return;
+      if (bracketSource.type === 'db' && bracketSource.bracketId) {
+        const response = await fetch(
+          `/brackets/${bracketSource.bracketId}/games`,
+          { credentials: 'include' },
+        );
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Failed to load bracket games from DB:', errorData);
+          return;
+        }
+        const dbGames = await response.json();
+        const mapped: BracketGame[] = dbGames.map((g: any) => {
+          const team1 =
+            g.team1_id != null && (g.team1_number != null || g.team1_name)
+              ? {
+                  teamNumber: String(g.team1_number ?? g.team1_name ?? ''),
+                  displayName:
+                    g.team1_display || g.team1_name || String(g.team1_number),
+                }
+              : null;
+          const team2 =
+            g.team2_id != null && (g.team2_number != null || g.team2_name)
+              ? {
+                  teamNumber: String(g.team2_number ?? g.team2_name ?? ''),
+                  displayName:
+                    g.team2_display || g.team2_name || String(g.team2_number),
+                }
+              : null;
+          return {
+            gameNumber: g.game_number,
+            team1,
+            team2,
+            hasWinner: !!g.winner_id || g.status === 'completed',
+            bracketGameId: g.id,
+          };
+        });
+        setBracketGames(mapped);
+      } else {
+        // Legacy: spreadsheet-based bracket games
+        const sheetName = bracketSource.sheetName || 'DE 16 Team';
+        const url = `/data/bracket-games/${sheetName}?templateId=${template.id}`;
+        const response = await fetch(url);
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Failed to load bracket games:', errorData);
+          return;
+        }
+        const games = await response.json();
+        setBracketGames(games);
       }
-
-      const games = await response.json();
-      setBracketGames(games);
     } catch (error) {
       console.error('Error loading bracket games:', error);
     }
@@ -382,6 +424,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     // Handle bracket game selection - populate both teams
     if (fieldId === 'game_number' && isHeadToHead) {
+      if (!value) {
+        updates.bracket_game_id = undefined;
+      }
       const selectedGame = bracketGames.find(
         (g) => g.gameNumber === Number(value),
       );
@@ -413,6 +458,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           updates.team_b_number = 'Bye';
           updates.team_b_name = 'Bye';
           updates.team_b_bracket_display = 'Bye';
+        }
+        // Store bracket_game_id for DB-backed submissions
+        if (selectedGame.bracketGameId != null) {
+          updates.bracket_game_id = selectedGame.bracketGameId;
+        } else {
+          delete updates.bracket_game_id;
         }
         // Reset winner when game changes
         updates.winner = '';
@@ -515,6 +566,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return;
     }
 
+    // Validate bracket_game_id for DB-backed bracket submissions
+    if (
+      isHeadToHead &&
+      schema.scoreDestination === 'db' &&
+      schema.eventId &&
+      schema.bracketSource?.type === 'db' &&
+      formData.bracket_game_id == null
+    ) {
+      alert('Please select a game before submitting.');
+      return;
+    }
+
     const scoreData: Record<string, any> = {};
 
     schema.fields.forEach((field: any) => {
@@ -593,9 +656,16 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     // For DB-backed seeding: include event_id, team_id for correct storage
     const eventId = schema.eventId ?? null;
     const scoreDestination = schema.scoreDestination;
-    const isDbBacked = scoreDestination === 'db' && eventId && !isHeadToHead;
+    const isDbBackedSeeding =
+      scoreDestination === 'db' && eventId && !isHeadToHead;
+    const isDbBackedBracket =
+      isHeadToHead &&
+      scoreDestination === 'db' &&
+      eventId &&
+      schema.bracketSource?.type === 'db' &&
+      formData.bracket_game_id != null;
 
-    if (isDbBacked && scoreData.team_number?.value) {
+    if (isDbBackedSeeding && scoreData.team_number?.value) {
       // team_id from queue selection (useQueueForSeeding) or from team dropdown
       const fromQueue = formData.team_id;
       const fromDropdown = (dynamicData.team_number || []).find(
@@ -613,6 +683,39 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       }
     }
 
+    if (isDbBackedBracket) {
+      // Resolve winner_team_id from teamsData
+      const winnerTeamNum =
+        formData.winner === 'team_a'
+          ? formData.team_a_number
+          : formData.team_b_number;
+      const winnerTeam = teamsData.find((t: any) => {
+        const n = String(t.team_number ?? t['Team Number'] ?? '');
+        return n === String(winnerTeamNum);
+      });
+      if (winnerTeam?.id != null) {
+        scoreData.winner_team_id = {
+          label: 'Winner Team ID',
+          value: winnerTeam.id,
+          type: 'number',
+        };
+      }
+      const team1Score =
+        calculatedValues.team_a_total ?? formData.team_a_score ?? 0;
+      const team2Score =
+        calculatedValues.team_b_total ?? formData.team_b_score ?? 0;
+      scoreData.team1_score = {
+        label: 'Team 1 Score',
+        value: team1Score,
+        type: 'number',
+      };
+      scoreData.team2_score = {
+        label: 'Team 2 Score',
+        value: team2Score,
+        type: 'number',
+      };
+    }
+
     try {
       const response = await fetch('/api/scores/submit', {
         method: 'POST',
@@ -624,9 +727,16 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           scoreData,
           isHeadToHead,
           bracketSource: isHeadToHead ? schema.bracketSource : null,
-          eventId: isDbBacked ? eventId : undefined,
-          scoreType: isDbBacked ? 'seeding' : undefined,
+          eventId: isDbBackedSeeding || isDbBackedBracket ? eventId : undefined,
+          scoreType: isDbBackedSeeding
+            ? 'seeding'
+            : isDbBackedBracket
+              ? 'bracket'
+              : undefined,
           game_queue_id: formData.game_queue_id ?? undefined,
+          bracket_game_id: isDbBackedBracket
+            ? formData.bracket_game_id
+            : undefined,
         }),
       });
 

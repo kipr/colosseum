@@ -15,6 +15,8 @@ import {
   seedUser,
   seedEvent,
   seedTeam,
+  seedBracket,
+  seedBracketGame,
   seedScoresheetTemplate,
   seedSpreadsheetConfig,
   seedQueueItem,
@@ -679,6 +681,149 @@ describe('API Score Submit Routes', () => {
         expect(submission.game_queue_id).toBe(queueItem.id);
         expect(submission.event_id).toBe(event.id);
         expect(submission.score_type).toBe('seeding');
+      });
+
+      it('creates DB-backed bracket score submission with bracket_game_id', async () => {
+        const event = await seedEvent(testDb.db);
+        const team1 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+          team_name: 'Team A',
+        });
+        const team2 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 2,
+          team_name: 'Team B',
+        });
+        const bracket = await seedBracket(testDb.db, {
+          event_id: event.id,
+          name: 'Main Bracket',
+          bracket_size: 8,
+        });
+        const game = await seedBracketGame(testDb.db, {
+          bracket_id: bracket.id,
+          game_number: 1,
+          team1_id: team1.id,
+          team2_id: team2.id,
+          status: 'ready',
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Bracket Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: '1 - Team A',
+          matchId: '1',
+          scoreData: {
+            winner_team_id: { value: team1.id, type: 'number' },
+            team1_score: { value: 100, type: 'number' },
+            team2_score: { value: 80, type: 'number' },
+          },
+          isHeadToHead: true,
+          eventId: event.id,
+          scoreType: 'bracket',
+          bracket_game_id: game.id,
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as {
+          id: number;
+          spreadsheet_config_id: number | null;
+          event_id: number | null;
+          score_type: string | null;
+          bracket_game_id: number | null;
+          status: string;
+        };
+        expect(submission.spreadsheet_config_id).toBeNull();
+        expect(submission.event_id).toBe(event.id);
+        expect(submission.score_type).toBe('bracket');
+        expect(submission.bracket_game_id).toBe(game.id);
+        expect(submission.status).toBe('pending');
+
+        const auditLogs = await testDb.db.all(
+          'SELECT * FROM audit_log WHERE event_id = ? AND action = ? AND entity_type = ? AND entity_id = ?',
+          [event.id, 'score_submitted', 'score_submission', submission.id],
+        );
+        expect(auditLogs.length).toBe(1);
+      });
+
+      it('returns 400 when bracket_game_id missing for DB-backed bracket submission', async () => {
+        const event = await seedEvent(testDb.db);
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Bracket Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            winner_team_id: { value: 1, type: 'number' },
+            team1_score: { value: 100, type: 'number' },
+            team2_score: { value: 80, type: 'number' },
+          },
+          isHeadToHead: true,
+          eventId: event.id,
+          scoreType: 'bracket',
+          // bracket_game_id missing
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'bracket_game_id is required',
+        );
+      });
+
+      it('returns 400 when bracket game not found or does not belong to event', async () => {
+        const event = await seedEvent(testDb.db);
+        const team1 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+          team_name: 'Team A',
+        });
+        const team2 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 2,
+          team_name: 'Team B',
+        });
+        const bracket = await seedBracket(testDb.db, {
+          event_id: event.id,
+          name: 'Main Bracket',
+          bracket_size: 8,
+        });
+        const game = await seedBracketGame(testDb.db, {
+          bracket_id: bracket.id,
+          game_number: 1,
+          team1_id: team1.id,
+          team2_id: team2.id,
+          status: 'ready',
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Bracket Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            winner_team_id: { value: team1.id, type: 'number' },
+            team1_score: { value: 100, type: 'number' },
+            team2_score: { value: 80, type: 'number' },
+          },
+          isHeadToHead: true,
+          eventId: event.id,
+          scoreType: 'bracket',
+          bracket_game_id: 99999, // Non-existent game
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'Bracket game not found',
+        );
       });
 
       it('uses legacy spreadsheet path when eventId/scoreType not provided', async () => {
