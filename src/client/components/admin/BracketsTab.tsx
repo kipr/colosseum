@@ -24,6 +24,44 @@ interface BracketFormData {
   actual_team_count: string;
 }
 
+interface CreateModalTeam {
+  id: number;
+  team_number: number;
+  team_name: string;
+  display_name: string | null;
+}
+
+interface CreateModalScore {
+  team_id: number;
+  round_number: number;
+  score: number | null;
+  team_number: number;
+  team_name: string;
+}
+
+interface CreateModalRanking {
+  team_id: number;
+  seed_average: number | null;
+  seed_rank: number | null;
+  raw_seed_score: number | null;
+  team_number: number;
+  team_name: string;
+}
+
+interface AssignedTeam {
+  team_id: number;
+  team_number: number;
+  team_name: string;
+  bracket_id: number;
+  bracket_name: string;
+}
+
+function nextPowerOfTwo(n: number): number {
+  if (n <= 0) return 4;
+  const p = Math.pow(2, Math.ceil(Math.log2(n)));
+  return Math.max(4, Math.min(64, p));
+}
+
 const BRACKET_SIZES = [4, 8, 16, 32, 64];
 
 function getStatusClass(status: BracketStatus): string {
@@ -83,6 +121,18 @@ export default function BracketsTab() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState<BracketFormData>(defaultFormData);
   const [saving, setSaving] = useState(false);
+
+  // Create modal: team selection data
+  const [createTeams, setCreateTeams] = useState<CreateModalTeam[]>([]);
+  const [createScores, setCreateScores] = useState<CreateModalScore[]>([]);
+  const [createRankings, setCreateRankings] = useState<CreateModalRanking[]>(
+    [],
+  );
+  const [createAssigned, setCreateAssigned] = useState<AssignedTeam[]>([]);
+  const [createDataLoading, setCreateDataLoading] = useState(false);
+  const [selectedTeamIds, setSelectedTeamIds] = useState<Set<number>>(
+    new Set(),
+  );
 
   // Action states
   const [generatingEntries, setGeneratingEntries] = useState(false);
@@ -155,6 +205,61 @@ export default function BracketsTab() {
     }
   }, [selectedBracketId, fetchBracketDetail]);
 
+  // Load create modal data when modal opens
+  useEffect(() => {
+    if (!showCreateModal || !selectedEventId) {
+      return;
+    }
+    let cancelled = false;
+    setCreateDataLoading(true);
+    setSelectedTeamIds(new Set());
+    Promise.all([
+      fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
+      fetch(`/seeding/scores/event/${selectedEventId}`, {
+        credentials: 'include',
+      }),
+      fetch(`/seeding/rankings/event/${selectedEventId}`, {
+        credentials: 'include',
+      }),
+      fetch(`/brackets/event/${selectedEventId}/assigned-teams`, {
+        credentials: 'include',
+      }),
+    ])
+      .then(async ([teamsRes, scoresRes, rankingsRes, assignedRes]) => {
+        if (cancelled) return;
+        if (!teamsRes.ok) throw new Error('Failed to fetch teams');
+        if (!scoresRes.ok) throw new Error('Failed to fetch scores');
+        if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
+        if (!assignedRes.ok) throw new Error('Failed to fetch assigned teams');
+        const [teams, scores, rankings, assigned] = await Promise.all([
+          teamsRes.json(),
+          scoresRes.json(),
+          rankingsRes.json(),
+          assignedRes.json(),
+        ]);
+        if (cancelled) return;
+        setCreateTeams(teams);
+        setCreateScores(scores);
+        setCreateRankings(rankings);
+        setCreateAssigned(assigned);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('Error loading create modal data:', err);
+          toast.error(
+            err instanceof Error ? err.message : 'Failed to load teams',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCreateDataLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // toast.error is stable; toast object reference changes every render and would cause infinite loop
+  }, [showCreateModal, selectedEventId]);
+
   // Create bracket
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -165,37 +270,50 @@ export default function BracketsTab() {
       return;
     }
 
+    const teamIds = Array.from(selectedTeamIds);
+    if (teamIds.length === 0) {
+      toast.error('Select at least one team for the bracket');
+      return;
+    }
+
     setSaving(true);
     try {
-      const body: Record<string, unknown> = {
-        event_id: selectedEventId,
-        name: formData.name.trim(),
-        bracket_size: formData.bracket_size,
-      };
-
-      if (formData.actual_team_count) {
-        const count = parseInt(formData.actual_team_count, 10);
-        if (!isNaN(count) && count > 0 && count <= formData.bracket_size) {
-          body.actual_team_count = count;
-        }
-      }
-
       const response = await fetch('/brackets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          event_id: selectedEventId,
+          name: formData.name.trim(),
+          team_ids: teamIds,
+        }),
       });
 
+      const data = await response.json().catch(() => ({}));
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create bracket');
+        if (response.status === 409 && data.conflicts?.length) {
+          const names = data.conflicts
+            .map(
+              (c: { team_name: string; bracket_name: string }) =>
+                `${c.team_name} (in ${c.bracket_name})`,
+            )
+            .join(', ');
+          throw new Error(
+            `Teams already in another bracket: ${names}. Remove them from selection.`,
+          );
+        }
+        throw new Error(data.error || 'Failed to create bracket');
       }
 
       toast.success('Bracket created!');
       setShowCreateModal(false);
       setFormData(defaultFormData);
+      setSelectedTeamIds(new Set());
       await fetchBrackets();
+      if (data.id) {
+        setSelectedBracketId(data.id);
+      }
     } catch (error) {
       console.error('Error creating bracket:', error);
       toast.error(
@@ -884,7 +1002,7 @@ export default function BracketsTab() {
         <div className="modal show" onClick={() => setShowCreateModal(false)}>
           <div
             className="modal-content"
-            style={{ maxWidth: '500px' }}
+            style={{ maxWidth: '90vw', width: '800px' }}
             onClick={(e) => e.stopPropagation()}
           >
             <span className="close" onClick={() => setShowCreateModal(false)}>
@@ -894,10 +1012,11 @@ export default function BracketsTab() {
             <p
               style={{
                 color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
+                marginBottom: '1rem',
               }}
             >
-              Create a new double-elimination bracket for this event.
+              Select teams for this bracket. Bracket size and byes are computed
+              automatically.
             </p>
 
             <form onSubmit={handleCreate}>
@@ -917,51 +1036,180 @@ export default function BracketsTab() {
                 />
               </div>
 
-              <div className="form-group">
-                <label htmlFor="bracket-size">Bracket Size *</label>
-                <select
-                  id="bracket-size"
-                  className="field-input"
-                  value={formData.bracket_size}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      bracket_size: parseInt(e.target.value, 10),
-                    })
-                  }
-                >
-                  {BRACKET_SIZES.map((size) => (
-                    <option key={size} value={size}>
-                      {size} teams
-                    </option>
-                  ))}
-                </select>
-                <small style={{ color: 'var(--secondary-color)' }}>
-                  Choose the smallest power of 2 that fits your teams.
-                </small>
-              </div>
+              {createDataLoading ? (
+                <p>Loading teams...</p>
+              ) : createTeams.length === 0 ? (
+                <p style={{ color: 'var(--secondary-color)' }}>
+                  No teams in this event. Add teams first.
+                </p>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>Select Teams</label>
+                    <div
+                      className="table-responsive"
+                      style={{ maxHeight: '300px', overflow: 'auto' }}
+                    >
+                      <table className="bracket-create-teams-table">
+                        <thead>
+                          <tr>
+                            <th style={{ width: '40px' }}>Select</th>
+                            <th>Team #</th>
+                            <th>Team Name</th>
+                            {Array.from(
+                              {
+                                length: selectedEvent?.seeding_rounds ?? 3,
+                              },
+                              (_, i) => (
+                                <th key={i}>R{i + 1}</th>
+                              ),
+                            )}
+                            <th>Seed Avg</th>
+                            <th>Rank</th>
+                            <th>Raw</th>
+                            <th>Assigned</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {[...createTeams]
+                            .sort((a, b) => {
+                              const rankA = createRankings.find(
+                                (r) => r.team_id === a.id,
+                              )?.seed_rank;
+                              const rankB = createRankings.find(
+                                (r) => r.team_id === b.id,
+                              )?.seed_rank;
+                              if (rankA == null && rankB == null)
+                                return a.team_number - b.team_number;
+                              if (rankA == null) return 1;
+                              if (rankB == null) return -1;
+                              return rankA - rankB;
+                            })
+                            .map((team) => {
+                              const scoreMap = new Map<number, number | null>();
+                              for (const s of createScores) {
+                                if (s.team_id === team.id)
+                                  scoreMap.set(s.round_number, s.score);
+                              }
+                              const ranking = createRankings.find(
+                                (r) => r.team_id === team.id,
+                              );
+                              const assigned = createAssigned.find(
+                                (a) => a.team_id === team.id,
+                              );
+                              const isSelected = selectedTeamIds.has(team.id);
+                              const hasOverlap = isSelected && !!assigned;
+                              return (
+                                <tr
+                                  key={team.id}
+                                  className={
+                                    hasOverlap ? 'bracket-create-overlap' : ''
+                                  }
+                                >
+                                  <td>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={(e) => {
+                                        setSelectedTeamIds((prev) => {
+                                          const next = new Set(prev);
+                                          if (e.target.checked) {
+                                            next.add(team.id);
+                                          } else {
+                                            next.delete(team.id);
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                      disabled={!!assigned}
+                                      title={
+                                        assigned
+                                          ? `${team.team_name} is already in ${assigned.bracket_name}`
+                                          : undefined
+                                      }
+                                    />
+                                  </td>
+                                  <td>{team.team_number}</td>
+                                  <td>{team.team_name}</td>
+                                  {Array.from(
+                                    {
+                                      length:
+                                        selectedEvent?.seeding_rounds ?? 3,
+                                    },
+                                    (_, i) => (
+                                      <td key={i}>
+                                        {scoreMap.get(i + 1) ?? '—'}
+                                      </td>
+                                    ),
+                                  )}
+                                  <td>
+                                    {ranking?.seed_average != null
+                                      ? ranking.seed_average.toFixed(2)
+                                      : '—'}
+                                  </td>
+                                  <td>{ranking?.seed_rank ?? '—'}</td>
+                                  <td>
+                                    {ranking?.raw_seed_score != null
+                                      ? ranking.raw_seed_score.toFixed(4)
+                                      : '—'}
+                                  </td>
+                                  <td>
+                                    {assigned ? (
+                                      <span
+                                        className="bracket-create-assigned"
+                                        title={`In ${assigned.bracket_name}`}
+                                      >
+                                        {assigned.bracket_name}
+                                      </span>
+                                    ) : (
+                                      '—'
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
 
-              <div className="form-group">
-                <label htmlFor="actual-team-count">Actual Team Count</label>
-                <input
-                  id="actual-team-count"
-                  type="number"
-                  className="field-input"
-                  value={formData.actual_team_count}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      actual_team_count: e.target.value,
-                    })
-                  }
-                  placeholder={`1-${formData.bracket_size}`}
-                  min={1}
-                  max={formData.bracket_size}
-                />
-                <small style={{ color: 'var(--secondary-color)' }}>
-                  Optional. If fewer than bracket size, byes will be added.
-                </small>
-              </div>
+                  {selectedTeamIds.size > 0 && (
+                    <div
+                      className="bracket-create-summary"
+                      style={{
+                        marginBottom: '1rem',
+                        padding: '0.5rem',
+                        background: 'var(--surface-color)',
+                        borderRadius: '4px',
+                      }}
+                    >
+                      <strong>Selected:</strong> {selectedTeamIds.size} teams
+                      {' · '}
+                      <strong>Bracket size:</strong>{' '}
+                      {nextPowerOfTwo(selectedTeamIds.size)}{' '}
+                      <strong>Byes:</strong>{' '}
+                      {nextPowerOfTwo(selectedTeamIds.size) -
+                        selectedTeamIds.size}
+                    </div>
+                  )}
+
+                  {Array.from(selectedTeamIds).some((id) =>
+                    createAssigned.some((a) => a.team_id === id),
+                  ) && (
+                    <div
+                      className="bracket-create-overlap-warning"
+                      style={{
+                        color: 'var(--danger-color)',
+                        marginBottom: '1rem',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      Some selected teams are already in another bracket. Remove
+                      them to continue.
+                    </div>
+                  )}
+                </>
+              )}
 
               <div
                 style={{
@@ -982,7 +1230,14 @@ export default function BracketsTab() {
                 <button
                   type="submit"
                   className="btn btn-primary"
-                  disabled={saving}
+                  disabled={
+                    saving ||
+                    createDataLoading ||
+                    selectedTeamIds.size === 0 ||
+                    Array.from(selectedTeamIds).some((id) =>
+                      createAssigned.some((a) => a.team_id === id),
+                    )
+                  }
                 >
                   {saving ? 'Creating...' : 'Create Bracket'}
                 </button>
