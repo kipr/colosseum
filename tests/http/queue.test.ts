@@ -225,6 +225,87 @@ describe('Queue Routes', () => {
       expect(items.length).toBe(1);
       expect(items[0].queue_type).toBe('bracket');
     });
+
+    it('with sync=1 and queue_type=seeding populates team×round items and sets completed when seeding_scores exist', async () => {
+      const event = await seedEvent(testDb.db, { seeding_rounds: 2 });
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+      await seedSeedingScore(testDb.db, {
+        team_id: team1.id,
+        round_number: 1,
+        score: 85,
+      });
+
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=seeding&sync=1`,
+      );
+
+      expect(res.status).toBe(200);
+      const items = res.json as {
+        seeding_team_id: number;
+        seeding_round: number;
+        status: string;
+      }[];
+      expect(items.length).toBe(4);
+      const completed = items.find(
+        (i) => i.seeding_team_id === team1.id && i.seeding_round === 1,
+      );
+      expect(completed?.status).toBe('completed');
+      const queued = items.filter((i) => i.status === 'queued');
+      expect(queued.length).toBe(3);
+    });
+
+    it('with sync=1 and queue_type=bracket populates eligible bracket games', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team.id,
+        team2_id: team.id,
+        status: 'ready',
+      });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 2,
+        team1_id: team.id,
+        team2_id: team.id,
+        status: 'pending',
+      });
+
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=bracket&sync=1`,
+      );
+
+      expect(res.status).toBe(200);
+      const items = res.json as { queue_type: string; status: string }[];
+      expect(items.length).toBe(2);
+      expect(items.every((i) => i.queue_type === 'bracket')).toBe(true);
+      expect(items.every((i) => i.status === 'queued')).toBe(true);
+    });
+
+    it('without sync does not auto-populate (empty event returns empty)', async () => {
+      const event = await seedEvent(testDb.db, { seeding_rounds: 2 });
+      await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+
+      const res = await http.get(`${baseUrl}/queue/event/${event.id}`);
+
+      expect(res.status).toBe(200);
+      expect(res.json).toEqual([]);
+    });
   });
 
   // ==========================================================================

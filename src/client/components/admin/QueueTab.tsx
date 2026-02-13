@@ -147,6 +147,7 @@ export default function QueueTab() {
     setLoading(true);
     try {
       const params = new URLSearchParams();
+      params.append('sync', '1');
       // Only append status params if we are filtering (not all selected)
       const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
       const isAllSelected = filterStatuses.length === allStatuses.length;

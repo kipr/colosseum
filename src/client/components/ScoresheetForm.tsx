@@ -140,7 +140,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     if (!schema.eventId) return;
     try {
       const statuses = ['queued', 'called', 'in_progress'].join(',');
-      const url = `/queue/event/${schema.eventId}?queue_type=seeding&status=${statuses}`;
+      const url = `/queue/event/${schema.eventId}?queue_type=seeding&status=${statuses}&sync=1`;
       const response = await fetch(url);
       if (!response.ok) return;
       const data = await response.json();

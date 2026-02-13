@@ -20,6 +20,7 @@ import {
   seedScoresheetTemplate,
   seedSpreadsheetConfig,
   seedScoreSubmission,
+  seedQueueItem,
 } from './helpers/seed';
 import scoresRoutes from '../../src/server/routes/scores';
 
@@ -419,6 +420,50 @@ describe('Event-Scoped Scores Routes', () => {
       expect(auditLogs.length).toBe(1);
     });
 
+    it('accepts seeding score and marks matching queue item completed', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'seeding',
+        queue_position: 1,
+        seeding_team_id: team.id,
+        seeding_round: 1,
+        status: 'queued',
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 150 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/accept-event`,
+      );
+      expect(res.status).toBe(200);
+
+      const queueItem = await testDb.db.get(
+        'SELECT * FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ?',
+        [event.id, team.id, 1],
+      );
+      expect(queueItem).toBeDefined();
+      expect(queueItem.status).toBe('completed');
+    });
+
     it('accepts bracket score and sets winner', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
@@ -487,6 +532,13 @@ describe('Event-Scoped Scores Routes', () => {
         [event.id, 'bracket_game_completed', 'bracket_game', game.id],
       );
       expect(bracketGameLogs.length).toBe(1);
+
+      const queueItem = await testDb.db.get(
+        'SELECT * FROM game_queue WHERE event_id = ? AND bracket_game_id = ?',
+        [event.id, game.id],
+      );
+      expect(queueItem).toBeDefined();
+      expect(queueItem.status).toBe('completed');
     });
 
     it('returns 409 conflict when seeding score already exists', async () => {
@@ -775,6 +827,57 @@ describe('Event-Scoped Scores Routes', () => {
       expect(seedingClearedLogs.length).toBe(1);
     });
 
+    it('reverts seeding score and returns matching queue item to queued', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'seeding',
+        queue_position: 1,
+        seeding_team_id: team.id,
+        seeding_round: 1,
+        status: 'completed',
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      const seedingScoreResult = await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        [team.id, 1, 150],
+      );
+
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        seeding_score_id: seedingScoreResult.lastID,
+        status: 'accepted',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/revert-event`,
+        { confirm: true },
+      );
+      expect(res.status).toBe(200);
+
+      const queueItem = await testDb.db.get(
+        'SELECT * FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ?',
+        [event.id, team.id, 1],
+      );
+      expect(queueItem).toBeDefined();
+      expect(queueItem.status).toBe('queued');
+    });
+
     it('reverts DB-backed seeding score (spreadsheet_config_id null)', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
@@ -914,6 +1017,65 @@ describe('Event-Scoped Scores Routes', () => {
       };
       expect(data.requiresConfirmation).toBe(true);
       expect(data.affectedGames.length).toBeGreaterThan(0);
+    });
+
+    it('reverts bracket score and returns matching queue item to queued', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'completed',
+      });
+      await testDb.db.run(
+        'UPDATE bracket_games SET winner_id = ?, loser_id = ? WHERE id = ?',
+        [team1.id, team2.id, game.id],
+      );
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+        status: 'completed',
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          winner_team_id: { value: team1.id },
+        }),
+        event_id: event.id,
+        score_type: 'bracket',
+        bracket_game_id: game.id,
+        status: 'accepted',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/revert-event`,
+        { confirm: true },
+      );
+      expect(res.status).toBe(200);
+
+      const queueItem = await testDb.db.get(
+        'SELECT * FROM game_queue WHERE event_id = ? AND bracket_game_id = ?',
+        [event.id, game.id],
+      );
+      expect(queueItem).toBeDefined();
+      expect(queueItem.status).toBe('queued');
     });
   });
 });

@@ -1,6 +1,7 @@
 import express from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import type { Database } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { updateTeamScore } from '../services/googleSheets';
@@ -15,6 +16,67 @@ import {
 import { resolveBracketByes } from '../services/bracketByeResolver';
 
 const router = express.Router();
+
+/** Mark seeding queue item completed on accept, or queued on revert. Inserts if missing. */
+async function updateSeedingQueueItem(
+  db: Database,
+  eventId: number,
+  teamId: number,
+  roundNumber: number,
+  completed: boolean,
+): Promise<void> {
+  const existing = await db.get<{ id: number }>(
+    `SELECT id FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ? AND queue_type = 'seeding'`,
+    [eventId, teamId, roundNumber],
+  );
+  if (existing) {
+    await db.run(
+      `UPDATE game_queue SET status = ?, called_at = NULL, table_number = NULL WHERE id = ?`,
+      [completed ? 'completed' : 'queued', existing.id],
+    );
+  } else {
+    const maxPos = await db.get<{ max_pos: number | null }>(
+      'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+      [eventId],
+    );
+    const pos = (maxPos?.max_pos ?? 0) + 1;
+    await db.run(
+      `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
+       VALUES (?, ?, ?, 'seeding', ?, ?)`,
+      [eventId, teamId, roundNumber, pos, completed ? 'completed' : 'queued'],
+    );
+  }
+}
+
+/** Mark bracket queue item completed on accept, or queued on revert. Inserts if missing. */
+async function updateBracketQueueItem(
+  db: Database,
+  eventId: number,
+  bracketGameId: number,
+  completed: boolean,
+): Promise<void> {
+  const existing = await db.get<{ id: number }>(
+    `SELECT id FROM game_queue WHERE event_id = ? AND bracket_game_id = ? AND queue_type = 'bracket'`,
+    [eventId, bracketGameId],
+  );
+  if (existing) {
+    await db.run(
+      `UPDATE game_queue SET status = ?, called_at = NULL, table_number = NULL WHERE id = ?`,
+      [completed ? 'completed' : 'queued', existing.id],
+    );
+  } else {
+    const maxPos = await db.get<{ max_pos: number | null }>(
+      'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+      [eventId],
+    );
+    const pos = (maxPos?.max_pos ?? 0) + 1;
+    await db.run(
+      `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
+       VALUES (?, ?, 'bracket', ?, ?)`,
+      [eventId, bracketGameId, pos, completed ? 'completed' : 'queued'],
+    );
+  }
+}
 
 // Get scores filtered by spreadsheet config
 router.get(
@@ -271,6 +333,14 @@ router.post(
           ip_address: req.ip ?? null,
         });
 
+        await updateSeedingQueueItem(
+          db,
+          score.event_id,
+          teamId,
+          roundNumber,
+          true,
+        );
+
         return res.json({
           success: true,
           scoreType: 'seeding',
@@ -440,6 +510,8 @@ router.post(
           new_value: toAuditJson(updatedGame),
           ip_address: req.ip ?? null,
         });
+
+        await updateBracketQueueItem(db, score.event_id, bracketGameId, true);
 
         return res.json({
           success: true,
@@ -775,6 +847,19 @@ router.post(
              WHERE id = ?`,
             [id],
           );
+          const scoreData = JSON.parse(score.score_data);
+          const teamId = scoreData.team_id?.value;
+          const roundNumber =
+            scoreData.round?.value || scoreData.round_number?.value;
+          if (teamId != null && roundNumber != null) {
+            await updateSeedingQueueItem(
+              db,
+              score.event_id,
+              teamId,
+              roundNumber,
+              false,
+            );
+          }
           const updatedScore = await db.get(
             'SELECT * FROM score_submissions WHERE id = ?',
             [id],
@@ -819,6 +904,16 @@ router.post(
             [id],
           );
         });
+
+        if (oldSeedingScore) {
+          await updateSeedingQueueItem(
+            db,
+            score.event_id,
+            oldSeedingScore.team_id,
+            oldSeedingScore.round_number,
+            false,
+          );
+        }
 
         const updatedScore = await db.get(
           'SELECT * FROM score_submissions WHERE id = ?',
@@ -881,7 +976,6 @@ router.post(
           return res.json({ success: true, scoreType: 'bracket' });
         }
 
-        // Get the game
         const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
           bracketGameId,
         ]);
@@ -897,6 +991,12 @@ router.post(
              SET status = 'pending', reviewed_by = NULL, reviewed_at = NULL
              WHERE id = ?`,
             [id],
+          );
+          await updateBracketQueueItem(
+            db,
+            score.event_id,
+            bracketGameId,
+            false,
           );
           const updatedScore = await db.get(
             'SELECT * FROM score_submissions WHERE id = ?',
@@ -1025,6 +1125,8 @@ router.post(
           new_value: toAuditJson(updatedScore),
           ip_address: req.ip ?? null,
         });
+
+        await updateBracketQueueItem(db, score.event_id, bracketGameId, false);
 
         return res.json({
           success: true,

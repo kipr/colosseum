@@ -1,18 +1,191 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import type { Database } from '../database/connection';
 
 const router = express.Router();
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
 
+/** Non-destructive sync: ensure game_queue has all team×round items for seeding, with correct status from seeding_scores. */
+async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
+  const event = await db.get(
+    'SELECT id, seeding_rounds FROM events WHERE id = ?',
+    [eventId],
+  );
+  if (!event) return;
+
+  const seedingRounds = event.seeding_rounds || 3;
+  const teams = await db.all<{ id: number; team_number: number }>(
+    'SELECT id, team_number FROM teams WHERE event_id = ? ORDER BY team_number ASC',
+    [eventId],
+  );
+  if (teams.length === 0) return;
+
+  const teamIds = teams.map((t) => t.id);
+  const scoredRounds = await db.all<{ team_id: number; round_number: number }>(
+    `SELECT team_id, round_number FROM seeding_scores
+     WHERE team_id IN (${teamIds.map(() => '?').join(',')}) AND score IS NOT NULL`,
+    teamIds,
+  );
+  const scoredSet = new Set(
+    scoredRounds.map((s) => `${s.team_id}:${s.round_number}`),
+  );
+
+  const existingSeeding = await db.all<{
+    id: number;
+    seeding_team_id: number;
+    seeding_round: number;
+    status: string;
+  }>(
+    `SELECT id, seeding_team_id, seeding_round, status FROM game_queue
+     WHERE event_id = ? AND queue_type = 'seeding'`,
+    [eventId],
+  );
+  const existingMap = new Map(
+    existingSeeding.map((e) => [`${e.seeding_team_id}:${e.seeding_round}`, e]),
+  );
+
+  const allCombos: { team_id: number; round: number; scored: boolean }[] = [];
+  for (const team of teams) {
+    for (let round = 1; round <= seedingRounds; round++) {
+      allCombos.push({
+        team_id: team.id,
+        round,
+        scored: scoredSet.has(`${team.id}:${round}`),
+      });
+    }
+  }
+
+  const maxPos = await db.get<{ max_pos: number | null }>(
+    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+    [eventId],
+  );
+  let nextPos = (maxPos?.max_pos ?? 0) + 1;
+
+  await db.transaction((tx) => {
+    for (const combo of allCombos) {
+      const key = `${combo.team_id}:${combo.round}`;
+      const existing = existingMap.get(key);
+
+      if (existing) {
+        if (combo.scored) {
+          tx.run("UPDATE game_queue SET status = 'completed' WHERE id = ?", [
+            existing.id,
+          ]);
+        } else if (existing.status === 'completed') {
+          tx.run(
+            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
+            [existing.id],
+          );
+        }
+      } else {
+        const status = combo.scored ? 'completed' : 'queued';
+        tx.run(
+          `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
+           VALUES (?, ?, ?, 'seeding', ?, ?)`,
+          [eventId, combo.team_id, combo.round, nextPos++, status],
+        );
+      }
+    }
+  });
+}
+
+/** Non-destructive sync: ensure game_queue has eligible bracket games, with correct status from bracket_games. */
+async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
+  const brackets = await db.all<{ id: number }>(
+    'SELECT id FROM brackets WHERE event_id = ?',
+    [eventId],
+  );
+  if (brackets.length === 0) return;
+
+  const bracketIds = brackets.map((b) => b.id);
+  const allGames = await db.all<{
+    id: number;
+    game_number: number;
+    status: string;
+    team1_id: number | null;
+    team2_id: number | null;
+  }>(
+    `SELECT id, game_number, status, team1_id, team2_id FROM bracket_games
+     WHERE bracket_id IN (${bracketIds.map(() => '?').join(',')})
+     ORDER BY game_number ASC`,
+    bracketIds,
+  );
+
+  const existingBracket = await db.all<{
+    id: number;
+    bracket_game_id: number;
+    status: string;
+  }>(
+    `SELECT id, bracket_game_id, status FROM game_queue
+     WHERE event_id = ? AND queue_type = 'bracket'`,
+    [eventId],
+  );
+  const existingByGameId = new Map(
+    existingBracket.map((e) => [e.bracket_game_id, e]),
+  );
+
+  const maxPos = await db.get<{ max_pos: number | null }>(
+    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+    [eventId],
+  );
+  let nextPos = (maxPos?.max_pos ?? 0) + 1;
+
+  await db.transaction((tx) => {
+    for (const game of allGames) {
+      const isEligible =
+        game.team1_id != null &&
+        game.team2_id != null &&
+        ['ready', 'pending'].includes(game.status);
+      const isCompleted = game.status === 'completed';
+      const existing = existingByGameId.get(game.id);
+
+      if (existing) {
+        if (isCompleted) {
+          tx.run("UPDATE game_queue SET status = 'completed' WHERE id = ?", [
+            existing.id,
+          ]);
+        } else if (existing.status === 'completed' && isEligible) {
+          tx.run(
+            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
+            [existing.id],
+          );
+        }
+      } else if (isEligible || isCompleted) {
+        const status = isCompleted ? 'completed' : 'queued';
+        tx.run(
+          `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
+           VALUES (?, ?, 'bracket', ?, ?)`,
+          [eventId, game.id, nextPos++, status],
+        );
+      }
+    }
+  });
+}
+
 // GET /queue/event/:eventId - Get queue for event (public for judges)
 router.get('/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
-    const { queue_type } = req.query;
+    const { queue_type, sync } = req.query;
     const db = await getDatabase();
+
+    const eventIdNum = parseInt(eventId, 10);
+    if (isNaN(eventIdNum)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (sync === '1' || sync === 'true') {
+      const qt = typeof queue_type === 'string' ? queue_type : null;
+      if (!qt || qt === 'seeding') {
+        await syncSeedingQueue(db, eventIdNum);
+      }
+      if (!qt || qt === 'bracket') {
+        await syncBracketQueue(db, eventIdNum);
+      }
+    }
 
     let query = `
       SELECT gq.*,
