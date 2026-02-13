@@ -406,10 +406,49 @@ function formatForDiff(value: string | null): string {
   if (value == null || value === '') return '';
   try {
     const parsed = JSON.parse(value);
-    return JSON.stringify(parsed, null, 2);
+    return JSON.stringify(normalizeNestedJson(parsed), null, 2);
   } catch {
     return value;
   }
+}
+
+function parseJsonLikeString(value: string): unknown {
+  const trimmed = value.trim();
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+function normalizeNestedJson(value: unknown): unknown {
+  if (typeof value === 'string') {
+    const parsed = parseJsonLikeString(value);
+    if (parsed !== value) {
+      return normalizeNestedJson(parsed);
+    }
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => normalizeNestedJson(item));
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value).map(([key, child]) => [
+      key,
+      normalizeNestedJson(child),
+    ]);
+    return Object.fromEntries(entries);
+  }
+
+  return value;
 }
 
 function DiffModal({
@@ -473,7 +512,7 @@ function JsonViewModal({
   let displayValue = value;
   try {
     const parsed = JSON.parse(value);
-    displayValue = JSON.stringify(parsed, null, 2);
+    displayValue = JSON.stringify(normalizeNestedJson(parsed), null, 2);
   } catch {
     // Use raw value
   }
