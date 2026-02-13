@@ -15,11 +15,21 @@ interface ScoresheetFormProps {
 }
 
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
+  const schema = template.schema;
+  const isHeadToHead = schema.mode === 'head-to-head';
+  const gameAreasImage = schema.gameAreasImage;
+
+  // Use queue for DB-backed seeding: replace team+round selection with queue picker
+  const useQueueForSeeding =
+    schema.eventId && schema.scoreDestination === 'db' && !isHeadToHead;
+
   // Helper to get initial form data with default values from schema
   const getInitialFormData = () => {
-    const cachedRound = localStorage.getItem('lastRoundNumber');
     const initial: Record<string, any> = {};
-    if (cachedRound) initial.round = cachedRound;
+    if (!useQueueForSeeding) {
+      const cachedRound = localStorage.getItem('lastRoundNumber');
+      if (cachedRound) initial.round = cachedRound;
+    }
 
     // Initialize fields with their default values if specified
     template.schema.fields.forEach((field: any) => {
@@ -47,9 +57,19 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     type: 'success' | 'error';
   } | null>(null);
   const [showGameAreas, setShowGameAreas] = useState(false);
-  const schema = template.schema;
-  const isHeadToHead = schema.mode === 'head-to-head';
-  const gameAreasImage = schema.gameAreasImage;
+
+  const [queueItems, setQueueItems] = useState<
+    Array<{
+      id: number;
+      queue_type: string;
+      seeding_team_id: number;
+      seeding_round: number;
+      seeding_team_number: number;
+      seeding_team_name: string;
+      queue_position: number;
+      status: string;
+    }>
+  >([]);
 
   // Show notification and auto-dismiss
   const showNotification = (
@@ -91,8 +111,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   }, [formData]);
 
   useEffect(() => {
-    // Load dynamic dropdown data
+    // Load dynamic dropdown data (skip team_number when using queue)
     loadDynamicData();
+
+    // Load queue for DB-backed seeding
+    if (useQueueForSeeding && schema.eventId) {
+      loadQueue();
+      const interval = setInterval(() => loadQueue(), 5000);
+      return () => clearInterval(interval);
+    }
 
     // Load bracket games if head-to-head mode
     if (isHeadToHead && schema.bracketSource) {
@@ -107,6 +134,20 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return () => clearInterval(interval);
     }
   }, []);
+
+  const loadQueue = async () => {
+    if (!schema.eventId) return;
+    try {
+      const statuses = ['queued', 'called', 'in_progress'].join(',');
+      const url = `/queue/event/${schema.eventId}?queue_type=seeding&status=${statuses}`;
+      const response = await fetch(url);
+      if (!response.ok) return;
+      const data = await response.json();
+      setQueueItems(data);
+    } catch (error) {
+      console.error('Error loading queue:', error);
+    }
+  };
 
   const loadBracketGames = async () => {
     try {
@@ -222,7 +263,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const loadDynamicData = async () => {
     const fieldsWithDataSource = schema.fields.filter(
-      (f: any) => f.dataSource && f.dataSource.type !== 'bracket',
+      (f: any) =>
+        f.dataSource &&
+        f.dataSource.type !== 'bracket' &&
+        // Skip team_number when using queue - it gets populated from queue selection
+        !(useQueueForSeeding && f.id === 'team_number'),
     );
 
     for (const field of fieldsWithDataSource) {
@@ -305,6 +350,31 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         console.error(`Error loading data for ${field.id}:`, error);
       }
     }
+  };
+
+  const handleQueueSelect = (queueId: string) => {
+    if (!queueId) {
+      setFormData((prev) => {
+        const next = { ...prev };
+        delete next.team_number;
+        delete next.team_name;
+        delete next.round;
+        delete next.team_id;
+        delete next.game_queue_id;
+        return next;
+      });
+      return;
+    }
+    const item = queueItems.find((q) => q.id === Number(queueId));
+    if (!item) return;
+    setFormData((prev) => ({
+      ...prev,
+      team_number: String(item.seeding_team_number),
+      team_name: item.seeding_team_name || `Team ${item.seeding_team_number}`,
+      round: item.seeding_round,
+      team_id: item.seeding_team_id,
+      game_queue_id: item.id,
+    }));
   };
 
   const handleInputChange = (fieldId: string, value: any, field?: any) => {
@@ -526,15 +596,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     const isDbBacked = scoreDestination === 'db' && eventId && !isHeadToHead;
 
     if (isDbBacked && scoreData.team_number?.value) {
-      const teamNumber = String(scoreData.team_number.value);
-      const teamOptions = dynamicData.team_number || [];
-      const selectedTeam = teamOptions.find(
-        (t: any) => String(t.team_number || t['Team Number']) === teamNumber,
+      // team_id from queue selection (useQueueForSeeding) or from team dropdown
+      const fromQueue = formData.team_id;
+      const fromDropdown = (dynamicData.team_number || []).find(
+        (t: any) =>
+          String(t.team_number || t['Team Number']) ===
+          String(scoreData.team_number.value),
       );
-      if (selectedTeam?.team_id) {
+      const teamId = fromQueue ?? fromDropdown?.team_id;
+      if (teamId != null) {
         scoreData.team_id = {
           label: 'Team ID',
-          value: selectedTeam.team_id,
+          value: teamId,
           type: 'number',
         };
       }
@@ -553,13 +626,14 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           bracketSource: isHeadToHead ? schema.bracketSource : null,
           eventId: isDbBacked ? eventId : undefined,
           scoreType: isDbBacked ? 'seeding' : undefined,
+          game_queue_id: formData.game_queue_id ?? undefined,
         }),
       });
 
       if (!response.ok) throw new Error('Failed to submit score');
 
-      // Cache the round number for next submission (seeding only, not head-to-head)
-      if (!isHeadToHead && scoreData['round']?.value) {
+      // Cache the round number for next submission (seeding only, not queue-based)
+      if (!isHeadToHead && !useQueueForSeeding && scoreData['round']?.value) {
         localStorage.setItem('lastRoundNumber', scoreData['round'].value);
       }
 
@@ -572,8 +646,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         setFormData({});
         // Reload bracket games in case some are now decided
         loadBracketGames();
+      } else if (useQueueForSeeding) {
+        // For queue-based seeding, reset and reload queue
+        setFormData({});
+        loadQueue();
       } else {
-        // For seeding, keep round number for convenience
+        // For manual seeding, keep round number for convenience
         const currentRound = formData['round'];
         setFormData({ round: currentRound });
       }
@@ -870,6 +948,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   // Filter header fields - exclude auto-populated team fields in head-to-head mode
+  // When using queue for seeding, exclude team_number, team_name, round (replaced by queue selector)
   const headerFields = schema.fields.filter((f: any) => {
     if (f.column) return false;
     if (
@@ -879,6 +958,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     )
       return false;
     if (f.type === 'winner-select') return false;
+    if (
+      useQueueForSeeding &&
+      ['team_number', 'team_name', 'round'].includes(f.id)
+    )
+      return false;
     return true;
   });
 
@@ -1021,6 +1105,45 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
               </svg>
               Game Areas
             </button>
+          </div>
+        )}
+
+        {useQueueForSeeding && (
+          <div className="score-field" style={{ marginBottom: '1rem' }}>
+            <label className="score-label">Select from Queue</label>
+            <select
+              className="score-input"
+              value={formData.game_queue_id ?? ''}
+              onChange={(e) => handleQueueSelect(e.target.value)}
+              required
+              style={{ width: '100%', maxWidth: '400px' }}
+            >
+              <option value="">Select team and round...</option>
+              {queueItems.length === 0 ? (
+                <option value="" disabled>
+                  No queue items available
+                </option>
+              ) : (
+                queueItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    #{item.seeding_team_number} {item.seeding_team_name} – Round{' '}
+                    {item.seeding_round}
+                  </option>
+                ))
+              )}
+            </select>
+            {formData.game_queue_id && (
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  fontSize: '0.9rem',
+                  color: 'var(--secondary-color)',
+                }}
+              >
+                Team {formData.team_number} – {formData.team_name} (Round{' '}
+                {formData.round})
+              </div>
+            )}
           </div>
         )}
 

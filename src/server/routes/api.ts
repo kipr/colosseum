@@ -21,6 +21,7 @@ router.post(
         bracketSource,
         eventId,
         scoreType,
+        game_queue_id,
       } = req.body;
 
       if (!templateId || !scoreData) {
@@ -138,8 +139,8 @@ router.post(
       // Build insert - event-scoped uses null for spreadsheet_config_id
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, event_id, score_type)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null,
           templateId,
@@ -149,6 +150,7 @@ router.post(
           JSON.stringify(enrichedScoreData),
           isDbBacked ? eventId : null,
           isDbBacked ? scoreType : null,
+          game_queue_id ?? null,
         ],
       );
 

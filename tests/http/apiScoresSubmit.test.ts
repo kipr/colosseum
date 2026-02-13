@@ -17,6 +17,7 @@ import {
   seedTeam,
   seedScoresheetTemplate,
   seedSpreadsheetConfig,
+  seedQueueItem,
 } from './helpers/seed';
 import apiRoutes from '../../src/server/routes/api';
 
@@ -631,6 +632,53 @@ describe('API Score Submit Routes', () => {
         expect((res.json as { error: string }).error).toContain(
           'Team not found',
         );
+      });
+
+      it('stores game_queue_id when provided for seeding submission', async () => {
+        const event = await seedEvent(testDb.db);
+        const team = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 99,
+          team_name: 'Queue Team',
+        });
+        const queueItem = await seedQueueItem(testDb.db, {
+          event_id: event.id,
+          queue_type: 'seeding',
+          queue_position: 1,
+          seeding_team_id: team.id,
+          seeding_round: 2,
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Seeding Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Queue Team',
+          matchId: '2',
+          scoreData: {
+            team_id: { value: team.id, type: 'number' },
+            team_number: { value: 99, type: 'text' },
+            team_name: { value: 'Queue Team', type: 'text' },
+            round: { value: 2, type: 'number' },
+            grand_total: { value: 180, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+          game_queue_id: queueItem.id,
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as {
+          game_queue_id: number | null;
+          event_id: number | null;
+          score_type: string | null;
+        };
+        expect(submission.game_queue_id).toBe(queueItem.id);
+        expect(submission.event_id).toBe(event.id);
+        expect(submission.score_type).toBe('seeding');
       });
 
       it('uses legacy spreadsheet path when eventId/scoreType not provided', async () => {
