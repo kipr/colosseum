@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -69,6 +69,8 @@ type QueueStatus =
   | 'completed'
   | 'skipped';
 type QueueType = 'seeding' | 'bracket';
+type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
+type SortDirection = 'asc' | 'desc';
 
 const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'all', label: 'All Types' },
@@ -105,6 +107,8 @@ export default function QueueTab() {
     'in_progress',
   ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
+  const [sortField, setSortField] = useState<SortField>('gameNumber');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
   // Populate from bracket state
   const [showPopulateModal, setShowPopulateModal] = useState(false);
@@ -594,6 +598,78 @@ export default function QueueTab() {
     }
   };
 
+  const getRoundOrder = (item: QueueItem): number => {
+    if (item.queue_type === 'seeding' && item.seeding_round !== null) {
+      return item.seeding_round;
+    }
+    if (item.round_name) {
+      const match = item.round_name.match(/\d+/);
+      if (match) {
+        return Number(match[0]);
+      }
+    }
+    return Number.MAX_SAFE_INTEGER;
+  };
+
+  const getTeamSortValue = (item: QueueItem): string => {
+    if (item.queue_type === 'seeding') {
+      return (item.seeding_team_name || '').toLowerCase();
+    }
+    const team1 = (item.team1_name || '').toLowerCase();
+    const team2 = (item.team2_name || '').toLowerCase();
+    return `${team1} ${team2}`.trim();
+  };
+
+  const getTeamNumberSortValue = (item: QueueItem): number => {
+    if (item.queue_type === 'seeding') {
+      return item.seeding_team_number ?? Number.MAX_SAFE_INTEGER;
+    }
+    return Math.min(
+      item.team1_number ?? Number.MAX_SAFE_INTEGER,
+      item.team2_number ?? Number.MAX_SAFE_INTEGER,
+    );
+  };
+
+  const sortedQueue = useMemo(() => {
+    const sorted = [...queue];
+    sorted.sort((a, b) => {
+      const roundCompare = getRoundOrder(a) - getRoundOrder(b);
+      if (roundCompare !== 0) {
+        return roundCompare;
+      }
+
+      let valueCompare = 0;
+      if (sortField === 'gameNumber') {
+        const aValue = a.queue_position;
+        const bValue = b.queue_position;
+        valueCompare = aValue - bValue;
+      } else if (sortField === 'teamNumber') {
+        valueCompare = getTeamNumberSortValue(a) - getTeamNumberSortValue(b);
+      } else {
+        valueCompare = getTeamSortValue(a).localeCompare(getTeamSortValue(b));
+      }
+
+      if (valueCompare !== 0) {
+        return sortDirection === 'asc' ? valueCompare : -valueCompare;
+      }
+
+      return a.queue_position - b.queue_position;
+    });
+    return sorted;
+  }, [queue, sortDirection, sortField]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortField(field);
+    setSortDirection('asc');
+  };
+
+  const getSortIndicator = (field: SortField): string =>
+    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+
   // No event selected
   if (!selectedEventId) {
     return (
@@ -700,9 +776,33 @@ export default function QueueTab() {
           <table>
             <thead>
               <tr>
-                <th style={{ width: '50px' }}>#</th>
-                <th style={{ width: '120px' }}>Team #</th>
-                <th>Details</th>
+                <th style={{ width: '50px' }}>
+                  <button
+                    type="button"
+                    className="queue-sort-button"
+                    onClick={() => handleSort('gameNumber')}
+                  >
+                    #{getSortIndicator('gameNumber')}
+                  </button>
+                </th>
+                <th style={{ width: '120px' }}>
+                  <button
+                    type="button"
+                    className="queue-sort-button"
+                    onClick={() => handleSort('teamNumber')}
+                  >
+                    Team #{getSortIndicator('teamNumber')}
+                  </button>
+                </th>
+                <th>
+                  <button
+                    type="button"
+                    className="queue-sort-button"
+                    onClick={() => handleSort('teamName')}
+                  >
+                    Team Name{getSortIndicator('teamName')}
+                  </button>
+                </th>
                 <th style={{ width: '80px' }}>Type</th>
                 <th style={{ width: '120px' }}>Called At</th>
                 <th style={{ width: '100px' }}>Status</th>
@@ -711,69 +811,72 @@ export default function QueueTab() {
               </tr>
             </thead>
             <tbody>
-              {queue.map((item, index) => (
-                <tr key={item.id}>
-                  <td className="queue-position">{item.queue_position}</td>
-                  <td>{renderTeamNumber(item)}</td>
-                  <td>{renderItemDetails(item)}</td>
-                  <td>
-                    <span
-                      className={`queue-type-badge ${getTypeClass(item.queue_type)}`}
-                    >
-                      {item.queue_type}
-                    </span>
-                  </td>
-                  <td className="queue-called-at">
-                    {formatCalledAt(item.called_at)}
-                  </td>
-                  <td>
-                    <span
-                      className={`queue-status-badge ${getStatusClass(item.status)}`}
-                    >
-                      {STATUS_LABELS[item.status]}
-                    </span>
-                  </td>
-                  <td>
-                    <div className="queue-actions">
-                      {(item.status === 'queued' ||
-                        item.status === 'called') && (
+              {sortedQueue.map((item) => {
+                const index = queue.findIndex((q) => q.id === item.id);
+                return (
+                  <tr key={item.id}>
+                    <td className="queue-position">{item.queue_position}</td>
+                    <td>{renderTeamNumber(item)}</td>
+                    <td>{renderItemDetails(item)}</td>
+                    <td>
+                      <span
+                        className={`queue-type-badge ${getTypeClass(item.queue_type)}`}
+                      >
+                        {item.queue_type}
+                      </span>
+                    </td>
+                    <td className="queue-called-at">
+                      {formatCalledAt(item.called_at)}
+                    </td>
+                    <td>
+                      <span
+                        className={`queue-status-badge ${getStatusClass(item.status)}`}
+                      >
+                        {STATUS_LABELS[item.status]}
+                      </span>
+                    </td>
+                    <td>
+                      <div className="queue-actions">
+                        {(item.status === 'queued' ||
+                          item.status === 'called') && (
+                          <button
+                            className={`btn ${item.status === 'queued' ? 'btn-success' : 'btn-secondary'}`}
+                            onClick={() => handleCallToggle(item)}
+                          >
+                            {item.status === 'queued' ? 'Call' : 'Uncall'}
+                          </button>
+                        )}
                         <button
-                          className={`btn ${item.status === 'queued' ? 'btn-success' : 'btn-secondary'}`}
-                          onClick={() => handleCallToggle(item)}
+                          className="btn btn-danger"
+                          onClick={() => handleDelete(item)}
                         >
-                          {item.status === 'queued' ? 'Call' : 'Uncall'}
+                          Remove
                         </button>
-                      )}
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDelete(item)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </td>
-                  <td>
-                    <div className="reorder-buttons">
-                      <button
-                        className="btn btn-secondary reorder-btn"
-                        onClick={() => handleMove(index, 'up')}
-                        disabled={index === 0}
-                        title="Move up"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        className="btn btn-secondary reorder-btn"
-                        onClick={() => handleMove(index, 'down')}
-                        disabled={index === queue.length - 1}
-                        title="Move down"
-                      >
-                        ▼
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </div>
+                    </td>
+                    <td>
+                      <div className="reorder-buttons">
+                        <button
+                          className="btn btn-secondary reorder-btn"
+                          onClick={() => handleMove(index, 'up')}
+                          disabled={index === 0}
+                          title="Move up"
+                        >
+                          ▲
+                        </button>
+                        <button
+                          className="btn btn-secondary reorder-btn"
+                          onClick={() => handleMove(index, 'down')}
+                          disabled={index === queue.length - 1}
+                          title="Move down"
+                        >
+                          ▼
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
