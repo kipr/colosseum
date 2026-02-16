@@ -503,35 +503,6 @@ export default function QueueTab() {
     }
   };
 
-  // Handle delete
-  const handleDelete = async (item: QueueItem) => {
-    const confirmed = await confirm({
-      title: 'Remove from Queue',
-      message: 'Are you sure you want to remove this item from the queue?',
-      confirmText: 'Remove',
-      confirmStyle: 'danger',
-    });
-
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`/queue/${item.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      if (!response.ok && response.status !== 204) {
-        throw new Error('Failed to remove from queue');
-      }
-
-      toast.success('Removed from queue');
-      setQueue((prev) => prev.filter((q) => q.id !== item.id));
-    } catch (error) {
-      console.error('Error removing from queue:', error);
-      toast.error('Failed to remove from queue');
-    }
-  };
-
   // Render item details
   const renderTeamNumber = (item: QueueItem) => {
     if (item.queue_type === 'seeding') {
@@ -846,12 +817,6 @@ export default function QueueTab() {
                             {item.status === 'queued' ? 'Call' : 'Uncall'}
                           </button>
                         )}
-                        <button
-                          className="btn btn-danger"
-                          onClick={() => handleDelete(item)}
-                        >
-                          Remove
-                        </button>
                       </div>
                     </td>
                     <td>
