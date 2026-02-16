@@ -1261,12 +1261,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           {headerFields.map(renderField)}
         </div>
 
-        {/* Winner selection for head-to-head mode */}
-        {isHeadToHead &&
-          schema.fields
-            .filter((f: any) => f.type === 'winner-select')
-            .map(renderField)}
-
         {schema.layout === 'two-column' ? (
           <div className="scoresheet-columns">
             <div className="scoresheet-column">
@@ -1287,11 +1281,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
                 (f: any) =>
                   !f.column &&
                   f.type !== 'section_header' &&
-                  f.type !== 'group_header',
+                  f.type !== 'group_header' &&
+                  f.type !== 'winner-select',
               )
               .map(renderField)}
           </div>
         )}
+
+        {/* Winner selection for head-to-head mode */}
+        {isHeadToHead &&
+          schema.fields
+            .filter((f: any) => f.type === 'winner-select')
+            .map(renderField)}
 
         {/* Render grand total if it exists (no column specified) */}
         {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
