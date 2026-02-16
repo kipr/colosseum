@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from 'express';
+import { Server } from 'http';
 import session from 'express-session';
 import BetterSqlite3 from 'better-sqlite3';
 import { SqliteSessionStore } from './session/SqliteSessionStore';
@@ -86,6 +87,7 @@ if (usePostgres) {
   const sqlite = new BetterSqlite3(dbPath);
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
+  sqlite.pragma('busy_timeout = 5000');
 
   sessionConfig.store = new SqliteSessionStore({
     db: sqlite,
@@ -216,11 +218,41 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     .json({ error: 'Internal server error', message: err.message });
 });
 
+let server: Server | null = null;
+const SHUTDOWN_TIMEOUT_MS = 10000;
+let isShuttingDown = false;
+
+function shutdown(signal: string, exitCode = 0) {
+  if (isShuttingDown) return;
+  if (!server) {
+    process.exit(exitCode);
+    return;
+  }
+  isShuttingDown = true;
+  console.log(`\n${signal} received, shutting down gracefully...`);
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(exitCode);
+  });
+  setTimeout(() => {
+    console.error('Shutdown timeout reached, forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  shutdown('uncaughtException', 1);
+});
+
 // Initialize database and start server
 async function startServer() {
   try {
     await initializeDatabase();
-    app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       const timestamp = new Date().toLocaleString('en-US', {
         year: 'numeric',
         month: '2-digit',

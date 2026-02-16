@@ -307,6 +307,7 @@ export async function getDatabase(): Promise<Database> {
     );
     sqliteDb.pragma('foreign_keys = ON;');
     sqliteDb.pragma('journal_mode = WAL');
+    sqliteDb.pragma('busy_timeout = 5000');
     dbAdapter = new SqliteAdapter(sqliteDb);
   }
 
@@ -337,7 +338,7 @@ export { normalizeParam };
 
 export async function closeDatabase(): Promise<void> {
   if (sqliteDb) {
-    await sqliteDb.close();
+    sqliteDb.close();
     sqliteDb = null;
   }
   if (pgPool) {
