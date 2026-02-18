@@ -11,8 +11,7 @@ import Admin from './pages/Admin';
 import PublicChat from './components/PublicChat';
 
 /** Feature gate: set to true to enable public chat UI. Chat APIs remain available for internal/admin use. */
-const CHAT_UI_ENABLED =
-  import.meta.env.VITE_ENABLE_CHAT === 'true' || false;
+const CHAT_UI_ENABLED = import.meta.env.VITE_ENABLE_CHAT === 'true' || false;
 
 function App() {
   return (

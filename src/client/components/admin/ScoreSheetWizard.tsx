@@ -703,28 +703,28 @@ export default function ScoreSheetWizard({
 
             <div className="form-group">
               <label>Bracket *</label>
-                <select
-                  className="field-input"
-                  value={selectedBracket?.id || ''}
-                  onChange={(e) => {
-                    const id = Number(e.target.value);
-                    const bracket = brackets.find((b) => b.id === id) || null;
-                    setSelectedBracket(bracket);
-                  }}
-                >
-                  <option value="">Select bracket...</option>
-                  {brackets.length === 0 ? (
-                    <option value="" disabled>
-                      No brackets found for this event. Create a bracket first.
+              <select
+                className="field-input"
+                value={selectedBracket?.id || ''}
+                onChange={(e) => {
+                  const id = Number(e.target.value);
+                  const bracket = brackets.find((b) => b.id === id) || null;
+                  setSelectedBracket(bracket);
+                }}
+              >
+                <option value="">Select bracket...</option>
+                {brackets.length === 0 ? (
+                  <option value="" disabled>
+                    No brackets found for this event. Create a bracket first.
+                  </option>
+                ) : (
+                  brackets.map((bracket) => (
+                    <option key={bracket.id} value={bracket.id}>
+                      {bracket.name} ({bracket.bracket_size}-team)
                     </option>
-                  ) : (
-                    brackets.map((bracket) => (
-                      <option key={bracket.id} value={bracket.id}>
-                        {bracket.name} ({bracket.bracket_size}-team)
-                      </option>
-                    ))
-                  )}
-                </select>
+                  ))
+                )}
+              </select>
               <small>
                 Games and winners are stored in the database for this bracket
               </small>

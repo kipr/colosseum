@@ -83,7 +83,11 @@ export interface AcceptEventScoreSuccess {
   loserId?: number;
   advanced?: boolean;
   advancedTo?: number;
-  byeResolution?: { byeGamesResolved: number; slotsFilled: number; readyGamesUpdated: number };
+  byeResolution?: {
+    byeGamesResolved: number;
+    slotsFilled: number;
+    readyGamesUpdated: number;
+  };
 }
 
 export interface AcceptEventScoreError {
@@ -109,12 +113,12 @@ export async function acceptEventScore(
 ): Promise<AcceptEventScoreResult> {
   const { db, submissionId, force, reviewedBy, ipAddress } = params;
   const id = String(submissionId);
-  const auditAction = reviewedBy === null ? 'score_auto_accepted' : 'score_accepted';
+  const auditAction =
+    reviewedBy === null ? 'score_auto_accepted' : 'score_accepted';
 
-  const score = await db.get(
-    'SELECT * FROM score_submissions WHERE id = ?',
-    [id],
-  );
+  const score = await db.get('SELECT * FROM score_submissions WHERE id = ?', [
+    id,
+  ]);
   if (!score) {
     return { ok: false, status: 404, error: 'Score submission not found' };
   }
@@ -137,10 +141,8 @@ export async function acceptEventScore(
 
   if (scoreType === 'seeding') {
     const teamId = scoreData.team_id?.value;
-    const roundNumber =
-      scoreData.round?.value || scoreData.round_number?.value;
-    const scoreValue =
-      scoreData.grand_total?.value ?? scoreData.score?.value;
+    const roundNumber = scoreData.round?.value || scoreData.round_number?.value;
+    const scoreValue = scoreData.grand_total?.value ?? scoreData.score?.value;
 
     if (!teamId || !roundNumber) {
       return {
@@ -342,10 +344,9 @@ export async function acceptEventScore(
         destGame.team2_id &&
         destGame.status === 'pending'
       ) {
-        await db.run(
-          `UPDATE bracket_games SET status = 'ready' WHERE id = ?`,
-          [update.gameId],
-        );
+        await db.run(`UPDATE bracket_games SET status = 'ready' WHERE id = ?`, [
+          update.gameId,
+        ]);
       }
     }
 

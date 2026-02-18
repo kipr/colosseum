@@ -707,12 +707,13 @@ export default function EventsTab() {
                   onChange={(e) =>
                     setFormData({
                       ...formData,
-                      score_accept_mode: e.target
-                        .value as ScoreAcceptMode,
+                      score_accept_mode: e.target.value as ScoreAcceptMode,
                     })
                   }
                 >
-                  <option value="manual">Manual (admin reviews each score)</option>
+                  <option value="manual">
+                    Manual (admin reviews each score)
+                  </option>
                   <option value="auto_accept_seeding">
                     Auto-accept seeding scores only
                   </option>
