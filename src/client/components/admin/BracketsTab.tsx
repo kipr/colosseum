@@ -93,6 +93,31 @@ function getGameStatusClass(status: GameStatus): string {
   }
 }
 
+/** Find the bracket winner from games. Championship game has no winner_advances_to. */
+function getBracketWinner(
+  games: BracketDetail['games'],
+): {
+  team_id: number;
+  team_number?: number;
+  team_name?: string;
+  team_display?: string | null;
+} | null {
+  const championshipGames = games.filter(
+    (g) => g.winner_advances_to_id === null,
+  );
+  if (championshipGames.length === 0) return null;
+  const champ = championshipGames.reduce((a, b) =>
+    (a.game_number ?? 0) > (b.game_number ?? 0) ? a : b,
+  );
+  if (!champ.winner_id) return null;
+  return {
+    team_id: champ.winner_id,
+    team_number: champ.winner_number,
+    team_name: champ.winner_name,
+    team_display: champ.winner_display,
+  };
+}
+
 const defaultFormData: BracketFormData = {
   name: '',
   bracket_size: 8,
@@ -742,9 +767,57 @@ export default function BracketsTab() {
                 </div>
               </div>
 
+              {/* Bracket Winner Banner - Management View */}
+              {detailViewMode === 'management' &&
+                (() => {
+                  const winner =
+                    bracketDetail.games.length > 0
+                      ? getBracketWinner(bracketDetail.games)
+                      : null;
+                  if (!winner) return null;
+                  return (
+                    <div className="bracket-winner-banner bracket-winner-management">
+                      <span className="bracket-winner-trophy" aria-hidden>
+                        🏆
+                      </span>
+                      <div className="bracket-winner-content">
+                        <span className="bracket-winner-label">
+                          Bracket Champion
+                        </span>
+                        <span className="bracket-winner-team">
+                          <strong>{winner.team_number}</strong>{' '}
+                          {winner.team_name ||
+                            winner.team_display ||
+                            `Team ${winner.team_id}`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
               {/* Bracket-like View */}
               {detailViewMode === 'bracket' && (
                 <div className="card bracket-section">
+                  {(() => {
+                    const winner =
+                      bracketDetail.games.length > 0
+                        ? getBracketWinner(bracketDetail.games)
+                        : null;
+                    return winner ? (
+                      <div className="bracket-winner-banner bracket-winner-bracket-view">
+                        <span className="bracket-winner-trophy" aria-hidden>
+                          🏆
+                        </span>
+                        <span className="bracket-winner-label">Champion</span>
+                        <span className="bracket-winner-team">
+                          <strong>{winner.team_number}</strong>{' '}
+                          {winner.team_name ||
+                            winner.team_display ||
+                            `Team ${winner.team_id}`}
+                        </span>
+                      </div>
+                    ) : null;
+                  })()}
                   <BracketLikeView games={bracketDetail.games} />
                 </div>
               )}

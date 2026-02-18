@@ -127,6 +127,79 @@
   flex-wrap: wrap;
 }
 
+/* Bracket winner banners */
+.bracket-winner-banner {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-radius: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.bracket-winner-management {
+  background: linear-gradient(
+    135deg,
+    rgba(34, 197, 94, 0.15) 0%,
+    rgba(34, 197, 94, 0.05) 100%
+  );
+  border: 2px solid var(--success-color, #16a34a);
+  font-size: 1.25rem;
+}
+
+.bracket-winner-management .bracket-winner-trophy {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+
+.bracket-winner-management .bracket-winner-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.bracket-winner-management .bracket-winner-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--success-color, #16a34a);
+}
+
+.bracket-winner-management .bracket-winner-team {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+.bracket-winner-bracket-view {
+  background: linear-gradient(
+    90deg,
+    rgba(34, 197, 94, 0.12) 0%,
+    rgba(34, 197, 94, 0.04) 100%
+  );
+  border: 2px solid var(--success-color, #16a34a);
+  font-size: 1rem;
+}
+
+.bracket-winner-bracket-view .bracket-winner-trophy {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.bracket-winner-bracket-view .bracket-winner-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--success-color, #16a34a);
+}
+
+.bracket-winner-bracket-view .bracket-winner-team {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
 /* Bracket sections */
 .bracket-section {
   margin-top: 1rem;
