@@ -52,18 +52,7 @@ export async function ensureBracketTemplatesSeeded(
   db: Database,
   bracketSize: number,
 ): Promise<void> {
-  // Check if templates already exist for this size
-  const existing = await db.get(
-    'SELECT COUNT(*) as count FROM bracket_templates WHERE bracket_size = ?',
-    [bracketSize],
-  );
-
-  if (existing && existing.count > 0) {
-    // Templates already exist
-    return;
-  }
-
-  // Generate and insert templates
+  // Generate and insert templates (INSERT OR IGNORE handles existing rows via UNIQUE)
   const templates = generateDEBracketTemplates(bracketSize);
 
   // Use INSERT OR IGNORE for safety (handles concurrent requests)

@@ -60,16 +60,11 @@ router.post(
       const isDbBackedSeeding = attemptingDbBackedSeeding && resolvedTeamId;
 
       // DB-backed bracket submission: validate bracket_game_id belongs to event
+      // (game query JOINs brackets/events, so event existence is validated implicitly)
       const attemptingDbBackedBracket =
         eventId && scoreType === 'bracket' && bracket_game_id != null;
       let isDbBackedBracket = false;
       if (attemptingDbBackedBracket) {
-        const event = await db.get('SELECT id FROM events WHERE id = ?', [
-          eventId,
-        ]);
-        if (!event) {
-          return res.status(400).json({ error: 'Invalid event' });
-        }
         const game = await db.get(
           `SELECT bg.id FROM bracket_games bg
            JOIN brackets b ON bg.bracket_id = b.id
@@ -78,7 +73,8 @@ router.post(
         );
         if (!game) {
           return res.status(400).json({
-            error: 'Bracket game not found or does not belong to this event',
+            error:
+              'Bracket game not found or does not belong to this event. Invalid event.',
           });
         }
         isDbBackedBracket = true;
@@ -94,6 +90,7 @@ router.post(
 
       const spreadsheetConfigId: number | null = null;
 
+      // Single event validation for seeding (bracket already validated via game query)
       if (attemptingDbBackedSeeding) {
         const event = await db.get('SELECT id FROM events WHERE id = ?', [
           eventId,

@@ -33,41 +33,46 @@ router.get(
 
       const db = await getDatabase();
 
-      // Validate event exists
-      const event = await db.get('SELECT id FROM events WHERE id = ?', [
-        eventId,
-      ]);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-
       // Parse pagination params
       const pageNum = Math.max(1, parseInt(page, 10) || 1);
       const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 50));
       const offset = (pageNum - 1) * limitNum;
 
-      // Build WHERE conditions
-      const conditions: string[] = ['s.event_id = ?'];
-      const params: (string | number)[] = [parseInt(eventId, 10)];
+      // Build WHERE conditions for score_submissions
+      const countConditions: string[] = ['s.event_id = e.id'];
+      const dataConditions: string[] = ['s.event_id = ?'];
+      const eventIdNum = parseInt(eventId, 10);
+      const params: (string | number)[] = [eventIdNum];
 
       if (status && ['pending', 'accepted', 'rejected'].includes(status)) {
-        conditions.push('s.status = ?');
+        countConditions.push('s.status = ?');
+        dataConditions.push('s.status = ?');
         params.push(status);
       }
 
       if (score_type && ['seeding', 'bracket'].includes(score_type)) {
-        conditions.push('s.score_type = ?');
+        countConditions.push('s.score_type = ?');
+        dataConditions.push('s.score_type = ?');
         params.push(score_type);
       }
 
-      const whereClause = conditions.join(' AND ');
+      const countWhereClause = countConditions.join(' AND ');
+      const dataWhereClause = dataConditions.join(' AND ');
 
-      // Count total matching rows
-      const countResult = await db.get(
-        `SELECT COUNT(*) as count FROM score_submissions s WHERE ${whereClause}`,
-        params,
+      // Validate event exists and get count in one query.
+      // Param order: subquery params first (status, score_type), then outer e.id.
+      const countParams = [...params.slice(1), eventIdNum];
+
+      const eventAndCount = await db.get<{ event_id: number; count: number }>(
+        `SELECT e.id as event_id,
+                (SELECT COUNT(*) FROM score_submissions s WHERE ${countWhereClause}) as count
+         FROM events e WHERE e.id = ?`,
+        countParams,
       );
-      const totalCount = countResult?.count || 0;
+      if (!eventAndCount) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const totalCount = eventAndCount.count || 0;
       const totalPages = Math.ceil(totalCount / limitNum);
 
       // Fetch rows with joins for display fields
@@ -92,7 +97,7 @@ router.get(
         LEFT JOIN brackets b ON bg.bracket_id = b.id
         LEFT JOIN seeding_scores ss ON s.seeding_score_id = ss.id
         LEFT JOIN teams seeding_team ON ss.team_id = seeding_team.id
-        WHERE ${whereClause}
+        WHERE ${dataWhereClause}
         ORDER BY s.created_at DESC
         LIMIT ? OFFSET ?`,
         [...params, limitNum, offset],
@@ -327,9 +332,10 @@ router.post(
           );
           tx.run(
             `UPDATE score_submissions 
-             SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+             SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP,
+                 seeding_score_id = (SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?)
              WHERE id = ?`,
-            [reviewedBy, op.id],
+            [reviewedBy, op.teamId, op.roundNumber, op.id],
           );
         }
 
@@ -369,18 +375,8 @@ router.post(
         }
       });
 
-      // Post-transaction: update seeding_score_id, audit, queue, bye resolution
+      // Post-transaction: audit, queue, bye resolution
       for (const op of seedingOps) {
-        const seedingScore = await db.get(
-          'SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?',
-          [op.teamId, op.roundNumber],
-        );
-        if (seedingScore) {
-          await db.run(
-            'UPDATE score_submissions SET seeding_score_id = ? WHERE id = ?',
-            [seedingScore.id, op.id],
-          );
-        }
         const updatedScore = await db.get(
           'SELECT * FROM score_submissions WHERE id = ?',
           [op.id],
@@ -408,21 +404,11 @@ router.post(
       const bracketIdsProcessed = new Set<number>();
       for (const op of bracketOps) {
         for (const u of op.updates) {
-          const destGame = await db.get(
-            'SELECT * FROM bracket_games WHERE id = ?',
+          await db.run(
+            `UPDATE bracket_games SET status = 'ready'
+             WHERE id = ? AND team1_id IS NOT NULL AND team2_id IS NOT NULL AND status = 'pending'`,
             [u.gameId],
           );
-          if (
-            destGame &&
-            destGame.team1_id &&
-            destGame.team2_id &&
-            destGame.status === 'pending'
-          ) {
-            await db.run(
-              `UPDATE bracket_games SET status = 'ready' WHERE id = ?`,
-              [u.gameId],
-            );
-          }
         }
         const updatedScore = await db.get(
           'SELECT * FROM score_submissions WHERE id = ?',

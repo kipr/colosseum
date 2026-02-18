@@ -181,23 +181,12 @@ export async function acceptEventScore(
 
       tx.run(
         `UPDATE score_submissions 
-         SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
+         SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP,
+             seeding_score_id = (SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?)
          WHERE id = ?`,
-        [reviewedBy, id],
+        [reviewedBy, teamId, roundNumber, id],
       );
     });
-
-    const seedingScore = await db.get(
-      'SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?',
-      [teamId, roundNumber],
-    );
-
-    if (seedingScore) {
-      await db.run(
-        'UPDATE score_submissions SET seeding_score_id = ? WHERE id = ?',
-        [seedingScore.id, id],
-      );
-    }
 
     const updatedScore = await db.get(
       'SELECT * FROM score_submissions WHERE id = ?',
@@ -220,7 +209,7 @@ export async function acceptEventScore(
       ok: true,
       success: true,
       scoreType: 'seeding',
-      seedingScoreId: seedingScore?.id,
+      seedingScoreId: updatedScore?.seeding_score_id,
     };
   }
 
@@ -297,7 +286,12 @@ export async function acceptEventScore(
       game.winner_advances_to_id === game.loser_advances_to_id;
     const winnersBracketWon = isGrandFinal && winnerTeamId === game.team1_id;
 
-    if (loserId && game.loser_advances_to_id && game.loser_slot && !winnersBracketWon) {
+    if (
+      loserId &&
+      game.loser_advances_to_id &&
+      game.loser_slot &&
+      !winnersBracketWon
+    ) {
       updates.push({
         gameId: game.loser_advances_to_id,
         slot: game.loser_slot,
