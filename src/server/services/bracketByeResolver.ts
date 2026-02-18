@@ -113,11 +113,13 @@ export async function resolveBracketByes(
         game.team1_source,
         entriesBySeed,
         gamesByNumber,
+        { currentGame: game, slot: 'team1' },
       );
       const team2Resolved = resolveSource(
         game.team2_source,
         entriesBySeed,
         gamesByNumber,
+        { currentGame: game, slot: 'team2' },
       );
 
       // Fill team1 if missing and we have a resolved value
@@ -223,18 +225,27 @@ interface SourceResolution {
   team_id: number | null;
 }
 
+/** Context for source resolution (championship reset logic). */
+interface ResolveSourceContext {
+  currentGame: GameRow;
+  slot: 'team1' | 'team2';
+}
+
 /**
  * Resolve a team source string to a team_id or determine if it's impossible.
  *
  * @param source - Source string like 'seed:1', 'winner:5', 'loser:3'
  * @param entriesBySeed - Map of seed positions to team entries
  * @param gamesByNumber - Map of game numbers to game rows
+ * @param context - Optional context for championship reset: when winners bracket
+ *   wins the grand final, the loser is dropped and the winner gets a bye
  * @returns Resolution result
  */
 function resolveSource(
   source: string | null,
   entriesBySeed: Map<number, { team_id: number | null; is_bye: boolean }>,
   gamesByNumber: Map<number, GameRow>,
+  context?: ResolveSourceContext,
 ): SourceResolution {
   if (!source) {
     return { resolved: false, team_id: null };
@@ -278,6 +289,21 @@ function resolveSource(
     }
     // Only resolved if source game is decided
     if (sourceGame.status === 'completed' || sourceGame.status === 'bye') {
+      // Championship reset: when winners bracket wins the grand final, the loser
+      // is dropped and the winner gets a bye. Detect this by: current game has
+      // team1_source=winner:X and team2_source=loser:X (same X), and grand final
+      // winner is team1 (winners bracket).
+      if (context?.slot === 'team2' && context.currentGame.team1_source) {
+        const team1SrcMatch = context.currentGame.team1_source.match(/^winner:(\d+)$/);
+        if (team1SrcMatch && parseInt(team1SrcMatch[1], 10) === gameNum) {
+          const winnersBracketWon =
+            sourceGame.winner_id !== null &&
+            sourceGame.winner_id === sourceGame.team1_id;
+          if (winnersBracketWon) {
+            return { resolved: true, team_id: null };
+          }
+        }
+      }
       // Note: bye games have loser_id = null, which is correct (no loser exists)
       return { resolved: true, team_id: sourceGame.loser_id };
     }

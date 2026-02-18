@@ -382,6 +382,98 @@ describe('Bracket Bye Resolver', () => {
     });
   });
 
+  describe('championship reset (winners bracket wins grand final)', () => {
+    it('should drop loser and give winner bye when winners bracket wins grand final', async () => {
+      const winnersTeamId = await createTeam(100);
+      const losersTeamId = await createTeam(200);
+
+      // Grand final (game 6): team1 = winners bracket, team2 = losers bracket
+      // Championship reset (game 7): winner:6 vs loser:6
+      const resetGameId = await createGame(7, {
+        team1Source: 'winner:6',
+        team2Source: 'loser:6',
+        status: 'pending',
+      });
+
+      await createGame(6, {
+        team1Source: 'winner:3', // winners bracket
+        team2Source: 'winner:5', // losers bracket
+        team1Id: winnersTeamId,
+        team2Id: losersTeamId,
+        status: 'completed',
+        winnerAdvancesToId: resetGameId,
+        loserAdvancesToId: resetGameId,
+        winnerSlot: 'team1',
+        loserSlot: 'team2',
+      });
+
+      // Winners bracket (team1) wins grand final
+      await testDb.db.run(
+        `UPDATE bracket_games SET winner_id = ?, loser_id = ? WHERE game_number = 6`,
+        [winnersTeamId, losersTeamId],
+      );
+
+      // Winner propagates to team1 of reset (via scoreAccept). Simulate that:
+      await testDb.db.run(
+        `UPDATE bracket_games SET team1_id = ? WHERE game_number = 7`,
+        [winnersTeamId],
+      );
+
+      const result = await resolveBracketByes(testDb.db, bracketId);
+
+      const resetGame = await testDb.db.get(
+        `SELECT * FROM bracket_games WHERE id = ?`,
+        [resetGameId],
+      );
+
+      // Championship reset should be a bye with winners bracket team as champion
+      expect(resetGame.status).toBe('bye');
+      expect(resetGame.winner_id).toBe(winnersTeamId);
+      expect(result.byeGamesResolved).toBe(1);
+    });
+
+    it('should fill both slots when losers bracket wins grand final (normal reset)', async () => {
+      const winnersTeamId = await createTeam(100);
+      const losersTeamId = await createTeam(200);
+
+      const resetGameId = await createGame(7, {
+        team1Source: 'winner:6',
+        team2Source: 'loser:6',
+        status: 'pending',
+      });
+
+      await createGame(6, {
+        team1Source: 'winner:3',
+        team2Source: 'winner:5',
+        team1Id: winnersTeamId,
+        team2Id: losersTeamId,
+        status: 'completed',
+        winnerAdvancesToId: resetGameId,
+        loserAdvancesToId: resetGameId,
+        winnerSlot: 'team1',
+        loserSlot: 'team2',
+      });
+
+      // Losers bracket (team2) wins grand final
+      await testDb.db.run(
+        `UPDATE bracket_games SET winner_id = ?, loser_id = ? WHERE game_number = 6`,
+        [losersTeamId, winnersTeamId],
+      );
+
+      const result = await resolveBracketByes(testDb.db, bracketId);
+
+      const resetGame = await testDb.db.get(
+        `SELECT * FROM bracket_games WHERE id = ?`,
+        [resetGameId],
+      );
+
+      // Both teams should be filled - normal championship reset
+      expect(resetGame.team1_id).toBe(losersTeamId);
+      expect(resetGame.team2_id).toBe(winnersTeamId);
+      expect(result.slotsFilled).toBe(2);
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle empty bracket', async () => {
       // No games, no entries

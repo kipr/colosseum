@@ -288,7 +288,16 @@ export async function acceptEventScore(
       });
     }
 
-    if (loserId && game.loser_advances_to_id && game.loser_slot) {
+    // When winners bracket wins the grand final, there is no championship reset.
+    // Do not propagate the loser to the reset game - they are dropped; the winner
+    // gets a bye in the championship reset to keep the UI consistent.
+    const isGrandFinal =
+      game.winner_advances_to_id &&
+      game.loser_advances_to_id &&
+      game.winner_advances_to_id === game.loser_advances_to_id;
+    const winnersBracketWon = isGrandFinal && winnerTeamId === game.team1_id;
+
+    if (loserId && game.loser_advances_to_id && game.loser_slot && !winnersBracketWon) {
       updates.push({
         gameId: game.loser_advances_to_id,
         slot: game.loser_slot,
