@@ -2,20 +2,16 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import { formatDateTime } from '../../utils/dateUtils';
 import {
   Bracket,
   BracketDetail,
   BracketStatus,
-  GameStatus,
   STATUS_LABELS,
-  GAME_STATUS_LABELS,
 } from '../../types/brackets';
-import BracketLikeView from '../bracket/BracketLikeView';
+import BracketListTable from '../bracket/BracketListTable';
+import BracketDetailView from '../bracket/BracketDetailView';
 import '../Modal.css';
 import './BracketsTab.css';
-
-type DetailViewMode = 'management' | 'bracket';
 
 interface BracketFormData {
   name: string;
@@ -63,59 +59,6 @@ function nextPowerOfTwo(n: number): number {
 
 const BRACKET_SIZES = [4, 8, 16, 32, 64];
 
-function getStatusClass(status: BracketStatus): string {
-  switch (status) {
-    case 'setup':
-      return 'status-setup';
-    case 'in_progress':
-      return 'status-in-progress';
-    case 'completed':
-      return 'status-completed';
-    default:
-      return '';
-  }
-}
-
-function getGameStatusClass(status: GameStatus): string {
-  switch (status) {
-    case 'pending':
-      return 'game-status-pending';
-    case 'ready':
-      return 'game-status-ready';
-    case 'in_progress':
-      return 'game-status-in-progress';
-    case 'completed':
-      return 'game-status-completed';
-    case 'bye':
-      return 'game-status-bye';
-    default:
-      return '';
-  }
-}
-
-/** Find the bracket winner from games. Championship game has no winner_advances_to. */
-function getBracketWinner(games: BracketDetail['games']): {
-  team_id: number;
-  team_number?: number;
-  team_name?: string;
-  team_display?: string | null;
-} | null {
-  const championshipGames = games.filter(
-    (g) => g.winner_advances_to_id === null,
-  );
-  if (championshipGames.length === 0) return null;
-  const champ = championshipGames.reduce((a, b) =>
-    (a.game_number ?? 0) > (b.game_number ?? 0) ? a : b,
-  );
-  if (!champ.winner_id) return null;
-  return {
-    team_id: champ.winner_id,
-    team_number: champ.winner_number,
-    team_name: champ.winner_name,
-    team_display: champ.winner_display,
-  };
-}
-
 const defaultFormData: BracketFormData = {
   name: '',
   bracket_size: 8,
@@ -125,11 +68,9 @@ const defaultFormData: BracketFormData = {
 export default function BracketsTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
-  // List state
   const [brackets, setBrackets] = useState<Bracket[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Selected bracket detail
   const [selectedBracketId, setSelectedBracketId] = useState<number | null>(
     null,
   );
@@ -138,13 +79,11 @@ export default function BracketsTab() {
   );
   const [detailLoading, setDetailLoading] = useState(false);
 
-  // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState<BracketFormData>(defaultFormData);
   const [saving, setSaving] = useState(false);
 
-  // Create modal: team selection data
   const [createTeams, setCreateTeams] = useState<CreateModalTeam[]>([]);
   const [createScores, setCreateScores] = useState<CreateModalScore[]>([]);
   const [createRankings, setCreateRankings] = useState<CreateModalRanking[]>(
@@ -156,18 +95,12 @@ export default function BracketsTab() {
     new Set(),
   );
 
-  // Action states
   const [generatingEntries, setGeneratingEntries] = useState(false);
   const [generatingGames, setGeneratingGames] = useState(false);
-
-  // View mode state (management vs bracket-like view)
-  const [detailViewMode, setDetailViewMode] =
-    useState<DetailViewMode>('management');
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
-  // Fetch brackets for event
   const fetchBrackets = useCallback(async () => {
     if (!selectedEventId) {
       setBrackets([]);
@@ -192,7 +125,6 @@ export default function BracketsTab() {
     }
   }, [selectedEventId]);
 
-  // Fetch bracket detail
   const fetchBracketDetail = useCallback(async (bracketId: number) => {
     setDetailLoading(true);
     try {
@@ -226,7 +158,6 @@ export default function BracketsTab() {
     }
   }, [selectedBracketId, fetchBracketDetail]);
 
-  // Load create modal data when modal opens
   useEffect(() => {
     if (!showCreateModal || !selectedEventId) {
       return;
@@ -278,10 +209,8 @@ export default function BracketsTab() {
     return () => {
       cancelled = true;
     };
-    // toast.error is stable; toast object reference changes every render and would cause infinite loop
   }, [showCreateModal, selectedEventId]);
 
-  // Create bracket
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEventId) return;
@@ -345,7 +274,6 @@ export default function BracketsTab() {
     }
   };
 
-  // Update bracket
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!bracketDetail) return;
@@ -397,7 +325,6 @@ export default function BracketsTab() {
     }
   };
 
-  // Delete bracket
   const handleDelete = async (bracket: Bracket) => {
     const confirmed = await confirm({
       title: 'Delete Bracket',
@@ -433,7 +360,6 @@ export default function BracketsTab() {
     }
   };
 
-  // Generate entries from seeding
   const handleGenerateEntries = async () => {
     if (!bracketDetail) return;
 
@@ -477,7 +403,6 @@ export default function BracketsTab() {
     }
   };
 
-  // Generate games from templates
   const handleGenerateGames = async () => {
     if (!bracketDetail) return;
 
@@ -519,7 +444,6 @@ export default function BracketsTab() {
     }
   };
 
-  // Update bracket status
   const handleStatusChange = async (newStatus: BracketStatus) => {
     if (!bracketDetail) return;
 
@@ -547,7 +471,6 @@ export default function BracketsTab() {
     }
   };
 
-  // Open edit modal
   const handleOpenEditModal = () => {
     if (!bracketDetail) return;
     setFormData({
@@ -558,24 +481,6 @@ export default function BracketsTab() {
     setShowEditModal(true);
   };
 
-  // Render team display
-  const renderTeamDisplay = (
-    teamId: number | null,
-    teamNumber?: number,
-    teamName?: string,
-    teamDisplay?: string | null,
-  ) => {
-    if (!teamId) {
-      return <span className="team-tbd">TBD</span>;
-    }
-    return (
-      <span className="team-name">
-        <strong>{teamNumber}</strong> {teamName || teamDisplay}
-      </span>
-    );
-  };
-
-  // No event selected
   if (!selectedEventId) {
     return (
       <div className="brackets-tab">
@@ -587,6 +492,82 @@ export default function BracketsTab() {
       </div>
     );
   }
+
+  const renderAdminActions = () => {
+    if (!bracketDetail) return null;
+    return (
+      <>
+        <button className="btn btn-secondary" onClick={handleOpenEditModal}>
+          Edit
+        </button>
+        {bracketDetail.status === 'setup' && (
+          <button
+            className="btn btn-success"
+            onClick={() => handleStatusChange('in_progress')}
+          >
+            Start Bracket
+          </button>
+        )}
+        {bracketDetail.status === 'in_progress' && (
+          <>
+            <button
+              className="btn btn-primary"
+              onClick={() => handleStatusChange('completed')}
+            >
+              Mark Complete
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => handleStatusChange('setup')}
+            >
+              Back to Setup
+            </button>
+          </>
+        )}
+        {bracketDetail.status === 'completed' && (
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleStatusChange('in_progress')}
+          >
+            Reopen
+          </button>
+        )}
+      </>
+    );
+  };
+
+  const renderEntriesActions = () => {
+    if (!bracketDetail || bracketDetail.entries.length > 0) return null;
+    return (
+      <button
+        className="btn btn-primary"
+        onClick={handleGenerateEntries}
+        disabled={generatingEntries}
+      >
+        {generatingEntries ? 'Generating...' : 'Generate from Seeding'}
+      </button>
+    );
+  };
+
+  const renderGamesActions = () => {
+    if (!bracketDetail) return null;
+    return (
+      <button
+        className={`btn ${bracketDetail.games.length > 0 ? 'btn-danger' : 'btn-primary'}`}
+        onClick={handleGenerateGames}
+        disabled={generatingGames || bracketDetail.entries.length === 0}
+        title={
+          bracketDetail.entries.length === 0 ? 'Generate entries first' : ''
+        }
+      >
+        {generatingGames
+          ? 'Generating...'
+          : bracketDetail.games.length > 0
+            ? 'Clear ALL Games and Regenerate'
+            : 'Generate Games'}
+      </button>
+    );
+  };
 
   return (
     <div className="brackets-tab">
@@ -608,59 +589,12 @@ export default function BracketsTab() {
           <div className="card">
             {loading ? (
               <p>Loading brackets...</p>
-            ) : brackets.length === 0 ? (
-              <p style={{ color: 'var(--secondary-color)' }}>
-                No brackets created for this event yet. Create a bracket to get
-                started.
-              </p>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Name</th>
-                    <th>Size</th>
-                    <th>Teams</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {brackets.map((bracket) => (
-                    <tr key={bracket.id}>
-                      <td>
-                        <strong>{bracket.name}</strong>
-                      </td>
-                      <td>{bracket.bracket_size}</td>
-                      <td>{bracket.actual_team_count || '—'}</td>
-                      <td>
-                        <span
-                          className={`bracket-status-badge ${getStatusClass(bracket.status)}`}
-                        >
-                          {STATUS_LABELS[bracket.status]}
-                        </span>
-                      </td>
-                      <td>{formatDateTime(bracket.created_at)}</td>
-                      <td>
-                        <div className="bracket-actions">
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => setSelectedBracketId(bracket.id)}
-                          >
-                            View
-                          </button>
-                          <button
-                            className="btn btn-danger"
-                            onClick={() => handleDelete(bracket)}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <BracketListTable
+                brackets={brackets}
+                onSelect={setSelectedBracketId}
+                onDelete={handleDelete}
+              />
             )}
           </div>
         </>
@@ -669,317 +603,19 @@ export default function BracketsTab() {
       {/* Bracket Detail View */}
       {selectedBracketId && (
         <>
-          <div className="brackets-controls">
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                setSelectedBracketId(null);
-                setBracketDetail(null);
-                setDetailViewMode('management');
-              }}
-            >
-              ← Back to List
-            </button>
-            {bracketDetail && bracketDetail.games.length > 0 && (
-              <div className="view-mode-toggle">
-                <button
-                  className={`btn ${detailViewMode === 'management' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setDetailViewMode('management')}
-                >
-                  Management View
-                </button>
-                <button
-                  className={`btn ${detailViewMode === 'bracket' ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setDetailViewMode('bracket')}
-                >
-                  Bracket View
-                </button>
-              </div>
-            )}
-          </div>
-
           {detailLoading ? (
             <p>Loading bracket details...</p>
           ) : bracketDetail ? (
-            <>
-              {/* Bracket Header */}
-              <div className="card bracket-header-card">
-                <div className="bracket-header">
-                  <div className="bracket-header-info">
-                    <h3>{bracketDetail.name}</h3>
-                    <div className="bracket-meta">
-                      <span>
-                        <strong>Size:</strong> {bracketDetail.bracket_size}
-                      </span>
-                      <span>
-                        <strong>Teams:</strong>{' '}
-                        {bracketDetail.actual_team_count || 'Not set'}
-                      </span>
-                      <span
-                        className={`bracket-status-badge ${getStatusClass(bracketDetail.status)}`}
-                      >
-                        {STATUS_LABELS[bracketDetail.status]}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="bracket-header-actions">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={handleOpenEditModal}
-                    >
-                      Edit
-                    </button>
-                    {bracketDetail.status === 'setup' && (
-                      <button
-                        className="btn btn-success"
-                        onClick={() => handleStatusChange('in_progress')}
-                      >
-                        Start Bracket
-                      </button>
-                    )}
-                    {bracketDetail.status === 'in_progress' && (
-                      <>
-                        <button
-                          className="btn btn-primary"
-                          onClick={() => handleStatusChange('completed')}
-                        >
-                          Mark Complete
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => handleStatusChange('setup')}
-                        >
-                          Back to Setup
-                        </button>
-                      </>
-                    )}
-                    {bracketDetail.status === 'completed' && (
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleStatusChange('in_progress')}
-                      >
-                        Reopen
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Bracket Winner Banner - Management View */}
-              {detailViewMode === 'management' &&
-                (() => {
-                  const winner =
-                    bracketDetail.games.length > 0
-                      ? getBracketWinner(bracketDetail.games)
-                      : null;
-                  if (!winner) return null;
-                  return (
-                    <div className="bracket-winner-banner bracket-winner-management">
-                      <span className="bracket-winner-trophy" aria-hidden>
-                        🏆
-                      </span>
-                      <div className="bracket-winner-content">
-                        <span className="bracket-winner-label">
-                          Bracket Champion
-                        </span>
-                        <span className="bracket-winner-team">
-                          <strong>{winner.team_number}</strong>{' '}
-                          {winner.team_name ||
-                            winner.team_display ||
-                            `Team ${winner.team_id}`}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-              {/* Bracket-like View */}
-              {detailViewMode === 'bracket' && (
-                <div className="card bracket-section">
-                  {(() => {
-                    const winner =
-                      bracketDetail.games.length > 0
-                        ? getBracketWinner(bracketDetail.games)
-                        : null;
-                    return winner ? (
-                      <div className="bracket-winner-banner bracket-winner-bracket-view">
-                        <span className="bracket-winner-trophy" aria-hidden>
-                          🏆
-                        </span>
-                        <span className="bracket-winner-label">Champion</span>
-                        <span className="bracket-winner-team">
-                          <strong>{winner.team_number}</strong>{' '}
-                          {winner.team_name ||
-                            winner.team_display ||
-                            `Team ${winner.team_id}`}
-                        </span>
-                      </div>
-                    ) : null;
-                  })()}
-                  <BracketLikeView games={bracketDetail.games} />
-                </div>
-              )}
-
-              {/* Management View: Entries + Games Sections */}
-              {detailViewMode === 'management' && (
-                <>
-                  {/* Entries Section */}
-                  <div className="card bracket-section">
-                    <div className="bracket-section-header">
-                      <h4>Bracket Entries ({bracketDetail.entries.length})</h4>
-                      {bracketDetail.entries.length === 0 && (
-                        <button
-                          className="btn btn-primary"
-                          onClick={handleGenerateEntries}
-                          disabled={generatingEntries}
-                        >
-                          {generatingEntries
-                            ? 'Generating...'
-                            : 'Generate from Seeding'}
-                        </button>
-                      )}
-                    </div>
-
-                    {bracketDetail.entries.length === 0 ? (
-                      <p style={{ color: 'var(--secondary-color)' }}>
-                        No entries yet. Click "Generate from Seeding" to
-                        populate entries from seeding rankings.
-                      </p>
-                    ) : (
-                      <div className="entries-grid">
-                        {bracketDetail.entries.map((entry) => (
-                          <div
-                            key={entry.id}
-                            className={`entry-card ${entry.is_bye ? 'entry-bye' : ''}`}
-                          >
-                            <span className="entry-seed">
-                              #{entry.seed_position}
-                            </span>
-                            {entry.is_bye ? (
-                              <span className="entry-bye-label">BYE</span>
-                            ) : (
-                              <span className="entry-team">
-                                <strong>{entry.team_number}</strong>{' '}
-                                {entry.team_name || entry.display_name}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Games Section */}
-                  <div className="card bracket-section">
-                    <div className="bracket-section-header">
-                      <h4>Bracket Games ({bracketDetail.games.length})</h4>
-                      <button
-                        className={`btn ${bracketDetail.games.length > 0 ? 'btn-danger' : 'btn-primary'}`}
-                        onClick={handleGenerateGames}
-                        disabled={
-                          generatingGames || bracketDetail.entries.length === 0
-                        }
-                        title={
-                          bracketDetail.entries.length === 0
-                            ? 'Generate entries first'
-                            : ''
-                        }
-                      >
-                        {generatingGames
-                          ? 'Generating...'
-                          : bracketDetail.games.length > 0
-                            ? 'Clear ALL Games and Regenerate'
-                            : 'Generate Games'}
-                      </button>
-                    </div>
-
-                    {bracketDetail.games.length === 0 ? (
-                      <p style={{ color: 'var(--secondary-color)' }}>
-                        No games yet. Generate entries first, then click
-                        "Generate Games" to create the bracket structure.
-                      </p>
-                    ) : (
-                      <div className="games-list">
-                        {/* Group games by bracket_side */}
-                        {['winners', 'losers', 'finals'].map((side) => {
-                          const sideGames = bracketDetail.games.filter(
-                            (g) => g.bracket_side === side,
-                          );
-                          if (sideGames.length === 0) return null;
-
-                          return (
-                            <div key={side} className="games-side-group">
-                              <h5 className="games-side-title">
-                                {side === 'winners'
-                                  ? 'Winners Bracket'
-                                  : side === 'losers'
-                                    ? 'Losers Bracket'
-                                    : 'Finals'}
-                              </h5>
-                              <table className="games-table">
-                                <thead>
-                                  <tr>
-                                    <th>Game</th>
-                                    <th>Round</th>
-                                    <th>Team 1</th>
-                                    <th>Team 2</th>
-                                    <th>Status</th>
-                                    <th>Winner</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {sideGames.map((game) => (
-                                    <tr key={game.id}>
-                                      <td>
-                                        <strong>Game {game.game_number}</strong>
-                                      </td>
-                                      <td>{game.round_name || '—'}</td>
-                                      <td>
-                                        {renderTeamDisplay(
-                                          game.team1_id,
-                                          game.team1_number,
-                                          game.team1_name,
-                                          game.team1_display,
-                                        )}
-                                      </td>
-                                      <td>
-                                        {renderTeamDisplay(
-                                          game.team2_id,
-                                          game.team2_number,
-                                          game.team2_name,
-                                          game.team2_display,
-                                        )}
-                                      </td>
-                                      <td>
-                                        <span
-                                          className={`game-status-badge ${getGameStatusClass(game.status)}`}
-                                        >
-                                          {GAME_STATUS_LABELS[game.status]}
-                                        </span>
-                                      </td>
-                                      <td>
-                                        {game.winner_id
-                                          ? renderTeamDisplay(
-                                              game.winner_id,
-                                              game.winner_number,
-                                              game.winner_name,
-                                              game.winner_display,
-                                            )
-                                          : '—'}
-                                      </td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </>
+            <BracketDetailView
+              bracketDetail={bracketDetail}
+              onBack={() => {
+                setSelectedBracketId(null);
+                setBracketDetail(null);
+              }}
+              adminActions={renderAdminActions()}
+              entriesActions={renderEntriesActions()}
+              gamesActions={renderGamesActions()}
+            />
           ) : (
             <p>Bracket not found.</p>
           )}

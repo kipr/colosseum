@@ -47,7 +47,18 @@ export default function Home() {
         </div>
 
         <div className="role-selection">
-          <div className="role-card">
+          <div
+            className="role-card role-card-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={handleJudgeClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleJudgeClick();
+              }
+            }}
+          >
             <div className="role-icon">
               <img src="/images/botguy-red-trans-small.png" alt="Judge Icon" />
             </div>
@@ -62,15 +73,47 @@ export default function Home() {
               <li>✓ Multiple scoresheet templates</li>
               <li>✓ Real-time scoring</li>
             </ul>
-            <button
-              className="btn btn-primary btn-large"
-              onClick={handleJudgeClick}
-            >
-              Enter as Judge
-            </button>
           </div>
 
-          <div className="role-card">
+          <div
+            className="role-card role-card-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={() => navigate('/event')}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                navigate('/event');
+              }
+            }}
+          >
+            <div className="role-icon role-icon-text" aria-hidden>
+              <span>📊</span>
+            </div>
+            <h3>Spectator</h3>
+            <p>
+              View live seeding scores, rankings, and tournament brackets for
+              ongoing events.
+            </p>
+            <ul className="role-features">
+              <li>✓ Seeding scores &amp; rankings</li>
+              <li>✓ Tournament brackets</li>
+              <li>✓ No login required</li>
+            </ul>
+          </div>
+
+          <div
+            className="role-card role-card-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={handleAdminClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleAdminClick();
+              }
+            }}
+          >
             <div className="role-icon">
               <img src="/images/KIPR-Logo-bk-tiny.jpg" alt="Admin Icon" />
             </div>
@@ -85,12 +128,6 @@ export default function Home() {
               <li>✓ View submission history</li>
               <li>✓ Manage configurations</li>
             </ul>
-            <button
-              className="btn btn-secondary btn-large"
-              onClick={handleAdminClick}
-            >
-              {user ? 'Go to Admin' : 'Login as Admin'}
-            </button>
           </div>
         </div>
       </main>

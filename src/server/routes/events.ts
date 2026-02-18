@@ -1,6 +1,9 @@
-import express, { Response } from 'express';
+import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+
+const PUBLIC_EVENT_FIELDS =
+  'id, name, status, event_date, location, seeding_rounds';
 
 const router = express.Router();
 
@@ -36,6 +39,41 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Error fetching events:', error);
     res.status(500).json({ error: 'Failed to fetch events' });
+  }
+});
+
+// GET /events/public - List active/complete events (no auth)
+router.get('/public', async (_req: Request, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const events = await db.all(
+      `SELECT ${PUBLIC_EVENT_FIELDS} FROM events
+       WHERE status IN ('active', 'complete')
+       ORDER BY event_date DESC, created_at DESC`,
+    );
+    res.json(events);
+  } catch (error) {
+    console.error('Error fetching public events:', error);
+    res.status(500).json({ error: 'Failed to fetch events' });
+  }
+});
+
+// GET /events/:id/public - Get single event public info (no auth)
+router.get('/:id/public', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+    const event = await db.get(
+      `SELECT ${PUBLIC_EVENT_FIELDS} FROM events WHERE id = ?`,
+      [id],
+    );
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+    res.json(event);
+  } catch (error) {
+    console.error('Error fetching public event:', error);
+    res.status(500).json({ error: 'Failed to fetch event' });
   }
 });
 

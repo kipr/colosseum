@@ -102,8 +102,7 @@ describe('Brackets Team Selection', () => {
     );
     expect(games.length).toBeGreaterThan(0);
     const readyOrBye = games.filter(
-      (g: { status: string }) =>
-        g.status === 'ready' || g.status === 'bye',
+      (g: { status: string }) => g.status === 'ready' || g.status === 'bye',
     );
     expect(readyOrBye.length).toBeGreaterThan(0);
   });
@@ -160,7 +159,11 @@ describe('Brackets Team Selection', () => {
     expect(data.error).toContain('already assigned');
     expect(data.conflicts).toBeDefined();
     expect(Array.isArray(data.conflicts)).toBe(true);
-    expect((data.conflicts as { team_id: number }[]).some((c) => c.team_id === teamA.id)).toBe(true);
+    expect(
+      (data.conflicts as { team_id: number }[]).some(
+        (c) => c.team_id === teamA.id,
+      ),
+    ).toBe(true);
   });
 
   it('rejects cross-event team_ids with 400', async () => {
