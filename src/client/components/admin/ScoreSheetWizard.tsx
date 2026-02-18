@@ -3,15 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { useEvent } from '../../contexts/EventContext';
 import '../Modal.css';
 
-interface SpreadsheetConfig {
-  id: number;
-  spreadsheet_id: string;
-  spreadsheet_name: string;
-  sheet_name: string;
-  sheet_purpose: string;
-  is_active: boolean;
-}
-
 interface Bracket {
   id: number;
   event_id: number;
@@ -59,14 +50,10 @@ export default function ScoreSheetWizard({
 
   // Data sources (teams come from DB via selected event)
   const { selectedEvent } = useEvent();
-  const [spreadsheets, setSpreadsheets] = useState<SpreadsheetConfig[]>([]);
-  const [destinationSheet, setDestinationSheet] =
-    useState<SpreadsheetConfig | null>(null); // For seeding only
   const [selectedBracket, setSelectedBracket] = useState<Bracket | null>(null); // For DE only (DB bracket)
   const [brackets, setBrackets] = useState<Bracket[]>([]);
 
   useEffect(() => {
-    loadSpreadsheets();
     loadFieldTemplates();
   }, []);
 
@@ -101,19 +88,6 @@ export default function ScoreSheetWizard({
     }
   };
 
-  const loadSpreadsheets = async () => {
-    try {
-      const response = await fetch('/admin/spreadsheets', {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load spreadsheets');
-      const data = await response.json();
-      setSpreadsheets(data);
-    } catch (error) {
-      console.error('Error loading spreadsheets:', error);
-    }
-  };
-
   const loadBrackets = async () => {
     if (!selectedEvent?.id) return;
     try {
@@ -132,9 +106,6 @@ export default function ScoreSheetWizard({
       setSelectedBracket(null);
     }
   };
-
-  const getScoreSheets = () =>
-    spreadsheets.filter((s) => s.sheet_purpose === 'scores');
 
   const generateSchema = () => {
     if (sheetType === 'seeding') {
@@ -725,38 +696,13 @@ export default function ScoreSheetWizard({
           </div>
         )}
 
-        {/* Step 4: Destination */}
+        {/* Step 4: Destination (DE only - select bracket) */}
         {currentStep === 'destination' && (
           <div>
-            <h4>
-              {sheetType === 'seeding' ? 'Score Destination' : 'Bracket Sheet'}
-            </h4>
+            <h4>Bracket</h4>
 
-            {sheetType === 'seeding' ? (
-              <div className="form-group">
-                <label>Score Destination Sheet *</label>
-                <select
-                  className="field-input"
-                  value={destinationSheet?.id || ''}
-                  onChange={(e) => {
-                    const sheet = spreadsheets.find(
-                      (s) => s.id === Number(e.target.value),
-                    );
-                    setDestinationSheet(sheet || null);
-                  }}
-                >
-                  <option value="">Select destination...</option>
-                  {getScoreSheets().map((sheet) => (
-                    <option key={sheet.id} value={sheet.id}>
-                      {sheet.spreadsheet_name} → {sheet.sheet_name}
-                    </option>
-                  ))}
-                </select>
-                <small>Accepted scores will be written to this sheet</small>
-              </div>
-            ) : (
-              <div className="form-group">
-                <label>Bracket *</label>
+            <div className="form-group">
+              <label>Bracket *</label>
                 <select
                   className="field-input"
                   value={selectedBracket?.id || ''}
@@ -779,11 +725,10 @@ export default function ScoreSheetWizard({
                     ))
                   )}
                 </select>
-                <small>
-                  Games and winners are stored in the database for this bracket
-                </small>
-              </div>
-            )}
+              <small>
+                Games and winners are stored in the database for this bracket
+              </small>
+            </div>
           </div>
         )}
 

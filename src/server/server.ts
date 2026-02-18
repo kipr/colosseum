@@ -20,7 +20,6 @@ import adminRoutes from './routes/admin';
 import scoresheetRoutes from './routes/scoresheet';
 import fieldTemplatesRoutes from './routes/fieldTemplates';
 import apiRoutes from './routes/api';
-import dataRoutes from './routes/data';
 import scoresRoutes from './routes/scores';
 import chatRoutes from './routes/chat';
 import eventsRoutes from './routes/events';
@@ -151,7 +150,6 @@ app.use('/admin', adminRoutes);
 app.use('/scoresheet', scoresheetRoutes);
 app.use('/field-templates', fieldTemplatesRoutes);
 app.use('/api', apiRoutes);
-app.use('/data', dataRoutes);
 app.use('/scores', scoresRoutes);
 app.use('/chat', chatRoutes);
 app.use('/events', eventsRoutes);
@@ -185,7 +183,6 @@ if (process.env.NODE_ENV === 'production') {
       '/auth/',
       '/admin/',
       '/scoresheet/',
-      '/data/',
       '/scores/',
       '/chat/',
       '/field-templates/',

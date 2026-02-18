@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
-import SpreadsheetsTab from '../components/admin/SpreadsheetsTab';
 import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
 import ScoringTab from '../components/admin/ScoringTab';
 import AdminsTab from '../components/admin/AdminsTab';
@@ -19,7 +18,6 @@ import './Admin.css';
 type TabType =
   | 'events'
   | 'teams'
-  | 'spreadsheets'
   | 'scoresheets'
   | 'scoring'
   | 'seeding'
@@ -44,7 +42,6 @@ export default function Admin() {
       saved &&
       (saved === 'events' ||
         saved === 'teams' ||
-        saved === 'spreadsheets' ||
         saved === 'scoresheets' ||
         saved === 'scoring' ||
         saved === 'seeding' ||
@@ -124,7 +121,7 @@ export default function Admin() {
         <div className="reauth-banner">
           <span>
             ⚠️ Your Google authentication has expired. Please re-authenticate to
-            continue using spreadsheet features.
+            continue using admin features.
           </span>
           <button onClick={handleReauth} className="reauth-button">
             Re-authenticate with Google
@@ -147,12 +144,6 @@ export default function Admin() {
                 onClick={() => setActiveTab('teams')}
               >
                 👥 Teams
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'spreadsheets' ? 'active' : ''}`}
-                onClick={() => setActiveTab('spreadsheets')}
-              >
-                📊 Spreadsheets
               </button>
               <button
                 className={`sidebar-item ${activeTab === 'scoresheets' ? 'active' : ''}`}
@@ -205,7 +196,6 @@ export default function Admin() {
               <h2>
                 {activeTab === 'events' && 'Manage Events'}
                 {activeTab === 'teams' && 'Teams'}
-                {activeTab === 'spreadsheets' && 'Spreadsheets'}
                 {activeTab === 'scoresheets' && 'Score Sheets'}
                 {activeTab === 'scoring' && 'Scoring'}
                 {activeTab === 'seeding' && 'Seeding'}
@@ -226,7 +216,6 @@ export default function Admin() {
 
             {activeTab === 'events' && <EventsTab />}
             {activeTab === 'teams' && <TeamsTab />}
-            {activeTab === 'spreadsheets' && <SpreadsheetsTab />}
             {activeTab === 'scoresheets' && <ScoreSheetsTab />}
             {activeTab === 'scoring' && <ScoringTab />}
             {activeTab === 'seeding' && <SeedingTab />}

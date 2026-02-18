@@ -193,17 +193,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         });
         setBracketGames(mapped);
       } else {
-        // Legacy: spreadsheet-based bracket games
-        const sheetName = bracketSource.sheetName || 'DE 16 Team';
-        const url = `/data/bracket-games/${sheetName}?templateId=${template.id}`;
-        const response = await fetch(url);
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Failed to load bracket games:', errorData);
-          return;
-        }
-        const games = await response.json();
-        setBracketGames(games);
+        // Only DB-backed bracket source is supported
+        setBracketGames([]);
       }
     } catch (error) {
       console.error('Error loading bracket games:', error);
@@ -226,21 +217,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         }
         const data = await response.json();
         setTeamsData(data);
-        return;
       }
-
-      // Legacy: spreadsheet-based teams
-      const sheetName = teamsConfig?.sheetName || 'Teams';
-      const url = `/data/sheet-data/${sheetName}?templateId=${template.id}`;
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        console.error('Failed to load teams data for name lookup');
-        return;
-      }
-
-      const data = await response.json();
-      setTeamsData(data);
     } catch (error) {
       console.error('Error loading teams data:', error);
     }
@@ -356,38 +333,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           continue;
         }
 
-        // Legacy: spreadsheet-based data
-        const { sheetName, range, labelField } = ds;
-        const url = `/data/sheet-data/${sheetName}?range=${range || ''}&templateId=${template.id}`;
-        const response = await fetch(url);
-
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error(`Failed to load ${field.id}:`, errorData);
-          continue;
-        }
-
-        let data = await response.json();
-
-        // Sort data alphanumerically by the label field
-        data = data.sort((a: any, b: any) => {
-          const aVal = String(a[labelField] || '');
-          const bVal = String(b[labelField] || '');
-
-          const aNum = parseFloat(aVal);
-          const bNum = parseFloat(bVal);
-
-          if (!isNaN(aNum) && !isNaN(bNum)) {
-            return aNum - bNum;
-          }
-
-          return aVal.localeCompare(bVal, undefined, {
-            numeric: true,
-            sensitivity: 'base',
-          });
-        });
-
-        setDynamicData((prev) => ({ ...prev, [field.id]: data }));
+        // Only DB-backed data sources are supported
       } catch (error) {
         console.error(`Error loading data for ${field.id}:`, error);
       }

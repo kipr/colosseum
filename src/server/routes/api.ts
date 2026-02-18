@@ -1,7 +1,6 @@
 import express from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
-import { getParticipants, getMatches } from '../services/googleSheets';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 
@@ -92,7 +91,7 @@ router.post(
 
       const isDbBacked = isDbBackedSeeding || isDbBackedBracket;
 
-      let spreadsheetConfigId: number | null = null;
+      const spreadsheetConfigId: number | null = null;
 
       if (attemptingDbBackedSeeding) {
         const event = await db.get('SELECT id FROM events WHERE id = ?', [
@@ -108,52 +107,11 @@ router.post(
         }
       }
 
-      if (isDbBacked) {
-        // Scores go to DB (seeding_scores or bracket_games); no spreadsheet
-      } else {
-        // Legacy: spreadsheet-based submission
-        if (!template.created_by) {
-          return res
-            .status(400)
-            .json({ error: 'Template has no owner for spreadsheet config' });
-        }
-
-        let config;
-        if (template.spreadsheet_config_id) {
-          config = await db.get(
-            'SELECT * FROM spreadsheet_configs WHERE id = ?',
-            [template.spreadsheet_config_id],
-          );
-          if (!config || !config.is_active) {
-            return res.status(400).json({
-              error: config
-                ? 'The sheet linked to this score sheet is not active.'
-                : 'The sheet linked to this score sheet no longer exists.',
-            });
-          }
-        } else {
-          if (isHeadToHead && bracketSource) {
-            config = await db.get(
-              `SELECT * FROM spreadsheet_configs 
-             WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'bracket'
-             LIMIT 1`,
-              [template.created_by],
-            );
-          } else {
-            config = await db.get(
-              `SELECT * FROM spreadsheet_configs 
-             WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'scores'
-             LIMIT 1`,
-              [template.created_by],
-            );
-          }
-          if (!config) {
-            return res
-              .status(400)
-              .json({ error: 'No active spreadsheet configuration found' });
-          }
-        }
-        spreadsheetConfigId = config.id;
+      if (!isDbBacked) {
+        return res.status(400).json({
+          error:
+            'Event-scoped submission is required. Provide eventId and scoreType (seeding or bracket) with bracket_game_id for bracket scores.',
+        });
       }
 
       // Add metadata to score data for head-to-head
@@ -218,70 +176,6 @@ router.post(
     } catch (error) {
       console.error('Error submitting score:', error);
       res.status(500).json({ error: 'Failed to submit score' });
-    }
-  },
-);
-
-// Get participants from spreadsheet
-router.get(
-  '/participants',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const db = await getDatabase();
-      const config = await db.get(
-        'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active IS TRUE',
-        [req.user.id],
-      );
-
-      if (!config) {
-        return res
-          .status(400)
-          .json({ error: 'No active spreadsheet configuration found' });
-      }
-
-      const participants = await getParticipants(
-        req.user.access_token,
-        config.spreadsheet_id,
-        config.sheet_name,
-      );
-
-      res.json(participants);
-    } catch (error) {
-      console.error('Error fetching participants:', error);
-      res.status(500).json({ error: 'Failed to fetch participants' });
-    }
-  },
-);
-
-// Get matches from spreadsheet
-router.get(
-  '/matches',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const db = await getDatabase();
-      const config = await db.get(
-        'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active IS TRUE',
-        [req.user.id],
-      );
-
-      if (!config) {
-        return res
-          .status(400)
-          .json({ error: 'No active spreadsheet configuration found' });
-      }
-
-      const matches = await getMatches(
-        req.user.access_token,
-        config.spreadsheet_id,
-        config.sheet_name,
-      );
-
-      res.json(matches);
-    } catch (error) {
-      console.error('Error fetching matches:', error);
-      res.status(500).json({ error: 'Failed to fetch matches' });
     }
   },
 );

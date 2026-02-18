@@ -206,11 +206,8 @@ colosseum/
 │       │   ├── admin.ts         # Admin panel routes
 │       │   ├── scoresheet.ts    # Template management routes
 │       │   ├── scores.ts        # Score review/approval routes
-│       │   ├── data.ts          # Dynamic data fetching routes
 │       │   └── api.ts           # Score submission routes
 │       ├── services/
-│       │   ├── googleSheets.ts  # Google Sheets API integration
-│       │   ├── bracketParser.ts # Double elimination bracket parsing
 │       │   └── tokenRefresh.ts  # OAuth token refresh service
 │       └── server.ts            # Express server setup
 ├── docs/                        # Documentation
