@@ -34,6 +34,7 @@ export interface SeedEventData {
   location?: string;
   status?: string;
   seeding_rounds?: number;
+  score_accept_mode?: string;
   created_by?: number;
 }
 
@@ -42,8 +43,8 @@ export async function seedEvent(
   data: SeedEventData = {},
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, score_accept_mode, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.name ?? 'Test Event',
       data.description ?? null,
@@ -51,6 +52,7 @@ export async function seedEvent(
       data.location ?? null,
       data.status ?? 'setup',
       data.seeding_rounds ?? 3,
+      data.score_accept_mode ?? 'manual',
       data.created_by ?? null,
     ],
   );

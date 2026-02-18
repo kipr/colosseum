@@ -5,6 +5,11 @@
 
 export type EventStatus = 'setup' | 'active' | 'complete' | 'archived';
 
+export type ScoreAcceptMode =
+  | 'manual'
+  | 'auto_accept_seeding'
+  | 'auto_accept_all';
+
 export interface Event {
   id: number;
   name: string;
@@ -13,6 +18,7 @@ export interface Event {
   location: string | null;
   status: EventStatus;
   seeding_rounds: number;
+  score_accept_mode: ScoreAcceptMode;
   created_by: number | null;
   created_at: string;
   updated_at: string;

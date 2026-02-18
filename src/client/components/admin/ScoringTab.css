@@ -1,0 +1,40 @@
+/* Bulk accept modal - mirrors TeamsTab bulk-checkin styles */
+.bulk-accept-list {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  padding: 0.5rem;
+}
+
+.bulk-accept-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  transition: background-color 0.15s;
+}
+
+.bulk-accept-item:hover {
+  background-color: var(--bg-color);
+}
+
+.bulk-accept-item input[type='checkbox'] {
+  width: 1rem;
+  height: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.bulk-accept-context {
+  font-weight: 600;
+  min-width: 5rem;
+  color: var(--primary-color);
+}
+
+.bulk-accept-detail {
+  color: var(--text-color);
+  flex: 1;
+}

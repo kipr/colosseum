@@ -109,6 +109,24 @@ describe('Event-Scoped Scores Routes', () => {
       });
     });
 
+    describe('POST /scores/event/:eventId/accept/bulk', () => {
+      it('returns 403 when not admin', async () => {
+        const app = createTestApp({ user: { id: 1, is_admin: false } });
+        app.use('/scores', scoresRoutes);
+        const server = await startServer(app);
+
+        try {
+          const res = await http.post(
+            `${server.baseUrl}/scores/event/1/accept/bulk`,
+            { score_ids: [1] },
+          );
+          expect(res.status).toBe(403);
+        } finally {
+          await server.close();
+        }
+      });
+    });
+
     describe('POST /scores/:id/revert-event', () => {
       it('returns 403 when not admin', async () => {
         const app = createTestApp({ user: { id: 1, is_admin: false } });
@@ -418,6 +436,13 @@ describe('Event-Scoped Scores Routes', () => {
         [event.id, 'score_accepted', 'score_submission', score.id],
       );
       expect(auditLogs.length).toBe(1);
+
+      const updatedScore = await testDb.db.get(
+        'SELECT reviewed_by, reviewed_at FROM score_submissions WHERE id = ?',
+        [score.id],
+      );
+      expect(updatedScore.reviewed_by).toBe(adminUser.id);
+      expect(updatedScore.reviewed_at).toBeTruthy();
     });
 
     it('accepts seeding score and marks matching queue item completed', async () => {
@@ -706,6 +731,240 @@ describe('Event-Scoped Scores Routes', () => {
       );
       expect(res.status).toBe(400);
       expect((res.json as { error: string }).error).toContain('round_number');
+    });
+  });
+
+  // ==========================================================================
+  // POST /scores/event/:eventId/accept/bulk
+  // ==========================================================================
+
+  describe('POST /scores/event/:eventId/accept/bulk', () => {
+    let server: TestServerHandle;
+    let adminUser: { id: number };
+
+    beforeEach(async () => {
+      adminUser = await seedUser(testDb.db, { is_admin: true });
+      const app = createTestApp({ user: { id: adminUser.id, is_admin: true } });
+      app.use('/scores', scoresRoutes);
+      server = await startServer(app);
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('returns 400 when score_ids is empty', async () => {
+      const event = await seedEvent(testDb.db);
+      const res = await http.post(
+        `${server.baseUrl}/scores/event/${event.id}/accept/bulk`,
+        { score_ids: [] },
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain(
+        'score_ids array is required',
+      );
+    });
+
+    it('returns 400 when event does not exist', async () => {
+      const res = await http.post(
+        `${server.baseUrl}/scores/event/999/accept/bulk`,
+        { score_ids: [1] },
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain(
+        'Event does not exist',
+      );
+    });
+
+    it('bulk accepts multiple seeding scores in single transaction', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      const score1 = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team1.id },
+          round: { value: 1 },
+          grand_total: { value: 100 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+      const score2 = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team2.id },
+          round: { value: 1 },
+          grand_total: { value: 200 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/event/${event.id}/accept/bulk`,
+        { score_ids: [score1.id, score2.id] },
+      );
+
+      expect(res.status).toBe(200);
+      const data = res.json as {
+        accepted: number;
+        accepted_ids: number[];
+        skipped?: { id: number; reason: string }[];
+      };
+      expect(data.accepted).toBe(2);
+      expect(data.accepted_ids).toContain(score1.id);
+      expect(data.accepted_ids).toContain(score2.id);
+
+      const seeding1 = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team1.id, 1],
+      );
+      const seeding2 = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team2.id, 1],
+      );
+      expect(seeding1).toBeDefined();
+      expect(seeding1.score).toBe(100);
+      expect(seeding2).toBeDefined();
+      expect(seeding2.score).toBe(200);
+
+      const auditBulk = await testDb.db.all(
+        'SELECT * FROM audit_log WHERE event_id = ? AND action = ?',
+        [event.id, 'scores_bulk_accepted'],
+      );
+      expect(auditBulk.length).toBe(1);
+    });
+
+    it('skips scores with conflicts and reports them', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      // Existing seeding score for team/round
+      await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        [team.id, 1, 50],
+      );
+
+      const scoreConflict = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 150 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const scoreOk = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team2.id },
+          round: { value: 1 },
+          grand_total: { value: 200 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/event/${event.id}/accept/bulk`,
+        { score_ids: [scoreConflict.id, scoreOk.id] },
+      );
+
+      expect(res.status).toBe(200);
+      const data = res.json as {
+        accepted: number;
+        accepted_ids: number[];
+        skipped?: { id: number; reason: string }[];
+      };
+      expect(data.accepted).toBe(1);
+      expect(data.accepted_ids).toContain(scoreOk.id);
+      expect(data.skipped).toBeDefined();
+      expect(data.skipped!.length).toBe(1);
+      expect(data.skipped![0].id).toBe(scoreConflict.id);
+      expect(data.skipped![0].reason).toContain('already exists');
+
+      // Original score unchanged
+      const existing = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team.id, 1],
+      );
+      expect(existing.score).toBe(50);
+
+      // New score accepted
+      const newSeeding = await testDb.db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team2.id, 1],
+      );
+      expect(newSeeding).toBeDefined();
+      expect(newSeeding.score).toBe(200);
+    });
+
+    it('ignores scores not in event or not pending', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+
+      const scorePending = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 100 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/event/${event.id}/accept/bulk`,
+        { score_ids: [scorePending.id, 99999] },
+      );
+
+      expect(res.status).toBe(200);
+      const data = res.json as { accepted: number; accepted_ids: number[] };
+      expect(data.accepted).toBe(1);
+      expect(data.accepted_ids).toEqual([scorePending.id]);
     });
   });
 

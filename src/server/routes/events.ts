@@ -12,6 +12,7 @@ const ALLOWED_UPDATE_FIELDS = [
   'location',
   'status',
   'seeding_rounds',
+  'score_accept_mode',
 ];
 
 // GET /events - List all events
@@ -60,8 +61,15 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 // POST /events - Create event (admin only)
 router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, description, event_date, location, status, seeding_rounds } =
-      req.body;
+    const {
+      name,
+      description,
+      event_date,
+      location,
+      status,
+      seeding_rounds,
+      score_accept_mode,
+    } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Event name is required' });
@@ -70,8 +78,8 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
     const db = await getDatabase();
 
     const result = await db.run(
-      `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, score_accept_mode, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         description || null,
@@ -79,6 +87,7 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
         location || null,
         status || 'setup',
         seeding_rounds ?? 3,
+        score_accept_mode || 'manual',
         req.user?.id || null,
       ],
     );

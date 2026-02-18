@@ -3,6 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
+import { acceptEventScore } from '../services/scoreAccept';
 
 const router = express.Router();
 
@@ -170,6 +171,36 @@ router.post(
           }),
           ip_address: req.ip ?? null,
         });
+
+        // Auto-accept when event's score_accept_mode matches (force=false, reviewed_by=null)
+        const event = await db.get<{ score_accept_mode?: string }>(
+          'SELECT score_accept_mode FROM events WHERE id = ?',
+          [eventId],
+        );
+        const mode = event?.score_accept_mode ?? 'manual';
+        const shouldAutoAccept =
+          mode === 'auto_accept_all' ||
+          (mode === 'auto_accept_seeding' && scoreType === 'seeding');
+
+        if (shouldAutoAccept) {
+          const acceptResult = await acceptEventScore({
+            db,
+            submissionId: submission.id,
+            force: false,
+            reviewedBy: null,
+            ipAddress: req.ip ?? null,
+          });
+
+          if (acceptResult.ok) {
+            const updated = await db.get(
+              'SELECT * FROM score_submissions WHERE id = ?',
+              [submission.id],
+            );
+            res.json(updated);
+            return;
+          }
+          // Conflict or other error: leave as pending, return original submission
+        }
       }
 
       res.json(submission);

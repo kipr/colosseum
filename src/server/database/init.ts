@@ -490,6 +490,18 @@ export async function initializeSQLite(db: Database): Promise<void> {
     /* Migration error or already applied */
   }
 
+  // ============================================================================
+  // ONE-TIME MIGRATION: Add score_accept_mode to events. Remove after first run.
+  // ============================================================================
+  try {
+    await db.exec(
+      `ALTER TABLE events ADD COLUMN score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all'))`,
+    );
+    console.log('✅ Added score_accept_mode column to events');
+  } catch {
+    /* Column already exists */
+  }
+
   // Active sessions
   await db.exec(`
     CREATE TABLE IF NOT EXISTS active_sessions (
@@ -531,6 +543,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       location TEXT,
       status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
       seeding_rounds INTEGER DEFAULT 3,
+      score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP

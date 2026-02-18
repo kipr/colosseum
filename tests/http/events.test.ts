@@ -385,11 +385,13 @@ describe('Events Routes', () => {
         name: string;
         status: string;
         seeding_rounds: number;
+        score_accept_mode: string;
       };
       expect(event.id).toBeGreaterThan(0);
       expect(event.name).toBe('New Event');
       expect(event.status).toBe('setup'); // default status
       expect(event.seeding_rounds).toBe(3); // default seeding_rounds
+      expect(event.score_accept_mode).toBe('manual'); // default score_accept_mode
     });
 
     it('creates event with custom values', async () => {
@@ -400,6 +402,7 @@ describe('Events Routes', () => {
         location: 'Test Location',
         status: 'active',
         seeding_rounds: 5,
+        score_accept_mode: 'auto_accept_seeding',
       });
 
       expect(res.status).toBe(201);
@@ -410,6 +413,7 @@ describe('Events Routes', () => {
         location: string;
         status: string;
         seeding_rounds: number;
+        score_accept_mode: string;
       };
       expect(event.name).toBe('Custom Event');
       expect(event.description).toBe('A description');
@@ -417,6 +421,7 @@ describe('Events Routes', () => {
       expect(event.location).toBe('Test Location');
       expect(event.status).toBe('active');
       expect(event.seeding_rounds).toBe(5);
+      expect(event.score_accept_mode).toBe('auto_accept_seeding');
     });
 
     it('sets created_by to the authenticated user', async () => {
@@ -478,6 +483,19 @@ describe('Events Routes', () => {
 
       expect(res.status).toBe(200);
       expect((res.json as { name: string }).name).toBe('Updated Name');
+    });
+
+    it('updates score_accept_mode', async () => {
+      const event = await seedEvent(testDb.db, {
+        score_accept_mode: 'manual',
+      });
+      const res = await http.patch(`${server.baseUrl}/events/${event.id}`, {
+        score_accept_mode: 'auto_accept_all',
+      });
+
+      expect(res.status).toBe(200);
+      const result = res.json as { score_accept_mode: string };
+      expect(result.score_accept_mode).toBe('auto_accept_all');
     });
 
     it('updates multiple fields', async () => {

@@ -484,6 +484,206 @@ describe('API Score Submit Routes', () => {
         );
       });
 
+      // ==========================================================================
+      // Auto-Accept
+      // ==========================================================================
+
+      describe('Auto-Accept', () => {
+        it('auto-accepts seeding score when event has auto_accept_seeding', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_seeding',
+          });
+          const team = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 1,
+            team_name: 'Auto Team',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'DB Seeding Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          const res = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 200, type: 'calculated' },
+            },
+            eventId: event.id,
+            scoreType: 'seeding',
+          });
+
+          expect(res.status).toBe(200);
+          const submission = res.json as {
+            status: string;
+            reviewed_by: number | null;
+          };
+          expect(submission.status).toBe('accepted');
+          expect(submission.reviewed_by).toBeNull();
+
+          const auditLogs = await testDb.db.all(
+            'SELECT action FROM audit_log WHERE entity_type = ? AND entity_id = ? ORDER BY created_at',
+            ['score_submission', submission.id],
+          );
+          const actions = auditLogs.map((r: { action: string }) => r.action);
+          expect(actions).toContain('score_submitted');
+          expect(actions).toContain('score_auto_accepted');
+        });
+
+        it('leaves bracket score pending when event has auto_accept_seeding only', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_seeding',
+          });
+          const team1 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 1,
+            team_name: 'Team A',
+          });
+          const team2 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 2,
+            team_name: 'Team B',
+          });
+          const bracket = await seedBracket(testDb.db, {
+            event_id: event.id,
+            name: 'Main Bracket',
+            bracket_size: 8,
+          });
+          const game = await seedBracketGame(testDb.db, {
+            bracket_id: bracket.id,
+            game_number: 1,
+            team1_id: team1.id,
+            team2_id: team2.id,
+            status: 'ready',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'DB Bracket Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          const res = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: {
+              winner_team_id: { value: team1.id, type: 'number' },
+              team1_score: { value: 100, type: 'number' },
+              team2_score: { value: 80, type: 'number' },
+            },
+            eventId: event.id,
+            scoreType: 'bracket',
+            bracket_game_id: game.id,
+          });
+
+          expect(res.status).toBe(200);
+          const submission = res.json as { status: string };
+          expect(submission.status).toBe('pending');
+        });
+
+        it('auto-accepts all scores when event has auto_accept_all', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_all',
+          });
+          const team = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 1,
+            team_name: 'Team One',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'DB Seeding Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          const res = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 150, type: 'calculated' },
+            },
+            eventId: event.id,
+            scoreType: 'seeding',
+          });
+
+          expect(res.status).toBe(200);
+          const submission = res.json as {
+            status: string;
+            reviewed_by: number | null;
+          };
+          expect(submission.status).toBe('accepted');
+          expect(submission.reviewed_by).toBeNull();
+        });
+
+        it('leaves score pending when auto-accept hits conflict (force=false)', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_seeding',
+          });
+          const team = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 1,
+            team_name: 'Conflict Team',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'DB Seeding Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          await testDb.db.run(
+            `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+            [team.id, 1, 99],
+          );
+
+          const res = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 200, type: 'calculated' },
+            },
+            eventId: event.id,
+            scoreType: 'seeding',
+          });
+
+          expect(res.status).toBe(200);
+          const submission = res.json as { status: string };
+          expect(submission.status).toBe('pending');
+        });
+
+        it('leaves score pending when event has manual mode', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'manual',
+          });
+          const team = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 1,
+            team_name: 'Manual Team',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'DB Seeding Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          const res = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 100, type: 'calculated' },
+            },
+            eventId: event.id,
+            scoreType: 'seeding',
+          });
+
+          expect(res.status).toBe(200);
+          const submission = res.json as { status: string };
+          expect(submission.status).toBe('pending');
+        });
+      });
     });
   });
 });

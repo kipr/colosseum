@@ -6,6 +6,7 @@ import { formatDate } from '../../utils/dateUtils';
 import {
   Event,
   EventStatus,
+  ScoreAcceptMode,
   getEventStatusClass,
   getEventStatusLabel,
   formatEventDate,
@@ -19,6 +20,7 @@ interface EventFormData {
   event_date: string;
   location: string;
   seeding_rounds: number;
+  score_accept_mode: ScoreAcceptMode;
 }
 
 const defaultFormData: EventFormData = {
@@ -27,6 +29,7 @@ const defaultFormData: EventFormData = {
   event_date: '',
   location: '',
   seeding_rounds: 3,
+  score_accept_mode: 'manual',
 };
 
 export default function EventsTab() {
@@ -60,6 +63,7 @@ export default function EventsTab() {
       event_date: event.event_date || '',
       location: event.location || '',
       seeding_rounds: event.seeding_rounds,
+      score_accept_mode: event.score_accept_mode ?? 'manual',
     });
     setShowModal(true);
   };
@@ -92,6 +96,7 @@ export default function EventsTab() {
           event_date: formData.event_date || null,
           location: formData.location.trim() || null,
           seeding_rounds: formData.seeding_rounds,
+          score_accept_mode: formData.score_accept_mode,
         }),
       });
 
@@ -691,6 +696,42 @@ export default function EventsTab() {
                 <small style={{ color: 'var(--secondary-color)' }}>
                   Number of seeding rounds for this event (typically 3)
                 </small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="score-accept-mode">Score Accept Mode</label>
+                <select
+                  id="score-accept-mode"
+                  className="field-input"
+                  value={formData.score_accept_mode}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      score_accept_mode: e.target
+                        .value as ScoreAcceptMode,
+                    })
+                  }
+                >
+                  <option value="manual">Manual (admin reviews each score)</option>
+                  <option value="auto_accept_seeding">
+                    Auto-accept seeding scores only
+                  </option>
+                  <option value="auto_accept_all">
+                    Auto-accept all scores (seeding + bracket)
+                  </option>
+                </select>
+                {formData.score_accept_mode === 'auto_accept_all' && (
+                  <small
+                    style={{
+                      color: 'var(--warning-color, #f59e0b)',
+                      display: 'block',
+                      marginTop: '0.25rem',
+                    }}
+                  >
+                    Warning: Auto-accepting bracket scores is risky — incorrect
+                    scores will immediately alter bracket progression.
+                  </small>
+                )}
               </div>
 
               <div

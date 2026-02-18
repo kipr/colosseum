@@ -1,73 +1,16 @@
 import express from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
-import type { Database } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { resolveBracketByes } from '../services/bracketByeResolver';
+import {
+  acceptEventScore,
+  updateSeedingQueueItem,
+  updateBracketQueueItem,
+} from '../services/scoreAccept';
 
 const router = express.Router();
-
-/** Mark seeding queue item completed on accept, or queued on revert. Inserts if missing. */
-async function updateSeedingQueueItem(
-  db: Database,
-  eventId: number,
-  teamId: number,
-  roundNumber: number,
-  completed: boolean,
-): Promise<void> {
-  const existing = await db.get<{ id: number }>(
-    `SELECT id FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ? AND queue_type = 'seeding'`,
-    [eventId, teamId, roundNumber],
-  );
-  if (existing) {
-    await db.run(
-      `UPDATE game_queue SET status = ?, called_at = NULL, table_number = NULL WHERE id = ?`,
-      [completed ? 'completed' : 'queued', existing.id],
-    );
-  } else {
-    const maxPos = await db.get<{ max_pos: number | null }>(
-      'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-      [eventId],
-    );
-    const pos = (maxPos?.max_pos ?? 0) + 1;
-    await db.run(
-      `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-       VALUES (?, ?, ?, 'seeding', ?, ?)`,
-      [eventId, teamId, roundNumber, pos, completed ? 'completed' : 'queued'],
-    );
-  }
-}
-
-/** Mark bracket queue item completed on accept, or queued on revert. Inserts if missing. */
-async function updateBracketQueueItem(
-  db: Database,
-  eventId: number,
-  bracketGameId: number,
-  completed: boolean,
-): Promise<void> {
-  const existing = await db.get<{ id: number }>(
-    `SELECT id FROM game_queue WHERE event_id = ? AND bracket_game_id = ? AND queue_type = 'bracket'`,
-    [eventId, bracketGameId],
-  );
-  if (existing) {
-    await db.run(
-      `UPDATE game_queue SET status = ?, called_at = NULL, table_number = NULL WHERE id = ?`,
-      [completed ? 'completed' : 'queued', existing.id],
-    );
-  } else {
-    const maxPos = await db.get<{ max_pos: number | null }>(
-      'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-      [eventId],
-    );
-    const pos = (maxPos?.max_pos ?? 0) + 1;
-    await db.run(
-      `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-       VALUES (?, ?, 'bracket', ?, ?)`,
-      [eventId, bracketGameId, pos, completed ? 'completed' : 'queued'],
-    );
-  }
-}
 
 // Get scores filtered by event (admin-only, paginated)
 router.get(
@@ -180,71 +123,199 @@ router.get(
   },
 );
 
-// Accept event-scoped score (admin-only, DB-only, no sheets)
+// POST /scores/event/:eventId/accept/bulk - Bulk accept scores by IDs (single transaction)
 router.post(
-  '/:id/accept-event',
+  '/event/:eventId/accept/bulk',
   requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
-      const { id } = req.params;
-      const { force } = req.body as { force?: boolean };
+      const { eventId } = req.params;
+      const { score_ids } = req.body as { score_ids?: number[] };
+
+      if (!Array.isArray(score_ids) || score_ids.length === 0) {
+        return res.status(400).json({ error: 'score_ids array is required' });
+      }
+
       const db = await getDatabase();
 
-      // Get the score submission
-      const score = await db.get(
-        'SELECT * FROM score_submissions WHERE id = ?',
-        [id],
+      // Verify event exists
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        eventId,
+      ]);
+      if (!event) {
+        return res.status(400).json({ error: 'Event does not exist' });
+      }
+
+      const eventIdNum = Number(eventId);
+      const reviewedBy = req.user?.id ?? null;
+      const ipAddress = req.ip ?? null;
+      const auditAction = 'score_accepted';
+
+      // Fetch all scores by IDs that belong to this event and are pending
+      const placeholders = score_ids.map(() => '?').join(',');
+      const scores = await db.all(
+        `SELECT * FROM score_submissions WHERE id IN (${placeholders}) AND event_id = ? AND status = 'pending'`,
+        [...score_ids, eventIdNum],
       );
-      if (!score) {
-        return res.status(404).json({ error: 'Score submission not found' });
+
+      const accepted: { id: number; scoreType: string }[] = [];
+      const skipped: { id: number; reason: string }[] = [];
+
+      // Validate and collect operations for each score
+      interface SeedingOp {
+        id: number;
+        teamId: number;
+        roundNumber: number;
+        scoreValue: number;
+        score: Record<string, unknown>;
+      }
+      interface BracketOp {
+        id: number;
+        bracketGameId: number;
+        winnerTeamId: number;
+        loserId: number | null;
+        team1Score: number | null;
+        team2Score: number | null;
+        updates: { gameId: number; slot: string; teamId: number }[];
+        game: Record<string, unknown>;
+        score: Record<string, unknown>;
       }
 
-      // Verify this is an event-scoped score
-      if (!score.event_id) {
-        return res.status(400).json({
-          error:
-            'This score is not event-scoped. Use the standard accept endpoint.',
-        });
-      }
+      const seedingOps: SeedingOp[] = [];
+      const bracketOps: BracketOp[] = [];
 
-      if (score.status === 'accepted') {
-        return res.status(400).json({ error: 'Score is already accepted' });
-      }
+      for (const score of scores) {
+        const id = score.id;
+        const scoreData = JSON.parse(score.score_data);
+        const scoreType = score.score_type;
 
-      const scoreData = JSON.parse(score.score_data);
-      const scoreType = score.score_type;
+        if (scoreType === 'seeding') {
+          const teamId = scoreData.team_id?.value;
+          const roundNumber =
+            scoreData.round?.value ?? scoreData.round_number?.value;
+          const scoreValue =
+            scoreData.grand_total?.value ?? scoreData.score?.value;
 
-      // Handle seeding score acceptance
-      if (scoreType === 'seeding') {
-        const teamId = scoreData.team_id?.value;
-        const roundNumber =
-          scoreData.round?.value || scoreData.round_number?.value;
-        const scoreValue =
-          scoreData.grand_total?.value ?? scoreData.score?.value;
+          if (!teamId || !roundNumber) {
+            skipped.push({
+              id,
+              reason: 'Seeding score must have team_id and round_number',
+            });
+            continue;
+          }
 
-        if (!teamId || !roundNumber) {
-          return res.status(400).json({
-            error: 'Seeding score must have team_id and round_number',
+          const existingScore = await db.get(
+            'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+            [teamId, roundNumber],
+          );
+          if (existingScore && existingScore.score !== null) {
+            skipped.push({
+              id,
+              reason: 'A score already exists for this team/round',
+            });
+            continue;
+          }
+
+          seedingOps.push({
+            id,
+            teamId,
+            roundNumber,
+            scoreValue,
+            score,
+          });
+        } else if (scoreType === 'bracket') {
+          const bracketGameId = score.bracket_game_id;
+          const winnerTeamId =
+            scoreData.winner_team_id?.value ?? scoreData.winner_id?.value;
+          const team1Score = scoreData.team1_score?.value ?? null;
+          const team2Score = scoreData.team2_score?.value ?? null;
+
+          if (!bracketGameId) {
+            skipped.push({
+              id,
+              reason: 'Bracket score must have bracket_game_id linked',
+            });
+            continue;
+          }
+
+          if (!winnerTeamId) {
+            skipped.push({
+              id,
+              reason: 'Bracket score must specify a winner',
+            });
+            continue;
+          }
+
+          const game = await db.get(
+            'SELECT * FROM bracket_games WHERE id = ?',
+            [bracketGameId],
+          );
+          if (!game) {
+            skipped.push({ id, reason: 'Bracket game not found' });
+            continue;
+          }
+
+          if (
+            game.team1_id !== winnerTeamId &&
+            game.team2_id !== winnerTeamId
+          ) {
+            skipped.push({
+              id,
+              reason: 'Winner must be one of the teams in the game',
+            });
+            continue;
+          }
+
+          if (game.winner_id && game.winner_id !== winnerTeamId) {
+            skipped.push({
+              id,
+              reason: 'Game already has a different winner',
+            });
+            continue;
+          }
+
+          const loserId =
+            game.team1_id === winnerTeamId ? game.team2_id : game.team1_id;
+
+          const updates: { gameId: number; slot: string; teamId: number }[] =
+            [];
+          if (game.winner_advances_to_id && game.winner_slot) {
+            updates.push({
+              gameId: game.winner_advances_to_id,
+              slot: game.winner_slot,
+              teamId: winnerTeamId,
+            });
+          }
+          if (loserId && game.loser_advances_to_id && game.loser_slot) {
+            updates.push({
+              gameId: game.loser_advances_to_id,
+              slot: game.loser_slot,
+              teamId: loserId,
+            });
+          }
+
+          bracketOps.push({
+            id,
+            bracketGameId,
+            winnerTeamId,
+            loserId,
+            team1Score,
+            team2Score,
+            updates,
+            game,
+            score,
+          });
+        } else {
+          skipped.push({
+            id,
+            reason: `Unknown score_type: ${scoreType}`,
           });
         }
+      }
 
-        // Check for conflict
-        const existingScore = await db.get(
-          'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
-          [teamId, roundNumber],
-        );
-
-        if (existingScore && existingScore.score !== null && !force) {
-          return res.status(409).json({
-            error:
-              'A score already exists for this team/round. Use force=true to override.',
-            existingScore: existingScore.score,
-            newScore: scoreValue,
-          });
-        }
-
-        // Upsert seeding score within transaction
-        await db.transaction((tx) => {
+      // Single transaction: all core updates
+      await db.transaction((tx) => {
+        for (const op of seedingOps) {
           tx.run(
             `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -252,133 +323,17 @@ router.post(
                score = excluded.score,
                score_submission_id = excluded.score_submission_id,
                scored_at = CURRENT_TIMESTAMP`,
-            [teamId, roundNumber, scoreValue, id],
+            [op.teamId, op.roundNumber, op.scoreValue, op.id],
           );
-
-          // Update score submission status
           tx.run(
             `UPDATE score_submissions 
              SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
-            [req.user.id, id],
-          );
-        });
-
-        // Get the seeding score ID and link it back
-        const seedingScore = await db.get(
-          'SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?',
-          [teamId, roundNumber],
-        );
-
-        if (seedingScore) {
-          await db.run(
-            'UPDATE score_submissions SET seeding_score_id = ? WHERE id = ?',
-            [seedingScore.id, id],
+            [reviewedBy, op.id],
           );
         }
 
-        const updatedScore = await db.get(
-          'SELECT * FROM score_submissions WHERE id = ?',
-          [id],
-        );
-        await createAuditEntry(db, {
-          event_id: score.event_id,
-          user_id: req.user?.id ?? null,
-          action: 'score_accepted',
-          entity_type: 'score_submission',
-          entity_id: Number(id),
-          old_value: toAuditJson(score),
-          new_value: toAuditJson(updatedScore),
-          ip_address: req.ip ?? null,
-        });
-
-        await updateSeedingQueueItem(
-          db,
-          score.event_id,
-          teamId,
-          roundNumber,
-          true,
-        );
-
-        return res.json({
-          success: true,
-          scoreType: 'seeding',
-          seedingScoreId: seedingScore?.id,
-        });
-      }
-
-      // Handle bracket score acceptance
-      if (scoreType === 'bracket') {
-        const bracketGameId = score.bracket_game_id;
-        const winnerTeamId =
-          scoreData.winner_team_id?.value || scoreData.winner_id?.value;
-        const team1Score = scoreData.team1_score?.value;
-        const team2Score = scoreData.team2_score?.value;
-
-        if (!bracketGameId) {
-          return res.status(400).json({
-            error: 'Bracket score must have bracket_game_id linked',
-          });
-        }
-
-        if (!winnerTeamId) {
-          return res.status(400).json({
-            error:
-              'Bracket score must specify a winner (winner_team_id or winner_id)',
-          });
-        }
-
-        // Get the game
-        const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
-          bracketGameId,
-        ]);
-
-        if (!game) {
-          return res.status(404).json({ error: 'Bracket game not found' });
-        }
-
-        // Verify winner is one of the teams
-        if (game.team1_id !== winnerTeamId && game.team2_id !== winnerTeamId) {
-          return res.status(400).json({
-            error: 'Winner must be one of the teams in the game',
-          });
-        }
-
-        // Check for conflict
-        if (game.winner_id && game.winner_id !== winnerTeamId && !force) {
-          return res.status(409).json({
-            error:
-              'Game already has a different winner. Use force=true to override.',
-            existingWinnerId: game.winner_id,
-            newWinnerId: winnerTeamId,
-          });
-        }
-
-        const loserId =
-          game.team1_id === winnerTeamId ? game.team2_id : game.team1_id;
-
-        // Prepare advancement updates
-        const updates: { gameId: number; slot: string; teamId: number }[] = [];
-
-        if (game.winner_advances_to_id && game.winner_slot) {
-          updates.push({
-            gameId: game.winner_advances_to_id,
-            slot: game.winner_slot,
-            teamId: winnerTeamId,
-          });
-        }
-
-        if (loserId && game.loser_advances_to_id && game.loser_slot) {
-          updates.push({
-            gameId: game.loser_advances_to_id,
-            slot: game.loser_slot,
-            teamId: loserId,
-          });
-        }
-
-        // Execute all updates in transaction
-        await db.transaction((tx) => {
-          // Update game with winner and scores
+        for (const op of bracketOps) {
           tx.run(
             `UPDATE bracket_games SET
               winner_id = ?,
@@ -390,39 +345,72 @@ router.post(
               score_submission_id = ?
             WHERE id = ?`,
             [
-              winnerTeamId,
-              loserId,
-              team1Score ?? null,
-              team2Score ?? null,
-              id,
-              bracketGameId,
+              op.winnerTeamId,
+              op.loserId,
+              op.team1Score,
+              op.team2Score,
+              op.id,
+              op.bracketGameId,
             ],
           );
-
-          // Advance teams to next games
-          for (const update of updates) {
-            const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
+          for (const u of op.updates) {
+            const column = u.slot === 'team1' ? 'team1_id' : 'team2_id';
             tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
-              update.teamId,
-              update.gameId,
+              u.teamId,
+              u.gameId,
             ]);
           }
-
-          // Update score submission status
           tx.run(
             `UPDATE score_submissions 
              SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
-            [req.user.id, id],
+            [reviewedBy, op.id],
           );
-        });
+        }
+      });
 
-        // Mark destination games as ready if both teams assigned
-        // TODO Use transaction for for looped DB ops
-        for (const update of updates) {
+      // Post-transaction: update seeding_score_id, audit, queue, bye resolution
+      for (const op of seedingOps) {
+        const seedingScore = await db.get(
+          'SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+          [op.teamId, op.roundNumber],
+        );
+        if (seedingScore) {
+          await db.run(
+            'UPDATE score_submissions SET seeding_score_id = ? WHERE id = ?',
+            [seedingScore.id, op.id],
+          );
+        }
+        const updatedScore = await db.get(
+          'SELECT * FROM score_submissions WHERE id = ?',
+          [op.id],
+        );
+        await createAuditEntry(db, {
+          event_id: eventIdNum,
+          user_id: reviewedBy,
+          action: auditAction,
+          entity_type: 'score_submission',
+          entity_id: op.id,
+          old_value: toAuditJson(op.score),
+          new_value: toAuditJson(updatedScore),
+          ip_address: ipAddress,
+        });
+        await updateSeedingQueueItem(
+          db,
+          eventIdNum,
+          op.teamId,
+          op.roundNumber,
+          true,
+        );
+        accepted.push({ id: op.id, scoreType: 'seeding' });
+      }
+
+      const bracketIdsProcessed = new Set<number>();
+      for (const op of bracketOps) {
+        for (const u of op.updates) {
           const destGame = await db.get(
             'SELECT * FROM bracket_games WHERE id = ?',
-            [update.gameId],
+            [u.gameId],
           );
           if (
             destGame &&
@@ -432,62 +420,116 @@ router.post(
           ) {
             await db.run(
               `UPDATE bracket_games SET status = 'ready' WHERE id = ?`,
-              [update.gameId],
+              [u.gameId],
             );
           }
         }
-
-        // Resolve any bye chains
-        const byeResolution = await resolveBracketByes(db, game.bracket_id);
-
         const updatedScore = await db.get(
           'SELECT * FROM score_submissions WHERE id = ?',
-          [id],
+          [op.id],
         );
         const updatedGame = await db.get(
           'SELECT * FROM bracket_games WHERE id = ?',
-          [bracketGameId],
+          [op.bracketGameId],
         );
-
         await createAuditEntry(db, {
-          event_id: score.event_id,
-          user_id: req.user?.id ?? null,
-          action: 'score_accepted',
+          event_id: eventIdNum,
+          user_id: reviewedBy,
+          action: auditAction,
           entity_type: 'score_submission',
-          entity_id: Number(id),
-          old_value: toAuditJson(score),
+          entity_id: op.id,
+          old_value: toAuditJson(op.score),
           new_value: toAuditJson(updatedScore),
-          ip_address: req.ip ?? null,
+          ip_address: ipAddress,
         });
         await createAuditEntry(db, {
-          event_id: score.event_id,
-          user_id: req.user?.id ?? null,
+          event_id: eventIdNum,
+          user_id: reviewedBy,
           action: 'bracket_game_completed',
           entity_type: 'bracket_game',
-          entity_id: bracketGameId,
-          old_value: toAuditJson(game),
+          entity_id: op.bracketGameId,
+          old_value: toAuditJson(op.game),
           new_value: toAuditJson(updatedGame),
-          ip_address: req.ip ?? null,
+          ip_address: ipAddress,
         });
+        await updateBracketQueueItem(db, eventIdNum, op.bracketGameId, true);
+        accepted.push({ id: op.id, scoreType: 'bracket' });
 
-        await updateBracketQueueItem(db, score.event_id, bracketGameId, true);
+        const bracketId = (op.game as { bracket_id: number }).bracket_id;
+        if (bracketId && !bracketIdsProcessed.has(bracketId)) {
+          bracketIdsProcessed.add(bracketId);
+          await resolveBracketByes(db, bracketId);
+        }
+      }
 
-        return res.json({
-          success: true,
-          scoreType: 'bracket',
-          bracketGameId,
-          winnerId: winnerTeamId,
-          loserId,
-          advanced: updates.length > 0,
-          advancedTo: updates.length > 0 ? updates[0].gameId : undefined,
-          byeResolution,
+      if (accepted.length > 0) {
+        await createAuditEntry(db, {
+          event_id: eventIdNum,
+          user_id: reviewedBy,
+          action: 'scores_bulk_accepted',
+          entity_type: 'score_submission',
+          entity_id: null,
+          old_value: null,
+          new_value: toAuditJson({
+            accepted_count: accepted.length,
+            accepted_ids: accepted.map((a) => a.id),
+            skipped: skipped.length > 0 ? skipped : undefined,
+          }),
+          ip_address: ipAddress,
         });
       }
 
-      // Unknown score type
-      return res.status(400).json({
-        error: `Unknown score_type: ${scoreType}. Expected 'seeding' or 'bracket'.`,
+      res.json({
+        accepted: accepted.length,
+        accepted_ids: accepted.map((a) => a.id),
+        skipped: skipped.length > 0 ? skipped : undefined,
       });
+    } catch (error) {
+      console.error('Error bulk accepting scores:', error);
+      res.status(500).json({ error: 'Failed to bulk accept scores' });
+    }
+  },
+);
+
+// Accept event-scoped score (admin-only, DB-only, no sheets)
+router.post(
+  '/:id/accept-event',
+  requireAdmin,
+  async (req: AuthRequest, res: express.Response) => {
+    try {
+      const { id } = req.params;
+      const { force } = req.body as { force?: boolean };
+      const db = await getDatabase();
+
+      const result = await acceptEventScore({
+        db,
+        submissionId: Number(id),
+        force: force ?? false,
+        reviewedBy: req.user?.id ?? null,
+        ipAddress: req.ip ?? null,
+      });
+
+      if (!result.ok) {
+        const {
+          status,
+          error,
+          existingScore,
+          newScore,
+          existingWinnerId,
+          newWinnerId,
+        } = result;
+        const body: Record<string, unknown> = { error };
+        if (existingScore !== undefined) body.existingScore = existingScore;
+        if (newScore !== undefined) body.newScore = newScore;
+        if (existingWinnerId !== undefined)
+          body.existingWinnerId = existingWinnerId;
+        if (newWinnerId !== undefined) body.newWinnerId = newWinnerId;
+        return res.status(status).json(body);
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- ok/success excluded from response
+      const { ok, success, scoreType, ...rest } = result;
+      return res.json({ success: true, scoreType, ...rest });
     } catch (error) {
       console.error('Error accepting event score:', error);
       res.status(500).json({ error: 'Failed to accept score' });
