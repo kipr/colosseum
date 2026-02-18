@@ -61,6 +61,7 @@ describe('Seeding Rankings Calculation', () => {
       teamId: number;
       seedAverage: number | null;
       tiebreaker: number | null;
+      rawSeedScore: number | null;
     }[] = [];
 
     for (const team of teams) {
@@ -73,9 +74,7 @@ describe('Seeding Rankings Calculation', () => {
       let tiebreaker: number | null = null;
 
       if (scores.length >= 2) {
-        // Average of top 2 scores
         seedAverage = (scores[0].score + scores[1].score) / 2;
-        // Tiebreaker: 3rd score if available, else sum of all
         tiebreaker =
           scores.length >= 3
             ? scores[2].score
@@ -85,10 +84,15 @@ describe('Seeding Rankings Calculation', () => {
         tiebreaker = scores[0].score;
       }
 
-      rankings.push({ teamId: team.id, seedAverage, tiebreaker });
+      rankings.push({
+        teamId: team.id,
+        seedAverage,
+        tiebreaker,
+        rawSeedScore: null,
+      });
     }
 
-    // Sort by seed_average DESC, then tiebreaker DESC
+    // Preliminary sort by seedAverage DESC to compute rawSeedScore
     rankings.sort((a, b) => {
       if (a.seedAverage === null && b.seedAverage === null) return 0;
       if (a.seedAverage === null) return 1;
@@ -100,24 +104,39 @@ describe('Seeding Rankings Calculation', () => {
       return b.tiebreaker - a.tiebreaker;
     });
 
-    // Calculate raw seed score
     const maxAverage =
       rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
     const rankedTeams = rankings.filter((r) => r.seedAverage !== null);
     const n = rankedTeams.length;
 
-    // Update rankings in database
+    for (let i = 0; i < rankings.length; i++) {
+      const r = rankings[i];
+      const prelimRank = r.seedAverage !== null ? i + 1 : null;
+
+      if (r.seedAverage !== null && prelimRank !== null && n > 0) {
+        const rankComponent = (3 / 4) * ((n - prelimRank + 1) / n);
+        const scoreComponent = (1 / 4) * (r.seedAverage / maxAverage);
+        r.rawSeedScore = rankComponent + scoreComponent;
+      }
+    }
+
+    // Final sort by rawSeedScore DESC, then tiebreaker DESC
+    rankings.sort((a, b) => {
+      if (a.rawSeedScore === null && b.rawSeedScore === null) return 0;
+      if (a.rawSeedScore === null) return 1;
+      if (b.rawSeedScore === null) return -1;
+      if (a.rawSeedScore !== b.rawSeedScore)
+        return b.rawSeedScore - a.rawSeedScore;
+      if (a.tiebreaker === null && b.tiebreaker === null) return 0;
+      if (a.tiebreaker === null) return 1;
+      if (b.tiebreaker === null) return -1;
+      return b.tiebreaker - a.tiebreaker;
+    });
+
     await testDb.db.transaction((tx) => {
       for (let i = 0; i < rankings.length; i++) {
         const r = rankings[i];
-        const seedRank = r.seedAverage !== null ? i + 1 : null;
-
-        let rawSeedScore: number | null = null;
-        if (r.seedAverage !== null && seedRank !== null && n > 0) {
-          const rankComponent = (3 / 4) * ((n - seedRank + 1) / n);
-          const scoreComponent = (1 / 4) * (r.seedAverage / maxAverage);
-          rawSeedScore = rankComponent + scoreComponent;
-        }
+        const seedRank = r.rawSeedScore !== null ? i + 1 : null;
 
         tx.run(
           `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
@@ -127,7 +146,7 @@ describe('Seeding Rankings Calculation', () => {
              seed_rank = excluded.seed_rank,
              raw_seed_score = excluded.raw_seed_score,
              tiebreaker_value = excluded.tiebreaker_value`,
-          [r.teamId, r.seedAverage, seedRank, rawSeedScore, r.tiebreaker],
+          [r.teamId, r.seedAverage, seedRank, r.rawSeedScore, r.tiebreaker],
         );
       }
     });
@@ -236,7 +255,7 @@ describe('Seeding Rankings Calculation', () => {
   });
 
   describe('ranking order', () => {
-    it('should rank teams by seed_average descending', async () => {
+    it('should rank teams by raw_seed_score descending', async () => {
       const team1 = await createTeam(100); // Average: 135
       const team2 = await createTeam(200); // Average: 150
       const team3 = await createTeam(300); // Average: 100
