@@ -2,6 +2,7 @@ import type { Database } from '../database/connection';
 import { createAuditEntry } from '../routes/audit';
 import { toAuditJson } from '../utils/auditJson';
 import { resolveBracketByes } from './bracketByeResolver';
+import { recalculateSeedingRankings } from './seedingRankings';
 
 /** Mark seeding queue item completed on accept, or queued on revert. Inserts if missing. */
 export async function updateSeedingQueueItem(
@@ -204,6 +205,7 @@ export async function acceptEventScore(
     });
 
     await updateSeedingQueueItem(db, score.event_id, teamId, roundNumber, true);
+    await recalculateSeedingRankings(score.event_id);
 
     return {
       ok: true,

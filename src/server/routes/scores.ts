@@ -4,6 +4,7 @@ import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { resolveBracketByes } from '../services/bracketByeResolver';
+import { recalculateSeedingRankings } from '../services/seedingRankings';
 import {
   acceptEventScore,
   updateSeedingQueueItem,
@@ -399,6 +400,9 @@ router.post(
           true,
         );
         accepted.push({ id: op.id, scoreType: 'seeding' });
+      }
+      if (seedingOps.length > 0) {
+        await recalculateSeedingRankings(eventIdNum);
       }
 
       const bracketIdsProcessed = new Set<number>();

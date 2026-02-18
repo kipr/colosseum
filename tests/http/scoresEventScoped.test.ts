@@ -489,6 +489,73 @@ describe('Event-Scoped Scores Routes', () => {
       expect(queueItem.status).toBe('completed');
     });
 
+    it('recalculates seeding rankings when a seeding score is accepted', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+
+      await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?), (?, ?, ?)',
+        [team1.id, 1, 100, team2.id, 1, 150],
+      );
+
+      // Seed stale rankings to ensure accept-event refreshes them.
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
+         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+        [team1.id, 999, 2, 0.1, 0, team2.id, 999, 1, 0.9, 0],
+      );
+
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const pendingScore = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team1.id },
+          round: { value: 2 },
+          grand_total: { value: 300 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/${pendingScore.id}/accept-event`,
+      );
+      expect(res.status).toBe(200);
+
+      const refreshed = await testDb.db.all<{
+        team_id: number;
+        seed_rank: number | null;
+        seed_average: number | null;
+      }>(
+        `SELECT sr.team_id, sr.seed_rank, sr.seed_average
+         FROM seeding_rankings sr
+         JOIN teams t ON t.id = sr.team_id
+         WHERE t.event_id = ?
+         ORDER BY sr.seed_rank ASC NULLS LAST, sr.team_id ASC`,
+        [event.id],
+      );
+
+      expect(refreshed.length).toBe(2);
+      expect(refreshed[0].team_id).toBe(team1.id);
+      expect(refreshed[0].seed_rank).toBe(1);
+      expect(refreshed[0].seed_average).toBe(200);
+      expect(refreshed[1].team_id).toBe(team2.id);
+      expect(refreshed[1].seed_rank).toBe(2);
+      expect(refreshed[1].seed_average).toBe(150);
+    });
+
     it('accepts bracket score and sets winner', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
@@ -849,6 +916,86 @@ describe('Event-Scoped Scores Routes', () => {
         [event.id, 'scores_bulk_accepted'],
       );
       expect(auditBulk.length).toBe(1);
+    });
+
+    it('recalculates seeding rankings when seeding scores are bulk accepted', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+
+      await testDb.db.run(
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?), (?, ?, ?)',
+        [team1.id, 1, 100, team2.id, 1, 200],
+      );
+
+      // Seed stale rankings to ensure bulk accept refreshes them.
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
+         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+        [team1.id, 999, 2, 0.1, 0, team2.id, 999, 1, 0.9, 0],
+      );
+
+      const config = await seedSpreadsheetConfig(testDb.db, {
+        user_id: adminUser.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score1 = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team1.id },
+          round: { value: 2 },
+          grand_total: { value: 300 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+      const score2 = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: config.id,
+        score_data: JSON.stringify({
+          team_id: { value: team2.id },
+          round: { value: 2 },
+          grand_total: { value: 50 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/scores/event/${event.id}/accept/bulk`,
+        { score_ids: [score1.id, score2.id] },
+      );
+      expect(res.status).toBe(200);
+
+      const refreshed = await testDb.db.all<{
+        team_id: number;
+        seed_rank: number | null;
+        seed_average: number | null;
+      }>(
+        `SELECT sr.team_id, sr.seed_rank, sr.seed_average
+         FROM seeding_rankings sr
+         JOIN teams t ON t.id = sr.team_id
+         WHERE t.event_id = ?
+         ORDER BY sr.seed_rank ASC NULLS LAST, sr.team_id ASC`,
+        [event.id],
+      );
+
+      expect(refreshed.length).toBe(2);
+      expect(refreshed[0].team_id).toBe(team1.id);
+      expect(refreshed[0].seed_rank).toBe(1);
+      expect(refreshed[0].seed_average).toBe(200);
+      expect(refreshed[1].team_id).toBe(team2.id);
+      expect(refreshed[1].seed_rank).toBe(2);
+      expect(refreshed[1].seed_average).toBe(125);
     });
 
     it('skips scores with conflicts and reports them', async () => {

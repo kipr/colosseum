@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import './SeedingTab.css';
@@ -46,16 +46,12 @@ export default function SeedingTab() {
   const [scores, setScores] = useState<SeedingScore[]>([]);
   const [rankings, setRankings] = useState<SeedingRanking[]>([]);
   const [loading, setLoading] = useState(false);
-  const [recalculating, setRecalculating] = useState(false);
 
   // Sorting state for Seeding Scores table
   type SortField = 'team_number' | 'team_name';
   type SortDirection = 'asc' | 'desc';
   const [sortField, setSortField] = useState<SortField>('team_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-
-  // Debounce recalculation after saves
-  const recalcTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const toast = useToast();
 
@@ -166,59 +162,6 @@ export default function SeedingTab() {
     return sortDirection === 'asc' ? ' ▲' : ' ▼';
   };
 
-  // Recalculate rankings
-  const recalculateRankings = async () => {
-    if (!selectedEventId) return;
-
-    setRecalculating(true);
-    try {
-      const response = await fetch(
-        `/seeding/rankings/recalculate/${selectedEventId}`,
-        {
-          method: 'POST',
-          credentials: 'include',
-        },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to recalculate rankings');
-      }
-
-      const data = await response.json();
-      setRankings(data.rankings);
-    } catch (error) {
-      console.error('Error recalculating rankings:', error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Failed to recalculate rankings',
-      );
-    } finally {
-      setRecalculating(false);
-    }
-  };
-
-  // Manual recalculate button handler
-  const handleRecalculateClick = async () => {
-    // Clear any pending debounced recalc
-    if (recalcTimeoutRef.current) {
-      clearTimeout(recalcTimeoutRef.current);
-      recalcTimeoutRef.current = null;
-    }
-    await recalculateRankings();
-    toast.success('Rankings recalculated');
-  };
-
-  // Clean up timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (recalcTimeoutRef.current) {
-        clearTimeout(recalcTimeoutRef.current);
-      }
-    };
-  }, []);
-
   if (!selectedEventId) {
     return (
       <div className="seeding-tab">
@@ -314,18 +257,6 @@ export default function SeedingTab() {
                   position + 25% score ratio (top 2 of 3 scores).
                 </p>
               </div>
-              <div className="seeding-actions">
-                <button
-                  className="btn btn-primary"
-                  onClick={handleRecalculateClick}
-                  disabled={recalculating || loading}
-                >
-                  {recalculating ? 'Calculating...' : 'Calculate Rankings'}
-                </button>
-                {recalculating && (
-                  <span className="seeding-status">Updating rankings...</span>
-                )}
-              </div>
             </div>
             <div className="table-responsive">
               <table className="seeding-table rankings-table">
@@ -349,8 +280,7 @@ export default function SeedingTab() {
                           color: 'var(--secondary-color)',
                         }}
                       >
-                        No rankings calculated yet. Enter scores and click
-                        "Calculate Rankings".
+                        No rankings calculated yet.
                       </td>
                     </tr>
                   ) : (

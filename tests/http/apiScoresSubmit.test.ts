@@ -530,6 +530,17 @@ describe('API Score Submit Routes', () => {
           const actions = auditLogs.map((r: { action: string }) => r.action);
           expect(actions).toContain('score_submitted');
           expect(actions).toContain('score_auto_accepted');
+
+          const ranking = await testDb.db.get<{
+            seed_rank: number | null;
+            seed_average: number | null;
+          }>(
+            'SELECT seed_rank, seed_average FROM seeding_rankings WHERE team_id = ?',
+            [team.id],
+          );
+          expect(ranking).toBeDefined();
+          expect(ranking?.seed_rank).toBe(1);
+          expect(ranking?.seed_average).toBe(200);
         });
 
         it('leaves bracket score pending when event has auto_accept_seeding only', async () => {

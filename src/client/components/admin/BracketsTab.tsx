@@ -94,9 +94,7 @@ function getGameStatusClass(status: GameStatus): string {
 }
 
 /** Find the bracket winner from games. Championship game has no winner_advances_to. */
-function getBracketWinner(
-  games: BracketDetail['games'],
-): {
+function getBracketWinner(games: BracketDetail['games']): {
   team_id: number;
   team_number?: number;
   team_name?: string;
