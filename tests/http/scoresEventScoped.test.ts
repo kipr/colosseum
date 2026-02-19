@@ -1116,6 +1116,118 @@ describe('Event-Scoped Scores Routes', () => {
   });
 
   // ==========================================================================
+  // POST /scores/:id/reject
+  // ==========================================================================
+
+  describe('POST /scores/:id/reject', () => {
+    let server: TestServerHandle;
+    let reviewer: { id: number };
+
+    beforeEach(async () => {
+      reviewer = await seedUser(testDb.db, { is_admin: false });
+      const app = createTestApp({
+        user: { id: reviewer.id, is_admin: false },
+      });
+      app.use('/scores', scoresRoutes);
+      server = await startServer(app);
+    });
+
+    afterEach(async () => {
+      await server.close();
+    });
+
+    it('restores seeding queue item to queued when event-scoped score is rejected', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'seeding',
+        queue_position: 1,
+        seeding_team_id: team.id,
+        seeding_round: 1,
+        status: 'completed',
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: null,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 120 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+
+      const res = await http.post(`${server.baseUrl}/scores/${score.id}/reject`);
+      expect(res.status).toBe(200);
+
+      const queueItem = await testDb.db.get(
+        `SELECT status FROM game_queue
+         WHERE event_id = ? AND queue_type = 'seeding' AND seeding_team_id = ? AND seeding_round = ?`,
+        [event.id, team.id, 1],
+      );
+      expect(queueItem).toBeDefined();
+      expect(queueItem.status).toBe('queued');
+    });
+
+    it('restores bracket queue item to queued when event-scoped score is rejected', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'ready',
+      });
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+        status: 'completed',
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        spreadsheet_config_id: null,
+        score_data: JSON.stringify({
+          winner_team_id: { value: team1.id },
+        }),
+        event_id: event.id,
+        score_type: 'bracket',
+        bracket_game_id: game.id,
+        status: 'pending',
+      });
+
+      const res = await http.post(`${server.baseUrl}/scores/${score.id}/reject`);
+      expect(res.status).toBe(200);
+
+      const queueItem = await testDb.db.get(
+        `SELECT status FROM game_queue
+         WHERE event_id = ? AND queue_type = 'bracket' AND bracket_game_id = ?`,
+        [event.id, game.id],
+      );
+      expect(queueItem).toBeDefined();
+      expect(queueItem.status).toBe('queued');
+    });
+  });
+
+  // ==========================================================================
   // POST /scores/:id/revert-event
   // ==========================================================================
 

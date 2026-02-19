@@ -3,7 +3,11 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
-import { acceptEventScore } from '../services/scoreAccept';
+import {
+  acceptEventScore,
+  updateBracketQueueItem,
+  updateSeedingQueueItem,
+} from '../services/scoreAccept';
 
 const router = express.Router();
 
@@ -168,6 +172,29 @@ router.post(
           }),
           ip_address: req.ip ?? null,
         });
+
+        // Remove from active queue as soon as the score is submitted.
+        // If the submission is later rejected, scores.ts will restore it.
+        if (scoreType === 'seeding' && resolvedTeamId) {
+          const roundNumber =
+            scoreData.round?.value ?? scoreData.round_number?.value;
+          if (roundNumber != null) {
+            await updateSeedingQueueItem(
+              db,
+              eventId,
+              resolvedTeamId,
+              Number(roundNumber),
+              true,
+            );
+          }
+        } else if (scoreType === 'bracket' && bracket_game_id != null) {
+          await updateBracketQueueItem(
+            db,
+            eventId,
+            Number(bracket_game_id),
+            true,
+          );
+        }
 
         // Auto-accept when event's score_accept_mode matches (force=false, reviewed_by=null)
         const event = await db.get<{ score_accept_mode?: string }>(

@@ -341,6 +341,50 @@ describe('API Score Submit Routes', () => {
         expect(submission.score_type).toBe('seeding');
       });
 
+      it('marks matching seeding queue item completed immediately on submit', async () => {
+        const event = await seedEvent(testDb.db);
+        const team = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 88,
+          team_name: 'Submit Queue Team',
+        });
+        await seedQueueItem(testDb.db, {
+          event_id: event.id,
+          queue_type: 'seeding',
+          queue_position: 1,
+          seeding_team_id: team.id,
+          seeding_round: 1,
+          status: 'queued',
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Seeding Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Submit Queue Team',
+          scoreData: {
+            team_id: { value: team.id, type: 'number' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 123, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(200);
+
+        const queueItem = await testDb.db.get(
+          `SELECT status FROM game_queue
+           WHERE event_id = ? AND queue_type = 'seeding' AND seeding_team_id = ? AND seeding_round = ?`,
+          [event.id, team.id, 1],
+        );
+        expect(queueItem).toBeDefined();
+        expect(queueItem.status).toBe('completed');
+      });
+
       it('creates DB-backed bracket score submission with bracket_game_id', async () => {
         const event = await seedEvent(testDb.db);
         const team1 = await seedTeam(testDb.db, {
@@ -406,6 +450,69 @@ describe('API Score Submit Routes', () => {
           [event.id, 'score_submitted', 'score_submission', submission.id],
         );
         expect(auditLogs.length).toBe(1);
+      });
+
+      it('marks matching bracket queue item completed immediately on submit', async () => {
+        const event = await seedEvent(testDb.db);
+        const team1 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+          team_name: 'Team A',
+        });
+        const team2 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 2,
+          team_name: 'Team B',
+        });
+        const bracket = await seedBracket(testDb.db, {
+          event_id: event.id,
+          name: 'Main Bracket',
+          bracket_size: 8,
+        });
+        const game = await seedBracketGame(testDb.db, {
+          bracket_id: bracket.id,
+          game_number: 1,
+          team1_id: team1.id,
+          team2_id: team2.id,
+          status: 'ready',
+        });
+        await seedQueueItem(testDb.db, {
+          event_id: event.id,
+          queue_type: 'bracket',
+          queue_position: 1,
+          bracket_game_id: game.id,
+          status: 'called',
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Bracket Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: '1 - Team A',
+          matchId: '1',
+          scoreData: {
+            winner_team_id: { value: team1.id, type: 'number' },
+            team1_score: { value: 100, type: 'number' },
+            team2_score: { value: 80, type: 'number' },
+          },
+          isHeadToHead: true,
+          eventId: event.id,
+          scoreType: 'bracket',
+          bracket_game_id: game.id,
+        });
+
+        expect(res.status).toBe(200);
+
+        const queueItem = await testDb.db.get(
+          `SELECT status FROM game_queue
+           WHERE event_id = ? AND queue_type = 'bracket' AND bracket_game_id = ?`,
+          [event.id, game.id],
+        );
+        expect(queueItem).toBeDefined();
+        expect(queueItem.status).toBe('completed');
       });
 
       it('returns 400 when bracket_game_id missing for DB-backed bracket submission', async () => {

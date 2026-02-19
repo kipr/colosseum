@@ -1160,6 +1160,37 @@ router.post(
         [req.user.id, id],
       );
 
+      if (oldScore.event_id && oldScore.score_type === 'seeding') {
+        try {
+          const scoreData = JSON.parse(oldScore.score_data ?? '{}');
+          const teamId = scoreData.team_id?.value;
+          const roundNumber =
+            scoreData.round?.value ?? scoreData.round_number?.value;
+          if (teamId != null && roundNumber != null) {
+            await updateSeedingQueueItem(
+              db,
+              oldScore.event_id,
+              Number(teamId),
+              Number(roundNumber),
+              false,
+            );
+          }
+        } catch {
+          // Leave queue unchanged if score_data cannot be parsed.
+        }
+      } else if (
+        oldScore.event_id &&
+        oldScore.score_type === 'bracket' &&
+        oldScore.bracket_game_id != null
+      ) {
+        await updateBracketQueueItem(
+          db,
+          oldScore.event_id,
+          oldScore.bracket_game_id,
+          false,
+        );
+      }
+
       if (oldScore.event_id) {
         const updatedScore = await db.get(
           'SELECT * FROM score_submissions WHERE id = ?',

@@ -32,6 +32,30 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
   const scoredSet = new Set(
     scoredRounds.map((s) => `${s.team_id}:${s.round_number}`),
   );
+  const submittedRounds = await db.all<{
+    team_id: number;
+    round_number: number;
+  }>(
+    `SELECT
+       json_extract(score_data, '$.team_id.value') AS team_id,
+       COALESCE(
+         json_extract(score_data, '$.round.value'),
+         json_extract(score_data, '$.round_number.value')
+       ) AS round_number
+     FROM score_submissions
+     WHERE event_id = ?
+       AND score_type = 'seeding'
+       AND status IN ('pending', 'accepted')
+       AND json_extract(score_data, '$.team_id.value') IS NOT NULL
+       AND COALESCE(
+         json_extract(score_data, '$.round.value'),
+         json_extract(score_data, '$.round_number.value')
+       ) IS NOT NULL`,
+    [eventId],
+  );
+  const submittedSet = new Set(
+    submittedRounds.map((s) => `${s.team_id}:${s.round_number}`),
+  );
 
   const existingSeeding = await db.all<{
     id: number;
@@ -53,7 +77,9 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
       allCombos.push({
         team_id: team.id,
         round,
-        scored: scoredSet.has(`${team.id}:${round}`),
+        scored:
+          scoredSet.has(`${team.id}:${round}`) ||
+          submittedSet.has(`${team.id}:${round}`),
       });
     }
   }
@@ -114,6 +140,18 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
      ORDER BY game_number ASC`,
     bracketIds,
   );
+  const submittedBracketGames = await db.all<{ bracket_game_id: number }>(
+    `SELECT DISTINCT bracket_game_id
+     FROM score_submissions
+     WHERE event_id = ?
+       AND score_type = 'bracket'
+       AND status IN ('pending', 'accepted')
+       AND bracket_game_id IS NOT NULL`,
+    [eventId],
+  );
+  const submittedGameSet = new Set(
+    submittedBracketGames.map((row) => row.bracket_game_id),
+  );
 
   const existingBracket = await db.all<{
     id: number;
@@ -140,7 +178,8 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
         game.team1_id != null &&
         game.team2_id != null &&
         ['ready', 'pending'].includes(game.status);
-      const isCompleted = game.status === 'completed';
+      const isCompleted =
+        game.status === 'completed' || submittedGameSet.has(game.id);
       const existing = existingByGameId.get(game.id);
 
       if (existing) {
