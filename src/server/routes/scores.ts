@@ -320,9 +320,9 @@ router.post(
       }
 
       // Single transaction: all core updates
-      await db.transaction((tx) => {
+      await db.transaction(async (tx) => {
         for (const op of seedingOps) {
-          tx.run(
+          await tx.run(
             `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
              ON CONFLICT(team_id, round_number) DO UPDATE SET
@@ -331,7 +331,7 @@ router.post(
                scored_at = CURRENT_TIMESTAMP`,
             [op.teamId, op.roundNumber, op.scoreValue, op.id],
           );
-          tx.run(
+          await tx.run(
             `UPDATE score_submissions 
              SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP,
                  seeding_score_id = (SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?)
@@ -341,7 +341,7 @@ router.post(
         }
 
         for (const op of bracketOps) {
-          tx.run(
+          await tx.run(
             `UPDATE bracket_games SET
               winner_id = ?,
               loser_id = ?,
@@ -362,12 +362,12 @@ router.post(
           );
           for (const u of op.updates) {
             const column = u.slot === 'team1' ? 'team1_id' : 'team2_id';
-            tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
-              u.teamId,
-              u.gameId,
-            ]);
+            await tx.run(
+              `UPDATE bracket_games SET ${column} = ? WHERE id = ?`,
+              [u.teamId, u.gameId],
+            );
           }
-          tx.run(
+          await tx.run(
             `UPDATE score_submissions 
              SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
              WHERE id = ?`,
@@ -886,9 +886,11 @@ router.post(
         );
 
         // Clear the seeding score and reset submission
-        await db.transaction((tx) => {
-          tx.run('DELETE FROM seeding_scores WHERE id = ?', [seedingScoreId]);
-          tx.run(
+        await db.transaction(async (tx) => {
+          await tx.run('DELETE FROM seeding_scores WHERE id = ?', [
+            seedingScoreId,
+          ]);
+          await tx.run(
             `UPDATE score_submissions 
              SET status = 'pending', reviewed_by = NULL, reviewed_at = NULL, seeding_score_id = NULL
              WHERE id = ?`,
@@ -1034,9 +1036,8 @@ router.post(
         const winnerId = game.winner_id;
         const loserId = game.loser_id;
 
-        await db.transaction((tx) => {
-          // Clear winner from source game
-          tx.run(
+        await db.transaction(async (tx) => {
+          await tx.run(
             `UPDATE bracket_games SET
               winner_id = NULL,
               loser_id = NULL,
@@ -1052,14 +1053,11 @@ router.post(
             [bracketGameId],
           );
 
-          // Clear affected downstream games
-          // Handle multiple affected slots per game efficiently
           for (const affected of affectedGames) {
             const hasTeam1 = affected.affectedSlots.includes('team1');
             const hasTeam2 = affected.affectedSlots.includes('team2');
             const hasWinner = affected.affectedSlots.includes('winner');
 
-            // Build dynamic update based on which slots are affected
             const updates: string[] = [];
             if (hasTeam1) updates.push('team1_id = NULL');
             if (hasTeam2) updates.push('team2_id = NULL');
@@ -1073,12 +1071,9 @@ router.post(
               );
             }
 
-            // Always set status appropriately
-            // If winner is being cleared or both teams cleared, recalc status
             if (hasWinner || (hasTeam1 && hasTeam2)) {
               updates.push("status = 'pending'");
             } else if (hasTeam1 || hasTeam2) {
-              // Only one team slot cleared - status depends on remaining slot
               updates.push(`status = CASE 
                 WHEN ${hasTeam1 ? 'team2_id' : 'team1_id'} IS NOT NULL THEN 'pending'
                 ELSE 'pending'
@@ -1086,15 +1081,14 @@ router.post(
             }
 
             if (updates.length > 0) {
-              tx.run(
+              await tx.run(
                 `UPDATE bracket_games SET ${updates.join(', ')} WHERE id = ?`,
                 [affected.id],
               );
             }
           }
 
-          // Reset submission status
-          tx.run(
+          await tx.run(
             `UPDATE score_submissions 
              SET status = 'pending', reviewed_by = NULL, reviewed_at = NULL
              WHERE id = ?`,

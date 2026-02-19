@@ -169,8 +169,8 @@ export async function acceptEventScore(
       };
     }
 
-    await db.transaction((tx) => {
-      tx.run(
+    await db.transaction(async (tx) => {
+      await tx.run(
         `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
          VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(team_id, round_number) DO UPDATE SET
@@ -180,7 +180,7 @@ export async function acceptEventScore(
         [teamId, roundNumber, scoreValue, id],
       );
 
-      tx.run(
+      await tx.run(
         `UPDATE score_submissions 
          SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP,
              seeding_score_id = (SELECT id FROM seeding_scores WHERE team_id = ? AND round_number = ?)
@@ -301,8 +301,8 @@ export async function acceptEventScore(
       });
     }
 
-    await db.transaction((tx) => {
-      tx.run(
+    await db.transaction(async (tx) => {
+      await tx.run(
         `UPDATE bracket_games SET
           winner_id = ?,
           loser_id = ?,
@@ -324,13 +324,13 @@ export async function acceptEventScore(
 
       for (const update of updates) {
         const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
-        tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
+        await tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
           update.teamId,
           update.gameId,
         ]);
       }
 
-      tx.run(
+      await tx.run(
         `UPDATE score_submissions 
          SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
          WHERE id = ?`,

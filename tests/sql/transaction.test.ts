@@ -25,16 +25,16 @@ describe('Transaction Behavior', () => {
     const eventId = eventResult.lastID!;
 
     // Insert multiple teams in a transaction
-    await testDb.db.transaction((tx) => {
-      tx.run(
+    await testDb.db.transaction(async (tx) => {
+      await tx.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
         [eventId, 100, 'Team A'],
       );
-      tx.run(
+      await tx.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
         [eventId, 200, 'Team B'],
       );
-      tx.run(
+      await tx.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
         [eventId, 300, 'Team C'],
       );
@@ -66,12 +66,12 @@ describe('Transaction Behavior', () => {
 
     // Transaction that inserts some teams then throws
     await expect(
-      testDb.db.transaction((tx) => {
-        tx.run(
+      testDb.db.transaction(async (tx) => {
+        await tx.run(
           `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
           [eventId, 100, 'Team A'],
         );
-        tx.run(
+        await tx.run(
           `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
           [eventId, 200, 'Team B'],
         );
@@ -97,13 +97,13 @@ describe('Transaction Behavior', () => {
 
     // Transaction that violates UNIQUE constraint
     await expect(
-      testDb.db.transaction((tx) => {
-        tx.run(
+      testDb.db.transaction(async (tx) => {
+        await tx.run(
           `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
           [eventId, 100, 'Team A'],
         );
         // Duplicate team_number should cause constraint violation
-        tx.run(
+        await tx.run(
           `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
           [eventId, 100, 'Team B'],
         );
@@ -123,12 +123,12 @@ describe('Transaction Behavior', () => {
     const eventId = eventResult.lastID!;
 
     // Transaction that returns a value
-    const result = await testDb.db.transaction((tx) => {
-      const r1 = tx.run(
+    const result = await testDb.db.transaction(async (tx) => {
+      const r1 = await tx.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
         [eventId, 100, 'Team A'],
       );
-      const r2 = tx.run(
+      const r2 = await tx.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
         [eventId, 200, 'Team B'],
       );
@@ -142,7 +142,7 @@ describe('Transaction Behavior', () => {
 
   it('should handle empty transaction', async () => {
     // Empty transaction should succeed
-    const result = await testDb.db.transaction(() => {
+    const result = await testDb.db.transaction(async () => {
       return 'success';
     });
     expect(result).toBe('success');
@@ -156,23 +156,23 @@ describe('Transaction Behavior', () => {
     const eventId = eventResult.lastID!;
 
     // Complex transaction with multiple related inserts
-    await testDb.db.transaction((tx) => {
+    await testDb.db.transaction(async (tx) => {
       // Create teams
-      const team1 = tx.run(
+      const team1 = await tx.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
         [eventId, 100, 'Team A'],
       );
-      const team2 = tx.run(
+      const team2 = await tx.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
         [eventId, 200, 'Team B'],
       );
 
       // Create seeding scores for teams
-      tx.run(
+      await tx.run(
         `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)`,
         [team1.lastID, 1, 150],
       );
-      tx.run(
+      await tx.run(
         `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)`,
         [team2.lastID, 1, 120],
       );

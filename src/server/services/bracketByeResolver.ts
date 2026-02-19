@@ -34,7 +34,7 @@ interface GameRow {
 interface EntryRow {
   seed_position: number;
   team_id: number | null;
-  is_bye: number; // SQLite stores booleans as 0/1
+  is_bye: number | boolean;
 }
 
 /**
@@ -73,7 +73,7 @@ export async function resolveBracketByes(
   for (const entry of entries) {
     entriesBySeed.set(entry.seed_position, {
       team_id: entry.team_id,
-      is_bye: entry.is_bye === 1,
+      is_bye: !!entry.is_bye,
     });
   }
 

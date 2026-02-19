@@ -25,9 +25,10 @@ export async function initializeDatabase(): Promise<void> {
   console.log('✅ Database initialized successfully');
 }
 
-// TODO Update Postres schema
 async function initializePostgres(db: Database): Promise<void> {
-  // PostgreSQL schema
+  // ============================================================================
+  // CORE TABLES
+  // ============================================================================
 
   // Users table
   await db.exec(`
@@ -46,7 +47,6 @@ async function initializePostgres(db: Database): Promise<void> {
     )
   `);
 
-  // Add last_activity column if it doesn't exist (migration for existing databases)
   try {
     await db.exec(
       `ALTER TABLE users ADD COLUMN IF NOT EXISTS last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP`,
@@ -71,7 +71,6 @@ async function initializePostgres(db: Database): Promise<void> {
     )
   `);
 
-  // Add auto_accept column if it doesn't exist (migration)
   try {
     await db.exec(
       `ALTER TABLE spreadsheet_configs ADD COLUMN IF NOT EXISTS auto_accept BOOLEAN DEFAULT FALSE`,
@@ -109,13 +108,131 @@ async function initializePostgres(db: Database): Promise<void> {
     )
   `);
 
-  // Score submissions
+  // ============================================================================
+  // TOURNAMENT/EVENT MANAGEMENT
+  // ============================================================================
+
+  // Events/Tournaments
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS events (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      event_date DATE,
+      location TEXT,
+      status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
+      seeding_rounds INTEGER DEFAULT 3,
+      score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  try {
+    await db.exec(
+      `ALTER TABLE events ADD COLUMN IF NOT EXISTS score_accept_mode TEXT NOT NULL DEFAULT 'manual'`,
+    );
+  } catch {
+    // Column might already exist
+  }
+
+  // ============================================================================
+  // TEAMS
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS teams (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      team_number INTEGER NOT NULL CHECK (team_number > 0),
+      team_name TEXT NOT NULL,
+      display_name TEXT,
+      status TEXT DEFAULT 'registered'
+        CHECK (status IN ('registered', 'checked_in', 'no_show', 'withdrawn')),
+      checked_in_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, team_number)
+    )
+  `);
+
+  // ============================================================================
+  // SEEDING
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS seeding_scores (
+      id SERIAL PRIMARY KEY,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL CHECK (round_number > 0),
+      score INTEGER,
+      score_submission_id INTEGER,
+      scored_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(team_id, round_number)
+    )
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS seeding_rankings (
+      id SERIAL PRIMARY KEY,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      seed_average REAL,
+      seed_rank INTEGER CHECK (seed_rank > 0),
+      raw_seed_score REAL,
+      tiebreaker_value REAL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(team_id)
+    )
+  `);
+
+  // ============================================================================
+  // BRACKETS
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS brackets (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      bracket_size INTEGER NOT NULL,
+      actual_team_count INTEGER,
+      status TEXT DEFAULT 'setup'
+        CHECK (status IN ('setup', 'in_progress', 'completed')),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bracket_entries (
+      id SERIAL PRIMARY KEY,
+      bracket_id INTEGER NOT NULL REFERENCES brackets(id) ON DELETE CASCADE,
+      team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+      seed_position INTEGER NOT NULL,
+      initial_slot INTEGER,
+      is_bye BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(bracket_id, team_id),
+      UNIQUE(bracket_id, seed_position),
+      CHECK (
+        (is_bye = TRUE AND team_id IS NULL) OR
+        (is_bye = FALSE AND team_id IS NOT NULL)
+      )
+    )
+  `);
+
+  // Score submissions (must be created before bracket_games due to FK)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS score_submissions (
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       template_id INTEGER NOT NULL REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
-      spreadsheet_config_id INTEGER NOT NULL REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
+      spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
       participant_name TEXT,
       match_id TEXT,
       score_data TEXT NOT NULL,
@@ -123,8 +240,209 @@ async function initializePostgres(db: Database): Promise<void> {
       status TEXT DEFAULT 'pending',
       reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       reviewed_at TIMESTAMP,
+      event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+      bracket_game_id INTEGER,
+      seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
+      score_type TEXT,
+      game_queue_id INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Add event-scoped columns if missing (migration)
+  try {
+    await db.exec(
+      `ALTER TABLE score_submissions ADD COLUMN IF NOT EXISTS event_id INTEGER REFERENCES events(id) ON DELETE SET NULL`,
+    );
+    await db.exec(
+      `ALTER TABLE score_submissions ADD COLUMN IF NOT EXISTS bracket_game_id INTEGER`,
+    );
+    await db.exec(
+      `ALTER TABLE score_submissions ADD COLUMN IF NOT EXISTS seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL`,
+    );
+    await db.exec(
+      `ALTER TABLE score_submissions ADD COLUMN IF NOT EXISTS score_type TEXT`,
+    );
+    await db.exec(
+      `ALTER TABLE score_submissions ADD COLUMN IF NOT EXISTS game_queue_id INTEGER`,
+    );
+  } catch {
+    // Columns might already exist
+  }
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bracket_games (
+      id SERIAL PRIMARY KEY,
+      bracket_id INTEGER NOT NULL REFERENCES brackets(id) ON DELETE CASCADE,
+      game_number INTEGER NOT NULL,
+      round_name TEXT,
+      round_number INTEGER,
+      bracket_side TEXT
+        CHECK (bracket_side IN ('winners', 'losers', 'finals')),
+      team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      team1_source TEXT,
+      team2_source TEXT,
+      status TEXT DEFAULT 'pending'
+        CHECK (status IN ('pending', 'ready', 'in_progress', 'completed', 'bye')),
+      winner_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      loser_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      winner_advances_to_id INTEGER REFERENCES bracket_games(id),
+      loser_advances_to_id INTEGER REFERENCES bracket_games(id),
+      winner_slot TEXT,
+      loser_slot TEXT,
+      team1_score INTEGER,
+      team2_score INTEGER,
+      score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
+      scheduled_time TIMESTAMP,
+      started_at TIMESTAMP,
+      completed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(bracket_id, game_number)
+    )
+  `);
+
+  // Add deferred FK from score_submissions -> bracket_games now that both tables exist
+  // (Postgres CREATE TABLE IF NOT EXISTS won't fail on the missing FK, but we add it if needed)
+  try {
+    await db.exec(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'score_submissions_bracket_game_id_fkey'
+            AND table_name = 'score_submissions'
+        ) THEN
+          ALTER TABLE score_submissions
+            ADD CONSTRAINT score_submissions_bracket_game_id_fkey
+            FOREIGN KEY (bracket_game_id) REFERENCES bracket_games(id) ON DELETE SET NULL;
+        END IF;
+      END $$
+    `);
+  } catch {
+    // FK might already exist
+  }
+
+  // ============================================================================
+  // SCORE DETAILS
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS score_details (
+      id SERIAL PRIMARY KEY,
+      score_submission_id INTEGER NOT NULL REFERENCES score_submissions(id) ON DELETE CASCADE,
+      field_id TEXT NOT NULL,
+      field_value TEXT,
+      calculated_value INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // ============================================================================
+  // EVENT-SCORESHEET LINKS
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_scoresheet_templates (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      template_id INTEGER NOT NULL REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
+      template_type TEXT NOT NULL
+        CHECK (template_type IN ('seeding', 'bracket')),
+      is_default BOOLEAN DEFAULT FALSE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, template_id, template_type)
+    )
+  `);
+
+  // ============================================================================
+  // GAME QUEUE / SCHEDULING
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS game_queue (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
+      seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+      seeding_round INTEGER,
+      queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+      queue_position INTEGER NOT NULL,
+      status TEXT DEFAULT 'queued'
+        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
+      called_at TIMESTAMP,
+      table_number INTEGER,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      CHECK (
+        (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
+        OR
+        (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL)
+      )
+    )
+  `);
+
+  // Add deferred FK from score_submissions -> game_queue now that table exists
+  try {
+    await db.exec(`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'score_submissions_game_queue_id_fkey'
+            AND table_name = 'score_submissions'
+        ) THEN
+          ALTER TABLE score_submissions
+            ADD CONSTRAINT score_submissions_game_queue_id_fkey
+            FOREIGN KEY (game_queue_id) REFERENCES game_queue(id) ON DELETE SET NULL;
+        END IF;
+      END $$
+    `);
+  } catch {
+    // FK might already exist
+  }
+
+  // ============================================================================
+  // BRACKET TEMPLATES
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS bracket_templates (
+      id SERIAL PRIMARY KEY,
+      bracket_size INTEGER NOT NULL,
+      game_number INTEGER NOT NULL,
+      round_name TEXT NOT NULL,
+      round_number INTEGER NOT NULL,
+      bracket_side TEXT NOT NULL,
+      team1_source TEXT NOT NULL,
+      team2_source TEXT NOT NULL,
+      winner_advances_to INTEGER,
+      loser_advances_to INTEGER,
+      winner_slot TEXT CHECK (winner_slot IN ('team1', 'team2')),
+      loser_slot TEXT,
+      is_championship BOOLEAN DEFAULT FALSE,
+      is_grand_final BOOLEAN DEFAULT FALSE,
+      is_reset_game BOOLEAN DEFAULT FALSE,
+      UNIQUE(bracket_size, game_number)
+    )
+  `);
+
+  // ============================================================================
+  // AUDIT LOG
+  // ============================================================================
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      action TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      entity_id INTEGER,
+      old_value TEXT,
+      new_value TEXT,
+      ip_address TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -166,7 +484,135 @@ async function initializePostgres(db: Database): Promise<void> {
     CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")
   `);
 
-  // Create indexes
+  // ============================================================================
+  // TRIGGERS
+  // ============================================================================
+
+  // Shared trigger function for updated_at columns
+  await db.exec(`
+    CREATE OR REPLACE FUNCTION update_updated_at_column()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF NEW.updated_at = OLD.updated_at THEN
+        NEW.updated_at = CURRENT_TIMESTAMP;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+
+  for (const table of [
+    'users',
+    'spreadsheet_configs',
+    'scoresheet_field_templates',
+    'scoresheet_templates',
+    'score_submissions',
+    'events',
+    'teams',
+    'seeding_scores',
+    'seeding_rankings',
+    'brackets',
+    'bracket_games',
+    'game_queue',
+  ]) {
+    await db.exec(`
+      DROP TRIGGER IF EXISTS ${table}_updated_at ON ${table};
+      CREATE TRIGGER ${table}_updated_at
+        BEFORE UPDATE ON ${table}
+        FOR EACH ROW
+        EXECUTE FUNCTION update_updated_at_column()
+    `);
+  }
+
+  // Clear teams.checked_in_at when status changes back to registered or no_show
+  await db.exec(`
+    CREATE OR REPLACE FUNCTION teams_clear_checked_in_at()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF NEW.status IN ('registered', 'no_show') AND NEW.checked_in_at IS NOT NULL THEN
+        NEW.checked_in_at = NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await db.exec(`
+    DROP TRIGGER IF EXISTS teams_clear_checked_in_at_on_status ON teams;
+    CREATE TRIGGER teams_clear_checked_in_at_on_status
+      BEFORE UPDATE ON teams
+      FOR EACH ROW
+      EXECUTE FUNCTION teams_clear_checked_in_at()
+  `);
+
+  // Clear game_queue.called_at when status changes back to queued
+  await db.exec(`
+    CREATE OR REPLACE FUNCTION game_queue_clear_called_at()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF NEW.status = 'queued' AND NEW.called_at IS NOT NULL THEN
+        NEW.called_at = NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await db.exec(`
+    DROP TRIGGER IF EXISTS game_queue_clear_called_at_on_queued ON game_queue;
+    CREATE TRIGGER game_queue_clear_called_at_on_queued
+      BEFORE UPDATE ON game_queue
+      FOR EACH ROW
+      EXECUTE FUNCTION game_queue_clear_called_at()
+  `);
+
+  // Clear seeding_scores.scored_at when score is removed
+  await db.exec(`
+    CREATE OR REPLACE FUNCTION seeding_scores_clear_scored_at()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF NEW.score IS NULL AND (NEW.scored_at IS NOT NULL OR NEW.score_submission_id IS NOT NULL) THEN
+        NEW.scored_at = NULL;
+        NEW.score_submission_id = NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await db.exec(`
+    DROP TRIGGER IF EXISTS seeding_scores_clear_scored_at_when_score_null ON seeding_scores;
+    CREATE TRIGGER seeding_scores_clear_scored_at_when_score_null
+      BEFORE UPDATE ON seeding_scores
+      FOR EACH ROW
+      EXECUTE FUNCTION seeding_scores_clear_scored_at()
+  `);
+
+  // Clear bracket_games timestamps when status is rolled back to pending/ready
+  await db.exec(`
+    CREATE OR REPLACE FUNCTION bracket_games_clear_times_on_rollback()
+    RETURNS TRIGGER AS $$
+    BEGIN
+      IF NEW.status IN ('pending', 'ready') AND (NEW.started_at IS NOT NULL OR NEW.completed_at IS NOT NULL) THEN
+        NEW.started_at = NULL;
+        NEW.completed_at = NULL;
+      ELSIF NEW.status = 'in_progress' AND NEW.completed_at IS NOT NULL THEN
+        NEW.completed_at = NULL;
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+  `);
+  await db.exec(`
+    DROP TRIGGER IF EXISTS bracket_games_clear_times_on_status_rollback ON bracket_games;
+    CREATE TRIGGER bracket_games_clear_times_on_status_rollback
+      BEFORE UPDATE ON bracket_games
+      FOR EACH ROW
+      EXECUTE FUNCTION bracket_games_clear_times_on_rollback()
+  `);
+
+  // ============================================================================
+  // INDEXES
+  // ============================================================================
+
+  // Core indexes
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`,
   );
@@ -184,6 +630,90 @@ async function initializePostgres(db: Database): Promise<void> {
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)`,
+  );
+
+  // Event/team indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_teams_event ON teams(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(event_id, status)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_seeding_scores_team ON seeding_scores(team_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_seeding_rankings_rank ON seeding_rankings(seed_rank)`,
+  );
+
+  // Bracket indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_brackets_event ON brackets(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_entries_bracket ON bracket_entries(bracket_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_bracket ON bracket_games(bracket_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_status ON bracket_games(bracket_id, status)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team1 ON bracket_games(team1_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team2 ON bracket_games(team2_id)`,
+  );
+
+  // Bracket revert traversal indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team1_source ON bracket_games(bracket_id, team1_source)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_games_team2_source ON bracket_games(bracket_id, team2_source)`,
+  );
+
+  // Queue indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_event ON game_queue(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_position ON game_queue(event_id, queue_position)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
+  );
+
+  // Score submissions event-scoped indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_event_status ON score_submissions(event_id, status, created_at DESC)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_event_type ON score_submissions(event_id, score_type, created_at DESC)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_game_queue ON score_submissions(game_queue_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_bracket_game ON score_submissions(bracket_game_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_seeding_score ON score_submissions(seeding_score_id)`,
+  );
+
+  // Other indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_details_submission ON score_details(score_submission_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_bracket_templates_size ON bracket_templates(bracket_size)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_audit_log_event ON audit_log(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)`,
   );
 }
 

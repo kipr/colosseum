@@ -64,25 +64,26 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
   );
   let nextPos = (maxPos?.max_pos ?? 0) + 1;
 
-  await db.transaction((tx) => {
+  await db.transaction(async (tx) => {
     for (const combo of allCombos) {
       const key = `${combo.team_id}:${combo.round}`;
       const existing = existingMap.get(key);
 
       if (existing) {
         if (combo.scored) {
-          tx.run("UPDATE game_queue SET status = 'completed' WHERE id = ?", [
-            existing.id,
-          ]);
+          await tx.run(
+            "UPDATE game_queue SET status = 'completed' WHERE id = ?",
+            [existing.id],
+          );
         } else if (existing.status === 'completed') {
-          tx.run(
+          await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
           );
         }
       } else {
         const status = combo.scored ? 'completed' : 'queued';
-        tx.run(
+        await tx.run(
           `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
            VALUES (?, ?, ?, 'seeding', ?, ?)`,
           [eventId, combo.team_id, combo.round, nextPos++, status],
@@ -133,7 +134,7 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
   );
   let nextPos = (maxPos?.max_pos ?? 0) + 1;
 
-  await db.transaction((tx) => {
+  await db.transaction(async (tx) => {
     for (const game of allGames) {
       const isEligible =
         game.team1_id != null &&
@@ -144,18 +145,19 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
 
       if (existing) {
         if (isCompleted) {
-          tx.run("UPDATE game_queue SET status = 'completed' WHERE id = ?", [
-            existing.id,
-          ]);
+          await tx.run(
+            "UPDATE game_queue SET status = 'completed' WHERE id = ?",
+            [existing.id],
+          );
         } else if (existing.status === 'completed' && isEligible) {
-          tx.run(
+          await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
           );
         }
       } else if (isEligible || isCompleted) {
         const status = isCompleted ? 'completed' : 'queued';
-        tx.run(
+        await tx.run(
           `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
            VALUES (?, ?, 'bracket', ?, ?)`,
           [eventId, game.id, nextPos++, status],
@@ -359,12 +361,12 @@ async function handleReorder(req: AuthRequest, res: Response) {
     );
 
     if (validItems.length > 0) {
-      await db.transaction((tx) => {
+      await db.transaction(async (tx) => {
         for (const item of validItems) {
-          tx.run('UPDATE game_queue SET queue_position = ? WHERE id = ?', [
-            item.queue_position,
-            item.id,
-          ]);
+          await tx.run(
+            'UPDATE game_queue SET queue_position = ? WHERE id = ?',
+            [item.queue_position, item.id],
+          );
         }
       });
     }

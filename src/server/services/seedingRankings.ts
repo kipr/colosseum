@@ -110,12 +110,12 @@ export async function recalculateSeedingRankings(
   });
 
   // Update rankings in database using a single transaction
-  await db.transaction((tx) => {
+  await db.transaction(async (tx) => {
     for (let i = 0; i < rankings.length; i++) {
       const r = rankings[i];
       const seedRank = r.rawSeedScore !== null ? i + 1 : null;
 
-      tx.run(
+      await tx.run(
         `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
          VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(team_id) DO UPDATE SET

@@ -263,8 +263,8 @@ router.put(
       } = req.body;
 
       const db = await getDatabase();
-      await db.transaction((tx) => {
-        tx.run(
+      await db.transaction(async (tx) => {
+        await tx.run(
           `UPDATE scoresheet_templates 
          SET name = ?, description = ?, schema = ?, access_code = ?, spreadsheet_config_id = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
@@ -278,13 +278,14 @@ router.put(
           ],
         );
 
-        tx.run('DELETE FROM event_scoresheet_templates WHERE template_id = ?', [
-          id,
-        ]);
+        await tx.run(
+          'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
+          [id],
+        );
 
         if (eventId != null && Number.isInteger(Number(eventId))) {
           const templateType = inferTemplateType(schema);
-          tx.run(
+          await tx.run(
             `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
             [Number(eventId), id, templateType],
           );

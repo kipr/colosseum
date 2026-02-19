@@ -52,17 +52,16 @@ export async function ensureBracketTemplatesSeeded(
   db: Database,
   bracketSize: number,
 ): Promise<void> {
-  // Generate and insert templates (INSERT OR IGNORE handles existing rows via UNIQUE)
   const templates = generateDEBracketTemplates(bracketSize);
 
-  // Use INSERT OR IGNORE for safety (handles concurrent requests)
   for (const t of templates) {
     await db.run(
-      `INSERT OR IGNORE INTO bracket_templates (
+      `INSERT INTO bracket_templates (
         bracket_size, game_number, round_name, round_number, bracket_side,
         team1_source, team2_source, winner_advances_to, loser_advances_to,
         winner_slot, loser_slot, is_championship, is_grand_final, is_reset_game
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (bracket_size, game_number) DO NOTHING`,
       [
         t.bracket_size,
         t.game_number,
@@ -75,9 +74,9 @@ export async function ensureBracketTemplatesSeeded(
         t.loser_advances_to,
         t.winner_slot,
         t.loser_slot,
-        t.is_championship ? 1 : 0,
-        t.is_grand_final ? 1 : 0,
-        t.is_reset_game ? 1 : 0,
+        t.is_championship,
+        t.is_grand_final,
+        t.is_reset_game,
       ],
     );
   }

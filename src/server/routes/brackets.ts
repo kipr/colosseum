@@ -245,8 +245,8 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
           (a, b) => (teamIdToRank.get(a) ?? 999) - (teamIdToRank.get(b) ?? 999),
         );
 
-      await db.transaction((tx) => {
-        const br = tx.run(
+      await db.transaction(async (tx) => {
+        const br = await tx.run(
           `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, created_by)
            VALUES (?, ?, ?, ?, ?, ?)`,
           [
@@ -270,10 +270,10 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
               ? orderedTeamIds[seedPosition - 1]
               : null;
           const isBye = teamId === null;
-          tx.run(
+          await tx.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
              VALUES (?, ?, ?, ?)`,
-            [newBracketId, teamId, seedPosition, isBye ? 1 : 0],
+            [newBracketId, teamId, seedPosition, isBye],
           );
         }
       });
@@ -306,7 +306,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       for (const entry of entries) {
         entriesBySeed.set(entry.seed_position, {
           team_id: entry.team_id,
-          is_bye: entry.is_bye === 1,
+          is_bye: !!entry.is_bye,
         });
       }
 
@@ -962,17 +962,16 @@ router.post(
       }
 
       // Execute all updates in a single transaction
-      await db.transaction((tx) => {
+      await db.transaction(async (tx) => {
         for (const update of updates) {
           const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
-          tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
+          await tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
             update.teamId,
             update.gameId,
           ]);
         }
 
-        // Mark current game as completed
-        tx.run(
+        await tx.run(
           `UPDATE bracket_games SET status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`,
           [id],
         );
@@ -1047,7 +1046,7 @@ router.post(
       for (const entry of entries) {
         entriesBySeed.set(entry.seed_position, {
           team_id: entry.team_id,
-          is_bye: entry.is_bye === 1,
+          is_bye: !!entry.is_bye,
         });
       }
 
@@ -1252,9 +1251,8 @@ router.post(
       }
 
       // Execute all updates in a single transaction
-      await db.transaction((tx) => {
-        // Update current game
-        tx.run(
+      await db.transaction(async (tx) => {
+        await tx.run(
           `UPDATE bracket_games SET
             winner_id = ?,
             loser_id = ?,
@@ -1264,10 +1262,9 @@ router.post(
           [winner_id, loserId, game_id],
         );
 
-        // Advance teams to next games
         for (const update of updates) {
           const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
-          tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
+          await tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
             update.teamId,
             update.gameId,
           ]);

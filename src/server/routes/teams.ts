@@ -203,9 +203,9 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
       // Phase 3: Insert all valid teams in a single transaction
       const createdTeamIds: number[] = [];
       if (teamsToInsert.length > 0) {
-        await db.transaction((tx) => {
+        await db.transaction(async (tx) => {
           for (const team of teamsToInsert) {
-            const insertResult = tx.run(
+            const insertResult = await tx.run(
               `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
                VALUES (?, ?, ?, ?, ?)`,
               [
@@ -395,9 +395,9 @@ router.patch(
 
       // Update all found teams in a single transaction
       if (existingTeams.length > 0) {
-        await db.transaction((tx) => {
+        await db.transaction(async (tx) => {
           for (const team of existingTeams) {
-            tx.run(
+            await tx.run(
               `UPDATE teams SET status = 'checked_in', checked_in_at = CURRENT_TIMESTAMP WHERE id = ?`,
               [team.id],
             );
