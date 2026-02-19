@@ -5,6 +5,7 @@ import {
   VerifyCallback,
 } from 'passport-google-oauth20';
 import { getDatabase } from '../database/connection';
+import { getGoogleCallbackUrl } from './google';
 
 // Allowed email domains for admin access
 // Set via ALLOWED_EMAIL_DOMAINS env var (comma-separated) or defaults to kipr.org
@@ -40,9 +41,7 @@ export function setupPassport() {
       {
         clientID: process.env.GOOGLE_CLIENT_ID || '',
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-        callbackURL:
-          process.env.GOOGLE_CALLBACK_URL ||
-          'http://localhost:3000/auth/google/callback',
+        callbackURL: getGoogleCallbackUrl(),
       },
       async (
         accessToken: string,

@@ -1,10 +1,11 @@
 import { google } from 'googleapis';
 import { getDatabase } from '../database/connection';
+import { getGoogleCallbackUrl } from '../config/google';
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_CALLBACK_URL,
+  getGoogleCallbackUrl(),
 );
 
 // Buffer time before expiry to trigger refresh (5 minutes)
@@ -239,7 +240,7 @@ export async function getAuthenticatedClient(userId: number) {
   const client = new google.auth.OAuth2(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_CALLBACK_URL,
+    getGoogleCallbackUrl(),
   );
 
   client.setCredentials({
