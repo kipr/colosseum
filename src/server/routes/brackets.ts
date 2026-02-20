@@ -78,6 +78,31 @@ router.get('/event/:eventId', async (req: Request, res: Response) => {
   }
 });
 
+// GET /brackets/templates - Get bracket templates (public)
+// Must be registered before /:id to avoid "templates" being matched as bracket id
+router.get('/templates', async (req: Request, res: Response) => {
+  try {
+    const { bracket_size } = req.query;
+    const db = await getDatabase();
+
+    let query = 'SELECT * FROM bracket_templates';
+    const params: number[] = [];
+
+    if (bracket_size) {
+      query += ' WHERE bracket_size = ?';
+      params.push(parseInt(bracket_size as string, 10));
+    }
+
+    query += ' ORDER BY bracket_size ASC, game_number ASC';
+
+    const templates = await db.all(query, params);
+    res.json(templates);
+  } catch (error) {
+    console.error('Error fetching bracket templates:', error);
+    res.status(500).json({ error: 'Failed to fetch bracket templates' });
+  }
+});
+
 // GET /brackets/:id - Get bracket with entries and games (public)
 router.get('/:id', async (req: Request, res: Response) => {
   try {
@@ -1313,30 +1338,6 @@ router.post(
 // ============================================================================
 // BRACKET TEMPLATES
 // ============================================================================
-
-// GET /brackets/templates - Get bracket templates (public)
-router.get('/templates', async (req: Request, res: Response) => {
-  try {
-    const { bracket_size } = req.query;
-    const db = await getDatabase();
-
-    let query = 'SELECT * FROM bracket_templates';
-    const params: number[] = [];
-
-    if (bracket_size) {
-      query += ' WHERE bracket_size = ?';
-      params.push(parseInt(bracket_size as string, 10));
-    }
-
-    query += ' ORDER BY bracket_size ASC, game_number ASC';
-
-    const templates = await db.all(query, params);
-    res.json(templates);
-  } catch (error) {
-    console.error('Error fetching bracket templates:', error);
-    res.status(500).json({ error: 'Failed to fetch bracket templates' });
-  }
-});
 
 // POST /brackets/templates - Create bracket template
 router.post(
