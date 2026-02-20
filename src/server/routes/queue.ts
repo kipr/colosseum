@@ -36,7 +36,7 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
     `SELECT score_data FROM score_submissions
      WHERE event_id = ?
        AND score_type = 'seeding'
-       AND status IN ('pending', 'accepted')`,
+       AND status = 'accepted'`,
     [eventId],
   );
   const submittedRounds: { team_id: number; round_number: number }[] = [];
@@ -150,7 +150,7 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
      FROM score_submissions
      WHERE event_id = ?
        AND score_type = 'bracket'
-       AND status IN ('pending', 'accepted')
+       AND status = 'accepted'
        AND bracket_game_id IS NOT NULL`,
     [eventId],
   );

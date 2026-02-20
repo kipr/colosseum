@@ -263,7 +263,42 @@ describe('Queue Routes', () => {
       expect(queued.length).toBe(3);
     });
 
-    it('with sync=1 and queue_type=seeding marks item completed when score submission is pending', async () => {
+    it('with sync=1 and queue_type=seeding marks item completed when score submission is accepted', async () => {
+      const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 77 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'accepted',
+      });
+
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=seeding&sync=1`,
+      );
+
+      expect(res.status).toBe(200);
+      const items = res.json as {
+        seeding_team_id: number;
+        seeding_round: number;
+        status: string;
+      }[];
+      expect(items.length).toBe(1);
+      expect(items[0].seeding_team_id).toBe(team.id);
+      expect(items[0].seeding_round).toBe(1);
+      expect(items[0].status).toBe('completed');
+    });
+
+    it('with sync=1 and queue_type=seeding keeps item queued when score submission is pending (reverted)', async () => {
       const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -295,7 +330,7 @@ describe('Queue Routes', () => {
       expect(items.length).toBe(1);
       expect(items[0].seeding_team_id).toBe(team.id);
       expect(items[0].seeding_round).toBe(1);
-      expect(items[0].status).toBe('completed');
+      expect(items[0].status).toBe('queued');
     });
 
     it('with sync=1 and queue_type=bracket populates eligible bracket games', async () => {
@@ -331,7 +366,51 @@ describe('Queue Routes', () => {
       expect(items.every((i) => i.status === 'queued')).toBe(true);
     });
 
-    it('with sync=1 and queue_type=bracket marks item completed when score submission is pending', async () => {
+    it('with sync=1 and queue_type=bracket marks item completed when score submission is accepted', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'ready',
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: JSON.stringify({
+          winner_team_id: { value: team1.id },
+        }),
+        event_id: event.id,
+        score_type: 'bracket',
+        bracket_game_id: game.id,
+        status: 'accepted',
+      });
+
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=bracket&sync=1`,
+      );
+
+      expect(res.status).toBe(200);
+      const items = res.json as {
+        bracket_game_id: number;
+        status: string;
+      }[];
+      expect(items.length).toBe(1);
+      expect(items[0].bracket_game_id).toBe(game.id);
+      expect(items[0].status).toBe('completed');
+    });
+
+    it('with sync=1 and queue_type=bracket keeps item queued when score submission is pending (reverted)', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -372,7 +451,7 @@ describe('Queue Routes', () => {
       }[];
       expect(items.length).toBe(1);
       expect(items[0].bracket_game_id).toBe(game.id);
-      expect(items[0].status).toBe('completed');
+      expect(items[0].status).toBe('queued');
     });
 
     it('without sync does not auto-populate (empty event returns empty)', async () => {
