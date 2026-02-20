@@ -524,6 +524,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return;
     }
 
+    // Validate game_queue_id for queue-based seeding
+    if (useQueueForSeeding && formData.game_queue_id == null) {
+      alert('Please select a team and round from the queue before submitting.');
+      return;
+    }
+
     const scoreData: Record<string, any> = {};
 
     schema.fields.forEach((field: any) => {
