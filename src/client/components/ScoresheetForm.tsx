@@ -134,7 +134,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
       return () => clearInterval(interval);
     }
-  }, []);
+  }, [schema, useQueueForSeeding, isHeadToHead]);
 
   const loadQueue = async () => {
     if (!schema.eventId) return;
