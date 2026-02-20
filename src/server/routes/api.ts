@@ -107,6 +107,16 @@ router.post(
             .status(400)
             .json({ error: 'Team not found for event. Check team number.' });
         }
+        // Enforce team belongs to event (prevents cross-event submission via team_id)
+        const team = await db.get(
+          'SELECT id FROM teams WHERE id = ? AND event_id = ?',
+          [resolvedTeamId, eventId],
+        );
+        if (!team) {
+          return res.status(400).json({
+            error: 'Team not found or does not belong to this event.',
+          });
+        }
       }
 
       if (!isDbBacked) {

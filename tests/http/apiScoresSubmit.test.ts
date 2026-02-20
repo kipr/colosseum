@@ -294,6 +294,37 @@ describe('API Score Submit Routes', () => {
         );
       });
 
+      it('returns 400 when team_id belongs to different event (cross-event isolation)', async () => {
+        const eventA = await seedEvent(testDb.db);
+        const eventB = await seedEvent(testDb.db);
+        const teamInB = await seedTeam(testDb.db, {
+          event_id: eventB.id,
+          team_number: 1,
+          team_name: 'Team in Event B',
+        });
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'DB Template',
+          created_by: null,
+          spreadsheet_config_id: null,
+        });
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            team_id: { value: teamInB.id, type: 'number' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 100, type: 'calculated' },
+          },
+          eventId: eventA.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'does not belong to this event',
+        );
+      });
+
       it('stores game_queue_id when provided for seeding submission', async () => {
         const event = await seedEvent(testDb.db);
         const team = await seedTeam(testDb.db, {
