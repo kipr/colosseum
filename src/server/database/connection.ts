@@ -310,7 +310,7 @@ export async function getDatabase(): Promise<Database> {
     //   filename: path.join(__dirname, '../../../database/colosseum.db'),
     //   driver: sqlite3.Database,
     // });
-    const sqliteDb = new SQLite(
+    sqliteDb = new SQLite(
       path.join(__dirname, '../../../database/colosseum.db'),
     );
     sqliteDb.pragma('foreign_keys = ON;');
