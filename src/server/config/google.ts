@@ -9,5 +9,6 @@ export function getGoogleCallbackUrl(): string {
   }
 
   const baseUrl = process.env.APP_URL || 'http://localhost:3000';
-  return `${baseUrl}/auth/google/callback`;
+  const normalizedBaseUrl = baseUrl.replace(/\/+$/, '');
+  return `${normalizedBaseUrl}/auth/google/callback`;
 }
