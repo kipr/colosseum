@@ -18,6 +18,14 @@ export default defineConfig({
 
     // Global test timeout
     testTimeout: 10000,
+
+    // Exclude DB infra (Postgres paths, migrations) - tested indirectly via route tests
+    coverage: {
+      exclude: [
+        'src/server/database/connection.ts',
+        'src/server/database/init.ts',
+      ],
+    },
   },
 
   resolve: {

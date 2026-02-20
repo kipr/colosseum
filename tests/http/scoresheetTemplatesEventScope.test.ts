@@ -105,6 +105,119 @@ describe('Scoresheet Templates Event Scope', () => {
       expect(links.length).toBe(1);
       expect(links[0].template_type).toBe('bracket');
     });
+
+    it('infers bracket type from schema with bracketSource', async () => {
+      const event = await seedEvent(testDb.db);
+      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Bracket Sheet',
+        description: 'Bracket via bracketSource',
+        accessCode: 'code999',
+        schema: { bracketSource: 'winners', fields: [] },
+        eventId: event.id,
+      });
+
+      expect(res.status).toBe(200);
+      const template = res.json as { id: number };
+      const links = await testDb.db.all(
+        'SELECT * FROM event_scoresheet_templates WHERE template_id = ?',
+        [template.id],
+      );
+      expect(links.length).toBe(1);
+      expect(links[0].template_type).toBe('bracket');
+    });
+
+    it('returns 400 when name, schema, or accessCode is missing', async () => {
+      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Only Name',
+        description: 'Test',
+      });
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain('required');
+    });
+  });
+
+  describe('POST /scoresheet/templates/:id/verify', () => {
+    it('returns template with schema when access code is valid', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Judge Sheet',
+        schema: JSON.stringify({ fields: [{ id: 'score' }] }),
+        access_code: 'judge-secret',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/scoresheet/templates/${template.id}/verify`,
+        { accessCode: 'judge-secret' },
+      );
+
+      expect(res.status).toBe(200);
+      const body = res.json as { id: number; schema: unknown; access_code?: string };
+      expect(body.id).toBe(template.id);
+      expect(body.schema).toEqual({ fields: [{ id: 'score' }] });
+      expect(body.access_code).toBeUndefined();
+    });
+
+    it('returns 404 when template does not exist', async () => {
+      const res = await http.post(
+        `${baseUrl}/scoresheet/templates/99999/verify`,
+        { accessCode: 'any' },
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 403 when access code is invalid', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Protected',
+        access_code: 'correct-code',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/scoresheet/templates/${template.id}/verify`,
+        { accessCode: 'wrong-code' },
+      );
+      expect(res.status).toBe(403);
+    });
+  });
+
+  describe('GET /scoresheet/templates/:id', () => {
+    it('returns full template for authenticated admin', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Admin Preview',
+        schema: JSON.stringify({ fields: [] }),
+      });
+
+      const res = await http.get(`${baseUrl}/scoresheet/templates/${template.id}`);
+
+      expect(res.status).toBe(200);
+      const body = res.json as { id: number; name: string; schema: unknown };
+      expect(body.id).toBe(template.id);
+      expect(body.name).toBe('Admin Preview');
+      expect(body.schema).toEqual({ fields: [] });
+    });
+
+    it('returns 404 when template does not exist', async () => {
+      const res = await http.get(`${baseUrl}/scoresheet/templates/99999`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  describe('DELETE /scoresheet/templates/:id', () => {
+    it('deletes template and returns success', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'To Delete',
+      });
+
+      const res = await http.delete(
+        `${baseUrl}/scoresheet/templates/${template.id}`,
+      );
+      expect(res.status).toBe(200);
+      expect((res.json as { success: boolean }).success).toBe(true);
+
+      const row = await testDb.db.get(
+        'SELECT * FROM scoresheet_templates WHERE id = ?',
+        [template.id],
+      );
+      expect(row).toBeUndefined();
+    });
   });
 
   describe('PUT /scoresheet/templates/:id', () => {

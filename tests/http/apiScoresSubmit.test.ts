@@ -18,6 +18,8 @@ import {
   seedBracketGame,
   seedScoresheetTemplate,
   seedQueueItem,
+  seedUser,
+  seedScoreSubmission,
 } from './helpers/seed';
 import apiRoutes from '../../src/server/routes/api';
 
@@ -833,6 +835,71 @@ describe('API Score Submit Routes', () => {
           expect(submission.status).toBe('pending');
         });
       });
+    });
+  });
+
+  // ==========================================================================
+  // GET /api/scores/history (requires auth)
+  // ==========================================================================
+
+  describe('GET /api/scores/history', () => {
+    it('returns 401 when not authenticated', async () => {
+      const app = createTestApp();
+      app.use('/api', apiRoutes);
+      const unauthServer = await startServer(app);
+
+      try {
+        const res = await http.get(`${unauthServer.baseUrl}/api/scores/history`);
+        expect(res.status).toBe(401);
+      } finally {
+        await unauthServer.close();
+      }
+    });
+
+    it('returns empty array when user has no score history', async () => {
+      const user = await seedUser(testDb.db, { is_admin: false });
+      const app = createTestApp({ user: { id: user.id, is_admin: false } });
+      app.use('/api', apiRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get(`${server.baseUrl}/api/scores/history`);
+        expect(res.status).toBe(200);
+        expect(res.json).toEqual([]);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it('returns user score history with parsed score_data', async () => {
+      const user = await seedUser(testDb.db, { is_admin: false });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'History Template',
+        created_by: user.id,
+        spreadsheet_config_id: null,
+      });
+      await seedScoreSubmission(testDb.db, {
+        user_id: user.id,
+        template_id: template.id,
+        score_data: JSON.stringify({ points: 100, round: 1 }),
+        participant_name: 'Test',
+        match_id: '1',
+      });
+
+      const app = createTestApp({ user: { id: user.id, is_admin: false } });
+      app.use('/api', apiRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get(`${server.baseUrl}/api/scores/history`);
+        expect(res.status).toBe(200);
+        const scores = res.json as { template_name: string; score_data: unknown }[];
+        expect(scores.length).toBe(1);
+        expect(scores[0].template_name).toBe('History Template');
+        expect(scores[0].score_data).toEqual({ points: 100, round: 1 });
+      } finally {
+        await server.close();
+      }
     });
   });
 });
