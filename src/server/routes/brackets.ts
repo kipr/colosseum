@@ -270,6 +270,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
           (a, b) => (teamIdToRank.get(a) ?? 999) - (teamIdToRank.get(b) ?? 999),
         );
 
+      let bracketId: number | null = null;
       await db.transaction(async (tx) => {
         const br = await tx.run(
           `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, created_by)
@@ -284,6 +285,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
           ],
         );
         const newBracketId = br.lastID!;
+        bracketId = newBracketId;
 
         for (
           let seedPosition = 1;
@@ -303,11 +305,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
         }
       });
 
-      const bracketRow = await db.get(
-        'SELECT * FROM brackets WHERE event_id = ? AND name = ? ORDER BY id DESC LIMIT 1',
-        [event_id, name],
-      );
-      const bracketId = bracketRow!.id;
+      if (!bracketId) {
+        throw new Error('Failed to create bracket');
+      }
 
       await ensureBracketTemplatesSeeded(db, bracketSize);
       const templates = await db.all(
