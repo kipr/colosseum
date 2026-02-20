@@ -7,8 +7,8 @@ node_modules/
 # Database
 database/*.db
 database/*.db-journal
-database/*.db-shm
-database/*.db-wal
+database/*.db-shm*
+database/*.db-wal*
 
 # Build output
 dist/
