@@ -32,27 +32,32 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
   const scoredSet = new Set(
     scoredRounds.map((s) => `${s.team_id}:${s.round_number}`),
   );
-  const submittedRounds = await db.all<{
-    team_id: number;
-    round_number: number;
-  }>(
-    `SELECT
-       json_extract(score_data, '$.team_id.value') AS team_id,
-       COALESCE(
-         json_extract(score_data, '$.round.value'),
-         json_extract(score_data, '$.round_number.value')
-       ) AS round_number
-     FROM score_submissions
+  const submittedRoundsRaw = await db.all<{ score_data: string }>(
+    `SELECT score_data FROM score_submissions
      WHERE event_id = ?
        AND score_type = 'seeding'
-       AND status IN ('pending', 'accepted')
-       AND json_extract(score_data, '$.team_id.value') IS NOT NULL
-       AND COALESCE(
-         json_extract(score_data, '$.round.value'),
-         json_extract(score_data, '$.round_number.value')
-       ) IS NOT NULL`,
+       AND status IN ('pending', 'accepted')`,
     [eventId],
   );
+  const submittedRounds: { team_id: number; round_number: number }[] = [];
+  for (const row of submittedRoundsRaw) {
+    try {
+      const data =
+        typeof row.score_data === 'string'
+          ? JSON.parse(row.score_data)
+          : row.score_data;
+      const teamId = data?.team_id?.value;
+      const roundNumber = data?.round?.value ?? data?.round_number?.value;
+      if (teamId != null && roundNumber != null) {
+        submittedRounds.push({
+          team_id: Number(teamId),
+          round_number: Number(roundNumber),
+        });
+      }
+    } catch {
+      // skip rows with unparseable score_data
+    }
+  }
   const submittedSet = new Set(
     submittedRounds.map((s) => `${s.team_id}:${s.round_number}`),
   );
