@@ -15,7 +15,7 @@ steps:
     args:
       - -ceu
       - |
-        if [[ -z "${TAG_NAME:-}" ]]; then
+        if [[ -z "$TAG_NAME" ]]; then
           echo "TAG_NAME is not set. Configure Cloud Build trigger to run on tag pushes."
           exit 1
         fi
