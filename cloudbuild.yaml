@@ -11,22 +11,21 @@ substitutions:
 steps:
   # Guardrails: enforce "tag-trigger only" and required substitutions.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
-    entrypoint: bash
-    args:
-      - -ceu
-      - |
-        if [[ -z "$TAG_NAME" ]]; then
-          echo "TAG_NAME is not set. Configure Cloud Build trigger to run on tag pushes."
-          exit 1
-        fi
+    script: |
+      #!/usr/bin/env bash
+      set -euo pipefail
 
-        : "${_RUN_SA:?Missing _RUN_SA substitution (Cloud Run runtime service account email)}"
-        : "${_INSTANCE_CONNECTION_NAME:?Missing _INSTANCE_CONNECTION_NAME (PROJECT:REGION:INSTANCE)}"
-        : "${_DB_USER:?Missing _DB_USER}"
-        : "${_DB_NAME:?Missing _DB_NAME}"
-        : "${_ALLOWED_EMAIL_DOMAINS:?Missing _ALLOWED_EMAIL_DOMAINS}"
-        : "${_APP_URL:?Missing _APP_URL}"
+      if [[ -z "${TAG_NAME:-}" ]]; then
+        echo "TAG_NAME is not set. Configure Cloud Build trigger to run on tag pushes."
+        exit 1
+      fi
 
+      : "${_RUN_SA:?Missing _RUN_SA substitution (Cloud Run runtime service account email)}"
+      : "${_INSTANCE_CONNECTION_NAME:?Missing _INSTANCE_CONNECTION_NAME (PROJECT:REGION:INSTANCE)}"
+      : "${_DB_USER:?Missing _DB_USER}"
+      : "${_DB_NAME:?Missing _DB_NAME}"
+      : "${_ALLOWED_EMAIL_DOMAINS:?Missing _ALLOWED_EMAIL_DOMAINS}"
+      : "${_APP_URL:?Missing _APP_URL}"
   # Build the Docker image once and tag it three ways.
   - name: gcr.io/cloud-builders/docker
     args:
