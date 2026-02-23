@@ -1,4 +1,8 @@
-# Dynamic Fields Guide
+> **ARCHIVED** - This document describes the legacy Google Sheets dynamic field configuration.
+> The application has since migrated to a database-backed, event-centric model.
+> For current setup instructions, see the main [README](../README.md).
+
+# Dynamic Fields Guide (Legacy - Google Sheets)
 
 This guide explains how to create scoresheet fields that dynamically pull data from Google Sheets.
 

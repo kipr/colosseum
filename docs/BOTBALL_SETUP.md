@@ -1,4 +1,8 @@
-# Botball Seeding Scoresheet Setup Guide
+> **ARCHIVED** - This document describes the legacy Google Sheets-based setup workflow.
+> The application has since migrated to a database-backed, event-centric model.
+> For current setup instructions, see the main [README](../README.md).
+
+# Botball Seeding Scoresheet Setup Guide (Legacy - Google Sheets)
 
 Quick guide to set up the 2026 Botball Fall Tournament Seeding scoresheet.
 

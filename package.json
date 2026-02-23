@@ -1,7 +1,7 @@
 {
   "name": "colosseum",
   "version": "1.0.0",
-  "description": "Colosseum - Web-based scoring application with Google Sheets integration",
+  "description": "Colosseum - Tournament management and scoring platform",
   "main": "dist/server/server.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
