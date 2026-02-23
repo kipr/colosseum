@@ -5,6 +5,7 @@ import ScoreSheetPreviewModal from './ScoreSheetPreviewModal';
 import FieldTemplateModal from './FieldTemplateModal';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useEvent } from '../../contexts/EventContext';
 import { formatDate } from '../../utils/dateUtils';
 
 interface ScoreSheet {
@@ -39,17 +40,23 @@ export default function ScoreSheetsTab() {
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
+  const { selectedEvent } = useEvent();
 
   useEffect(() => {
-    loadScoreSheets();
+    if (selectedEvent?.id != null) {
+      loadScoreSheets(selectedEvent.id);
+    } else {
+      setScoreSheets([]);
+    }
     loadFieldTemplates();
-  }, []);
+  }, [selectedEvent?.id]);
 
-  const loadScoreSheets = async () => {
+  const loadScoreSheets = async (eventId: number) => {
     try {
-      const response = await fetch('/scoresheet/templates/admin', {
-        credentials: 'include',
-      });
+      const response = await fetch(
+        `/scoresheet/templates/admin?eventId=${eventId}`,
+        { credentials: 'include' },
+      );
       if (!response.ok) throw new Error('Failed to load score sheets');
       const data = await response.json();
       setScoreSheets(data);
@@ -106,7 +113,7 @@ export default function ScoreSheetsTab() {
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to delete score sheet');
-      loadScoreSheets();
+      if (selectedEvent?.id != null) loadScoreSheets(selectedEvent.id);
     } catch (error) {
       console.error('Error deleting score sheet:', error);
       toast.error('Failed to delete score sheet');
@@ -116,7 +123,7 @@ export default function ScoreSheetsTab() {
   const handleScoreSheetSaved = () => {
     setShowEditor(false);
     setEditingScoreSheet(null);
-    loadScoreSheets();
+    if (selectedEvent?.id != null) loadScoreSheets(selectedEvent.id);
   };
 
   const handleCreateTemplate = () => {
@@ -225,87 +232,96 @@ export default function ScoreSheetsTab() {
       </div>
 
       <div className="card">
-        <button className="btn btn-primary" onClick={handleCreateNew}>
-          + Create New Score Sheet
-        </button>
-        <div id="scoresheetsList" style={{ marginTop: '1rem' }}>
-          {scoreSheets.length === 0 ? (
-            <p>No score sheets created yet.</p>
-          ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Description</th>
-                  <th>Spreadsheet</th>
-                  <th>Access Code</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scoreSheets.map((sheet) => (
-                  <tr key={sheet.id}>
-                    <td>{sheet.name}</td>
-                    <td>
-                      {sheet.description || (
-                        <em style={{ color: 'var(--secondary-color)' }}>
-                          No description
-                        </em>
-                      )}
-                    </td>
-                    <td>
-                      {sheet.spreadsheet_name || (
-                        <em style={{ color: 'var(--secondary-color)' }}>
-                          Not assigned
-                        </em>
-                      )}
-                    </td>
-                    <td>
-                      <code
-                        style={{
-                          background: 'var(--bg-color)',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: '0.25rem',
-                        }}
-                      >
-                        {sheet.access_code || 'N/A'}
-                      </code>
-                    </td>
-                    <td>{formatDate(sheet.created_at)}</td>
-                    <td>
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => handlePreview(sheet.id)}
-                      >
-                        Preview
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleEdit(sheet.id)}
-                        style={{ marginLeft: '0.5rem' }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDeleteScoreSheet(sheet.id)}
-                        style={{ marginLeft: '0.5rem' }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
+        {!selectedEvent ? (
+          <p style={{ color: 'var(--secondary-color)' }}>
+            Select an event to view and manage score sheets.
+          </p>
+        ) : (
+          <>
+            <button className="btn btn-primary" onClick={handleCreateNew}>
+              + Create New Score Sheet
+            </button>
+            <div id="scoresheetsList" style={{ marginTop: '1rem' }}>
+              {scoreSheets.length === 0 ? (
+                <p>No score sheets for this event yet.</p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Name</th>
+                      <th>Description</th>
+                      <th>Spreadsheet</th>
+                      <th>Access Code</th>
+                      <th>Created</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {scoreSheets.map((sheet) => (
+                      <tr key={sheet.id}>
+                        <td>{sheet.name}</td>
+                        <td>
+                          {sheet.description || (
+                            <em style={{ color: 'var(--secondary-color)' }}>
+                              No description
+                            </em>
+                          )}
+                        </td>
+                        <td>
+                          {sheet.spreadsheet_name || (
+                            <em style={{ color: 'var(--secondary-color)' }}>
+                              Not assigned
+                            </em>
+                          )}
+                        </td>
+                        <td>
+                          <code
+                            style={{
+                              background: 'var(--bg-color)',
+                              padding: '0.25rem 0.5rem',
+                              borderRadius: '0.25rem',
+                            }}
+                          >
+                            {sheet.access_code || 'N/A'}
+                          </code>
+                        </td>
+                        <td>{formatDate(sheet.created_at)}</td>
+                        <td>
+                          <button
+                            className="btn btn-primary"
+                            onClick={() => handlePreview(sheet.id)}
+                          >
+                            Preview
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() => handleEdit(sheet.id)}
+                            style={{ marginLeft: '0.5rem' }}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="btn btn-danger"
+                            onClick={() => handleDeleteScoreSheet(sheet.id)}
+                            style={{ marginLeft: '0.5rem' }}
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
-      {showEditor && (
+      {showEditor && selectedEvent && (
         <ScoreSheetEditorModal
           scoreSheetId={editingScoreSheet}
+          eventId={selectedEvent.id}
           onClose={() => {
             setShowEditor(false);
             setEditingScoreSheet(null);

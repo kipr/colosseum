@@ -1,0 +1,6 @@
+---
+description: 
+alwaysApply: true
+---
+
+Make sure to verify all changes by running `npm run pretty`, `npm run lint`, `npm run test`, and `npm run build` until you have eliminated all errors caused by your changes (ignore others).

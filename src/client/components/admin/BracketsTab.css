@@ -1,0 +1,60 @@
+.brackets-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.brackets-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+/* Create bracket team selection table (admin only) */
+.bracket-create-teams-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.bracket-create-teams-table th,
+.bracket-create-teams-table td {
+  padding: 0.375rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.bracket-create-teams-table th {
+  background: var(--bg-color);
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.bracket-create-teams-table tbody tr:hover {
+  background: var(--bg-color);
+}
+
+.bracket-create-teams-table tr.bracket-create-overlap {
+  background: var(--danger-bg, rgba(239, 68, 68, 0.08));
+}
+
+.bracket-create-assigned {
+  font-size: 0.8rem;
+  color: var(--secondary-color);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: inline-block;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .brackets-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

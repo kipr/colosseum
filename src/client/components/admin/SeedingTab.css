@@ -1,0 +1,54 @@
+.seeding-tab {
+  width: 100%;
+}
+
+/* Editable score values (admin only) */
+.seeding-score-value {
+  display: inline-block;
+  min-width: 50px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.seeding-score-value:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+/* Score input (admin only) */
+.seeding-score-input {
+  width: 70px;
+  padding: 0.25rem 0.5rem;
+  font-size: inherit;
+  text-align: center;
+  border: 2px solid var(--primary-color);
+  border-radius: 0.25rem;
+  background-color: var(--card-bg);
+  color: var(--text-color);
+}
+
+.seeding-score-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.seeding-score-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Dark mode adjustments */
+[data-theme='dark'] .seeding-score-input {
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  border-color: var(--primary-color);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .seeding-score-input {
+    width: 60px;
+  }
+}

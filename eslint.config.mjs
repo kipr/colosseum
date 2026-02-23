@@ -27,6 +27,7 @@ export default defineConfig([
       'css/font-family-fallbacks': 'off',
       'css/no-important': 'off',
       'css/no-empty-blocks': 'off',
+      'css/use-baseline': 'off',
     },
   },
   {

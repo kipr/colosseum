@@ -4,8 +4,10 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import express, { Request, Response, NextFunction } from 'express';
+import { Server } from 'http';
 import session from 'express-session';
-import connectSqlite3 from 'connect-sqlite3';
+import BetterSqlite3 from 'better-sqlite3';
+import { SqliteSessionStore } from './session/SqliteSessionStore';
 import connectPgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import cors from 'cors';
@@ -18,9 +20,14 @@ import adminRoutes from './routes/admin';
 import scoresheetRoutes from './routes/scoresheet';
 import fieldTemplatesRoutes from './routes/fieldTemplates';
 import apiRoutes from './routes/api';
-import dataRoutes from './routes/data';
 import scoresRoutes from './routes/scores';
 import chatRoutes from './routes/chat';
+import eventsRoutes from './routes/events';
+import teamsRoutes from './routes/teams';
+import seedingRoutes from './routes/seeding';
+import bracketsRoutes from './routes/brackets';
+import queueRoutes from './routes/queue';
+import auditRoutes from './routes/audit';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -73,15 +80,22 @@ if (usePostgres) {
     console.log('Using PostgreSQL session store');
   }
 } else {
-  // Use SQLite session store in development
-  const SQLiteStore = connectSqlite3(session);
-  sessionConfig.store = new SQLiteStore({
-    db: 'sessions.db',
-    dir: path.join(__dirname, '../../database'),
-  }) as session.Store;
-  console.log('Using SQLite session store');
-}
+  // Use SQLite session store in development (custom better-sqlite3 store)
+  const dbPath = path.join(__dirname, '../../database', 'sessions.db');
 
+  const sqlite = new BetterSqlite3(dbPath);
+  sqlite.pragma('journal_mode = WAL');
+  sqlite.pragma('foreign_keys = ON');
+  sqlite.pragma('busy_timeout = 5000');
+
+  sessionConfig.store = new SqliteSessionStore({
+    db: sqlite,
+    tableName: 'sessions',
+    ttlMs: 7 * 24 * 60 * 60 * 1000, // keep in sync with cookie maxAge if you want
+  }) as session.Store;
+
+  console.log('Using SQLite session store (custom better-sqlite3)');
+}
 app.use(session(sessionConfig));
 
 // Passport initialization
@@ -136,9 +150,14 @@ app.use('/admin', adminRoutes);
 app.use('/scoresheet', scoresheetRoutes);
 app.use('/field-templates', fieldTemplatesRoutes);
 app.use('/api', apiRoutes);
-app.use('/data', dataRoutes);
 app.use('/scores', scoresRoutes);
 app.use('/chat', chatRoutes);
+app.use('/events', eventsRoutes);
+app.use('/teams', teamsRoutes);
+app.use('/seeding', seedingRoutes);
+app.use('/brackets', bracketsRoutes);
+app.use('/queue', queueRoutes);
+app.use('/audit', auditRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -164,10 +183,15 @@ if (process.env.NODE_ENV === 'production') {
       '/auth/',
       '/admin/',
       '/scoresheet/',
-      '/data/',
       '/scores/',
       '/chat/',
       '/field-templates/',
+      '/events/',
+      '/teams/',
+      '/seeding/',
+      '/brackets/',
+      '/queue/',
+      '/audit/',
     ];
     const isApiRoute = apiPrefixes.some((prefix) =>
       req.path.startsWith(prefix),
@@ -191,11 +215,41 @@ app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
     .json({ error: 'Internal server error', message: err.message });
 });
 
+let server: Server | null = null;
+const SHUTDOWN_TIMEOUT_MS = 10000;
+let isShuttingDown = false;
+
+function shutdown(signal: string, exitCode = 0) {
+  if (isShuttingDown) return;
+  if (!server) {
+    process.exit(exitCode);
+    return;
+  }
+  isShuttingDown = true;
+  console.log(`\n${signal} received, shutting down gracefully...`);
+  server.close(() => {
+    console.log('Server closed');
+    process.exit(exitCode);
+  });
+  setTimeout(() => {
+    console.error('Shutdown timeout reached, forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+  shutdown('uncaughtException', 1);
+});
+
 // Initialize database and start server
 async function startServer() {
   try {
     await initializeDatabase();
-    app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       const timestamp = new Date().toLocaleString('en-US', {
         year: 'numeric',
         month: '2-digit',

@@ -1,4 +1,8 @@
-# Multi-Sheet Configuration Guide
+> **ARCHIVED** - This document describes the legacy Google Sheets multi-sheet configuration.
+> The application has since migrated to a database-backed, event-centric model.
+> For current setup instructions, see the main [README](../README.md).
+
+# Multi-Sheet Configuration Guide (Legacy - Google Sheets)
 
 This guide explains how to use multiple sheets from the same (or different) spreadsheets for different purposes.
 

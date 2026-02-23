@@ -4,13 +4,31 @@ import { getDatabase } from '../database/connection';
 
 const router = express.Router();
 
+function inferTemplateType(schema: unknown): 'seeding' | 'bracket' {
+  if (schema && typeof schema === 'object' && 'mode' in schema) {
+    if ((schema as { mode?: string }).mode === 'head-to-head') return 'bracket';
+  }
+  if (schema && typeof schema === 'object' && 'bracketSource' in schema) {
+    return 'bracket';
+  }
+  return 'seeding';
+}
+
 // Get all scoresheet templates (public - for judges, without access codes)
+// Returns only templates linked to events with status setup/active; includes event metadata for grouping
 router.get(
   '/templates',
   async (req: express.Request, res: express.Response) => {
     try {
       const db = await getDatabase();
+      // Deduplicate: one row per template (pick event by most recent event_date)
       const templates = await db.all(`
+      WITH ranked AS (
+        SELECT est.template_id, est.event_id,
+          ROW_NUMBER() OVER (PARTITION BY est.template_id ORDER BY e.event_date DESC, e.name) AS rn
+        FROM event_scoresheet_templates est
+        INNER JOIN events e ON e.id = est.event_id AND e.status IN ('setup', 'active')
+      )
       SELECT 
         t.id, 
         t.name, 
@@ -19,11 +37,17 @@ router.get(
         t.created_at,
         t.spreadsheet_config_id,
         sc.spreadsheet_name,
-        sc.sheet_name
+        sc.sheet_name,
+        e.id AS event_id,
+        e.name AS event_name,
+        e.event_date AS event_date,
+        e.status AS event_status
       FROM scoresheet_templates t
+      INNER JOIN ranked r ON r.template_id = t.id AND r.rn = 1
+      INNER JOIN events e ON e.id = r.event_id
       LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
       WHERE t.is_active IS TRUE
-      ORDER BY sc.spreadsheet_name, t.name
+      ORDER BY e.event_date DESC, e.name, t.name
     `);
 
       // Parse schema JSON for each template
@@ -47,13 +71,17 @@ router.get(
 );
 
 // Get all scoresheet templates with access codes (admin only)
+// Optional eventId: when present, returns only templates linked to that event
 router.get(
   '/templates/admin',
   requireAuth,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const db = await getDatabase();
-      const templates = await db.all(`
+      const eventId = req.query.eventId;
+      const hasEventFilter = eventId !== undefined && eventId !== '';
+
+      const baseSelect = `
       SELECT 
         t.id, 
         t.name, 
@@ -66,9 +94,28 @@ router.get(
         sc.sheet_name
       FROM scoresheet_templates t
       LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
+    `;
+
+      let query: string;
+      const params: (string | number)[] = [];
+
+      if (hasEventFilter) {
+        const eventIdNum = Number(eventId);
+        if (Number.isNaN(eventIdNum)) {
+          return res.status(400).json({ error: 'Invalid eventId' });
+        }
+        query = `${baseSelect}
+      INNER JOIN event_scoresheet_templates est ON est.template_id = t.id AND est.event_id = ?
       WHERE t.is_active IS TRUE
-      ORDER BY sc.spreadsheet_name, t.name
-    `);
+      ORDER BY sc.spreadsheet_name, t.name`;
+        params.push(eventIdNum);
+      } else {
+        query = `${baseSelect}
+      WHERE t.is_active IS TRUE
+      ORDER BY sc.spreadsheet_name, t.name`;
+      }
+
+      const templates = await db.all(query, params);
       res.json(templates);
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -146,8 +193,14 @@ router.post(
   requireAuth,
   async (req: AuthRequest, res: express.Response) => {
     try {
-      const { name, description, schema, accessCode, spreadsheetConfigId } =
-        req.body;
+      const {
+        name,
+        description,
+        schema,
+        accessCode,
+        spreadsheetConfigId,
+        eventId,
+      } = req.body;
 
       if (!name || !schema || !accessCode) {
         return res
@@ -169,9 +222,19 @@ router.post(
         ],
       );
 
+      const templateId = result.lastID!;
+
+      if (eventId != null && Number.isInteger(Number(eventId))) {
+        const templateType = inferTemplateType(schema);
+        await db.run(
+          `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
+          [Number(eventId), templateId, templateType],
+        );
+      }
+
       const template = await db.get(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
-        [result.lastID],
+        [templateId],
       );
       template.schema = JSON.parse(template.schema);
 
@@ -190,23 +253,44 @@ router.put(
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
-      const { name, description, schema, accessCode, spreadsheetConfigId } =
-        req.body;
+      const {
+        name,
+        description,
+        schema,
+        accessCode,
+        spreadsheetConfigId,
+        eventId,
+      } = req.body;
 
       const db = await getDatabase();
-      await db.run(
-        `UPDATE scoresheet_templates 
-       SET name = ?, description = ?, schema = ?, access_code = ?, spreadsheet_config_id = ?, updated_at = CURRENT_TIMESTAMP
-       WHERE id = ?`,
-        [
-          name,
-          description,
-          JSON.stringify(schema),
-          accessCode,
-          spreadsheetConfigId || null,
-          id,
-        ],
-      );
+      await db.transaction(async (tx) => {
+        await tx.run(
+          `UPDATE scoresheet_templates 
+         SET name = ?, description = ?, schema = ?, access_code = ?, spreadsheet_config_id = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+          [
+            name,
+            description,
+            JSON.stringify(schema),
+            accessCode,
+            spreadsheetConfigId || null,
+            id,
+          ],
+        );
+
+        await tx.run(
+          'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
+          [id],
+        );
+
+        if (eventId != null && Number.isInteger(Number(eventId))) {
+          const templateType = inferTemplateType(schema);
+          await tx.run(
+            `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
+            [Number(eventId), id, templateType],
+          );
+        }
+      });
 
       const template = await db.get(
         'SELECT * FROM scoresheet_templates WHERE id = ?',

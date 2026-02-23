@@ -1,7 +1,13 @@
 import express from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
-import { getParticipants, getMatches } from '../services/googleSheets';
+import { createAuditEntry } from './audit';
+import { toAuditJson } from '../utils/auditJson';
+import {
+  acceptEventScore,
+  updateBracketQueueItem,
+  updateSeedingQueueItem,
+} from '../services/scoreAccept';
 
 const router = express.Router();
 
@@ -17,6 +23,10 @@ router.post(
         scoreData,
         isHeadToHead,
         bracketSource,
+        eventId,
+        scoreType,
+        game_queue_id,
+        bracket_game_id,
       } = req.body;
 
       if (!templateId || !scoreData) {
@@ -27,156 +37,210 @@ router.post(
 
       const db = await getDatabase();
 
-      // Get the template to find who created it and which sheet it's linked to
+      // Get the template
       const template = await db.get(
         'SELECT id, name, created_by, spreadsheet_config_id FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
 
-      if (!template || !template.created_by) {
-        return res
-          .status(400)
-          .json({ error: 'Template not found or has no owner' });
+      if (!template) {
+        return res.status(400).json({ error: 'Template not found' });
       }
 
-      // Get the spreadsheet config - prefer template's linked config if set
-      let config;
-      if (template.spreadsheet_config_id) {
-        // Use the specific sheet linked to this template
-        config = await db.get(
-          'SELECT * FROM spreadsheet_configs WHERE id = ?',
-          [template.spreadsheet_config_id],
+      // DB-backed (event-scoped) submission: resolve team_id if needed (seeding)
+      const attemptingDbBackedSeeding = eventId && scoreType === 'seeding';
+      let resolvedTeamId = scoreData.team_id?.value;
+      if (
+        attemptingDbBackedSeeding &&
+        !resolvedTeamId &&
+        scoreData.team_number?.value
+      ) {
+        const team = await db.get(
+          'SELECT id FROM teams WHERE event_id = ? AND team_number = ?',
+          [eventId, scoreData.team_number.value],
         );
+        resolvedTeamId = team?.id;
+      }
+      const isDbBackedSeeding = attemptingDbBackedSeeding && resolvedTeamId;
 
-        if (!config || !config.is_active) {
+      // DB-backed bracket submission: validate bracket_game_id belongs to event
+      // (game query JOINs brackets/events, so event existence is validated implicitly)
+      const attemptingDbBackedBracket =
+        eventId && scoreType === 'bracket' && bracket_game_id != null;
+      let isDbBackedBracket = false;
+      if (attemptingDbBackedBracket) {
+        const game = await db.get(
+          `SELECT bg.id FROM bracket_games bg
+           JOIN brackets b ON bg.bracket_id = b.id
+           WHERE bg.id = ? AND b.event_id = ?`,
+          [bracket_game_id, eventId],
+        );
+        if (!game) {
           return res.status(400).json({
-            error: config
-              ? 'The sheet linked to this score sheet is not active. Please activate it in Admin > Spreadsheets.'
-              : 'The sheet linked to this score sheet no longer exists.',
+            error:
+              'Bracket game not found or does not belong to this event. Invalid event.',
           });
         }
-      } else {
-        // Fallback: Find an active sheet with the appropriate purpose
-        if (isHeadToHead && bracketSource) {
-          config = await db.get(
-            `SELECT * FROM spreadsheet_configs 
-           WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'bracket'
-           LIMIT 1`,
-            [template.created_by],
-          );
-        } else {
-          config = await db.get(
-            `SELECT * FROM spreadsheet_configs 
-           WHERE user_id = ? AND is_active IS TRUE AND sheet_purpose = 'scores'
-           LIMIT 1`,
-            [template.created_by],
-          );
-        }
+        isDbBackedBracket = true;
+      }
 
-        if (!config) {
+      if (eventId && scoreType === 'bracket' && bracket_game_id == null) {
+        return res.status(400).json({
+          error: 'bracket_game_id is required for DB-backed bracket submission',
+        });
+      }
+
+      const isDbBacked = isDbBackedSeeding || isDbBackedBracket;
+
+      const spreadsheetConfigId: number | null = null;
+
+      // Single event validation for seeding (bracket already validated via game query)
+      if (attemptingDbBackedSeeding) {
+        const event = await db.get('SELECT id FROM events WHERE id = ?', [
+          eventId,
+        ]);
+        if (!event) {
+          return res.status(400).json({ error: 'Invalid event' });
+        }
+        if (!resolvedTeamId) {
           return res
             .status(400)
-            .json({ error: 'No active spreadsheet configuration found' });
+            .json({ error: 'Team not found for event. Check team number.' });
         }
+        // Enforce team belongs to event (prevents cross-event submission via team_id)
+        const team = await db.get(
+          'SELECT id FROM teams WHERE id = ? AND event_id = ?',
+          [resolvedTeamId, eventId],
+        );
+        if (!team) {
+          return res.status(400).json({
+            error: 'Team not found or does not belong to this event.',
+          });
+        }
+      }
+
+      if (!isDbBacked) {
+        return res.status(400).json({
+          error:
+            'Event-scoped submission is required. Provide eventId and scoreType (seeding or bracket) with bracket_game_id for bracket scores.',
+        });
       }
 
       // Add metadata to score data for head-to-head
-      const enrichedScoreData = {
+      const enrichedScoreData: Record<string, unknown> = {
         ...scoreData,
         _isHeadToHead: { value: isHeadToHead || false, type: 'boolean' },
         _bracketSource: { value: bracketSource || null, type: 'object' },
       };
+      if (isDbBacked && resolvedTeamId) {
+        enrichedScoreData.team_id = {
+          label: 'Team ID',
+          value: resolvedTeamId,
+          type: 'number',
+        };
+      }
 
-      // Save to database (use null for user_id since judge isn't logged in)
+      // Build insert - event-scoped uses null for spreadsheet_config_id
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null,
           templateId,
-          config.id,
+          spreadsheetConfigId,
           participantName,
           matchId,
           JSON.stringify(enrichedScoreData),
+          isDbBacked ? eventId : null,
+          isDbBacked ? scoreType : null,
+          game_queue_id ?? null,
+          isDbBackedBracket ? bracket_game_id : null,
         ],
       );
-
-      // Don't auto-submit to sheet - wait for admin approval
-      // Score is saved with submitted_to_sheet = 0 and pending status
 
       const submission = await db.get(
         'SELECT * FROM score_submissions WHERE id = ?',
         [result.lastID],
       );
+
+      // Audit event-scoped submissions only (skip legacy spreadsheet path)
+      if (isDbBacked && submission) {
+        await createAuditEntry(db, {
+          event_id: eventId,
+          user_id: null,
+          action: 'score_submitted',
+          entity_type: 'score_submission',
+          entity_id: submission.id,
+          old_value: null,
+          new_value: toAuditJson({
+            id: submission.id,
+            event_id: submission.event_id,
+            score_type: submission.score_type,
+            status: submission.status,
+            score_data: submission.score_data,
+          }),
+          ip_address: req.ip ?? null,
+        });
+
+        // Remove from active queue as soon as the score is submitted.
+        // If the submission is later rejected, scores.ts will restore it.
+        if (scoreType === 'seeding' && resolvedTeamId) {
+          const roundNumber =
+            scoreData.round?.value ?? scoreData.round_number?.value;
+          if (roundNumber != null) {
+            await updateSeedingQueueItem(
+              db,
+              eventId,
+              resolvedTeamId,
+              Number(roundNumber),
+              true,
+            );
+          }
+        } else if (scoreType === 'bracket' && bracket_game_id != null) {
+          await updateBracketQueueItem(
+            db,
+            eventId,
+            Number(bracket_game_id),
+            true,
+          );
+        }
+
+        // Auto-accept when event's score_accept_mode matches (force=false, reviewed_by=null)
+        const event = await db.get<{ score_accept_mode?: string }>(
+          'SELECT score_accept_mode FROM events WHERE id = ?',
+          [eventId],
+        );
+        const mode = event?.score_accept_mode ?? 'manual';
+        const shouldAutoAccept =
+          mode === 'auto_accept_all' ||
+          (mode === 'auto_accept_seeding' && scoreType === 'seeding');
+
+        if (shouldAutoAccept) {
+          const acceptResult = await acceptEventScore({
+            db,
+            submissionId: submission.id,
+            force: false,
+            reviewedBy: null,
+            ipAddress: req.ip ?? null,
+          });
+
+          if (acceptResult.ok) {
+            const updated = await db.get(
+              'SELECT * FROM score_submissions WHERE id = ?',
+              [submission.id],
+            );
+            res.json(updated);
+            return;
+          }
+          // Conflict or other error: leave as pending, return original submission
+        }
+      }
+
       res.json(submission);
     } catch (error) {
       console.error('Error submitting score:', error);
       res.status(500).json({ error: 'Failed to submit score' });
-    }
-  },
-);
-
-// Get participants from spreadsheet
-router.get(
-  '/participants',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const db = await getDatabase();
-      const config = await db.get(
-        'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active IS TRUE',
-        [req.user.id],
-      );
-
-      if (!config) {
-        return res
-          .status(400)
-          .json({ error: 'No active spreadsheet configuration found' });
-      }
-
-      const participants = await getParticipants(
-        req.user.access_token,
-        config.spreadsheet_id,
-        config.sheet_name,
-      );
-
-      res.json(participants);
-    } catch (error) {
-      console.error('Error fetching participants:', error);
-      res.status(500).json({ error: 'Failed to fetch participants' });
-    }
-  },
-);
-
-// Get matches from spreadsheet
-router.get(
-  '/matches',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const db = await getDatabase();
-      const config = await db.get(
-        'SELECT * FROM spreadsheet_configs WHERE user_id = ? AND is_active IS TRUE',
-        [req.user.id],
-      );
-
-      if (!config) {
-        return res
-          .status(400)
-          .json({ error: 'No active spreadsheet configuration found' });
-      }
-
-      const matches = await getMatches(
-        req.user.access_token,
-        config.spreadsheet_id,
-        config.sheet_name,
-      );
-
-      res.json(matches);
-    } catch (error) {
-      console.error('Error fetching matches:', error);
-      res.status(500).json({ error: 'Failed to fetch matches' });
     }
   },
 );

@@ -1,0 +1,155 @@
+.audit-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.audit-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.audit-controls-left {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.audit-filter-input {
+  min-width: 140px;
+}
+
+.audit-table-card {
+  overflow-x: auto;
+}
+
+.audit-table-wrapper {
+  overflow-x: auto;
+}
+
+.audit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  table-layout: fixed;
+}
+
+.audit-table th,
+.audit-table td {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.audit-table th {
+  font-weight: 600;
+  color: var(--secondary-color);
+  white-space: nowrap;
+}
+
+.audit-table tbody tr:hover {
+  background-color: var(--hover-bg);
+}
+
+.audit-value-cell {
+  max-width: 200px;
+  overflow: hidden;
+  font-family: var(--mono-font, monospace);
+  font-size: 0.85rem;
+}
+
+.audit-value-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Constrain Old Value (col 6) and New Value (col 7) columns */
+.audit-table th:nth-child(6),
+.audit-table td:nth-child(6),
+.audit-table th:nth-child(7),
+.audit-table td:nth-child(7) {
+  width: 12%;
+  max-width: 200px;
+}
+
+.audit-view-btn,
+.audit-action-btn {
+  margin-left: 0.5rem;
+  font-size: 0.8rem;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--primary-color);
+  text-decoration: underline;
+}
+
+.audit-view-btn:hover,
+.audit-action-btn:hover {
+  color: var(--primary-hover);
+}
+
+.audit-load-more {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.audit-json-view {
+  margin: 1rem 0 0 0;
+  padding: 1rem;
+  background: var(--bg-color);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-family: var(--mono-font, monospace);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.audit-history-modal {
+  max-width: 900px;
+  width: 95%;
+}
+
+.audit-diff-modal {
+  max-width: 900px;
+  width: 95%;
+}
+
+.audit-diff-view {
+  margin: 1rem 0 0 0;
+  padding: 1rem;
+  background: var(--bg-color);
+  border-radius: 0.5rem;
+  overflow-x: auto;
+  font-family: var(--mono-font, monospace);
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.audit-diff-added {
+  background-color: rgba(34, 197, 94, 0.2);
+  display: inline;
+}
+
+.audit-diff-removed {
+  background-color: rgba(239, 68, 68, 0.2);
+  text-decoration: line-through;
+  display: inline;
+}
+
+.audit-diff-unchanged {
+  display: inline;
+}

@@ -430,6 +430,32 @@ export default function ScoreViewModal({
 
   const schema = template?.schema;
 
+  // Derive winner display for bracket games
+  const isBracket = score.score_type === 'bracket';
+  const winnerDisplay = isBracket
+    ? (() => {
+        const data = score.score_data || {};
+        const winnerNum = data.winner_team_number?.value;
+        const winnerName = data.winner_team_name?.value;
+        const winner = data.winner?.value;
+        if (winnerNum != null && winnerName != null) {
+          return `${winnerNum} - ${winnerName}`;
+        }
+        if (data.winner_display?.value) return data.winner_display.value;
+        if (winner === 'team_a') {
+          const n = data.team_a_number?.value ?? '';
+          const name = data.team_a_name?.value ?? '';
+          return name ? `${n} - ${name}` : n || 'Team A';
+        }
+        if (winner === 'team_b') {
+          const n = data.team_b_number?.value ?? '';
+          const name = data.team_b_name?.value ?? '';
+          return name ? `${n} - ${name}` : n || 'Team B';
+        }
+        return null;
+      })()
+    : null;
+
   return (
     <div className="modal show" onClick={onClose}>
       <div
@@ -451,6 +477,35 @@ export default function ScoreViewModal({
             <span>Submitted: {formatDateTime(score.created_at)}</span>
           </div>
         </div>
+
+        {isBracket && winnerDisplay && (
+          <div
+            className="score-view-winner-banner"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              background: 'var(--primary-color)',
+              color: 'white',
+              borderRadius: '0.5rem',
+              fontWeight: 600,
+              fontSize: '1.1rem',
+            }}
+          >
+            <span
+              style={{
+                fontSize: '1.25rem',
+                lineHeight: 1,
+              }}
+              aria-hidden
+            >
+              ✓
+            </span>
+            <span>Winner: {winnerDisplay}</span>
+          </div>
+        )}
 
         <div className="score-view-form">
           {!template || !schema ? (

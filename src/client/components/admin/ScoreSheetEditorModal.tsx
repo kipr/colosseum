@@ -6,12 +6,14 @@ import '../Modal.css';
 
 interface ScoreSheetEditorModalProps {
   scoreSheetId: number | null;
+  eventId: number;
   onClose: () => void;
   onSave: () => void;
 }
 
 export default function ScoreSheetEditorModal({
   scoreSheetId,
+  eventId,
   onClose,
   onSave,
 }: ScoreSheetEditorModalProps) {
@@ -25,6 +27,7 @@ export default function ScoreSheetEditorModal({
     return (
       <TemplateEditorModal
         templateId={scoreSheetId}
+        eventId={eventId}
         onClose={onClose}
         onSave={onSave}
       />
@@ -135,6 +138,7 @@ export default function ScoreSheetEditorModal({
   return (
     <TemplateEditorModal
       templateId={null}
+      eventId={eventId}
       onClose={onClose}
       onSave={onSave}
       initialData={wizardData}

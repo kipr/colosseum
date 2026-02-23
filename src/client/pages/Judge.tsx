@@ -13,6 +13,10 @@ interface Template {
   created_at: string;
   spreadsheet_config_id: number | null;
   spreadsheet_name: string | null;
+  event_id?: number;
+  event_name?: string;
+  event_date?: string | null;
+  event_status?: string;
 }
 
 export default function Judge() {
@@ -41,16 +45,17 @@ export default function Judge() {
     }
   };
 
-  // Group templates by spreadsheet name
+  // Group templates by stable event identifier (event_id); event_name can duplicate across events
   const groupedTemplates = useMemo(() => {
     const groups: Record<string, Template[]> = {};
 
     templates.forEach((template) => {
-      const groupName = template.spreadsheet_name || 'Unassigned';
-      if (!groups[groupName]) {
-        groups[groupName] = [];
+      const groupKey =
+        template.event_id != null ? `event-${template.event_id}` : 'unassigned';
+      if (!groups[groupKey]) {
+        groups[groupKey] = [];
       }
-      groups[groupName].push(template);
+      groups[groupKey].push(template);
     });
 
     return groups;
@@ -69,13 +74,20 @@ export default function Judge() {
     navigate(`/scoresheet?template=${selectedTemplate!.id}&name=${urlName}`);
   };
 
-  // Get sorted group names (Unassigned at the end)
-  const sortedGroupNames = useMemo(() => {
-    const names = Object.keys(groupedTemplates);
-    return names.sort((a, b) => {
-      if (a === 'Unassigned') return 1;
-      if (b === 'Unassigned') return -1;
-      return a.localeCompare(b);
+  // Get sorted group keys (by event date desc, then name; unassigned at end)
+  const sortedGroupKeys = useMemo(() => {
+    const keys = Object.keys(groupedTemplates);
+    return keys.sort((a, b) => {
+      if (a === 'unassigned') return 1;
+      if (b === 'unassigned') return -1;
+      const templateA = groupedTemplates[a][0];
+      const templateB = groupedTemplates[b][0];
+      const dateA = templateA?.event_date ?? '';
+      const dateB = templateB?.event_date ?? '';
+      if (dateA !== dateB) return dateB.localeCompare(dateA);
+      return (templateA?.event_name ?? '').localeCompare(
+        templateB?.event_name ?? '',
+      );
     });
   }, [groupedTemplates]);
 
@@ -93,23 +105,31 @@ export default function Judge() {
           </p>
         ) : (
           <div className="template-groups">
-            {sortedGroupNames.map((groupName) => (
-              <div key={groupName} className="template-group">
-                <h3 className="template-group-header">{groupName}</h3>
+            {sortedGroupKeys.map((groupKey) => (
+              <div key={groupKey} className="template-group">
+                <h3 className="template-group-header">
+                  {groupKey === 'unassigned'
+                    ? 'Unassigned'
+                    : (groupedTemplates[groupKey][0]?.event_name ?? groupKey)}
+                </h3>
                 <div className="template-grid">
-                  {groupedTemplates[groupName].map((template) => (
-                    <div
-                      key={template.id}
-                      className="template-card"
-                      onClick={() =>
-                        handleTemplateSelect(template.id, template.name)
-                      }
-                    >
-                      <h4>{template.name}</h4>
-                      <p>{template.description || 'No description'}</p>
-                      <small>Created: {formatDate(template.created_at)}</small>
-                    </div>
-                  ))}
+                  {[...groupedTemplates[groupKey]]
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((template) => (
+                      <div
+                        key={template.id}
+                        className="template-card"
+                        onClick={() =>
+                          handleTemplateSelect(template.id, template.name)
+                        }
+                      >
+                        <h4>{template.name}</h4>
+                        <p>{template.description || 'No description'}</p>
+                        <small>
+                          Created: {formatDate(template.created_at)}
+                        </small>
+                      </div>
+                    ))}
                 </div>
               </div>
             ))}

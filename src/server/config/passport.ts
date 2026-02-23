@@ -1,6 +1,11 @@
 import passport from 'passport';
-import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import {
+  Strategy as GoogleStrategy,
+  Profile,
+  VerifyCallback,
+} from 'passport-google-oauth20';
 import { getDatabase } from '../database/connection';
+import { getGoogleCallbackUrl } from './google';
 
 // Allowed email domains for admin access
 // Set via ALLOWED_EMAIL_DOMAINS env var (comma-separated) or defaults to kipr.org
@@ -36,12 +41,14 @@ export function setupPassport() {
       {
         clientID: process.env.GOOGLE_CLIENT_ID || '',
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
-        callbackURL:
-          process.env.GOOGLE_CALLBACK_URL ||
-          'http://localhost:3000/auth/google/callback',
+        callbackURL: getGoogleCallbackUrl(),
       },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      async (accessToken: string, refreshToken: string, profile: any, done: any) => {
+      async (
+        accessToken: string,
+        refreshToken: string,
+        profile: Profile,
+        done: VerifyCallback,
+      ) => {
         try {
           const db = await getDatabase();
           const email = profile.emails?.[0]?.value;
