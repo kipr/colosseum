@@ -374,6 +374,7 @@ npm run pretty     # Prettier check
 
 - Rankings must be recalculated manually after score changes
 - Use the "Recalculate Rankings" button in the Seeding tab
+- a
 
 ## License
 
