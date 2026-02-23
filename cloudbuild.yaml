@@ -4,7 +4,7 @@
 
 substitutions:
   _REGION: us-central1
-  _REPOSITORY: colosseum   # Artifact Registry repository name
+  _REPOSITORY: cloud-run-source-deploy   # Artifact Registry repository name
   _IMAGE: colosseum        # Image name within the repo
   _SERVICE: colosseum      # Cloud Run service name
 
