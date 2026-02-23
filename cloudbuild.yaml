@@ -41,13 +41,13 @@ steps:
 
   # Push all tags.
   - name: gcr.io/cloud-builders/docker
-    args: [push, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$TAG_NAME]
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$TAG_NAME"]
 
   - name: gcr.io/cloud-builders/docker
-    args: [push, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$COMMIT_SHA]
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:$COMMIT_SHA"]
 
   - name: gcr.io/cloud-builders/docker
-    args: [push, ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:latest]
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/${_IMAGE}:latest"]
 
   # Deploy Cloud Run to the exact release tag, with runtime wiring.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
