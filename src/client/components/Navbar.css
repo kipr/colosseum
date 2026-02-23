@@ -167,6 +167,10 @@
   border: 1px solid var(--border-color);
 }
 
+.nav-item.about-button {
+  border: 1px solid var(--border-color);
+}
+
 [data-theme='light'] .nav-item.theme-toggle,
 :root:not([data-theme]) .nav-item.theme-toggle {
   background-color: #1e293b;
@@ -195,6 +199,39 @@
 
 .theme-label {
   font-weight: 500;
+}
+
+.about-modal-content {
+  max-width: 520px;
+}
+
+.about-content {
+  display: grid;
+  gap: 1rem;
+}
+
+.about-content h4 {
+  margin: 0 0 0.5rem 0;
+}
+
+.about-content p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.about-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--text-secondary);
+}
+
+.about-content a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+.about-content a:hover {
+  text-decoration: underline;
 }
 
 /* Mobile Responsive Navbar */
