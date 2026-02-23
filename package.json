@@ -66,7 +66,7 @@
     "prettier": "3.8.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
-    "typescript-eslint": "^8.54.0",
+    "typescript-eslint": "^8.56.1",
     "vite": "^7.2.6",
     "vitest": "^4.0.18",
     "wait-on": "^9.0.3"
