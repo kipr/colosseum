@@ -250,7 +250,6 @@ export default function ScoreSheetsTab() {
                     <tr>
                       <th>Name</th>
                       <th>Description</th>
-                      <th>Spreadsheet</th>
                       <th>Access Code</th>
                       <th>Created</th>
                       <th>Actions</th>
@@ -264,13 +263,6 @@ export default function ScoreSheetsTab() {
                           {sheet.description || (
                             <em style={{ color: 'var(--secondary-color)' }}>
                               No description
-                            </em>
-                          )}
-                        </td>
-                        <td>
-                          {sheet.spreadsheet_name || (
-                            <em style={{ color: 'var(--secondary-color)' }}>
-                              Not assigned
                             </em>
                           )}
                         </td>
