@@ -251,10 +251,9 @@ export default function QueueTab() {
 
     const confirmed = await confirm({
       title: 'Populate Queue from Bracket',
-      message:
-        'This will replace the current queue with games from the selected bracket. Continue?',
+      message: 'This will completely clear the existing queue. Continue?',
       confirmText: 'Populate',
-      confirmStyle: 'warning',
+      confirmStyle: 'danger',
     });
 
     if (!confirmed) return;
@@ -296,10 +295,9 @@ export default function QueueTab() {
 
     const confirmed = await confirm({
       title: 'Populate Queue from Seeding',
-      message:
-        'This will replace the current queue with all unplayed seeding rounds. Continue?',
+      message: 'This will completely clear the existing queue. Continue?',
       confirmText: 'Populate',
-      confirmStyle: 'warning',
+      confirmStyle: 'danger',
     });
 
     if (!confirmed) return;
@@ -338,6 +336,16 @@ export default function QueueTab() {
   const handleAddSeeding = async () => {
     if (!selectedEventId || !selectedTeamId) return;
 
+    const confirmed = await confirm({
+      title: 'Add Seeding Round',
+      message:
+        'Games are automatically queued, are you sure you need to add this? Have you double checked the list?',
+      confirmText: 'Add',
+      confirmStyle: 'danger',
+    });
+
+    if (!confirmed) return;
+
     setAddingSeeding(true);
     try {
       const response = await fetch('/queue', {
@@ -373,6 +381,16 @@ export default function QueueTab() {
   // Handle add bracket game
   const handleAddBracketGame = async () => {
     if (!selectedEventId || !selectedGameId) return;
+
+    const confirmed = await confirm({
+      title: 'Add Bracket Game',
+      message:
+        'Games are automatically queued, are you sure you need to add this? Have you double checked the list?',
+      confirmText: 'Add',
+      confirmStyle: 'danger',
+    });
+
+    if (!confirmed) return;
 
     setAddingBracket(true);
     try {
@@ -871,8 +889,9 @@ export default function QueueTab() {
                 marginBottom: '1.5rem',
               }}
             >
-              This will replace the current queue with eligible games from the
-              selected bracket. Games must have both teams assigned.
+              This will completely clear the existing queue and replace it with
+              eligible games from the selected bracket. Games must have both
+              teams assigned.
             </p>
 
             {brackets.length === 0 ? (
@@ -917,7 +936,7 @@ export default function QueueTab() {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-danger"
                     onClick={handlePopulateFromBracket}
                     disabled={populating || !selectedBracketId}
                   >
@@ -954,9 +973,9 @@ export default function QueueTab() {
                 marginBottom: '1.5rem',
               }}
             >
-              This will replace the current queue with all unplayed seeding
-              rounds (team + round combinations that don&apos;t have a score
-              yet).
+              This will completely clear the existing queue and replace it with
+              all unplayed seeding rounds (team + round combinations that
+              don&apos;t have a score yet).
             </p>
 
             <div
@@ -977,7 +996,7 @@ export default function QueueTab() {
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-danger"
                 onClick={handlePopulateFromSeeding}
                 disabled={populatingSeeding}
               >
@@ -1012,7 +1031,9 @@ export default function QueueTab() {
                 marginBottom: '1.5rem',
               }}
             >
-              Add a specific team&apos;s seeding round to the queue.
+              Add a specific team&apos;s seeding round to the queue. Games are
+              automatically queued—are you sure you need to add this? Have you
+              double checked the list?
             </p>
 
             {teams.length === 0 ? (
@@ -1073,7 +1094,7 @@ export default function QueueTab() {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-danger"
                     onClick={handleAddSeeding}
                     disabled={addingSeeding || !selectedTeamId}
                   >
@@ -1110,7 +1131,9 @@ export default function QueueTab() {
                 marginBottom: '1.5rem',
               }}
             >
-              Add a specific bracket game to the queue.
+              Add a specific bracket game to the queue. Games are automatically
+              queued—are you sure you need to add this? Have you double checked
+              the list?
             </p>
 
             {brackets.length === 0 ? (
@@ -1198,7 +1221,7 @@ export default function QueueTab() {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-danger"
                     onClick={handleAddBracketGame}
                     disabled={addingBracket || !selectedGameId}
                   >

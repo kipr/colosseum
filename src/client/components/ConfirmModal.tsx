@@ -23,7 +23,7 @@ export default function ConfirmModal({
   const getButtonClass = () => {
     switch (confirmStyle) {
       case 'danger':
-        return 'btn btn-danger';
+        return 'btn btn-danger confirm-btn-danger';
       case 'warning':
         return 'btn btn-warning';
       default:
@@ -34,7 +34,7 @@ export default function ConfirmModal({
   return (
     <div className="modal show" onClick={onCancel}>
       <div
-        className="modal-content"
+        className={`modal-content ${confirmStyle === 'danger' ? 'confirm-modal--danger' : ''}`}
         style={{ maxWidth: '450px' }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -1,3 +1,15 @@
+/* Confirm modal danger styling - more prominent destructive action */
+.confirm-modal--danger .confirm-btn-danger {
+  background-color: #b91c1c;
+  border: 2px solid #7f1d1d;
+  font-weight: 700;
+}
+
+.confirm-modal--danger .confirm-btn-danger:hover {
+  background-color: #991b1b;
+  border-color: #7f1d1d;
+}
+
 .modal {
   display: none;
   position: fixed;
