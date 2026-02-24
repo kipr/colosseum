@@ -936,7 +936,7 @@ export default function QueueTab() {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-danger"
                     onClick={handlePopulateFromBracket}
                     disabled={populating || !selectedBracketId}
                   >
@@ -996,7 +996,7 @@ export default function QueueTab() {
               </button>
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-danger"
                 onClick={handlePopulateFromSeeding}
                 disabled={populatingSeeding}
               >
@@ -1094,7 +1094,7 @@ export default function QueueTab() {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-danger"
                     onClick={handleAddSeeding}
                     disabled={addingSeeding || !selectedTeamId}
                   >
@@ -1221,7 +1221,7 @@ export default function QueueTab() {
                   </button>
                   <button
                     type="button"
-                    className="btn btn-primary"
+                    className="btn btn-danger"
                     onClick={handleAddBracketGame}
                     disabled={addingBracket || !selectedGameId}
                   >
