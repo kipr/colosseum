@@ -95,7 +95,7 @@ export default function BracketDetailView({
   gamesActions,
 }: BracketDetailViewProps) {
   const [detailViewMode, setDetailViewMode] =
-    useState<DetailViewMode>('management');
+    useState<DetailViewMode>('bracket');
 
   const winner =
     bracketDetail.games.length > 0
@@ -111,16 +111,16 @@ export default function BracketDetailView({
         {bracketDetail.games.length > 0 && (
           <div className="view-mode-toggle">
             <button
-              className={`btn ${detailViewMode === 'management' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDetailViewMode('management')}
-            >
-              Management View
-            </button>
-            <button
               className={`btn ${detailViewMode === 'bracket' ? 'btn-primary' : 'btn-secondary'}`}
               onClick={() => setDetailViewMode('bracket')}
             >
               Bracket View
+            </button>
+            <button
+              className={`btn ${detailViewMode === 'management' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setDetailViewMode('management')}
+            >
+              Management View
             </button>
           </div>
         )}
