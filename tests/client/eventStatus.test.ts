@@ -72,8 +72,13 @@ describe('formatEventDate', () => {
     expect(result).toMatch(/Mar.*15.*2025/);
   });
 
-  it('returns Invalid Date for unparseable string (toLocaleDateString on invalid Date)', () => {
-    expect(formatEventDate('not-a-date')).toBe('Invalid Date');
+  it('returns original string for unparseable string (no YYYY-MM-DD prefix)', () => {
+    expect(formatEventDate('not-a-date')).toBe('not-a-date');
+  });
+
+  it('formats PostgreSQL ISO date string (YYYY-MM-DDTHH:mm:ss.sssZ)', () => {
+    const result = formatEventDate('2025-03-15T00:00:00.000Z');
+    expect(result).toMatch(/Mar.*15.*2025/);
   });
 });
 

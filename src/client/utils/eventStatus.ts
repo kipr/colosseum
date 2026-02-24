@@ -3,6 +3,8 @@
  * These match the database CHECK constraint: status IN ('setup', 'active', 'complete', 'archived')
  */
 
+import { toDateOnlyString } from './dateUtils';
+
 export type EventStatus = 'setup' | 'active' | 'complete' | 'archived';
 
 export type ScoreAcceptMode =
@@ -61,14 +63,20 @@ export function getEventStatusLabel(status: EventStatus | string): string {
 }
 
 /**
- * Format an event date string for display
+ * Format an event date string for display.
+ * Handles both SQLite (YYYY-MM-DD) and PostgreSQL (YYYY-MM-DDTHH:mm:ss.sssZ) formats.
  */
 export function formatEventDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
 
   try {
-    // Handle date-only strings (YYYY-MM-DD) by adding time to avoid timezone issues
-    const date = new Date(dateStr + 'T00:00:00');
+    // Extract YYYY-MM-DD - PostgreSQL returns ISO strings, SQLite returns date-only
+    const dateOnly = toDateOnlyString(dateStr);
+    if (!dateOnly) return dateStr;
+
+    const date = new Date(dateOnly + 'T00:00:00');
+    if (Number.isNaN(date.getTime())) return dateStr;
+
     return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',

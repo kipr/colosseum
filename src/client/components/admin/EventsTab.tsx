@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import { formatDate } from '../../utils/dateUtils';
+import { formatDate, toDateOnlyString } from '../../utils/dateUtils';
 import {
   Event,
   EventStatus,
@@ -60,7 +60,7 @@ export default function EventsTab() {
     setFormData({
       name: event.name,
       description: event.description || '',
-      event_date: event.event_date || '',
+      event_date: toDateOnlyString(event.event_date) || '',
       location: event.location || '',
       seeding_rounds: event.seeding_rounds,
       score_accept_mode: event.score_accept_mode ?? 'manual',
