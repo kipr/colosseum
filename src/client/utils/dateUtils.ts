@@ -1,4 +1,14 @@
 /**
+ * Extract YYYY-MM-DD from a date string.
+ * Handles SQLite format ("YYYY-MM-DD") and PostgreSQL ISO format ("YYYY-MM-DDTHH:mm:ss.sssZ").
+ */
+export function toDateOnlyString(dateStr: string | null | undefined): string {
+  if (!dateStr) return '';
+  const match = dateStr.match(/^\d{4}-\d{2}-\d{2}/);
+  return match ? match[0] : '';
+}
+
+/**
  * Formats a date string from the database for display in the user's local timezone.
  * SQLite stores CURRENT_TIMESTAMP as UTC without timezone indicator.
  * This function ensures proper parsing and local display.
