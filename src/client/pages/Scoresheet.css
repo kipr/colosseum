@@ -63,6 +63,11 @@
   text-align: center;
   margin: -1rem -1rem 1rem -1rem;
   border-radius: 0.5rem 0.5rem 0 0;
+  /* Sticky so Side A/B (seeding) and Team A/B (DE) stay visible when scrolling */
+  position: sticky;
+  top: 4.5rem; /* Below navbar */
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .group-header {
