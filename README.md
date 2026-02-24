@@ -377,4 +377,4 @@ npm run pretty     # Prettier check
 
 ## License
 
-ISC
+GNU AGPL v3
