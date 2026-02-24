@@ -253,7 +253,7 @@ export default function QueueTab() {
       title: 'Populate Queue from Bracket',
       message: 'This will completely clear the existing queue. Continue?',
       confirmText: 'Populate',
-      confirmStyle: 'warning',
+      confirmStyle: 'danger',
     });
 
     if (!confirmed) return;
@@ -297,7 +297,7 @@ export default function QueueTab() {
       title: 'Populate Queue from Seeding',
       message: 'This will completely clear the existing queue. Continue?',
       confirmText: 'Populate',
-      confirmStyle: 'warning',
+      confirmStyle: 'danger',
     });
 
     if (!confirmed) return;
@@ -341,7 +341,7 @@ export default function QueueTab() {
       message:
         'Games are automatically queued, are you sure you need to add this? Have you double checked the list?',
       confirmText: 'Add',
-      confirmStyle: 'warning',
+      confirmStyle: 'danger',
     });
 
     if (!confirmed) return;
@@ -387,7 +387,7 @@ export default function QueueTab() {
       message:
         'Games are automatically queued, are you sure you need to add this? Have you double checked the list?',
       confirmText: 'Add',
-      confirmStyle: 'warning',
+      confirmStyle: 'danger',
     });
 
     if (!confirmed) return;
