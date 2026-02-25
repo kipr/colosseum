@@ -179,6 +179,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 2,
     "step": 1
   },
   {
@@ -186,7 +187,7 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_us_poms * 2) + (side_a_us_cubes * 5) + (side_a_us_cubes_pallets * 10) + (side_a_us_drums * 25) + (side_a_us_traffic_cone * 100) + (side_a_us_botguy * 200)) * ((side_a_us_robots_mult ? side_a_us_robots_mult : 0) + 2)"
+    "formula": "((side_a_us_poms * 2) + (side_a_us_cubes * 5) + (side_a_us_cubes_pallets * 10) + (side_a_us_drums * 25) + (side_a_us_traffic_cone * 100) + (side_a_us_botguy * 200)) * (side_a_us_robots_mult > 0 ? ((side_a_us_robots_mult ? side_a_us_robots_mult : 0) + 2) : 1)"
   },
   {
     "id": "side_a_wf_header",
@@ -263,6 +264,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 6,
     "step": 1
   },
   {
@@ -351,6 +353,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 2,
     "step": 1
   },
   {
@@ -416,6 +419,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -456,10 +460,12 @@
     "label": "Clean Deck",
     "suffix": "× 100",
     "column": "left",
-    "type": "number",
+    "type": "buttons",
     "required": false,
-    "min": 0,
-    "step": 1
+    "options": [
+      { "label": "No", "value": "0" },
+      { "label": "Yes", "value": "100" }
+    ]
   },
   {
     "id": "side_a_uw_robots_mult",
@@ -470,6 +476,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 2,
     "step": 1
   },
   {
@@ -477,7 +484,7 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_uw_poms * 2) + (side_a_uw_botguy * 200) + (side_a_uw_clean_deck * 100)) * (side_a_uw_robots_mult > 0 ? side_a_uw_robots_mult : 1)"
+    "formula": "((side_a_uw_poms * 2) + (side_a_uw_botguy * 200) + side_a_uw_clean_deck) * (side_a_uw_robots_mult > 0 ? side_a_uw_robots_mult : 1)"
   },
   {
     "id": "side_a_eld_header",
@@ -711,6 +718,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 2,
     "step": 1
   },
   {
@@ -718,7 +726,7 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_us_poms * 2) + (side_b_us_cubes * 5) + (side_b_us_cubes_pallets * 10) + (side_b_us_drums * 25) + (side_b_us_traffic_cone * 100) + (side_b_us_botguy * 200)) * ((side_b_us_robots_mult ? side_b_us_robots_mult : 0) + 2)"
+    "formula": "((side_b_us_poms * 2) + (side_b_us_cubes * 5) + (side_b_us_cubes_pallets * 10) + (side_b_us_drums * 25) + (side_b_us_traffic_cone * 100) + (side_b_us_botguy * 200)) * (side_b_us_robots_mult > 0 ? ((side_b_us_robots_mult ? side_b_us_robots_mult : 0) + 2) : 1)"
   },
   {
     "id": "side_b_wf_header",
@@ -795,6 +803,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 6,
     "step": 1
   },
   {
@@ -883,6 +892,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 2,
     "step": 1
   },
   {
@@ -948,6 +958,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -988,10 +999,12 @@
     "label": "Clean Deck",
     "suffix": "× 100",
     "column": "right",
-    "type": "number",
+    "type": "buttons",
     "required": false,
-    "min": 0,
-    "step": 1
+    "options": [
+      { "label": "No", "value": "0" },
+      { "label": "Yes", "value": "100" }
+    ]
   },
   {
     "id": "side_b_uw_robots_mult",
@@ -1002,6 +1015,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 2,
     "step": 1
   },
   {
@@ -1009,7 +1023,7 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_uw_poms * 2) + (side_b_uw_botguy * 200) + (side_b_uw_clean_deck * 100)) * (side_b_uw_robots_mult > 0 ? side_b_uw_robots_mult : 1)"
+    "formula": "((side_b_uw_poms * 2) + (side_b_uw_botguy * 200) + side_b_uw_clean_deck ) * (side_b_uw_robots_mult > 0 ? side_b_uw_robots_mult : 1)"
   },
   {
     "id": "side_b_eld_header",
