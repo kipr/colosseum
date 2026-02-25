@@ -406,7 +406,7 @@ describe('Brackets Entry & Game Generation', () => {
       );
       const loserDest = await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, status)
-         VALUES (?, 4, 'Losers R1', 1, 'losers', 'pending')`,
+         VALUES (?, 4, 'Redemption R1', 1, 'losers', 'pending')`,
         [bracket.id],
       );
 

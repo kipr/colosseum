@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS bracket_games (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bracket_id INTEGER NOT NULL REFERENCES brackets(id) ON DELETE CASCADE,
     game_number INTEGER NOT NULL,                -- Game 1, 2, 3... (sequential within bracket)
-    round_name TEXT,                             -- "Winners R1", "Losers R2", "Finals", "Grand Final"
+    round_name TEXT,                             -- "Winners R1", "Redemption R2", "Finals", "Grand Final"
     round_number INTEGER,                        -- Round within bracket flow
     bracket_side TEXT
         CHECK (bracket_side IN ('winners', 'losers', 'finals')),
@@ -281,7 +281,7 @@ CREATE TABLE IF NOT EXISTS bracket_templates (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bracket_size INTEGER NOT NULL,               -- 4, 8, 16, 32, 64
     game_number INTEGER NOT NULL,                -- Game number within bracket
-    round_name TEXT NOT NULL,                    -- "Winners R1", "Losers R2", etc.
+    round_name TEXT NOT NULL,                    -- "Winners R1", "Redemption R2", etc.
     round_number INTEGER NOT NULL,
     bracket_side TEXT NOT NULL,                  -- 'winners', 'losers', 'finals'
     team1_source TEXT NOT NULL,                  -- "seed:1", "winner:5", "loser:3"
