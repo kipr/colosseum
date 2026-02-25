@@ -15,8 +15,8 @@ export default function SeedingRankingsTable({
         <div>
           <h3>Rankings</h3>
           <p className="seeding-section-description">
-            Final rankings ordered by raw seed score. Formula: 75% rank position
-            + 25% score ratio (top 2 of 3 scores).
+            Final rankings based on seed averages (top 2 of 3 scores). Raw seed
+            score uses official formula: 75% rank position + 25% score ratio.
           </p>
         </div>
       </div>

@@ -9,7 +9,6 @@ interface RankingData {
   teamId: number;
   seedAverage: number | null;
   tiebreaker: number | null;
-  rawSeedScore: number | null;
 }
 
 /**
@@ -58,15 +57,10 @@ export async function recalculateSeedingRankings(
       tiebreaker = scores[0].score;
     }
 
-    rankings.push({
-      teamId: team.id,
-      seedAverage,
-      tiebreaker,
-      rawSeedScore: null,
-    });
+    rankings.push({ teamId: team.id, seedAverage, tiebreaker });
   }
 
-  // Preliminary sort by seedAverage DESC to compute rawSeedScore
+  // Sort by seed_average DESC, then tiebreaker DESC
   rankings.sort((a, b) => {
     if (a.seedAverage === null && b.seedAverage === null) return 0;
     if (a.seedAverage === null) return 1;
@@ -78,42 +72,24 @@ export async function recalculateSeedingRankings(
     return b.tiebreaker - a.tiebreaker;
   });
 
-  // Calculate raw seed score using official formula:
-  // SeedScore = (3/4) × ((n - SeedRank + 1) / n) + (1/4) × (TeamAverageSeedScore / MaxTournamentSeedScore)
   const maxAverage =
     rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
   const rankedTeams = rankings.filter((r) => r.seedAverage !== null);
   const n = rankedTeams.length;
 
-  for (let i = 0; i < rankings.length; i++) {
-    const r = rankings[i];
-    const prelimRank = r.seedAverage !== null ? i + 1 : null;
-
-    if (r.seedAverage !== null && prelimRank !== null && n > 0) {
-      const rankComponent = (3 / 4) * ((n - prelimRank + 1) / n);
-      const scoreComponent = (1 / 4) * (r.seedAverage / maxAverage);
-      r.rawSeedScore = rankComponent + scoreComponent;
-    }
-  }
-
-  // Final sort by rawSeedScore DESC, then tiebreaker DESC
-  rankings.sort((a, b) => {
-    if (a.rawSeedScore === null && b.rawSeedScore === null) return 0;
-    if (a.rawSeedScore === null) return 1;
-    if (b.rawSeedScore === null) return -1;
-    if (a.rawSeedScore !== b.rawSeedScore)
-      return b.rawSeedScore - a.rawSeedScore;
-    if (a.tiebreaker === null && b.tiebreaker === null) return 0;
-    if (a.tiebreaker === null) return 1;
-    if (b.tiebreaker === null) return -1;
-    return b.tiebreaker - a.tiebreaker;
-  });
-
   // Update rankings in database using a single transaction
   await db.transaction(async (tx) => {
     for (let i = 0; i < rankings.length; i++) {
       const r = rankings[i];
-      const seedRank = r.rawSeedScore !== null ? i + 1 : null;
+      const seedRank = r.seedAverage !== null ? i + 1 : null;
+
+      // Calculate seed score using official formula
+      let rawSeedScore: number | null = null;
+      if (r.seedAverage !== null && seedRank !== null && n > 0) {
+        const rankComponent = (3 / 4) * ((n - seedRank + 1) / n);
+        const scoreComponent = (1 / 4) * (r.seedAverage / maxAverage);
+        rawSeedScore = rankComponent + scoreComponent;
+      }
 
       await tx.run(
         `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
@@ -123,13 +99,13 @@ export async function recalculateSeedingRankings(
            seed_rank = excluded.seed_rank,
            raw_seed_score = excluded.raw_seed_score,
            tiebreaker_value = excluded.tiebreaker_value`,
-        [r.teamId, r.seedAverage, seedRank, r.rawSeedScore, r.tiebreaker],
+        [r.teamId, r.seedAverage, seedRank, rawSeedScore, r.tiebreaker],
       );
     }
   });
 
-  const teamsRanked = rankings.filter((r) => r.rawSeedScore !== null).length;
-  const teamsUnranked = rankings.filter((r) => r.rawSeedScore === null).length;
+  const teamsRanked = rankings.filter((r) => r.seedAverage !== null).length;
+  const teamsUnranked = rankings.filter((r) => r.seedAverage === null).length;
 
   return { teamsRanked, teamsUnranked };
 }
