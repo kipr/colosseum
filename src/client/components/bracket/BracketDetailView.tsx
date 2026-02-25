@@ -248,7 +248,7 @@ export default function BracketDetailView({
                         {side === 'winners'
                           ? 'Winners Bracket'
                           : side === 'losers'
-                            ? 'Losers Bracket'
+                            ? 'Redemption Bracket'
                             : 'Finals'}
                       </h5>
                       <table className="games-table">

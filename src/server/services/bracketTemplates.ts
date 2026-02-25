@@ -88,8 +88,8 @@ export async function ensureBracketTemplatesSeeded(
 // Structure:
 // Winners R1: G1, G2
 // Winners Final (G3): winner of G1 vs winner of G2
-// Losers R1 (G4): loser of G1 vs loser of G2
-// Losers Final (G5): loser of G3 vs winner of G4
+// Redemption R1 (G4): loser of G1 vs loser of G2
+// Redemption Final (G5): loser of G3 vs winner of G4
 // Grand Final (G6): winner of G3 vs winner of G5
 // Reset (G7): if loser of G6 came from winners bracket
 
@@ -145,11 +145,11 @@ function generate4TeamDE(): BracketTemplate[] {
       is_grand_final: false,
       is_reset_game: false,
     },
-    // Losers R1
+    // Redemption R1
     {
       bracket_size: 4,
       game_number: 4,
-      round_name: 'Losers R1',
+      round_name: 'Redemption R1',
       round_number: 1,
       bracket_side: 'losers',
       team1_source: 'loser:1',
@@ -162,11 +162,11 @@ function generate4TeamDE(): BracketTemplate[] {
       is_grand_final: false,
       is_reset_game: false,
     },
-    // Losers Final
+    // Redemption Final
     {
       bracket_size: 4,
       game_number: 5,
-      round_name: 'Losers Final',
+      round_name: 'Redemption Final',
       round_number: 2,
       bracket_side: 'losers',
       team1_source: 'winner:4',
@@ -283,12 +283,12 @@ function generate8TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers R1 (Games 7-10): losers from winners R1
+  // Redemption R1 (Games 7-10): losers from winners R1
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 8,
       game_number: 7 + i,
-      round_name: 'Losers R1',
+      round_name: 'Redemption R1',
       round_number: 1,
       bracket_side: 'losers',
       team1_source: `loser:${i + 1}`,
@@ -304,14 +304,14 @@ function generate8TeamDE(): BracketTemplate[] {
   }
 
   // Actually, let's simplify and use a more standard 8-team structure
-  // Losers R1: Games 7-8 (2 games from 4 losers)
+  // Redemption R1: Games 7-8 (2 games from 4 losers)
   templates.length = 6; // Reset to just winners games
 
-  // Losers R1 (Games 7-8)
+  // Redemption R1 (Games 7-8)
   templates.push({
     bracket_size: 8,
     game_number: 7,
-    round_name: 'Losers R1',
+    round_name: 'Redemption R1',
     round_number: 1,
     bracket_side: 'losers',
     team1_source: 'loser:1',
@@ -327,7 +327,7 @@ function generate8TeamDE(): BracketTemplate[] {
   templates.push({
     bracket_size: 8,
     game_number: 8,
-    round_name: 'Losers R1',
+    round_name: 'Redemption R1',
     round_number: 1,
     bracket_side: 'losers',
     team1_source: 'loser:3',
@@ -341,11 +341,11 @@ function generate8TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers R2 (Games 9-10): losers from winners semi vs winners from losers R1
+  // Redemption R2 (Games 9-10): losers from winners semi vs winners from redemption R1
   templates.push({
     bracket_size: 8,
     game_number: 9,
-    round_name: 'Losers R2',
+    round_name: 'Redemption R2',
     round_number: 2,
     bracket_side: 'losers',
     team1_source: 'winner:7',
@@ -361,7 +361,7 @@ function generate8TeamDE(): BracketTemplate[] {
   templates.push({
     bracket_size: 8,
     game_number: 10,
-    round_name: 'Losers R2',
+    round_name: 'Redemption R2',
     round_number: 2,
     bracket_side: 'losers',
     team1_source: 'winner:8',
@@ -375,11 +375,11 @@ function generate8TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Semi (Game 11)
+  // Redemption Semi (Game 11)
   templates.push({
     bracket_size: 8,
     game_number: 11,
-    round_name: 'Losers Semi',
+    round_name: 'Redemption Semi',
     round_number: 3,
     bracket_side: 'losers',
     team1_source: 'winner:9',
@@ -393,11 +393,11 @@ function generate8TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Final (Game 12): winner of losers semi vs loser of winners final
+  // Redemption Final (Game 12): winner of redemption semi vs loser of winners final
   templates.push({
     bracket_size: 8,
     game_number: 12,
-    round_name: 'Losers Final',
+    round_name: 'Redemption Final',
     round_number: 4,
     bracket_side: 'losers',
     team1_source: 'winner:11',
@@ -527,12 +527,12 @@ function generate16TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R1 (Games 13-16): 4 games from 8 losers
+  // Redemption R1 (Games 13-16): 4 games from 8 losers
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 16,
       game_number: 13 + i,
-      round_name: 'Losers R1',
+      round_name: 'Redemption R1',
       round_number: 1,
       bracket_side: 'losers',
       team1_source: `loser:${i * 2 + 1}`,
@@ -547,12 +547,12 @@ function generate16TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R2 (Games 17-20): winners from L1 vs losers from W R2
+  // Redemption R2 (Games 17-20): winners from L1 vs losers from W R2
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 16,
       game_number: 17 + i,
-      round_name: 'Losers R2',
+      round_name: 'Redemption R2',
       round_number: 2,
       bracket_side: 'losers',
       team1_source: `winner:${13 + i}`,
@@ -567,12 +567,12 @@ function generate16TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R3 (Games 21-22)
+  // Redemption R3 (Games 21-22)
   for (let i = 0; i < 2; i++) {
     templates.push({
       bracket_size: 16,
       game_number: 21 + i,
-      round_name: 'Losers R3',
+      round_name: 'Redemption R3',
       round_number: 3,
       bracket_side: 'losers',
       team1_source: `winner:${17 + i * 2}`,
@@ -587,12 +587,12 @@ function generate16TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R4 (Games 23-24): vs losers from Winners Semi
+  // Redemption R4 (Games 23-24): vs losers from Winners Semi
   for (let i = 0; i < 2; i++) {
     templates.push({
       bracket_size: 16,
       game_number: 23 + i,
-      round_name: 'Losers R4',
+      round_name: 'Redemption R4',
       round_number: 4,
       bracket_side: 'losers',
       team1_source: `winner:${21 + i}`,
@@ -641,11 +641,11 @@ function generate16TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Semi (Game 27)
+  // Redemption Semi (Game 27)
   templates.push({
     bracket_size: 16,
     game_number: 27,
-    round_name: 'Losers Semi',
+    round_name: 'Redemption Semi',
     round_number: 5,
     bracket_side: 'losers',
     team1_source: 'winner:23',
@@ -677,11 +677,11 @@ function generate16TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Final (Game 29)
+  // Redemption Final (Game 29)
   templates.push({
     bracket_size: 16,
     game_number: 29,
-    round_name: 'Losers Final',
+    round_name: 'Redemption Final',
     round_number: 6,
     bracket_side: 'losers',
     team1_source: 'winner:27',
@@ -801,12 +801,12 @@ function generate32TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R1 (Games 25-32): 8 games from 16 losers
+  // Redemption R1 (Games 25-32): 8 games from 16 losers
   for (let i = 0; i < 8; i++) {
     templates.push({
       bracket_size: 32,
       game_number: 25 + i,
-      round_name: 'Losers R1',
+      round_name: 'Redemption R1',
       round_number: 1,
       bracket_side: 'losers',
       team1_source: `loser:${i * 2 + 1}`,
@@ -821,12 +821,12 @@ function generate32TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R2 (Games 33-40)
+  // Redemption R2 (Games 33-40)
   for (let i = 0; i < 8; i++) {
     templates.push({
       bracket_size: 32,
       game_number: 33 + i,
-      round_name: 'Losers R2',
+      round_name: 'Redemption R2',
       round_number: 2,
       bracket_side: 'losers',
       team1_source: `winner:${25 + i}`,
@@ -841,12 +841,12 @@ function generate32TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R3 (Games 41-44)
+  // Redemption R3 (Games 41-44)
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 32,
       game_number: 41 + i,
-      round_name: 'Losers R3',
+      round_name: 'Redemption R3',
       round_number: 3,
       bracket_side: 'losers',
       team1_source: `winner:${33 + i * 2}`,
@@ -861,12 +861,12 @@ function generate32TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R4 (Games 45-48): vs losers from Winners R3
+  // Redemption R4 (Games 45-48): vs losers from Winners R3
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 32,
       game_number: 45 + i,
-      round_name: 'Losers R4',
+      round_name: 'Redemption R4',
       round_number: 4,
       bracket_side: 'losers',
       team1_source: `winner:${41 + i}`,
@@ -901,12 +901,12 @@ function generate32TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R5 (Games 53-54)
+  // Redemption R5 (Games 53-54)
   for (let i = 0; i < 2; i++) {
     templates.push({
       bracket_size: 32,
       game_number: 53 + i,
-      round_name: 'Losers R5',
+      round_name: 'Redemption R5',
       round_number: 5,
       bracket_side: 'losers',
       team1_source: `winner:${45 + i * 2}`,
@@ -921,12 +921,12 @@ function generate32TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R6 (Games 55-56): vs losers from Winners Semi
+  // Redemption R6 (Games 55-56): vs losers from Winners Semi
   for (let i = 0; i < 2; i++) {
     templates.push({
       bracket_size: 32,
       game_number: 55 + i,
-      round_name: 'Losers R6',
+      round_name: 'Redemption R6',
       round_number: 6,
       bracket_side: 'losers',
       team1_source: `winner:${53 + i}`,
@@ -975,11 +975,11 @@ function generate32TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Semi (Game 59)
+  // Redemption Semi (Game 59)
   templates.push({
     bracket_size: 32,
     game_number: 59,
-    round_name: 'Losers Semi',
+    round_name: 'Redemption Semi',
     round_number: 7,
     bracket_side: 'losers',
     team1_source: 'winner:55',
@@ -1011,11 +1011,11 @@ function generate32TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Final (Game 61)
+  // Redemption Final (Game 61)
   templates.push({
     bracket_size: 32,
     game_number: 61,
-    round_name: 'Losers Final',
+    round_name: 'Redemption Final',
     round_number: 8,
     bracket_side: 'losers',
     team1_source: 'winner:59',
@@ -1125,12 +1125,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R1 (Games 49-64): 16 games from 32 losers
+  // Redemption R1 (Games 49-64): 16 games from 32 losers
   for (let i = 0; i < 16; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 49 + i,
-      round_name: 'Losers R1',
+      round_name: 'Redemption R1',
       round_number: 1,
       bracket_side: 'losers',
       team1_source: `loser:${i * 2 + 1}`,
@@ -1145,12 +1145,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R2 (Games 65-80)
+  // Redemption R2 (Games 65-80)
   for (let i = 0; i < 16; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 65 + i,
-      round_name: 'Losers R2',
+      round_name: 'Redemption R2',
       round_number: 2,
       bracket_side: 'losers',
       team1_source: `winner:${49 + i}`,
@@ -1165,12 +1165,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R3 (Games 81-88)
+  // Redemption R3 (Games 81-88)
   for (let i = 0; i < 8; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 81 + i,
-      round_name: 'Losers R3',
+      round_name: 'Redemption R3',
       round_number: 3,
       bracket_side: 'losers',
       team1_source: `winner:${65 + i * 2}`,
@@ -1185,12 +1185,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R4 (Games 89-96): vs losers from Winners R3
+  // Redemption R4 (Games 89-96): vs losers from Winners R3
   for (let i = 0; i < 8; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 89 + i,
-      round_name: 'Losers R4',
+      round_name: 'Redemption R4',
       round_number: 4,
       bracket_side: 'losers',
       team1_source: `winner:${81 + i}`,
@@ -1225,12 +1225,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R5 (Games 105-108)
+  // Redemption R5 (Games 105-108)
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 105 + i,
-      round_name: 'Losers R5',
+      round_name: 'Redemption R5',
       round_number: 5,
       bracket_side: 'losers',
       team1_source: `winner:${89 + i * 2}`,
@@ -1245,12 +1245,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R6 (Games 109-112): vs losers from Winners R4
+  // Redemption R6 (Games 109-112): vs losers from Winners R4
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 109 + i,
-      round_name: 'Losers R6',
+      round_name: 'Redemption R6',
       round_number: 6,
       bracket_side: 'losers',
       team1_source: `winner:${105 + i}`,
@@ -1285,12 +1285,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R7 (Games 117-118)
+  // Redemption R7 (Games 117-118)
   for (let i = 0; i < 2; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 117 + i,
-      round_name: 'Losers R7',
+      round_name: 'Redemption R7',
       round_number: 7,
       bracket_side: 'losers',
       team1_source: `winner:${109 + i * 2}`,
@@ -1305,12 +1305,12 @@ function generate64TeamDE(): BracketTemplate[] {
     });
   }
 
-  // Losers R8 (Games 119-120): vs losers from Winners Semi
+  // Redemption R8 (Games 119-120): vs losers from Winners Semi
   for (let i = 0; i < 2; i++) {
     templates.push({
       bracket_size: 64,
       game_number: 119 + i,
-      round_name: 'Losers R8',
+      round_name: 'Redemption R8',
       round_number: 8,
       bracket_side: 'losers',
       team1_source: `winner:${117 + i}`,
@@ -1359,11 +1359,11 @@ function generate64TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Semi (Game 123)
+  // Redemption Semi (Game 123)
   templates.push({
     bracket_size: 64,
     game_number: 123,
-    round_name: 'Losers Semi',
+    round_name: 'Redemption Semi',
     round_number: 9,
     bracket_side: 'losers',
     team1_source: 'winner:119',
@@ -1395,11 +1395,11 @@ function generate64TeamDE(): BracketTemplate[] {
     is_reset_game: false,
   });
 
-  // Losers Final (Game 125)
+  // Redemption Final (Game 125)
   templates.push({
     bracket_size: 64,
     game_number: 125,
-    round_name: 'Losers Final',
+    round_name: 'Redemption Final',
     round_number: 10,
     bracket_side: 'losers',
     team1_source: 'winner:123',
