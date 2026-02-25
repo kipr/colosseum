@@ -260,7 +260,7 @@ describe('Bracket Bye Resolver', () => {
       await createEntry(1, team1Id, false);
       await createEntry(2, team2Id, false);
 
-      // Create game 2 (losers bracket) that takes loser from game 1
+      // Create game 2 (redemption bracket) that takes loser from game 1
       const game2Id = await createGame(2, {
         team1Source: 'loser:1',
         status: 'pending',
@@ -387,7 +387,7 @@ describe('Bracket Bye Resolver', () => {
       const winnersTeamId = await createTeam(100);
       const losersTeamId = await createTeam(200);
 
-      // Grand final (game 6): team1 = winners bracket, team2 = losers bracket
+      // Grand final (game 6): team1 = winners bracket, team2 = redemption bracket
       // Championship reset (game 7): loser:6 vs winner:6 (reversed sides)
       const resetGameId = await createGame(7, {
         team1Source: 'loser:6',
@@ -397,7 +397,7 @@ describe('Bracket Bye Resolver', () => {
 
       await createGame(6, {
         team1Source: 'winner:3', // winners bracket
-        team2Source: 'winner:5', // losers bracket
+        team2Source: 'winner:5', // redemption bracket
         team1Id: winnersTeamId,
         team2Id: losersTeamId,
         status: 'completed',
@@ -432,7 +432,7 @@ describe('Bracket Bye Resolver', () => {
       expect(result.byeGamesResolved).toBe(1);
     });
 
-    it('should fill both slots when losers bracket wins grand final (normal reset)', async () => {
+    it('should fill both slots when redemption bracket wins grand final (normal reset)', async () => {
       const winnersTeamId = await createTeam(100);
       const losersTeamId = await createTeam(200);
 
@@ -454,7 +454,7 @@ describe('Bracket Bye Resolver', () => {
         loserSlot: 'team2',
       });
 
-      // Losers bracket (team2) wins grand final
+      // Redemption bracket (team2) wins grand final
       await testDb.db.run(
         `UPDATE bracket_games SET winner_id = ?, loser_id = ? WHERE game_number = 6`,
         [losersTeamId, winnersTeamId],

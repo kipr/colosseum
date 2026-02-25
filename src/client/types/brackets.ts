@@ -99,6 +99,6 @@ export const GAME_STATUS_DISPLAY_LABELS: Record<GameStatus, string> = {
 
 export const BRACKET_SIDE_LABELS: Record<BracketSide, string> = {
   winners: 'Winners Bracket',
-  losers: 'Losers Bracket',
+  losers: 'Redemption Bracket',
   finals: 'Finals',
 };
