@@ -390,8 +390,8 @@ describe('Bracket Bye Resolver', () => {
       // Grand final (game 6): team1 = winners bracket, team2 = redemption bracket
       // Championship reset (game 7): loser:6 vs winner:6 (reversed sides)
       const resetGameId = await createGame(7, {
-        team1Source: 'loser:6',
-        team2Source: 'winner:6',
+        team1Source: 'winner:6',
+        team2Source: 'loser:6',
         status: 'pending',
       });
 
@@ -413,9 +413,9 @@ describe('Bracket Bye Resolver', () => {
         [winnersTeamId, losersTeamId],
       );
 
-      // Winner propagates to team2 of reset (via scoreAccept). Simulate that:
+      // Winner propagates to team1 of reset (via scoreAccept). Simulate that:
       await testDb.db.run(
-        `UPDATE bracket_games SET team2_id = ? WHERE game_number = 7`,
+        `UPDATE bracket_games SET team1_id = ? WHERE game_number = 7`,
         [winnersTeamId],
       );
 
@@ -437,8 +437,8 @@ describe('Bracket Bye Resolver', () => {
       const losersTeamId = await createTeam(200);
 
       const resetGameId = await createGame(7, {
-        team1Source: 'loser:6',
-        team2Source: 'winner:6',
+        team1Source: 'winner:6',
+        team2Source: 'loser:6',
         status: 'pending',
       });
 
@@ -468,8 +468,8 @@ describe('Bracket Bye Resolver', () => {
       );
 
       // Both teams should be filled - normal championship reset (reversed sides)
-      expect(resetGame.team1_id).toBe(winnersTeamId); // loser of grand final on side A
-      expect(resetGame.team2_id).toBe(losersTeamId); // winner of grand final on side B
+      expect(resetGame.team1_id).toBe(losersTeamId); // winner of grand final on side A
+      expect(resetGame.team2_id).toBe(winnersTeamId); // loser of grand final on side B
       expect(result.slotsFilled).toBe(2);
     });
   });

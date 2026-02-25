@@ -291,12 +291,12 @@ function resolveSource(
     if (sourceGame.status === 'completed' || sourceGame.status === 'bye') {
       // Championship reset: when winners bracket wins the grand final, the loser
       // is dropped and the winner gets a bye. Detect this by: current game has
-      // team1_source=loser:X and team2_source=winner:X (same X), and grand final
-      // winner is team2 (winners bracket). The loser slot is team1.
-      if (context?.slot === 'team1' && context.currentGame.team2_source) {
-        const team2SrcMatch =
-          context.currentGame.team2_source.match(/^winner:(\d+)$/);
-        if (team2SrcMatch && parseInt(team2SrcMatch[1], 10) === gameNum) {
+      // team1_source=winner:X and team2_source=loser:X (same X), and grand final
+      // winner is team1 (winners bracket). The loser slot is team2.
+      if (context?.slot === 'team2' && context.currentGame.team1_source) {
+        const team1SrcMatch =
+          context.currentGame.team1_source.match(/^winner:(\d+)$/);
+        if (team1SrcMatch && parseInt(team1SrcMatch[1], 10) === gameNum) {
           const winnersBracketWon =
             sourceGame.winner_id !== null &&
             sourceGame.winner_id === sourceGame.team1_id;
