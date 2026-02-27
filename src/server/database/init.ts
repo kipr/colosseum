@@ -1137,6 +1137,54 @@ export async function initializeSQLite(db: Database): Promise<void> {
   `);
 
   // ============================================================================
+  // DOCUMENTATION SCORES
+  // ============================================================================
+
+  // Documentation score categories - 1-4 categories per event (names, weights, max scores)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS documentation_score_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL CHECK (ordinal >= 1 AND ordinal <= 4),
+      name TEXT NOT NULL,
+      weight REAL NOT NULL DEFAULT 1.0,
+      max_score REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, ordinal)
+    )
+  `);
+
+  // Documentation scores - one row per team per event (overall score + metadata)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS documentation_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      overall_score REAL,
+      scored_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      scored_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, team_id)
+    )
+  `);
+
+  // Documentation sub-scores - individual category scores per team
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS documentation_sub_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      documentation_score_id INTEGER NOT NULL
+        REFERENCES documentation_scores(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL
+        REFERENCES documentation_score_categories(id) ON DELETE CASCADE,
+      score REAL NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(documentation_score_id, category_id)
+    )
+  `);
+
+  // ============================================================================
   // BRACKETS
   // ============================================================================
 
@@ -1340,6 +1388,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
     'brackets',
     'bracket_games',
     'game_queue',
+    'documentation_scores',
   ]) {
     await db.exec(`
       CREATE TRIGGER IF NOT EXISTS ${table}_updated_at
@@ -1529,5 +1578,19 @@ export async function initializeSQLite(db: Database): Promise<void> {
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)`,
+  );
+
+  // Documentation score indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_doc_score_categories_event ON documentation_score_categories(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_doc_scores_event ON documentation_scores(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_doc_scores_team ON documentation_scores(team_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_doc_sub_scores_doc ON documentation_sub_scores(documentation_score_id)`,
   );
 }
