@@ -361,3 +361,71 @@ export async function seedScoreSubmission(
   );
   return { id: result.lastID! };
 }
+
+export interface SeedDocumentationScoreCategoryData {
+  event_id: number;
+  ordinal: number;
+  name?: string;
+  weight?: number;
+  max_score: number;
+}
+
+export async function seedDocumentationScoreCategory(
+  db: Database,
+  data: SeedDocumentationScoreCategoryData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO documentation_score_categories (event_id, ordinal, name, weight, max_score)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      data.event_id,
+      data.ordinal,
+      data.name ?? `Category ${data.ordinal}`,
+      data.weight ?? 1.0,
+      data.max_score,
+    ],
+  );
+  return { id: result.lastID! };
+}
+
+export interface SeedDocumentationScoreData {
+  event_id: number;
+  team_id: number;
+  overall_score?: number | null;
+  scored_by?: number | null;
+}
+
+export async function seedDocumentationScore(
+  db: Database,
+  data: SeedDocumentationScoreData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_by, scored_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [
+      data.event_id,
+      data.team_id,
+      data.overall_score ?? null,
+      data.scored_by ?? null,
+    ],
+  );
+  return { id: result.lastID! };
+}
+
+export interface SeedDocumentationSubScoreData {
+  documentation_score_id: number;
+  category_id: number;
+  score: number;
+}
+
+export async function seedDocumentationSubScore(
+  db: Database,
+  data: SeedDocumentationSubScoreData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
+     VALUES (?, ?, ?)`,
+    [data.documentation_score_id, data.category_id, data.score],
+  );
+  return { id: result.lastID! };
+}

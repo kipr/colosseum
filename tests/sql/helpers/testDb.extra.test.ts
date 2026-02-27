@@ -27,11 +27,12 @@ describe('createMinimalTestDb', () => {
   it('supports basic database operations', async () => {
     const testDb = createMinimalTestDb();
     try {
-      testDb.sqlite.exec('CREATE TABLE test (id INTEGER PRIMARY KEY, val TEXT)');
-      const result = await testDb.db.run(
-        'INSERT INTO test (val) VALUES (?)',
-        ['hello'],
+      testDb.sqlite.exec(
+        'CREATE TABLE test (id INTEGER PRIMARY KEY, val TEXT)',
       );
+      const result = await testDb.db.run('INSERT INTO test (val) VALUES (?)', [
+        'hello',
+      ]);
       expect(result.lastID).toBe(1);
 
       const row = await testDb.db.get<{ val: string }>(

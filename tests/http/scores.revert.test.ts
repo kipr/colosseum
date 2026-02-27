@@ -111,7 +111,7 @@ describe('Scores Revert-Event Edge Cases', () => {
     expect(res.status).toBe(200);
 
     const queueItem = await testDb.db.get(
-      "SELECT status FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ?",
+      'SELECT status FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ?',
       [event.id, team.id, 1],
     );
     expect(queueItem.status).toBe('queued');
@@ -218,7 +218,7 @@ describe('Scores Revert-Event Edge Cases', () => {
     expect(res.status).toBe(200);
 
     const queueItem = await testDb.db.get(
-      "SELECT status FROM game_queue WHERE bracket_game_id = ?",
+      'SELECT status FROM game_queue WHERE bracket_game_id = ?',
       [game.id],
     );
     expect(queueItem.status).toBe('queued');
@@ -255,7 +255,9 @@ describe('Scores Revert-Event Edge Cases', () => {
       `${server.baseUrl}/scores/${score.id}/revert-event`,
     );
     expect(res.status).toBe(400);
-    expect((res.json as { error: string }).error).toContain('Unknown score_type');
+    expect((res.json as { error: string }).error).toContain(
+      'Unknown score_type',
+    );
   });
 
   it('returns dry-run for seeding revert', async () => {
@@ -358,9 +360,7 @@ describe('Scores Revert-Event Edge Cases', () => {
       status: 'pending',
     });
 
-    const res = await http.post(
-      `${server.baseUrl}/scores/${score.id}/reject`,
-    );
+    const res = await http.post(`${server.baseUrl}/scores/${score.id}/reject`);
     expect(res.status).toBe(200);
 
     const audit = await testDb.db.get(

@@ -99,18 +99,14 @@ describe('Brackets CRUD & Game Management', () => {
       await seedBracket(testDb.db, { event_id: event.id, name: 'Bracket A' });
       await seedBracket(testDb.db, { event_id: event.id, name: 'Bracket B' });
 
-      const res = await http.get(
-        `${baseUrl}/brackets/event/${event.id}`,
-      );
+      const res = await http.get(`${baseUrl}/brackets/event/${event.id}`);
       expect(res.status).toBe(200);
       expect(res.json as unknown[]).toHaveLength(2);
     });
 
     it('returns empty array when event has no brackets', async () => {
       const event = await seedEvent(testDb.db);
-      const res = await http.get(
-        `${baseUrl}/brackets/event/${event.id}`,
-      );
+      const res = await http.get(`${baseUrl}/brackets/event/${event.id}`);
       expect(res.status).toBe(200);
       expect(res.json).toEqual([]);
     });
@@ -147,7 +143,9 @@ describe('Brackets CRUD & Game Management', () => {
         team2_source: 'seed:8',
       });
 
-      const res = await http.get(`${baseUrl}/brackets/templates?bracket_size=4`);
+      const res = await http.get(
+        `${baseUrl}/brackets/templates?bracket_size=4`,
+      );
       expect(res.status).toBe(200);
       const templates = res.json as { bracket_size: number }[];
       expect(templates.every((t) => t.bracket_size === 4)).toBe(true);
@@ -208,7 +206,11 @@ describe('Brackets CRUD & Game Management', () => {
         bracket_size: 8,
       });
       expect(res.status).toBe(201);
-      const body = res.json as { id: number; name: string; bracket_size: number };
+      const body = res.json as {
+        id: number;
+        name: string;
+        bracket_size: number;
+      };
       expect(body.name).toBe('Legacy Bracket');
       expect(body.bracket_size).toBe(8);
     });
@@ -305,10 +307,10 @@ describe('Brackets CRUD & Game Management', () => {
         team_number: 1,
       });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/entries`,
-        { team_id: team.id, seed_position: 1 },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/entries`, {
+        team_id: team.id,
+        seed_position: 1,
+      });
       expect(res.status).toBe(201);
       const body = res.json as { seed_position: number; team_id: number };
       expect(body.seed_position).toBe(1);
@@ -319,10 +321,10 @@ describe('Brackets CRUD & Game Management', () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/entries`,
-        { seed_position: 8, is_bye: true },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/entries`, {
+        seed_position: 8,
+        is_bye: true,
+      });
       expect(res.status).toBe(201);
     });
 
@@ -330,10 +332,9 @@ describe('Brackets CRUD & Game Management', () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/entries`,
-        { team_id: 1 },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/entries`, {
+        team_id: 1,
+      });
       expect(res.status).toBe(400);
     });
 
@@ -355,10 +356,10 @@ describe('Brackets CRUD & Game Management', () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/entries`,
-        { team_id: 9999, seed_position: 1 },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/entries`, {
+        team_id: 9999,
+        seed_position: 1,
+      });
       expect(res.status).toBe(400);
     });
 
@@ -371,10 +372,10 @@ describe('Brackets CRUD & Game Management', () => {
         team_number: 1,
       });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/entries`,
-        { team_id: team.id, seed_position: 1 },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/entries`, {
+        team_id: team.id,
+        seed_position: 1,
+      });
       expect(res.status).toBe(400);
       expect((res.json as { error: string }).error).toContain('same event');
     });
@@ -395,10 +396,10 @@ describe('Brackets CRUD & Game Management', () => {
         team_id: t1.id,
         seed_position: 1,
       });
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/entries`,
-        { team_id: t2.id, seed_position: 1 },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/entries`, {
+        team_id: t2.id,
+        seed_position: 1,
+      });
       expect(res.status).toBe(409);
     });
   });
@@ -460,9 +461,7 @@ describe('Brackets CRUD & Game Management', () => {
         status: 'ready',
       });
 
-      const res = await http.get(
-        `${baseUrl}/brackets/${bracket.id}/games`,
-      );
+      const res = await http.get(`${baseUrl}/brackets/${bracket.id}/games`);
       expect(res.status).toBe(200);
       const games = res.json as { game_number: number; team1_number: number }[];
       expect(games).toHaveLength(1);
@@ -473,9 +472,7 @@ describe('Brackets CRUD & Game Management', () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
 
-      const res = await http.get(
-        `${baseUrl}/brackets/${bracket.id}/games`,
-      );
+      const res = await http.get(`${baseUrl}/brackets/${bracket.id}/games`);
       expect(res.status).toBe(200);
       expect(res.json).toEqual([]);
     });
@@ -498,17 +495,14 @@ describe('Brackets CRUD & Game Management', () => {
         team_number: 2,
       });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/games`,
-        {
-          game_number: 1,
-          round_name: 'Semis',
-          round_number: 1,
-          bracket_side: 'winners',
-          team1_id: t1.id,
-          team2_id: t2.id,
-        },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/games`, {
+        game_number: 1,
+        round_name: 'Semis',
+        round_number: 1,
+        bracket_side: 'winners',
+        team1_id: t1.id,
+        team2_id: t2.id,
+      });
       expect(res.status).toBe(201);
       const game = res.json as { game_number: number; round_name: string };
       expect(game.game_number).toBe(1);
@@ -519,10 +513,9 @@ describe('Brackets CRUD & Game Management', () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/games`,
-        { round_name: 'Round 1' },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/games`, {
+        round_name: 'Round 1',
+      });
       expect(res.status).toBe(400);
     });
 
@@ -542,10 +535,10 @@ describe('Brackets CRUD & Game Management', () => {
         team_number: 1,
       });
 
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/games`,
-        { game_number: 1, team1_id: team.id },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/games`, {
+        game_number: 1,
+        team1_id: team.id,
+      });
       expect(res.status).toBe(400);
       expect((res.json as { error: string }).error).toContain('same event');
     });
@@ -557,10 +550,9 @@ describe('Brackets CRUD & Game Management', () => {
       await http.post(`${baseUrl}/brackets/${bracket.id}/games`, {
         game_number: 1,
       });
-      const res = await http.post(
-        `${baseUrl}/brackets/${bracket.id}/games`,
-        { game_number: 1 },
-      );
+      const res = await http.post(`${baseUrl}/brackets/${bracket.id}/games`, {
+        game_number: 1,
+      });
       expect(res.status).toBe(409);
     });
   });
@@ -679,7 +671,7 @@ describe('Brackets CRUD & Game Management', () => {
         [bracket.id, t1.id, t2.id, t1.id, finalGame.id],
       );
       const semiGame = await testDb.db.get(
-        "SELECT id FROM bracket_games WHERE bracket_id = ? AND game_number = 1",
+        'SELECT id FROM bracket_games WHERE bracket_id = ? AND game_number = 1',
         [bracket.id],
       );
 
@@ -699,9 +691,7 @@ describe('Brackets CRUD & Game Management', () => {
     });
 
     it('returns 404 for non-existent game', async () => {
-      const res = await http.post(
-        `${baseUrl}/brackets/games/9999/advance`,
-      );
+      const res = await http.post(`${baseUrl}/brackets/games/9999/advance`);
       expect(res.status).toBe(404);
     });
 
@@ -756,7 +746,7 @@ describe('Brackets CRUD & Game Management', () => {
         [bracket.id, t1.id, t2.id, finalGame.id],
       );
       const semiGame = await testDb.db.get(
-        "SELECT id FROM bracket_games WHERE bracket_id = ? AND game_number = 1",
+        'SELECT id FROM bracket_games WHERE bracket_id = ? AND game_number = 1',
         [bracket.id],
       );
 

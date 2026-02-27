@@ -155,9 +155,7 @@ describe('SqliteSessionStore - additional coverage', () => {
         const s = new SqliteSessionStore({ db: insertDb });
 
         insertDb
-          .prepare(
-            'INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)',
-          )
+          .prepare('INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)')
           .run('bad-json', 'not-valid-json', Date.now() + 60_000);
 
         s.get('bad-json', (_err, session) => {

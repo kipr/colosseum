@@ -28,7 +28,13 @@ describe('bracketConnectors - additional coverage', () => {
           team1_id: 30,
           team2_id: 40,
         },
-        { id: 5, winner_advances_to_id: null, winner_id: null, team1_id: null, team2_id: null },
+        {
+          id: 5,
+          winner_advances_to_id: null,
+          winner_id: null,
+          team1_id: null,
+          team2_id: null,
+        },
       ];
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,7 +53,13 @@ describe('bracketConnectors - additional coverage', () => {
           team1_id: 10,
           team2_id: 20,
         },
-        { id: 2, winner_advances_to_id: null, winner_id: null, team1_id: null, team2_id: null },
+        {
+          id: 2,
+          winner_advances_to_id: null,
+          winner_id: null,
+          team1_id: null,
+          team2_id: null,
+        },
       ];
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,7 +76,13 @@ describe('bracketConnectors - additional coverage', () => {
           team1_id: 10,
           team2_id: 20,
         },
-        { id: 2, winner_advances_to_id: null, winner_id: null, team1_id: null, team2_id: null },
+        {
+          id: 2,
+          winner_advances_to_id: null,
+          winner_id: null,
+          team1_id: null,
+          team2_id: null,
+        },
       ];
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -76,7 +94,12 @@ describe('bracketConnectors - additional coverage', () => {
   describe('computeConnectorPaths - edge cases', () => {
     it('skips edges where source anchor points are missing', () => {
       const edges: Edge[] = [
-        { fromGameId: 1, fromAnchor: 'gameMid', toGameId: 2, toAnchor: 'gameMid' },
+        {
+          fromGameId: 1,
+          fromAnchor: 'gameMid',
+          toGameId: 2,
+          toAnchor: 'gameMid',
+        },
       ];
 
       const anchors = new Map<number, GameAnchorPoints>();
@@ -91,7 +114,12 @@ describe('bracketConnectors - additional coverage', () => {
 
     it('skips edges where target anchor points are missing', () => {
       const edges: Edge[] = [
-        { fromGameId: 1, fromAnchor: 'gameMid', toGameId: 2, toAnchor: 'gameMid' },
+        {
+          fromGameId: 1,
+          fromAnchor: 'gameMid',
+          toGameId: 2,
+          toAnchor: 'gameMid',
+        },
       ];
 
       const anchors = new Map<number, GameAnchorPoints>();

@@ -125,7 +125,10 @@ describe('Chat Admin Endpoints', () => {
       const server = await startServer(app);
 
       try {
-        const res = await http.post(`${server.baseUrl}/chat/admin/messages`, {});
+        const res = await http.post(
+          `${server.baseUrl}/chat/admin/messages`,
+          {},
+        );
         expect(res.status).toBe(400);
       } finally {
         await server.close();
