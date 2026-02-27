@@ -28,6 +28,7 @@ export interface BracketEntry {
   seed_position: number;
   initial_slot: number | null;
   is_bye: boolean;
+  final_rank?: number | null;
   team_number?: number;
   team_name?: string;
   display_name?: string | null;

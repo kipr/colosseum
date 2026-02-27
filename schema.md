@@ -135,6 +135,7 @@ CREATE TABLE IF NOT EXISTS bracket_entries (
     seed_position INTEGER NOT NULL,              -- 1-N position based on seeding (1 = top seed)
     initial_slot INTEGER,                        -- Starting slot in bracket (after bye handling)
     is_bye BOOLEAN DEFAULT FALSE,                -- If this slot is a bye (no team)
+    final_rank INTEGER,                         -- Official placement (1, 2, 3, 4, 5, 5, 7, 7... ties preserved)
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(bracket_id, team_id),
     UNIQUE(bracket_id, seed_position),

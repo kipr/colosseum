@@ -4,6 +4,7 @@ import { getDatabase } from '../database/connection';
 import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
+import { calculateBracketRankings } from '../services/bracketRankings';
 
 const router = express.Router();
 
@@ -115,13 +116,13 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Bracket not found' });
     }
 
-    // Get entries with team info
+    // Get entries with team info (sort by final_rank then seed_position for display)
     const entries = await db.all(
       `SELECT be.*, t.team_number, t.team_name, t.display_name
        FROM bracket_entries be
        LEFT JOIN teams t ON be.team_id = t.id
        WHERE be.bracket_id = ?
-       ORDER BY be.seed_position ASC`,
+       ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
       [id],
     );
 
@@ -535,6 +536,38 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Failed to delete bracket' });
   }
 });
+
+// POST /brackets/:id/rankings/calculate - Calculate final bracket rankings (admin)
+router.post(
+  '/:id/rankings/calculate',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid bracket ID' });
+      }
+
+      const db = await getDatabase();
+      const bracket = await db.get('SELECT id FROM brackets WHERE id = ?', [
+        id,
+      ]);
+      if (!bracket) {
+        return res.status(404).json({ error: 'Bracket not found' });
+      }
+
+      const result = await calculateBracketRankings(id);
+      res.json(result);
+    } catch (error) {
+      console.error('Error calculating bracket rankings:', error);
+      const errMsg = (error as Error).message || '';
+      if (errMsg.includes('Cannot calculate rankings')) {
+        return res.status(400).json({ error: errMsg });
+      }
+      res.status(500).json({ error: 'Failed to calculate bracket rankings' });
+    }
+  },
+);
 
 // ============================================================================
 // BRACKET ENTRIES

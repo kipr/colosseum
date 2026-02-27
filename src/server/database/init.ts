@@ -1311,6 +1311,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       seed_position INTEGER NOT NULL,
       initial_slot INTEGER,
       is_bye BOOLEAN DEFAULT FALSE,
+      final_rank INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(bracket_id, team_id),
       UNIQUE(bracket_id, seed_position),
@@ -1356,6 +1357,13 @@ export async function initializeSQLite(db: Database): Promise<void> {
       UNIQUE(bracket_id, game_number)
     )
   `);
+
+  // Add final_rank column to bracket_entries if it doesn't exist (migration)
+  try {
+    await db.exec(`ALTER TABLE bracket_entries ADD COLUMN final_rank INTEGER`);
+  } catch {
+    // Column already exists
+  }
 
   // ============================================================================
   // SCORE SUBMISSIONS (Enhanced from existing)
