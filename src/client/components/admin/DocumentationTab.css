@@ -1,0 +1,40 @@
+.documentation-tab {
+  width: 100%;
+}
+
+.documentation-section {
+  margin-bottom: 1.5rem;
+}
+
+.documentation-section h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.documentation-tab .bulk-preview {
+  background: var(--bg-color);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.documentation-tab .bulk-preview h4,
+.documentation-tab .bulk-errors h4,
+.documentation-tab .bulk-results h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.documentation-tab .bulk-errors ul,
+.documentation-tab .bulk-results ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.documentation-tab .bulk-preview-table {
+  overflow-x: auto;
+}
+
+.documentation-tab .bulk-preview-table table {
+  width: 100%;
+  font-size: 0.875rem;
+}

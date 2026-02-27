@@ -12,6 +12,7 @@ import SeedingTab from '../components/admin/SeedingTab';
 import BracketsTab from '../components/admin/BracketsTab';
 import QueueTab from '../components/admin/QueueTab';
 import AuditTab from '../components/admin/AuditTab';
+import DocumentationTab from '../components/admin/DocumentationTab';
 import { getEventStatusClass } from '../utils/eventStatus';
 import './Admin.css';
 
@@ -23,6 +24,7 @@ type TabType =
   | 'seeding'
   | 'brackets'
   | 'queue'
+  | 'documentation'
   | 'admins'
   | 'audit';
 
@@ -47,6 +49,7 @@ export default function Admin() {
         saved === 'seeding' ||
         saved === 'brackets' ||
         saved === 'queue' ||
+        saved === 'documentation' ||
         saved === 'admins' ||
         saved === 'audit')
     ) {
@@ -176,6 +179,12 @@ export default function Admin() {
                 🎟️ Queue
               </button>
               <button
+                className={`sidebar-item ${activeTab === 'documentation' ? 'active' : ''}`}
+                onClick={() => setActiveTab('documentation')}
+              >
+                📚 Documentation
+              </button>
+              <button
                 className={`sidebar-item ${activeTab === 'admins' ? 'active' : ''}`}
                 onClick={() => setActiveTab('admins')}
               >
@@ -201,6 +210,7 @@ export default function Admin() {
                 {activeTab === 'seeding' && 'Seeding'}
                 {activeTab === 'brackets' && 'Brackets'}
                 {activeTab === 'queue' && 'Queue'}
+                {activeTab === 'documentation' && 'Documentation'}
                 {activeTab === 'admins' && 'Admins'}
                 {activeTab === 'audit' && 'Audit'}
               </h2>
@@ -221,6 +231,7 @@ export default function Admin() {
             {activeTab === 'seeding' && <SeedingTab />}
             {activeTab === 'brackets' && <BracketsTab />}
             {activeTab === 'queue' && <QueueTab />}
+            {activeTab === 'documentation' && <DocumentationTab />}
             {activeTab === 'admins' && <AdminsTab />}
             {activeTab === 'audit' && <AuditTab onNavigateTab={setActiveTab} />}
           </div>
