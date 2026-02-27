@@ -38,3 +38,42 @@
   width: 100%;
   font-size: 0.875rem;
 }
+
+.documentation-tab .doc-scores-table-wrapper {
+  overflow-x: auto;
+}
+
+.documentation-tab .doc-calculator-table {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.documentation-tab .doc-calculator-table .doc-op {
+  width: 1.5rem;
+  min-width: 1.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--secondary-color);
+}
+
+.documentation-tab .doc-score-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.documentation-tab .doc-score-input {
+  width: 5.5rem;
+  min-width: 5.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.documentation-tab .doc-fraction {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-color);
+  white-space: nowrap;
+}

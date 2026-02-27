@@ -346,21 +346,29 @@ The overall score is a value [0..3] for regionals and [0..4] for GCER.
 -- DOCUMENTATION SCORES
 -- ============================================================================
 
--- Documentation score categories - 1-4 categories per event (names, weights, max scores)
--- All teams in the event share the same category definitions
-CREATE TABLE IF NOT EXISTS documentation_score_categories (
+-- Global documentation categories (shared across events)
+CREATE TABLE IF NOT EXISTS documentation_categories (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-    ordinal INTEGER NOT NULL CHECK (ordinal >= 1 AND ordinal <= 4),
-    name TEXT NOT NULL,
+    name TEXT NOT NULL UNIQUE,
     weight REAL NOT NULL DEFAULT 1.0,
     max_score REAL NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(event_id, ordinal)
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_doc_score_categories_event ON documentation_score_categories(event_id);
+-- Event-to-category junction (ordinal is event-specific; 1-4 categories per event)
+CREATE TABLE IF NOT EXISTS event_documentation_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES documentation_categories(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 1 AND ordinal <= 4),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, ordinal),
+    UNIQUE(event_id, category_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_doc_categories_event ON event_documentation_categories(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_doc_categories_category ON event_documentation_categories(category_id);
 
 -- Documentation scores - one row per team per event (overall score + metadata)
 -- Admin enters scores directly (no scoresheet/access-code flow)
@@ -385,7 +393,7 @@ CREATE TABLE IF NOT EXISTS documentation_sub_scores (
     documentation_score_id INTEGER NOT NULL
         REFERENCES documentation_scores(id) ON DELETE CASCADE,
     category_id INTEGER NOT NULL
-        REFERENCES documentation_score_categories(id) ON DELETE CASCADE,
+        REFERENCES documentation_categories(id) ON DELETE CASCADE,
     score REAL NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(documentation_score_id, category_id)

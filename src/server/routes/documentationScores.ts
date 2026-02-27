@@ -4,13 +4,6 @@ import { getDatabase } from '../database/connection';
 
 const router = express.Router();
 
-const ALLOWED_CATEGORY_UPDATE_FIELDS = [
-  'name',
-  'weight',
-  'max_score',
-  'ordinal',
-];
-
 /**
  * Compute overall_score from sub-scores using:
  * sum((score / max_score) * weight)
@@ -26,6 +19,26 @@ function computeOverallScore(
   }
   return total;
 }
+
+// GET /documentation-scores/global-categories
+router.get(
+  '/global-categories',
+  requireAdmin,
+  async (_req: AuthRequest, res: Response) => {
+    try {
+      const db = await getDatabase();
+      const categories = await db.all(
+        `SELECT id, name, weight, max_score FROM documentation_categories ORDER BY name ASC`,
+      );
+      res.json(categories);
+    } catch (error) {
+      console.error('Error fetching global documentation categories:', error);
+      res
+        .status(500)
+        .json({ error: 'Failed to fetch global documentation categories' });
+    }
+  },
+);
 
 // GET /documentation-scores/categories/event/:eventId
 router.get(
@@ -43,12 +56,22 @@ router.get(
         return res.status(404).json({ error: 'Event not found' });
       }
 
-      const categories = await db.all(
-        `SELECT * FROM documentation_score_categories
-         WHERE event_id = ?
-         ORDER BY ordinal ASC`,
+      const rows = await db.all(
+        `SELECT edc.id as junction_id, edc.event_id, edc.ordinal, dc.id as id, dc.name, dc.weight, dc.max_score
+         FROM event_documentation_categories edc
+         JOIN documentation_categories dc ON edc.category_id = dc.id
+         WHERE edc.event_id = ?
+         ORDER BY edc.ordinal ASC`,
         [eventId],
       );
+      const categories = rows.map((r: Record<string, unknown>) => ({
+        id: r.id,
+        event_id: r.event_id,
+        ordinal: r.ordinal,
+        name: r.name,
+        weight: r.weight,
+        max_score: r.max_score,
+      }));
 
       res.json(categories);
     } catch (error) {
@@ -66,11 +89,12 @@ router.post(
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { event_id, ordinal, name, weight, max_score } = req.body;
+      const { event_id, ordinal, name, weight, max_score, category_id } =
+        req.body;
 
-      if (!event_id || !ordinal || !name || max_score == null) {
+      if (!event_id || !ordinal) {
         return res.status(400).json({
-          error: 'event_id, ordinal, name, and max_score are required',
+          error: 'event_id and ordinal are required',
         });
       }
 
@@ -78,18 +102,6 @@ router.post(
       if (ord < 1 || ord > 4) {
         return res.status(400).json({
           error: 'ordinal must be between 1 and 4',
-        });
-      }
-
-      const w = weight != null ? parseFloat(String(weight)) : 1.0;
-      if (w < 0) {
-        return res.status(400).json({ error: 'weight must be non-negative' });
-      }
-
-      const max = parseFloat(String(max_score));
-      if (max <= 0 || !Number.isFinite(max)) {
-        return res.status(400).json({
-          error: 'max_score must be a positive number',
         });
       }
 
@@ -102,15 +114,56 @@ router.post(
         return res.status(404).json({ error: 'Event not found' });
       }
 
-      const result = await db.run(
-        `INSERT INTO documentation_score_categories (event_id, ordinal, name, weight, max_score)
-         VALUES (?, ?, ?, ?, ?)`,
-        [event_id, ord, String(name).trim(), w, max],
+      let categoryId: number;
+
+      if (category_id != null) {
+        const existing = await db.get(
+          'SELECT id, name, weight, max_score FROM documentation_categories WHERE id = ?',
+          [category_id],
+        );
+        if (!existing) {
+          return res.status(404).json({ error: 'Global category not found' });
+        }
+        categoryId = Number(category_id);
+      } else {
+        if (!name || max_score == null) {
+          return res.status(400).json({
+            error:
+              'name and max_score are required when creating a new category',
+          });
+        }
+        const w = weight != null ? parseFloat(String(weight)) : 1.0;
+        if (w < 0) {
+          return res.status(400).json({
+            error: 'weight must be non-negative',
+          });
+        }
+        const max = parseFloat(String(max_score));
+        if (max <= 0 || !Number.isFinite(max)) {
+          return res.status(400).json({
+            error: 'max_score must be a positive number',
+          });
+        }
+        const result = await db.run(
+          `INSERT INTO documentation_categories (name, weight, max_score)
+           VALUES (?, ?, ?)`,
+          [String(name).trim(), w, max],
+        );
+        categoryId = result.lastID!;
+      }
+
+      await db.run(
+        `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
+         VALUES (?, ?, ?)`,
+        [event_id, categoryId, ord],
       );
 
       const category = await db.get(
-        'SELECT * FROM documentation_score_categories WHERE id = ?',
-        [result.lastID],
+        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
+         FROM event_documentation_categories edc
+         JOIN documentation_categories dc ON edc.category_id = dc.id
+         WHERE edc.event_id = ? AND edc.category_id = ?`,
+        [event_id, categoryId],
       );
       res.status(201).json(category);
     } catch (error) {
@@ -118,7 +171,8 @@ router.post(
       const errMsg = (error as Error).message || '';
       if (errMsg.includes('UNIQUE constraint failed')) {
         return res.status(409).json({
-          error: 'A category with this ordinal already exists for this event',
+          error:
+            'A category with this ordinal already exists for this event, or this category is already linked',
         });
       }
       res
@@ -129,65 +183,51 @@ router.post(
 );
 
 // PATCH /documentation-scores/categories/:id
+// :id is the global category_id; event_id required as query param
 router.patch(
   '/categories/:id',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
+      const eventId = req.query.event_id as string | undefined;
+      if (!eventId) {
+        return res.status(400).json({
+          error: 'event_id query parameter is required',
+        });
+      }
+
+      const { ordinal } = req.body;
+      if (ordinal == null) {
+        return res.status(400).json({ error: 'ordinal is required' });
+      }
+
+      const ord = parseInt(String(ordinal), 10);
+      if (ord < 1 || ord > 4) {
+        return res.status(400).json({
+          error: 'ordinal must be between 1 and 4',
+        });
+      }
+
       const db = await getDatabase();
 
-      const updates = Object.entries(req.body).filter(([key]) =>
-        ALLOWED_CATEGORY_UPDATE_FIELDS.includes(key),
-      );
-
-      if (updates.length === 0) {
-        return res.status(400).json({ error: 'No valid fields to update' });
-      }
-
-      for (const [key, value] of updates) {
-        if (key === 'ordinal') {
-          const ord = parseInt(String(value), 10);
-          if (ord < 1 || ord > 4) {
-            return res.status(400).json({
-              error: 'ordinal must be between 1 and 4',
-            });
-          }
-        }
-        if (key === 'weight' && parseFloat(String(value)) < 0) {
-          return res.status(400).json({ error: 'weight must be non-negative' });
-        }
-        if (
-          key === 'max_score' &&
-          (parseFloat(String(value)) <= 0 ||
-            !Number.isFinite(parseFloat(String(value))))
-        ) {
-          return res.status(400).json({
-            error: 'max_score must be a positive number',
-          });
-        }
-      }
-
-      const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
-      const resolvedValues = updates.map(([key, value]) => {
-        if (key === 'ordinal') return parseInt(String(value), 10);
-        if (key === 'weight' || key === 'max_score')
-          return parseFloat(String(value));
-        return typeof value === 'string' ? String(value).trim() : value;
-      });
-
       const result = await db.run(
-        `UPDATE documentation_score_categories SET ${setClause}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [...resolvedValues, id],
+        `UPDATE event_documentation_categories SET ordinal = ? WHERE event_id = ? AND category_id = ?`,
+        [ord, eventId, id],
       );
 
       if (result.changes === 0) {
-        return res.status(404).json({ error: 'Category not found' });
+        return res
+          .status(404)
+          .json({ error: 'Category not found for this event' });
       }
 
       const category = await db.get(
-        'SELECT * FROM documentation_score_categories WHERE id = ?',
-        [id],
+        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
+         FROM event_documentation_categories edc
+         JOIN documentation_categories dc ON edc.category_id = dc.id
+         WHERE edc.event_id = ? AND edc.category_id = ?`,
+        [eventId, id],
       );
       res.json(category);
     } catch (error) {
@@ -206,21 +246,31 @@ router.patch(
 );
 
 // DELETE /documentation-scores/categories/:id
+// :id is the global category_id; event_id required as query param (removes link only)
 router.delete(
   '/categories/:id',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
+      const eventId = req.query.event_id as string | undefined;
+      if (!eventId) {
+        return res.status(400).json({
+          error: 'event_id query parameter is required',
+        });
+      }
+
       const db = await getDatabase();
 
       const result = await db.run(
-        'DELETE FROM documentation_score_categories WHERE id = ?',
-        [id],
+        'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
+        [eventId, id],
       );
 
       if (result.changes === 0) {
-        return res.status(404).json({ error: 'Category not found' });
+        return res
+          .status(404)
+          .json({ error: 'Category not found for this event' });
       }
 
       res.status(204).send();
@@ -261,12 +311,13 @@ router.get(
       // Attach sub-scores for each
       for (const row of scores) {
         const subScores = await db.all(
-          `SELECT dss.*, dsc.name as category_name, dsc.ordinal, dsc.max_score, dsc.weight
+          `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
            FROM documentation_sub_scores dss
-           JOIN documentation_score_categories dsc ON dss.category_id = dsc.id
+           JOIN documentation_categories dc ON dss.category_id = dc.id
+           JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
            WHERE dss.documentation_score_id = ?
-           ORDER BY dsc.ordinal ASC`,
-          [row.id],
+           ORDER BY edc.ordinal ASC`,
+          [eventId, row.id],
         );
         (row as Record<string, unknown>).sub_scores = subScores;
       }
@@ -311,13 +362,15 @@ router.get(
         });
       }
 
+      const teamRow = team as { id: number; event_id: number };
       const subScores = await db.all(
-        `SELECT dss.*, dsc.name as category_name, dsc.ordinal, dsc.max_score, dsc.weight
+        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
          FROM documentation_sub_scores dss
-         JOIN documentation_score_categories dsc ON dss.category_id = dsc.id
+         JOIN documentation_categories dc ON dss.category_id = dc.id
+         JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
          WHERE dss.documentation_score_id = ?
-         ORDER BY dsc.ordinal ASC`,
-        [docScore.id],
+         ORDER BY edc.ordinal ASC`,
+        [teamRow.event_id, docScore.id],
       );
 
       res.json({
@@ -373,14 +426,22 @@ router.put(
       }
 
       const categories = await db.all<{
-        id: number;
+        category_id: number;
         max_score: number;
         weight: number;
       }>(
-        `SELECT id, max_score, weight FROM documentation_score_categories WHERE event_id = ?`,
+        `SELECT dc.id as category_id, dc.max_score, dc.weight
+         FROM event_documentation_categories edc
+         JOIN documentation_categories dc ON edc.category_id = dc.id
+         WHERE edc.event_id = ?`,
         [eventId],
       );
-      const categoryMap = new Map(categories.map((c) => [c.id, c]));
+      const categoryMap = new Map(
+        categories.map((c) => [
+          c.category_id,
+          { max_score: c.max_score, weight: c.weight },
+        ]),
+      );
 
       const subScoresForCompute: {
         score: number;
@@ -389,7 +450,7 @@ router.put(
       }[] = [];
 
       for (const item of sub_scores) {
-        const catId = item.category_id;
+        const catId = Number(item.category_id);
         const cat = categoryMap.get(catId);
         if (!cat) {
           return res.status(400).json({
@@ -483,12 +544,13 @@ router.put(
       );
 
       const subScores = await db.all(
-        `SELECT dss.*, dsc.name as category_name, dsc.ordinal, dsc.max_score, dsc.weight
+        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
          FROM documentation_sub_scores dss
-         JOIN documentation_score_categories dsc ON dss.category_id = dsc.id
+         JOIN documentation_categories dc ON dss.category_id = dc.id
+         JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
          WHERE dss.documentation_score_id = ?
-         ORDER BY dsc.ordinal ASC`,
-        [docScore.id],
+         ORDER BY edc.ordinal ASC`,
+        [eventIdNum, docScore.id],
       );
 
       res.json({

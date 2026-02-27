@@ -1140,20 +1140,116 @@ export async function initializeSQLite(db: Database): Promise<void> {
   // DOCUMENTATION SCORES
   // ============================================================================
 
-  // Documentation score categories - 1-4 categories per event (names, weights, max scores)
+  // Global documentation categories (shared across events)
   await db.exec(`
-    CREATE TABLE IF NOT EXISTS documentation_score_categories (
+    CREATE TABLE IF NOT EXISTS documentation_categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-      ordinal INTEGER NOT NULL CHECK (ordinal >= 1 AND ordinal <= 4),
-      name TEXT NOT NULL,
+      name TEXT NOT NULL UNIQUE,
       weight REAL NOT NULL DEFAULT 1.0,
       max_score REAL NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(event_id, ordinal)
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Event-to-category junction (ordinal is event-specific)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_documentation_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES documentation_categories(id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL CHECK (ordinal >= 1 AND ordinal <= 4),
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, ordinal),
+      UNIQUE(event_id, category_id)
+    )
+  `);
+
+  // Migration: documentation_score_categories -> documentation_categories + event_documentation_categories
+  try {
+    const tables = await db.all(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='documentation_score_categories'",
+    );
+    if (tables.length > 0) {
+      console.log(
+        '⚙️ Migrating documentation_score_categories to many-to-many schema...',
+      );
+      const oldRows = await db.all(
+        'SELECT id, event_id, ordinal, name, weight, max_score FROM documentation_score_categories',
+      );
+      const oldIdToNewCategoryId = new Map<number, number>();
+
+      for (const row of oldRows as {
+        id: number;
+        event_id: number;
+        ordinal: number;
+        name: string;
+        weight: number;
+        max_score: number;
+      }[]) {
+        const existing = await db.get(
+          'SELECT id FROM documentation_categories WHERE name = ? AND weight = ? AND max_score = ?',
+          [row.name, row.weight, row.max_score],
+        );
+        let newCategoryId: number;
+        if (existing) {
+          newCategoryId = (existing as { id: number }).id;
+        } else {
+          const insert = await db.run(
+            'INSERT INTO documentation_categories (name, weight, max_score) VALUES (?, ?, ?)',
+            [row.name, row.weight, row.max_score],
+          );
+          newCategoryId = insert.lastID!;
+        }
+        oldIdToNewCategoryId.set(row.id, newCategoryId);
+        await db.run(
+          'INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, ?)',
+          [row.event_id, newCategoryId, row.ordinal],
+        );
+      }
+
+      // Recreate documentation_sub_scores with FK to documentation_categories
+      await db.exec(`
+        CREATE TABLE documentation_sub_scores_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          documentation_score_id INTEGER NOT NULL
+            REFERENCES documentation_scores(id) ON DELETE CASCADE,
+          category_id INTEGER NOT NULL
+            REFERENCES documentation_categories(id) ON DELETE CASCADE,
+          score REAL NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE(documentation_score_id, category_id)
+        )
+      `);
+      const subRows = await db.all(
+        'SELECT id, documentation_score_id, category_id, score, created_at FROM documentation_sub_scores',
+      );
+      for (const sub of subRows as {
+        id: number;
+        documentation_score_id: number;
+        category_id: number;
+        score: number;
+        created_at: string;
+      }[]) {
+        const newCatId = oldIdToNewCategoryId.get(sub.category_id);
+        if (newCatId != null) {
+          await db.run(
+            'INSERT INTO documentation_sub_scores_new (documentation_score_id, category_id, score, created_at) VALUES (?, ?, ?, ?)',
+            [sub.documentation_score_id, newCatId, sub.score, sub.created_at],
+          );
+        }
+      }
+      await db.exec('DROP TABLE documentation_sub_scores');
+      await db.exec(
+        'ALTER TABLE documentation_sub_scores_new RENAME TO documentation_sub_scores',
+      );
+      await db.exec('DROP TABLE documentation_score_categories');
+      console.log('✅ Documentation categories migration complete');
+    }
+  } catch (err) {
+    console.error('Documentation categories migration error:', err);
+    throw err;
+  }
 
   // Documentation scores - one row per team per event (overall score + metadata)
   await db.exec(`
@@ -1177,7 +1273,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       documentation_score_id INTEGER NOT NULL
         REFERENCES documentation_scores(id) ON DELETE CASCADE,
       category_id INTEGER NOT NULL
-        REFERENCES documentation_score_categories(id) ON DELETE CASCADE,
+        REFERENCES documentation_categories(id) ON DELETE CASCADE,
       score REAL NOT NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(documentation_score_id, category_id)
@@ -1582,7 +1678,10 @@ export async function initializeSQLite(db: Database): Promise<void> {
 
   // Documentation score indexes
   await db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_doc_score_categories_event ON documentation_score_categories(event_id)`,
+    `CREATE INDEX IF NOT EXISTS idx_event_doc_categories_event ON event_documentation_categories(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_doc_categories_category ON event_documentation_categories(category_id)`,
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_doc_scores_event ON documentation_scores(event_id)`,

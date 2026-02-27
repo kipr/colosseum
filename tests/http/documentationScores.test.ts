@@ -77,6 +77,56 @@ describe('Documentation Scores Routes', () => {
   });
 
   // ==========================================================================
+  // GET /documentation-scores/global-categories
+  // ==========================================================================
+
+  describe('GET /documentation-scores/global-categories', () => {
+    it('returns global categories for admin', async () => {
+      const app = createTestApp({ user: adminUser });
+      app.use('/documentation-scores', documentationScoresRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get(
+          `${server.baseUrl}/documentation-scores/global-categories`,
+        );
+        expect(res.status).toBe(200);
+        expect(Array.isArray(res.json)).toBe(true);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it('returns categories after creating one', async () => {
+      const event = await seedEvent(testDb.db);
+      await seedDocumentationScoreCategory(testDb.db, {
+        event_id: event.id,
+        ordinal: 1,
+        name: 'Global Cat',
+        max_score: 15,
+      });
+
+      const app = createTestApp({ user: adminUser });
+      app.use('/documentation-scores', documentationScoresRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get(
+          `${server.baseUrl}/documentation-scores/global-categories`,
+        );
+        expect(res.status).toBe(200);
+        const cats = res.json as { id: number; name: string; max_score: number }[];
+        expect(cats.length).toBeGreaterThanOrEqual(1);
+        const found = cats.find((c) => c.name === 'Global Cat');
+        expect(found).toBeDefined();
+        expect(found!.max_score).toBe(15);
+      } finally {
+        await server.close();
+      }
+    });
+  });
+
+  // ==========================================================================
   // GET /documentation-scores/categories/event/:eventId
   // ==========================================================================
 
@@ -260,15 +310,24 @@ describe('Documentation Scores Routes', () => {
       await server.close();
     });
 
-    it('returns 404 when category not found', async () => {
+    it('returns 400 when event_id query param missing', async () => {
       const res = await http.patch(
-        `${server.baseUrl}/documentation-scores/categories/9999`,
-        { name: 'Updated' },
+        `${server.baseUrl}/documentation-scores/categories/1`,
+        { ordinal: 2 },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 when category not found for event', async () => {
+      const event = await seedEvent(testDb.db);
+      const res = await http.patch(
+        `${server.baseUrl}/documentation-scores/categories/9999?event_id=${event.id}`,
+        { ordinal: 2 },
       );
       expect(res.status).toBe(404);
     });
 
-    it('updates a category', async () => {
+    it('updates ordinal for a category', async () => {
       const event = await seedEvent(testDb.db);
       const cat = await seedDocumentationScoreCategory(testDb.db, {
         event_id: event.id,
@@ -278,14 +337,14 @@ describe('Documentation Scores Routes', () => {
       });
 
       const res = await http.patch(
-        `${server.baseUrl}/documentation-scores/categories/${cat.id}`,
-        { name: 'Updated Name', max_score: 15 },
+        `${server.baseUrl}/documentation-scores/categories/${cat.id}?event_id=${event.id}`,
+        { ordinal: 2 },
       );
 
       expect(res.status).toBe(200);
-      const updated = res.json as { name: string; max_score: number };
-      expect(updated.name).toBe('Updated Name');
-      expect(updated.max_score).toBe(15);
+      const updated = res.json as { ordinal: number; name: string };
+      expect(updated.ordinal).toBe(2);
+      expect(updated.name).toBe('Original');
     });
   });
 
@@ -306,24 +365,32 @@ describe('Documentation Scores Routes', () => {
       await server.close();
     });
 
-    it('returns 404 when category not found', async () => {
+    it('returns 400 when event_id query param missing', async () => {
       const res = await http.delete(
-        `${server.baseUrl}/documentation-scores/categories/9999`,
+        `${server.baseUrl}/documentation-scores/categories/1`,
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 when category not found for event', async () => {
+      const event = await seedEvent(testDb.db);
+      const res = await http.delete(
+        `${server.baseUrl}/documentation-scores/categories/9999?event_id=${event.id}`,
       );
       expect(res.status).toBe(404);
     });
 
-    it('deletes a category', async () => {
+    it('removes category link from event', async () => {
       const event = await seedEvent(testDb.db);
       const cat = await seedDocumentationScoreCategory(testDb.db, {
         event_id: event.id,
         ordinal: 1,
-        name: 'ToDelete',
+        name: 'ToRemove',
         max_score: 10,
       });
 
       const res = await http.delete(
-        `${server.baseUrl}/documentation-scores/categories/${cat.id}`,
+        `${server.baseUrl}/documentation-scores/categories/${cat.id}?event_id=${event.id}`,
       );
       expect(res.status).toBe(204);
     });

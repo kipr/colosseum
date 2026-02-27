@@ -374,18 +374,30 @@ export async function seedDocumentationScoreCategory(
   db: Database,
   data: SeedDocumentationScoreCategoryData,
 ): Promise<{ id: number }> {
-  const result = await db.run(
-    `INSERT INTO documentation_score_categories (event_id, ordinal, name, weight, max_score)
-     VALUES (?, ?, ?, ?, ?)`,
-    [
-      data.event_id,
-      data.ordinal,
-      data.name ?? `Category ${data.ordinal}`,
-      data.weight ?? 1.0,
-      data.max_score,
-    ],
+  const name = data.name ?? `Category ${data.ordinal}`;
+  const weight = data.weight ?? 1.0;
+  const maxScore = data.max_score;
+
+  let categoryId: number;
+  const existing = await db.get(
+    'SELECT id FROM documentation_categories WHERE name = ? AND weight = ? AND max_score = ?',
+    [name, weight, maxScore],
   );
-  return { id: result.lastID! };
+  if (existing) {
+    categoryId = (existing as { id: number }).id;
+  } else {
+    const catResult = await db.run(
+      'INSERT INTO documentation_categories (name, weight, max_score) VALUES (?, ?, ?)',
+      [name, weight, maxScore],
+    );
+    categoryId = catResult.lastID!;
+  }
+
+  await db.run(
+    'INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, ?)',
+    [data.event_id, categoryId, data.ordinal],
+  );
+  return { id: categoryId };
 }
 
 export interface SeedDocumentationScoreData {

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import { formatDateTime } from '../../utils/dateUtils';
 import '../Modal.css';
 import './DocumentationTab.css';
 
@@ -10,6 +9,13 @@ interface DocCategory {
   id: number;
   event_id: number;
   ordinal: number;
+  name: string;
+  weight: number;
+  max_score: number;
+}
+
+interface GlobalCategory {
+  id: number;
   name: string;
   weight: number;
   max_score: number;
@@ -134,11 +140,20 @@ export default function DocumentationTab() {
   const selectedEventId = selectedEvent?.id ?? null;
 
   const [categories, setCategories] = useState<DocCategory[]>([]);
+  const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>(
+    [],
+  );
   const [teams, setTeams] = useState<Team[]>([]);
   const [scores, setScores] = useState<DocScore[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryModalMode, setCategoryModalMode] = useState<'create' | 'link'>(
+    'create',
+  );
+  const [selectedGlobalCategoryId, setSelectedGlobalCategoryId] = useState<
+    number | null
+  >(null);
   const [editingCategory, setEditingCategory] = useState<DocCategory | null>(
     null,
   );
@@ -146,10 +161,10 @@ export default function DocumentationTab() {
     useState<CategoryFormData>(defaultCategoryForm);
   const [savingCategory, setSavingCategory] = useState(false);
 
-  const [showScoreModal, setShowScoreModal] = useState(false);
-  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
-  const [scoreForm, setScoreForm] = useState<Record<number, string>>({});
-  const [savingScore, setSavingScore] = useState(false);
+  const [inlineEdits, setInlineEdits] = useState<
+    Record<number, Record<number, string>>
+  >({});
+  const [savingTeamId, setSavingTeamId] = useState<number | null>(null);
 
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkText, setBulkText] = useState('');
@@ -180,6 +195,20 @@ export default function DocumentationTab() {
       toast.error('Failed to load categories');
     }
   }, [selectedEventId]);
+
+  const fetchGlobalCategories = useCallback(async () => {
+    try {
+      const res = await fetch('/documentation-scores/global-categories', {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch global categories');
+      const data: GlobalCategory[] = await res.json();
+      setGlobalCategories(data);
+    } catch (err) {
+      console.error(err);
+      toast.error('Failed to load global categories');
+    }
+  }, []);
 
   const fetchTeams = useCallback(async () => {
     if (!selectedEventId) {
@@ -220,10 +249,13 @@ export default function DocumentationTab() {
 
   const loadAll = useCallback(() => {
     setLoading(true);
-    Promise.all([fetchCategories(), fetchTeams(), fetchScores()]).finally(() =>
-      setLoading(false),
-    );
-  }, [fetchCategories, fetchTeams, fetchScores]);
+    Promise.all([
+      fetchCategories(),
+      fetchGlobalCategories(),
+      fetchTeams(),
+      fetchScores(),
+    ]).finally(() => setLoading(false));
+  }, [fetchCategories, fetchGlobalCategories, fetchTeams, fetchScores]);
 
   useEffect(() => {
     loadAll();
@@ -255,6 +287,8 @@ export default function DocumentationTab() {
   const handleCreateCategory = () => {
     setEditingCategory(null);
     setCategoryForm(defaultCategoryForm);
+    setCategoryModalMode('create');
+    setSelectedGlobalCategoryId(null);
     setShowCategoryModal(true);
   };
 
@@ -266,6 +300,8 @@ export default function DocumentationTab() {
       weight: String(cat.weight),
       max_score: String(cat.max_score),
     });
+    setCategoryModalMode('create');
+    setSelectedGlobalCategoryId(null);
     setShowCategoryModal(true);
   };
 
@@ -273,67 +309,99 @@ export default function DocumentationTab() {
     setShowCategoryModal(false);
     setEditingCategory(null);
     setCategoryForm(defaultCategoryForm);
+    setCategoryModalMode('create');
+    setSelectedGlobalCategoryId(null);
   };
 
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const ord = parseInt(categoryForm.ordinal, 10);
-    const weight = parseFloat(categoryForm.weight);
-    const maxScore = parseFloat(categoryForm.max_score);
 
     if (isNaN(ord) || ord < 1 || ord > 4) {
       toast.error('Ordinal must be between 1 and 4');
       return;
     }
-    if (!categoryForm.name.trim()) {
-      toast.error('Name is required');
+
+    const isLink =
+      !editingCategory &&
+      categoryModalMode === 'link' &&
+      selectedGlobalCategoryId;
+    const isCreateNew = !editingCategory && categoryModalMode === 'create';
+
+    if (categoryModalMode === 'link' && !selectedGlobalCategoryId) {
+      toast.error('Select a category to link');
       return;
     }
-    if (isNaN(weight) || weight < 0) {
-      toast.error('Weight must be non-negative');
-      return;
-    }
-    if (isNaN(maxScore) || maxScore <= 0) {
-      toast.error('Max score must be a positive number');
-      return;
+
+    if (isCreateNew) {
+      const weight = parseFloat(categoryForm.weight);
+      const maxScore = parseFloat(categoryForm.max_score);
+      if (!categoryForm.name.trim()) {
+        toast.error('Name is required');
+        return;
+      }
+      if (isNaN(weight) || weight < 0) {
+        toast.error('Weight must be non-negative');
+        return;
+      }
+      if (isNaN(maxScore) || maxScore <= 0) {
+        toast.error('Max score must be a positive number');
+        return;
+      }
     }
 
     setSavingCategory(true);
     try {
-      const url = editingCategory
-        ? `/documentation-scores/categories/${editingCategory.id}`
-        : '/documentation-scores/categories';
-      const method = editingCategory ? 'PATCH' : 'POST';
-      const body = editingCategory
-        ? {
+      if (editingCategory) {
+        const url = `/documentation-scores/categories/${editingCategory.id}?event_id=${selectedEventId}`;
+        const res = await fetch(url, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ ordinal: ord }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to save category');
+        }
+        toast.success('Category updated!');
+      } else if (isLink) {
+        const res = await fetch('/documentation-scores/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            event_id: selectedEventId,
             ordinal: ord,
-            name: categoryForm.name.trim(),
-            weight,
-            max_score: maxScore,
-          }
-        : {
+            category_id: selectedGlobalCategoryId,
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to link category');
+        }
+        toast.success('Category linked!');
+      } else if (isCreateNew) {
+        const weight = parseFloat(categoryForm.weight);
+        const maxScore = parseFloat(categoryForm.max_score);
+        const res = await fetch('/documentation-scores/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
             event_id: selectedEventId,
             ordinal: ord,
             name: categoryForm.name.trim(),
             weight,
             max_score: maxScore,
-          };
-
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to save category');
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Failed to create category');
+        }
+        toast.success('Category created!');
       }
-
-      toast.success(
-        editingCategory ? 'Category updated!' : 'Category created!',
-      );
       handleCloseCategoryModal();
       await fetchCategories();
     } catch (err) {
@@ -347,55 +415,57 @@ export default function DocumentationTab() {
 
   const handleDeleteCategory = async (cat: DocCategory) => {
     const ok = await confirm({
-      title: 'Delete Category',
-      message: `Delete "${cat.name}"? This cannot be undone.`,
-      confirmText: 'Delete',
+      title: 'Remove Category',
+      message: `Remove "${cat.name}" from this event?`,
+      confirmText: 'Remove',
       confirmStyle: 'danger',
     });
     if (!ok) return;
 
     try {
-      const res = await fetch(`/documentation-scores/categories/${cat.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to delete category');
-      toast.success('Category deleted');
+      const res = await fetch(
+        `/documentation-scores/categories/${cat.id}?event_id=${selectedEventId}`,
+        {
+          method: 'DELETE',
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) throw new Error('Failed to remove category');
+      toast.success('Category removed');
       await fetchCategories();
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Failed to delete category',
+        err instanceof Error ? err.message : 'Failed to remove category',
       );
     }
   };
 
-  const handleOpenScoreModal = (team: Team) => {
-    setEditingTeam(team);
+  const sortedCategories = [...categories].sort(
+    (a, b) => a.ordinal - b.ordinal,
+  );
+
+  const getCellValue = (
+    teamId: number,
+    categoryId: number,
+    doc: DocScore | undefined,
+  ): string => {
+    const edits = inlineEdits[teamId];
+    if (edits?.[categoryId] !== undefined) return edits[categoryId];
+    const sub = doc?.sub_scores?.find((s) => s.category_id === categoryId);
+    return sub != null ? String(sub.score) : '';
+  };
+
+  const handleCellBlur = async (team: Team) => {
     const doc = scoreByTeamId.get(team.id);
-    const initial: Record<number, string> = {};
-    for (const cat of categories) {
-      const sub = doc?.sub_scores?.find((s) => s.category_id === cat.id);
-      initial[cat.id] = sub != null ? String(sub.score) : '';
-    }
-    setScoreForm(initial);
-    setShowScoreModal(true);
-  };
-
-  const handleCloseScoreModal = () => {
-    setShowScoreModal(false);
-    setEditingTeam(null);
-    setScoreForm({});
-  };
-
-  const handleSaveScore = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingTeam) return;
+    const edits = inlineEdits[team.id] ?? {};
 
     const sub_scores: { category_id: number; score: number }[] = [];
-    for (const cat of categories) {
-      const val = scoreForm[cat.id];
-      if (val === '' || val == null) continue;
-      const score = parseFloat(val);
+    for (const cat of sortedCategories) {
+      const val =
+        edits[cat.id] ??
+        doc?.sub_scores?.find((s) => s.category_id === cat.id)?.score;
+      if (val === undefined || val === '' || val == null) continue;
+      const score = typeof val === 'string' ? parseFloat(val) : val;
       if (!Number.isFinite(score) || score < 0 || score > cat.max_score) {
         toast.error(`"${cat.name}" must be between 0 and ${cat.max_score}`);
         return;
@@ -403,15 +473,12 @@ export default function DocumentationTab() {
       sub_scores.push({ category_id: cat.id, score });
     }
 
-    if (sub_scores.length === 0) {
-      toast.error('Enter at least one category score');
-      return;
-    }
+    if (sub_scores.length === 0) return;
 
-    setSavingScore(true);
+    setSavingTeamId(team.id);
     try {
       const res = await fetch(
-        `/documentation-scores/event/${selectedEventId}/team/${editingTeam.id}`,
+        `/documentation-scores/event/${selectedEventId}/team/${team.id}`,
         {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
@@ -426,13 +493,31 @@ export default function DocumentationTab() {
       }
 
       toast.success('Score saved!');
-      handleCloseScoreModal();
+      setInlineEdits((prev) => {
+        const next = { ...prev };
+        delete next[team.id];
+        return next;
+      });
       await fetchScores();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save score');
     } finally {
-      setSavingScore(false);
+      setSavingTeamId(null);
     }
+  };
+
+  const handleCellChange = (
+    teamId: number,
+    categoryId: number,
+    value: string,
+  ) => {
+    setInlineEdits((prev) => ({
+      ...prev,
+      [teamId]: {
+        ...(prev[teamId] ?? {}),
+        [categoryId]: value,
+      },
+    }));
   };
 
   const handleClearScore = async (team: Team) => {
@@ -588,7 +673,7 @@ export default function DocumentationTab() {
                         onClick={() => handleDeleteCategory(cat)}
                         style={{ marginLeft: '0.5rem' }}
                       >
-                        Delete
+                        Remove
                       </button>
                     </td>
                   </tr>
@@ -625,58 +710,90 @@ export default function DocumentationTab() {
             Add categories above before entering scores.
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Team #</th>
-                <th>Team Name</th>
-                <th>Overall Score</th>
-                <th>Scored At</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {mergedTeams.map(({ team, doc }) => (
-                <tr key={team.id}>
-                  <td>{team.team_number}</td>
-                  <td>{team.team_name}</td>
-                  <td>
-                    {doc?.overall_score != null ? (
-                      <strong style={{ color: 'var(--primary-color)' }}>
-                        {doc.overall_score.toFixed(3)}
-                      </strong>
-                    ) : (
-                      <em style={{ color: 'var(--secondary-color)' }}>—</em>
-                    )}
-                  </td>
-                  <td>
-                    {doc?.scored_at ? (
-                      formatDateTime(doc.scored_at)
-                    ) : (
-                      <em style={{ color: 'var(--secondary-color)' }}>—</em>
-                    )}
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-primary"
-                      onClick={() => handleOpenScoreModal(team)}
-                    >
-                      {doc ? 'Edit' : 'Enter'} Score
-                    </button>
-                    {doc && (
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleClearScore(team)}
-                        style={{ marginLeft: '0.5rem' }}
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </td>
+          <div className="doc-scores-table-wrapper">
+            <table className="doc-calculator-table">
+              <thead>
+                <tr>
+                  <th>Team #</th>
+                  <th>Team Name</th>
+                  {sortedCategories.map((cat, idx) => (
+                    <React.Fragment key={cat.id}>
+                      <th title={`Max: ${cat.max_score}`}>
+                        {cat.name} (×{cat.weight})
+                      </th>
+                      {idx < sortedCategories.length - 1 && (
+                        <th className="doc-op">+</th>
+                      )}
+                    </React.Fragment>
+                  ))}
+                  <th className="doc-op">=</th>
+                  <th>Overall Score</th>
+                  <th>Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {mergedTeams.map(({ team, doc }) => (
+                  <tr key={team.id}>
+                    <td>{team.team_number}</td>
+                    <td>{team.team_name}</td>
+                    {sortedCategories.map((cat, idx) => (
+                      <React.Fragment key={cat.id}>
+                        <td>
+                          <span className="doc-score-cell">
+                            <input
+                              type="number"
+                              className="field-input doc-score-input"
+                              min={0}
+                              max={cat.max_score}
+                              step={0.1}
+                              placeholder="—"
+                              value={getCellValue(team.id, cat.id, doc)}
+                              onChange={(e) =>
+                                handleCellChange(
+                                  team.id,
+                                  cat.id,
+                                  e.target.value,
+                                )
+                              }
+                              onBlur={() => handleCellBlur(team)}
+                              disabled={savingTeamId === team.id}
+                              title={`0–${cat.max_score}`}
+                            />
+                            <span className="doc-fraction">
+                              /{cat.max_score} ×{cat.weight}
+                            </span>
+                          </span>
+                        </td>
+                        {idx < sortedCategories.length - 1 && (
+                          <td className="doc-op">+</td>
+                        )}
+                      </React.Fragment>
+                    ))}
+                    <td className="doc-op">=</td>
+                    <td>
+                      {doc?.overall_score != null ? (
+                        <strong style={{ color: 'var(--primary-color)' }}>
+                          {doc.overall_score.toFixed(3)}
+                        </strong>
+                      ) : (
+                        <em style={{ color: 'var(--secondary-color)' }}>—</em>
+                      )}
+                    </td>
+                    <td>
+                      {doc && (
+                        <button
+                          className="btn btn-danger"
+                          onClick={() => handleClearScore(team)}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -693,6 +810,92 @@ export default function DocumentationTab() {
             </span>
             <h3>{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
             <form onSubmit={handleSaveCategory}>
+              {!editingCategory && (
+                <div className="form-group">
+                  <label>Add as</label>
+                  <div
+                    style={{
+                      display: 'flex',
+                      gap: '1rem',
+                      marginTop: '0.25rem',
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="cat-mode"
+                        checked={categoryModalMode === 'create'}
+                        onChange={() => {
+                          setCategoryModalMode('create');
+                          setSelectedGlobalCategoryId(null);
+                          setCategoryForm(defaultCategoryForm);
+                        }}
+                      />
+                      Create new category
+                    </label>
+                    <label
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="cat-mode"
+                        checked={categoryModalMode === 'link'}
+                        onChange={() => {
+                          setCategoryModalMode('link');
+                          setSelectedGlobalCategoryId(null);
+                          setCategoryForm(defaultCategoryForm);
+                        }}
+                      />
+                      Select existing category
+                    </label>
+                  </div>
+                </div>
+              )}
+              {!editingCategory && categoryModalMode === 'link' && (
+                <div className="form-group">
+                  <label htmlFor="cat-global">Category *</label>
+                  <select
+                    id="cat-global"
+                    className="field-input"
+                    value={selectedGlobalCategoryId ?? ''}
+                    onChange={(e) => {
+                      const id = e.target.value
+                        ? parseInt(e.target.value, 10)
+                        : null;
+                      setSelectedGlobalCategoryId(id);
+                      const gc = globalCategories.find((c) => c.id === id);
+                      if (gc) {
+                        setCategoryForm({
+                          ...categoryForm,
+                          name: gc.name,
+                          weight: String(gc.weight),
+                          max_score: String(gc.max_score),
+                        });
+                      }
+                    }}
+                    required={categoryModalMode === 'link'}
+                  >
+                    <option value="">— Select —</option>
+                    {globalCategories
+                      .filter((gc) => !categories.some((c) => c.id === gc.id))
+                      .map((gc) => (
+                        <option key={gc.id} value={gc.id}>
+                          {gc.name} (max {gc.max_score}, ×{gc.weight})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
               <div className="form-group">
                 <label htmlFor="cat-ordinal">Ordinal (1–4) *</label>
                 <input
@@ -711,51 +914,79 @@ export default function DocumentationTab() {
                   required
                 />
               </div>
-              <div className="form-group">
-                <label htmlFor="cat-name">Name *</label>
-                <input
-                  id="cat-name"
-                  type="text"
-                  className="field-input"
-                  value={categoryForm.name}
-                  onChange={(e) =>
-                    setCategoryForm({ ...categoryForm, name: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="cat-weight">Weight</label>
-                <input
-                  id="cat-weight"
-                  type="number"
-                  className="field-input"
-                  min={0}
-                  step={0.1}
-                  value={categoryForm.weight}
-                  onChange={(e) =>
-                    setCategoryForm({ ...categoryForm, weight: e.target.value })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="cat-max">Max Score *</label>
-                <input
-                  id="cat-max"
-                  type="number"
-                  className="field-input"
-                  min={0.01}
-                  step="any"
-                  value={categoryForm.max_score}
-                  onChange={(e) =>
-                    setCategoryForm({
-                      ...categoryForm,
-                      max_score: e.target.value,
-                    })
-                  }
-                  required
-                />
-              </div>
+              {!editingCategory && categoryModalMode === 'create' && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="cat-name">Name *</label>
+                    <input
+                      id="cat-name"
+                      type="text"
+                      className="field-input"
+                      value={categoryForm.name}
+                      onChange={(e) =>
+                        setCategoryForm({
+                          ...categoryForm,
+                          name: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="cat-weight">Weight</label>
+                    <input
+                      id="cat-weight"
+                      type="number"
+                      className="field-input"
+                      min={0}
+                      step={0.1}
+                      value={categoryForm.weight}
+                      onChange={(e) =>
+                        setCategoryForm({
+                          ...categoryForm,
+                          weight: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="cat-max">Max Score *</label>
+                    <input
+                      id="cat-max"
+                      type="number"
+                      className="field-input"
+                      min={0.01}
+                      step="any"
+                      value={categoryForm.max_score}
+                      onChange={(e) =>
+                        setCategoryForm({
+                          ...categoryForm,
+                          max_score: e.target.value,
+                        })
+                      }
+                      required
+                    />
+                  </div>
+                </>
+              )}
+              {categoryModalMode === 'link' && selectedGlobalCategoryId && (
+                <div
+                  className="form-group"
+                  style={{
+                    color: 'var(--secondary-color)',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {(() => {
+                    const gc = globalCategories.find(
+                      (c) => c.id === selectedGlobalCategoryId,
+                    );
+                    return gc
+                      ? `${gc.name}: max ${gc.max_score}, weight ×${gc.weight}`
+                      : null;
+                  })()}
+                </div>
+              )}
               <div
                 style={{
                   display: 'flex',
@@ -778,73 +1009,6 @@ export default function DocumentationTab() {
                   disabled={savingCategory}
                 >
                   {savingCategory ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Score modal */}
-      {showScoreModal && editingTeam && (
-        <div className="modal show" onClick={handleCloseScoreModal}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={handleCloseScoreModal}>
-              &times;
-            </span>
-            <h3>
-              Documentation Score — Team {editingTeam.team_number}{' '}
-              {editingTeam.team_name}
-            </h3>
-            <form onSubmit={handleSaveScore}>
-              {categories.map((cat) => (
-                <div key={cat.id} className="form-group">
-                  <label htmlFor={`score-${cat.id}`}>
-                    {cat.name} (0–{cat.max_score})
-                  </label>
-                  <input
-                    id={`score-${cat.id}`}
-                    type="number"
-                    className="field-input"
-                    min={0}
-                    max={cat.max_score}
-                    step={0.1}
-                    value={scoreForm[cat.id] ?? ''}
-                    onChange={(e) =>
-                      setScoreForm({
-                        ...scoreForm,
-                        [cat.id]: e.target.value,
-                      })
-                    }
-                  />
-                </div>
-              ))}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleCloseScoreModal}
-                  disabled={savingScore}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={savingScore}
-                >
-                  {savingScore ? 'Saving...' : 'Save Score'}
                 </button>
               </div>
             </form>
