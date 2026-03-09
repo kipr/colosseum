@@ -5,6 +5,7 @@ import './BracketDisplay.css';
 interface BracketRankingViewProps {
   bracketId: number;
   rankings: BracketEntryWithRank[] | null;
+  weight: number;
   loading: boolean;
   onRefresh: () => void;
 }
@@ -25,6 +26,7 @@ function getRankRowClass(rank: number | null): string {
 
 export default function BracketRankingView({
   rankings,
+  weight,
   loading,
   onRefresh,
 }: BracketRankingViewProps) {
@@ -76,6 +78,7 @@ export default function BracketRankingView({
             <th>Team #</th>
             <th>Team Name</th>
             <th>Raw Score</th>
+            <th>Weighted Score (w={weight})</th>
           </tr>
         </thead>
         <tbody>
@@ -91,13 +94,18 @@ export default function BracketRankingView({
                   ? entry.bracket_raw_score.toFixed(4)
                   : '—'}
               </td>
+              <td>
+                {entry.weighted_bracket_raw_score != null
+                  ? entry.weighted_bracket_raw_score.toFixed(4)
+                  : '—'}
+              </td>
             </tr>
           ))}
           {unranked.length > 0 && (
             <>
               {ranked.length > 0 && (
                 <tr className="ranking-divider-row">
-                  <td colSpan={4}>
+                  <td colSpan={5}>
                     <span className="ranking-divider-label">
                       Not yet placed
                     </span>
@@ -111,6 +119,7 @@ export default function BracketRankingView({
                   </td>
                   <td>{entry.team_number ?? '—'}</td>
                   <td>{entry.team_name ?? entry.display_name ?? '—'}</td>
+                  <td>—</td>
                   <td>—</td>
                 </tr>
               ))}

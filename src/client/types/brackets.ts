@@ -16,6 +16,7 @@ export interface Bracket {
   bracket_size: number;
   actual_team_count: number | null;
   status: BracketStatus;
+  weight: number;
   created_by: number | null;
   created_at: string;
   updated_at: string;
@@ -36,6 +37,7 @@ export interface BracketEntry {
 export interface BracketEntryWithRank extends BracketEntry {
   final_rank: number | null;
   bracket_raw_score: number | null;
+  weighted_bracket_raw_score: number | null;
 }
 
 export interface BracketGame {

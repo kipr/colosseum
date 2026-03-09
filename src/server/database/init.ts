@@ -993,11 +993,22 @@ export async function initializeSQLite(db: Database): Promise<void> {
       actual_team_count INTEGER,
       status TEXT DEFAULT 'setup'
         CHECK (status IN ('setup', 'in_progress', 'completed')),
+      weight REAL NOT NULL DEFAULT 1.0
+        CHECK (weight > 0 AND weight <= 1),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // Migration: add weight column to existing brackets (backfills to 1.0)
+  try {
+    await db.exec(
+      `ALTER TABLE brackets ADD COLUMN weight REAL NOT NULL DEFAULT 1.0`,
+    );
+  } catch {
+    // Column already exists
+  }
 
   // Bracket Entries - Teams assigned to a bracket with their seeding position
   // NOTE: In the schema, team_id can point to a team in a different event than the bracket.
@@ -1012,6 +1023,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       is_bye BOOLEAN DEFAULT FALSE,
       final_rank INTEGER,
       bracket_raw_score REAL,
+      weighted_bracket_raw_score REAL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(bracket_id, team_id),
       UNIQUE(bracket_id, seed_position),
@@ -1021,6 +1033,15 @@ export async function initializeSQLite(db: Database): Promise<void> {
       )
     )
   `);
+
+  // Migration: add weighted_bracket_raw_score column to existing bracket_entries
+  try {
+    await db.exec(
+      `ALTER TABLE bracket_entries ADD COLUMN weighted_bracket_raw_score REAL`,
+    );
+  } catch {
+    // Column already exists
+  }
 
   // Games/Matches - Individual games within a bracket
   // NOTE team1_id/team2_id/winner_id/loser_id can point across events.

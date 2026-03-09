@@ -105,6 +105,29 @@ describe('calculateBracketRankings', () => {
     return row?.bracket_raw_score;
   }
 
+  async function getWeightedScore(
+    teamId: number,
+  ): Promise<number | null | undefined> {
+    const row = await testDb.db.get<{
+      weighted_bracket_raw_score: number | null;
+    }>(
+      `SELECT weighted_bracket_raw_score FROM bracket_entries WHERE team_id = ?`,
+      [teamId],
+    );
+    return row?.weighted_bracket_raw_score;
+  }
+
+  async function createBracketWithWeight(
+    size: number,
+    weight: number,
+  ): Promise<number> {
+    const result = await testDb.db.run(
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
+      [eventId, 'Test Bracket', size, 'in_progress', weight],
+    );
+    return result.lastID!;
+  }
+
   /**
    * Sets up a simple 4-team bracket with finals result and losers bracket.
    * Returns team IDs in order [1st, 2nd, 3rd, 4th].
@@ -324,6 +347,120 @@ describe('calculateBracketRankings', () => {
       expect(await getRawScore(t2)).toBeCloseTo(2 / 3, 5);
       // 3rd: (3 - 3 + 1) / 3 = 1/3
       expect(await getRawScore(t3)).toBeCloseTo(1 / 3, 5);
+    });
+  });
+
+  describe('weighted_bracket_raw_score', () => {
+    it('equals bracket_raw_score when weight is 1.0 (default)', async () => {
+      const [t1, t2, t3, t4] = await setupFourTeamBracket();
+      await calculateBracketRankings(bracketId);
+
+      expect(await getWeightedScore(t1)).toBeCloseTo(1.0, 5);
+      expect(await getWeightedScore(t2)).toBeCloseTo(0.75, 5);
+      expect(await getWeightedScore(t3)).toBeCloseTo(0.5, 5);
+      expect(await getWeightedScore(t4)).toBeCloseTo(0.25, 5);
+    });
+
+    it('scales raw score by bracket weight', async () => {
+      bracketId = await createBracketWithWeight(4, 0.5);
+
+      const t1 = await createTeam(501);
+      const t2 = await createTeam(502);
+      const t3 = await createTeam(503);
+      const t4 = await createTeam(504);
+
+      await addEntry(bracketId, t1, 1);
+      await addEntry(bracketId, t2, 2);
+      await addEntry(bracketId, t3, 3);
+      await addEntry(bracketId, t4, 4);
+
+      await addSeedingRank(t1, 1);
+      await addSeedingRank(t2, 2);
+      await addSeedingRank(t3, 3);
+      await addSeedingRank(t4, 4);
+
+      await addCompletedGame({
+        bracketId,
+        gameNumber: 1,
+        bracketSide: 'losers',
+        roundNumber: 1,
+        winnerId: t3,
+        loserId: t4,
+      });
+      await addCompletedGame({
+        bracketId,
+        gameNumber: 2,
+        bracketSide: 'losers',
+        roundNumber: 2,
+        winnerId: t2,
+        loserId: t3,
+      });
+      await addCompletedGame({
+        bracketId,
+        gameNumber: 3,
+        bracketSide: 'finals',
+        roundNumber: 3,
+        winnerId: t1,
+        loserId: t2,
+      });
+
+      await calculateBracketRankings(bracketId);
+
+      // raw scores: 1.0, 0.75, 0.5, 0.25 — weighted by 0.5
+      expect(await getWeightedScore(t1)).toBeCloseTo(0.5, 5);
+      expect(await getWeightedScore(t2)).toBeCloseTo(0.375, 5);
+      expect(await getWeightedScore(t3)).toBeCloseTo(0.25, 5);
+      expect(await getWeightedScore(t4)).toBeCloseTo(0.125, 5);
+
+      // raw scores unchanged
+      expect(await getRawScore(t1)).toBeCloseTo(1.0, 5);
+      expect(await getRawScore(t2)).toBeCloseTo(0.75, 5);
+    });
+
+    it('clears stale weighted scores on recalculation', async () => {
+      const [t1] = await setupFourTeamBracket();
+      await calculateBracketRankings(bracketId);
+      expect(await getWeightedScore(t1)).toBeCloseTo(1.0, 5);
+
+      await testDb.db.run(
+        `UPDATE bracket_entries SET weighted_bracket_raw_score = 0.9999 WHERE team_id = ?`,
+        [t1],
+      );
+
+      await calculateBracketRankings(bracketId);
+      expect(await getWeightedScore(t1)).toBeCloseTo(1.0, 5);
+    });
+
+    it('returns null weighted score for unranked entries', async () => {
+      bracketId = await createBracketWithWeight(4, 0.5);
+
+      const t1 = await createTeam(601);
+      const t2 = await createTeam(602);
+      const t3 = await createTeam(603);
+
+      await addEntry(bracketId, t1, 1);
+      await addEntry(bracketId, t2, 2);
+      await addEntry(bracketId, t3, 3);
+      await addByeEntry(bracketId, 4);
+
+      await addSeedingRank(t1, 1);
+      await addSeedingRank(t2, 2);
+      await addSeedingRank(t3, 3);
+
+      await addCompletedGame({
+        bracketId,
+        gameNumber: 1,
+        bracketSide: 'finals',
+        roundNumber: 1,
+        winnerId: t1,
+        loserId: t2,
+      });
+
+      await calculateBracketRankings(bracketId);
+
+      expect(await getWeightedScore(t1)).not.toBeNull();
+      expect(await getWeightedScore(t2)).not.toBeNull();
+      expect(await getWeightedScore(t3)).toBeNull();
     });
   });
 });

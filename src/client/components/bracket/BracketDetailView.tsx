@@ -16,6 +16,7 @@ interface BracketDetailViewProps {
   entriesActions?: React.ReactNode;
   gamesActions?: React.ReactNode;
   rankings: BracketEntryWithRank[] | null;
+  rankingsWeight: number;
   rankingsLoading: boolean;
   onRefreshRankings: () => void;
 }
@@ -27,6 +28,7 @@ export default function BracketDetailView({
   entriesActions,
   gamesActions,
   rankings,
+  rankingsWeight,
   rankingsLoading,
   onRefreshRankings,
 }: BracketDetailViewProps) {
@@ -99,6 +101,7 @@ export default function BracketDetailView({
         <BracketRankingView
           bracketId={bracketDetail.id}
           rankings={rankings}
+          weight={rankingsWeight}
           loading={rankingsLoading}
           onRefresh={onRefreshRankings}
         />

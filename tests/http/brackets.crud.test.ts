@@ -83,7 +83,7 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.games).toHaveLength(1);
     });
 
-    it('does not expose final_rank or bracket_raw_score on public endpoint', async () => {
+    it('does not expose ranking scores on public endpoint', async () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
       const team = await seedTeam(testDb.db, {
@@ -92,7 +92,7 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score) VALUES (?, ?, 1, 0, 3, 0.75)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, 0, 3, 0.75, 0.75)`,
         [bracket.id, team.id],
       );
 
@@ -103,6 +103,7 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.entries).toHaveLength(1);
       expect('final_rank' in body.entries[0]).toBe(false);
       expect('bracket_raw_score' in body.entries[0]).toBe(false);
+      expect('weighted_bracket_raw_score' in body.entries[0]).toBe(false);
     });
 
     it('returns 404 for non-existent bracket', async () => {
@@ -116,7 +117,7 @@ describe('Brackets CRUD & Game Management', () => {
   // ==========================================================================
 
   describe('GET /brackets/:id/rankings', () => {
-    it('returns entries with final_rank and bracket_raw_score for authenticated admin', async () => {
+    it('returns entries with final_rank, bracket_raw_score, and weighted_bracket_raw_score for authenticated admin', async () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
       const team = await seedTeam(testDb.db, {
@@ -125,17 +126,22 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score) VALUES (?, ?, 1, 0, 2, 0.75)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, 0, 2, 0.75, 0.75)`,
         [bracket.id, team.id],
       );
 
       const res = await http.get(`${baseUrl}/brackets/${bracket.id}/rankings`);
       expect(res.status).toBe(200);
 
-      const entries = res.json as Record<string, unknown>[];
-      expect(entries).toHaveLength(1);
-      expect(entries[0].final_rank).toBe(2);
-      expect(entries[0].bracket_raw_score).toBe(0.75);
+      const body = res.json as {
+        weight: number;
+        entries: Record<string, unknown>[];
+      };
+      expect(body.weight).toBe(1);
+      expect(body.entries).toHaveLength(1);
+      expect(body.entries[0].final_rank).toBe(2);
+      expect(body.entries[0].bracket_raw_score).toBe(0.75);
+      expect(body.entries[0].weighted_bracket_raw_score).toBe(0.75);
     });
 
     it('returns 404 for non-existent bracket', async () => {

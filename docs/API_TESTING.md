@@ -644,9 +644,11 @@ SELECT be.*, t.team_number, t.team_name
 FROM bracket_entries be
 LEFT JOIN teams t ON be.team_id = t.id;
 
--- Bracket rankings with raw scores
-SELECT be.final_rank, be.bracket_raw_score, t.team_number, t.team_name
+-- Bracket rankings with raw and weighted scores
+SELECT be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+       b.weight AS bracket_weight, t.team_number, t.team_name
 FROM bracket_entries be
+JOIN brackets b ON be.bracket_id = b.id
 LEFT JOIN teams t ON be.team_id = t.id
 WHERE be.final_rank IS NOT NULL
 ORDER BY be.final_rank;

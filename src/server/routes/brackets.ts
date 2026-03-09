@@ -14,6 +14,7 @@ const ALLOWED_BRACKET_UPDATE_FIELDS = [
   'bracket_size',
   'actual_team_count',
   'status',
+  'weight',
 ];
 
 const ALLOWED_GAME_UPDATE_FIELDS = [
@@ -163,9 +164,10 @@ router.get(
       const { id } = req.params;
       const db = await getDatabase();
 
-      const bracket = await db.get('SELECT id FROM brackets WHERE id = ?', [
-        id,
-      ]);
+      const bracket = await db.get<{ id: number; weight: number }>(
+        'SELECT id, weight FROM brackets WHERE id = ?',
+        [id],
+      );
 
       if (!bracket) {
         return res.status(404).json({ error: 'Bracket not found' });
@@ -173,7 +175,8 @@ router.get(
 
       const entries = await db.all(
         `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
-                be.final_rank, be.bracket_raw_score, t.team_number, t.team_name, t.display_name
+                be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+                t.team_number, t.team_name, t.display_name
          FROM bracket_entries be
          LEFT JOIN teams t ON be.team_id = t.id
          WHERE be.bracket_id = ?
@@ -181,7 +184,7 @@ router.get(
         [id],
       );
 
-      res.json(entries);
+      res.json({ weight: bracket.weight, entries });
     } catch (error) {
       console.error('Error fetching bracket rankings:', error);
       res.status(500).json({ error: 'Failed to fetch bracket rankings' });
@@ -204,10 +207,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       bracket_size,
       actual_team_count,
       status,
+      weight,
       team_ids,
     } = req.body;
 
     const db = await getDatabase();
+
+    if (
+      weight !== undefined &&
+      (typeof weight !== 'number' || weight <= 0 || weight > 1)
+    ) {
+      return res
+        .status(400)
+        .json({ error: 'weight must be a number in (0, 1]' });
+    }
+    const bracketWeight: number = weight ?? 1.0;
 
     if (Array.isArray(team_ids) && team_ids.length > 0) {
       // New flow: create bracket from explicit team selection
@@ -311,14 +325,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       let bracketId: number | null = null;
       await db.transaction(async (tx) => {
         const br = await tx.run(
-          `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, created_by)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             event_id,
             name,
             bracketSize,
             actualTeamCount,
             status || 'setup',
+            bracketWeight,
             req.user?.id || null,
           ],
         );
@@ -492,14 +507,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     }
 
     const result = await db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         event_id,
         name,
         bracket_size,
         actual_team_count ?? null,
         status || 'setup',
+        bracketWeight,
         req.user?.id || null,
       ],
     );
@@ -527,6 +543,17 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    if (
+      req.body.weight !== undefined &&
+      (typeof req.body.weight !== 'number' ||
+        req.body.weight <= 0 ||
+        req.body.weight > 1)
+    ) {
+      return res
+        .status(400)
+        .json({ error: 'weight must be a number in (0, 1]' });
+    }
+
     const updates = Object.entries(req.body).filter(([key]) =>
       ALLOWED_BRACKET_UPDATE_FIELDS.includes(key),
     );
@@ -553,7 +580,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     console.error('Error updating bracket:', error);
     const errMsg = (error as Error).message || '';
     if (errMsg.includes('CHECK constraint failed')) {
-      return res.status(400).json({ error: 'Invalid status value' });
+      return res
+        .status(400)
+        .json({ error: 'Invalid field value (check constraint failed)' });
     }
     res.status(500).json({ error: 'Failed to update bracket' });
   }

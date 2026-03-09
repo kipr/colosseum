@@ -74,8 +74,8 @@ export async function calculateBracketRankings(
   }
 
   // 4. Get seeding ranks for tiebreaker (team_id -> seed_rank)
-  const bracket = await db.get<{ event_id: number }>(
-    'SELECT event_id FROM brackets WHERE id = ?',
+  const bracket = await db.get<{ event_id: number; weight: number }>(
+    'SELECT event_id, weight FROM brackets WHERE id = ?',
     [bracketId],
   );
   if (!bracket) {
@@ -127,9 +127,11 @@ export async function calculateBracketRankings(
   const n = entries.length;
   const teamToRank = new Map(rankedTeams.map((r) => [r.teamId, r.finalRank]));
 
+  const { weight } = bracket;
+
   await db.transaction(async (tx) => {
     await tx.run(
-      `UPDATE bracket_entries SET final_rank = NULL, bracket_raw_score = NULL WHERE bracket_id = ?`,
+      `UPDATE bracket_entries SET final_rank = NULL, bracket_raw_score = NULL, weighted_bracket_raw_score = NULL WHERE bracket_id = ?`,
       [bracketId],
     );
 
@@ -138,9 +140,10 @@ export async function calculateBracketRankings(
         const rank = teamToRank.get(entry.team_id);
         if (rank !== undefined) {
           const rawScore = n > 0 ? (n - rank + 1) / n : null;
+          const weightedScore = rawScore !== null ? rawScore * weight : null;
           await tx.run(
-            `UPDATE bracket_entries SET final_rank = ?, bracket_raw_score = ? WHERE id = ?`,
-            [rank, rawScore, entry.id],
+            `UPDATE bracket_entries SET final_rank = ?, bracket_raw_score = ?, weighted_bracket_raw_score = ? WHERE id = ?`,
+            [rank, rawScore, weightedScore, entry.id],
           );
         }
       }

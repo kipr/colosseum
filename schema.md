@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS brackets (
     actual_team_count INTEGER,                   -- Actual number of teams assigned (may be < bracket_size)
     status TEXT DEFAULT 'setup'
         CHECK (status IN ('setup', 'in_progress', 'completed')),
+    weight REAL NOT NULL DEFAULT 1.0             -- Bracket weight in (0, 1]; used to scale raw scores
+        CHECK (weight > 0 AND weight <= 1),
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -137,6 +139,7 @@ CREATE TABLE IF NOT EXISTS bracket_entries (
     is_bye BOOLEAN DEFAULT FALSE,                -- If this slot is a bye (no team)
     final_rank INTEGER,                         -- Official placement (1, 2, 3, 4, 5, 5, 7, 7... ties preserved)
     bracket_raw_score REAL,                     -- Normalized score: (n - rank + 1) / n where n = non-bye teams
+    weighted_bracket_raw_score REAL,            -- bracket_raw_score * bracket.weight
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(bracket_id, team_id),
     UNIQUE(bracket_id, seed_position),

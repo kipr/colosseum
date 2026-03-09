@@ -100,6 +100,7 @@ export default function BracketsTab() {
   const [generatingGames, setGeneratingGames] = useState(false);
 
   const [rankings, setRankings] = useState<BracketEntryWithRank[] | null>(null);
+  const [rankingsWeight, setRankingsWeight] = useState<number>(1);
   const [rankingsLoading, setRankingsLoading] = useState(false);
 
   const { confirm, ConfirmDialog } = useConfirm();
@@ -143,8 +144,12 @@ export default function BracketsTab() {
       }
       const data: BracketDetail = await detailRes.json();
       if (rankingsRes.ok) {
-        const rankingsData: BracketEntryWithRank[] = await rankingsRes.json();
-        data.rankings = rankingsData;
+        const rankingsBody = (await rankingsRes.json()) as {
+          weight: number;
+          entries: BracketEntryWithRank[];
+        };
+        data.rankings = rankingsBody.entries;
+        setRankingsWeight(rankingsBody.weight);
       }
       setBracketDetail(data);
     } catch (error) {
@@ -181,8 +186,12 @@ export default function BracketsTab() {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to fetch rankings');
-      const data: BracketEntryWithRank[] = await res.json();
-      setRankings(data);
+      const body = (await res.json()) as {
+        weight: number;
+        entries: BracketEntryWithRank[];
+      };
+      setRankings(body.entries);
+      setRankingsWeight(body.weight);
     } catch (error) {
       console.error('Error fetching bracket rankings:', error);
       toastRef.current.error('Failed to load rankings');
@@ -649,6 +658,7 @@ export default function BracketsTab() {
               entriesActions={renderEntriesActions()}
               gamesActions={renderGamesActions()}
               rankings={rankings}
+              rankingsWeight={rankingsWeight}
               rankingsLoading={rankingsLoading}
               onRefreshRankings={() => {
                 if (selectedBracketId) fetchRankings(selectedBracketId);
