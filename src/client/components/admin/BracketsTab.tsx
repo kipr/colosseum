@@ -18,6 +18,7 @@ interface BracketFormData {
   name: string;
   bracket_size: number;
   actual_team_count: string;
+  weight: string;
 }
 
 interface CreateModalTeam {
@@ -64,6 +65,7 @@ const defaultFormData: BracketFormData = {
   name: '',
   bracket_size: 8,
   actual_team_count: '',
+  weight: '1',
 };
 
 export default function BracketsTab() {
@@ -278,6 +280,7 @@ export default function BracketsTab() {
           event_id: selectedEventId,
           name: formData.name.trim(),
           team_ids: teamIds,
+          weight: formData.weight ? parseFloat(formData.weight) : undefined,
         }),
       });
 
@@ -339,6 +342,13 @@ export default function BracketsTab() {
         }
       } else {
         body.actual_team_count = null;
+      }
+
+      if (formData.weight) {
+        const w = parseFloat(formData.weight);
+        if (!isNaN(w) && w > 0 && w <= 1) {
+          body.weight = w;
+        }
       }
 
       const response = await fetch(`/brackets/${bracketDetail.id}`, {
@@ -519,6 +529,7 @@ export default function BracketsTab() {
       name: bracketDetail.name,
       bracket_size: bracketDetail.bracket_size,
       actual_team_count: bracketDetail.actual_team_count?.toString() || '',
+      weight: bracketDetail.weight?.toString() || '1',
     });
     setShowEditModal(true);
   };
@@ -706,6 +717,23 @@ export default function BracketsTab() {
                   placeholder="e.g., Main Bracket, Division A"
                   required
                   autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="bracket-weight">Weight</label>
+                <input
+                  id="bracket-weight"
+                  type="number"
+                  className="field-input"
+                  value={formData.weight}
+                  onChange={(e) =>
+                    setFormData({ ...formData, weight: e.target.value })
+                  }
+                  placeholder="1"
+                  min={0.01}
+                  max={1}
+                  step="any"
                 />
               </div>
 
@@ -1024,6 +1052,23 @@ export default function BracketsTab() {
                   placeholder={`1-${formData.bracket_size}`}
                   min={1}
                   max={formData.bracket_size}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-bracket-weight">Weight</label>
+                <input
+                  id="edit-bracket-weight"
+                  type="number"
+                  className="field-input"
+                  value={formData.weight}
+                  onChange={(e) =>
+                    setFormData({ ...formData, weight: e.target.value })
+                  }
+                  placeholder="1"
+                  min={0.01}
+                  max={1}
+                  step="any"
                 />
               </div>
 
