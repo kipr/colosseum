@@ -5,6 +5,7 @@ import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { calculateBracketRankings } from '../services/bracketRankings';
+import { isEventArchived } from '../utils/eventVisibility';
 
 const router = express.Router();
 
@@ -62,10 +63,13 @@ router.get(
   },
 );
 
-// GET /brackets/event/:eventId - List brackets for event (public)
+// GET /brackets/event/:eventId - List brackets for event (public; blocked for archived events)
 router.get('/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
+    if (await isEventArchived(eventId)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const db = await getDatabase();
 
     const brackets = await db.all(
@@ -105,7 +109,7 @@ router.get('/templates', async (req: Request, res: Response) => {
   }
 });
 
-// GET /brackets/:id - Get bracket with entries and games (public)
+// GET /brackets/:id - Get bracket with entries and games (public; blocked for archived events)
 // final_rank is intentionally excluded here; use GET /:id/rankings (admin) for that.
 router.get('/:id', async (req: Request, res: Response) => {
   try {
@@ -113,6 +117,10 @@ router.get('/:id', async (req: Request, res: Response) => {
     const db = await getDatabase();
 
     const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [id]);
+
+    if (bracket && (await isEventArchived(bracket.event_id))) {
+      return res.status(404).json({ error: 'Bracket not found' });
+    }
 
     if (!bracket) {
       return res.status(404).json({ error: 'Bracket not found' });

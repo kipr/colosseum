@@ -1,13 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import SeedingScoresTable, {
-  buildTeamRowData,
+import type {
   Team,
   SeedingScore,
   SeedingRanking,
 } from '../seeding/SeedingScoresTable';
-import SeedingRankingsTable from '../seeding/SeedingRankingsTable';
+import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 
 export default function SeedingTab() {
@@ -66,13 +65,6 @@ export default function SeedingTab() {
     loadData();
   }, [loadData]);
 
-  const teamRowData = buildTeamRowData(
-    teams,
-    scores,
-    rankings,
-    effectiveRounds,
-  );
-
   if (!selectedEventId) {
     return (
       <div className="seeding-tab">
@@ -96,19 +88,12 @@ export default function SeedingTab() {
           </p>
         </div>
       ) : (
-        <>
-          <SeedingScoresTable
-            teamRowData={teamRowData}
-            effectiveRounds={effectiveRounds}
-          />
-
-          <SeedingRankingsTable rankings={rankings} />
-
-          <div className="seeding-summary">
-            {teams.length} team{teams.length !== 1 ? 's' : ''} •{' '}
-            {rankings.filter((r) => r.seed_rank !== null).length} ranked
-          </div>
-        </>
+        <SeedingDisplay
+          teams={teams}
+          scores={scores}
+          rankings={rankings}
+          effectiveRounds={effectiveRounds}
+        />
       )}
 
       {toast.ToastContainer}

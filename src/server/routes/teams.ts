@@ -3,6 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
+import { isEventArchived } from '../utils/eventVisibility';
 
 const router = express.Router();
 
@@ -14,10 +15,13 @@ const ALLOWED_UPDATE_FIELDS = [
   'status',
 ];
 
-// GET /teams/event/:eventId - List teams for event (public for judges)
+// GET /teams/event/:eventId - List teams for event (public for judges/spectators; blocked for archived events)
 router.get('/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
+    if (await isEventArchived(eventId)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const { status } = req.query;
     const db = await getDatabase();
 

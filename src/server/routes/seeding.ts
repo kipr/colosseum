@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
+import { isEventArchived } from '../utils/eventVisibility';
 
 const router = express.Router();
 
@@ -30,10 +31,13 @@ router.get('/scores/team/:teamId', async (req: Request, res: Response) => {
   }
 });
 
-// GET /seeding/scores/event/:eventId - Get all scores for event (public for judges)
+// GET /seeding/scores/event/:eventId - Get all scores for event (public; blocked for archived events)
 router.get('/scores/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
+    if (await isEventArchived(eventId)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const db = await getDatabase();
 
     const scores = await db.all(
@@ -158,10 +162,13 @@ router.delete(
   },
 );
 
-// GET /seeding/rankings/event/:eventId - Get rankings for event (public)
+// GET /seeding/rankings/event/:eventId - Get rankings for event (public; blocked for archived events)
 router.get('/rankings/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
+    if (await isEventArchived(eventId)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const db = await getDatabase();
 
     const rankings = await db.all(
