@@ -859,11 +859,20 @@ export async function initializeSQLite(db: Database): Promise<void> {
       status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
       seeding_rounds INTEGER DEFAULT 3,
       score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
+      spectator_results_released INTEGER NOT NULL DEFAULT 0,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  try {
+    await db.exec(
+      `ALTER TABLE events ADD COLUMN spectator_results_released INTEGER NOT NULL DEFAULT 0`,
+    );
+  } catch {
+    // Column already exists
+  }
 
   // ============================================================================
   // TEAMS

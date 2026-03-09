@@ -1,6 +1,7 @@
-import express, { Response } from 'express';
+import express, { Request, Response } from 'express';
 import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import { areFinalScoresReleased } from '../utils/eventVisibility';
 
 const router = express.Router();
 
@@ -282,6 +283,56 @@ router.delete(
     }
   },
 );
+
+// GET /documentation-scores/event/:eventId/public - Public view of documentation scores
+router.get('/event/:eventId/public', async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    if (!(await areFinalScoresReleased(eventId))) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const db = await getDatabase();
+
+    const categories = await db.all(
+      `SELECT dc.id, dc.name, dc.weight, dc.max_score, edc.ordinal
+         FROM event_documentation_categories edc
+         JOIN documentation_categories dc ON edc.category_id = dc.id
+         WHERE edc.event_id = ?
+         ORDER BY edc.ordinal ASC`,
+      [eventId],
+    );
+
+    const scores = await db.all(
+      `SELECT ds.team_id, ds.overall_score, t.team_number, t.team_name, t.display_name
+         FROM documentation_scores ds
+         JOIN teams t ON ds.team_id = t.id
+         WHERE ds.event_id = ?
+         ORDER BY t.team_number ASC`,
+      [eventId],
+    );
+
+    for (const row of scores) {
+      const subScores = await db.all(
+        `SELECT dss.category_id, dc.name as category_name, edc.ordinal,
+                  dc.max_score, dc.weight, dss.score
+           FROM documentation_sub_scores dss
+           JOIN documentation_scores ds2 ON dss.documentation_score_id = ds2.id
+           JOIN documentation_categories dc ON dss.category_id = dc.id
+           JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
+           WHERE ds2.event_id = ? AND ds2.team_id = ?
+           ORDER BY edc.ordinal ASC`,
+        [eventId, eventId, row.team_id],
+      );
+      (row as Record<string, unknown>).sub_scores = subScores;
+    }
+
+    res.json({ categories, scores });
+  } catch (error) {
+    console.error('Error fetching public documentation scores:', error);
+    res.status(500).json({ error: 'Failed to fetch documentation scores' });
+  }
+});
 
 // GET /documentation-scores/event/:eventId
 router.get(

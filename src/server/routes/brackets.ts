@@ -5,7 +5,10 @@ import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { calculateBracketRankings } from '../services/bracketRankings';
-import { isEventArchived } from '../utils/eventVisibility';
+import {
+  isEventArchived,
+  areFinalScoresReleased,
+} from '../utils/eventVisibility';
 
 const router = express.Router();
 
@@ -160,6 +163,44 @@ router.get('/:id', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching bracket:', error);
     res.status(500).json({ error: 'Failed to fetch bracket' });
+  }
+});
+
+// GET /brackets/:id/rankings/public - Public bracket rankings (released completed events only)
+router.get('/:id/rankings/public', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+
+    const bracket = await db.get<{
+      id: number;
+      weight: number;
+      event_id: number;
+    }>('SELECT id, weight, event_id FROM brackets WHERE id = ?', [id]);
+
+    if (!bracket) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    if (!(await areFinalScoresReleased(bracket.event_id))) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const entries = await db.all(
+      `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.is_bye,
+                be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+                t.team_number, t.team_name, t.display_name
+         FROM bracket_entries be
+         LEFT JOIN teams t ON be.team_id = t.id
+         WHERE be.bracket_id = ?
+         ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
+      [id],
+    );
+
+    res.json({ weight: bracket.weight, entries });
+  } catch (error) {
+    console.error('Error fetching public bracket rankings:', error);
+    res.status(500).json({ error: 'Failed to fetch bracket rankings' });
   }
 });
 

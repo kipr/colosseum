@@ -7,7 +7,7 @@ interface BracketRankingViewProps {
   rankings: BracketEntryWithRank[] | null;
   weight: number;
   loading: boolean;
-  onRefresh: () => void;
+  onRefresh?: () => void;
 }
 
 function getRankLabel(rank: number): string {
@@ -33,7 +33,7 @@ export default function BracketRankingView({
   const refreshedRef = useRef(false);
 
   useEffect(() => {
-    if (!refreshedRef.current) {
+    if (!refreshedRef.current && onRefresh) {
       refreshedRef.current = true;
       onRefresh();
     }

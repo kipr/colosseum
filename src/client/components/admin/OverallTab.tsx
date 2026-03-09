@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import { Bracket } from '../../types/brackets';
+import OverallScoresDisplay from '../overall/OverallScoresDisplay';
+import type { OverallRow } from '../overall/OverallScoresDisplay';
 import './DocumentationTab.css';
 
 interface Team {
@@ -25,20 +27,6 @@ interface SeedingRanking {
 interface BracketRankingEntry {
   team_id: number | null;
   weighted_bracket_raw_score: number | null;
-}
-
-interface OverallRow {
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  doc_score: number;
-  raw_seed_score: number;
-  weighted_de_score: number;
-  total: number;
-}
-
-function formatScore(val: number): string {
-  return val.toFixed(4);
 }
 
 export default function OverallTab() {
@@ -74,7 +62,9 @@ export default function OverallTab() {
         fetch(`/seeding/rankings/event/${selectedEventId}`, {
           credentials: 'include',
         }),
-        fetch(`/brackets/event/${selectedEventId}`, { credentials: 'include' }),
+        fetch(`/brackets/event/${selectedEventId}`, {
+          credentials: 'include',
+        }),
       ]);
 
       if (!teamsRes.ok) throw new Error('Failed to fetch teams');
@@ -143,7 +133,6 @@ export default function OverallTab() {
     const doc = docByTeam.get(team.id) ?? 0;
     const seed = seedByTeam.get(team.id) ?? 0;
     const de = weightedDeByTeam.get(team.id) ?? 0;
-    const total = doc + seed + de;
     return {
       team_id: team.id,
       team_number: team.team_number,
@@ -151,11 +140,9 @@ export default function OverallTab() {
       doc_score: doc,
       raw_seed_score: seed,
       weighted_de_score: de,
-      total,
+      total: doc + seed + de,
     };
   });
-
-  const sortedRows = [...rows].sort((a, b) => b.total - a.total);
 
   if (!selectedEventId) {
     return (
@@ -172,50 +159,7 @@ export default function OverallTab() {
   return (
     <div className="documentation-tab">
       {loading && <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>}
-
-      <div className="card documentation-section">
-        <h3>Overall Scores</h3>
-        <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
-          Combined score per team: Documentation + Raw Seeding (0–1) + Weighted
-          DE. Sorted by total descending.
-        </p>
-        <div className="doc-scores-table-wrapper">
-          <table className="doc-calculator-table">
-            <thead>
-              <tr>
-                <th>Team #</th>
-                <th>Team Name</th>
-                <th>Doc Score</th>
-                <th className="doc-op">+</th>
-                <th>Raw Seeding</th>
-                <th className="doc-op">+</th>
-                <th>Weighted DE</th>
-                <th className="doc-op">=</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedRows.map((row) => (
-                <tr key={row.team_id}>
-                  <td>{row.team_number}</td>
-                  <td>{row.team_name}</td>
-                  <td>{formatScore(row.doc_score)}</td>
-                  <td className="doc-op">+</td>
-                  <td>{formatScore(row.raw_seed_score)}</td>
-                  <td className="doc-op">+</td>
-                  <td>{formatScore(row.weighted_de_score)}</td>
-                  <td className="doc-op">=</td>
-                  <td>
-                    <strong style={{ color: 'var(--primary-color)' }}>
-                      {formatScore(row.total)}
-                    </strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <OverallScoresDisplay rows={rows} />
     </div>
   );
 }

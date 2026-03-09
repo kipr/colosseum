@@ -2,13 +2,25 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import Navbar from '../components/Navbar';
 import SeedingDisplay from '../components/seeding/SeedingDisplay';
 import BracketLikeView from '../components/bracket/BracketLikeView';
+import BracketRankingView from '../components/bracket/BracketRankingView';
+import DocumentationScoresDisplay from '../components/documentation/DocumentationScoresDisplay';
+import OverallScoresDisplay from '../components/overall/OverallScoresDisplay';
 import { getBracketWinner } from '../components/bracket/bracketUtils';
 import type {
   Team,
   SeedingScore,
   SeedingRanking,
 } from '../components/seeding/SeedingScoresTable';
-import type { Bracket, BracketGame } from '../types/brackets';
+import type {
+  Bracket,
+  BracketGame,
+  BracketEntryWithRank,
+} from '../types/brackets';
+import type {
+  DocCategoryDisplay,
+  DocScoreDisplay,
+} from '../components/documentation/DocumentationScoresDisplay';
+import type { OverallRow } from '../components/overall/OverallScoresDisplay';
 import {
   formatEventDate,
   getEventStatusClass,
@@ -24,9 +36,15 @@ interface PublicEvent {
   event_date: string | null;
   location: string | null;
   seeding_rounds: number;
+  final_scores_available: boolean;
 }
 
-type SpectatorTab = 'seeding' | 'bracket';
+type SpectatorTab =
+  | 'seeding'
+  | 'bracket'
+  | 'documentation'
+  | 'bracketRankings'
+  | 'overall';
 
 export default function Spectator() {
   const [events, setEvents] = useState<PublicEvent[]>([]);
@@ -49,10 +67,33 @@ export default function Spectator() {
   const [bracketGames, setBracketGames] = useState<BracketGame[]>([]);
   const [bracketLoading, setBracketLoading] = useState(false);
 
+  // Documentation state (lazy-loaded)
+  const [docCategories, setDocCategories] = useState<DocCategoryDisplay[]>([]);
+  const [docScores, setDocScores] = useState<DocScoreDisplay[]>([]);
+  const [docLoading, setDocLoading] = useState(false);
+  const [docLoaded, setDocLoaded] = useState(false);
+
+  // Bracket rankings state (lazy-loaded)
+  const [bracketRankings, setBracketRankings] = useState<
+    BracketEntryWithRank[] | null
+  >(null);
+  const [bracketRankingsWeight, setBracketRankingsWeight] = useState(1);
+  const [bracketRankingsLoading, setBracketRankingsLoading] = useState(false);
+  const [bracketRankingsLoadedForId, setBracketRankingsLoadedForId] = useState<
+    number | null
+  >(null);
+
+  // Overall state (lazy-loaded)
+  const [overallRows, setOverallRows] = useState<OverallRow[]>([]);
+  const [overallLoading, setOverallLoading] = useState(false);
+  const [overallLoaded, setOverallLoaded] = useState(false);
+
   const selectedEvent = useMemo(
     () => events.find((e) => e.id === selectedEventId) ?? null,
     [events, selectedEventId],
   );
+
+  const finalScoresAvailable = selectedEvent?.final_scores_available ?? false;
 
   const effectiveRounds = useMemo(
     () =>
@@ -80,6 +121,17 @@ export default function Spectator() {
       }
     })();
   }, []);
+
+  // Clear lazy-loaded state when event changes
+  useEffect(() => {
+    setDocLoaded(false);
+    setDocCategories([]);
+    setDocScores([]);
+    setOverallLoaded(false);
+    setOverallRows([]);
+    setBracketRankings(null);
+    setBracketRankingsLoadedForId(null);
+  }, [selectedEventId]);
 
   // Load seeding data when event changes
   const loadSeeding = useCallback(async () => {
@@ -158,6 +210,76 @@ export default function Spectator() {
     loadBracketGames();
   }, [loadBracketGames]);
 
+  // Lazy-load documentation scores when tab is opened
+  useEffect(() => {
+    if (
+      activeTab !== 'documentation' ||
+      !selectedEventId ||
+      !finalScoresAvailable ||
+      docLoaded
+    )
+      return;
+    setDocLoading(true);
+    fetch(`/documentation-scores/event/${selectedEventId}/public`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        setDocCategories(data.categories);
+        setDocScores(data.scores);
+        setDocLoaded(true);
+      })
+      .catch((err) => console.error('Error loading documentation scores:', err))
+      .finally(() => setDocLoading(false));
+  }, [activeTab, selectedEventId, finalScoresAvailable, docLoaded]);
+
+  // Lazy-load bracket rankings when tab is opened
+  useEffect(() => {
+    if (
+      activeTab !== 'bracketRankings' ||
+      !selectedBracketId ||
+      !finalScoresAvailable ||
+      bracketRankingsLoadedForId === selectedBracketId
+    )
+      return;
+    setBracketRankingsLoading(true);
+    fetch(`/brackets/${selectedBracketId}/rankings/public`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        setBracketRankings(data.entries);
+        setBracketRankingsWeight(data.weight);
+        setBracketRankingsLoadedForId(selectedBracketId);
+      })
+      .catch((err) => console.error('Error loading bracket rankings:', err))
+      .finally(() => setBracketRankingsLoading(false));
+  }, [
+    activeTab,
+    selectedBracketId,
+    finalScoresAvailable,
+    bracketRankingsLoadedForId,
+  ]);
+
+  // Lazy-load overall scores when tab is opened
+  useEffect(() => {
+    if (
+      activeTab !== 'overall' ||
+      !selectedEventId ||
+      !finalScoresAvailable ||
+      overallLoaded
+    )
+      return;
+    setOverallLoading(true);
+    fetch(`/events/${selectedEventId}/overall/public`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        const data = await res.json();
+        setOverallRows(data);
+        setOverallLoaded(true);
+      })
+      .catch((err) => console.error('Error loading overall scores:', err))
+      .finally(() => setOverallLoading(false));
+  }, [activeTab, selectedEventId, finalScoresAvailable, overallLoaded]);
+
   const handleEventChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = Number(e.target.value);
     setSelectedEventId(id || null);
@@ -168,6 +290,24 @@ export default function Spectator() {
     () => (bracketGames.length > 0 ? getBracketWinner(bracketGames) : null),
     [bracketGames],
   );
+
+  const bracketSelector = (idPrefix: string) =>
+    brackets.length > 1 ? (
+      <div className="spectator-bracket-selector">
+        <label htmlFor={`${idPrefix}-bracket`}>Bracket</label>
+        <select
+          id={`${idPrefix}-bracket`}
+          value={selectedBracketId ?? ''}
+          onChange={(e) => setSelectedBracketId(Number(e.target.value) || null)}
+        >
+          {brackets.map((b) => (
+            <option key={b.id} value={b.id}>
+              {b.name}
+            </option>
+          ))}
+        </select>
+      </div>
+    ) : null;
 
   return (
     <div className="app">
@@ -233,6 +373,28 @@ export default function Spectator() {
               >
                 Bracket
               </button>
+              {finalScoresAvailable && (
+                <>
+                  <button
+                    className={`spectator-tab-btn ${activeTab === 'documentation' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('documentation')}
+                  >
+                    Documentation
+                  </button>
+                  <button
+                    className={`spectator-tab-btn ${activeTab === 'bracketRankings' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('bracketRankings')}
+                  >
+                    Bracket Rankings
+                  </button>
+                  <button
+                    className={`spectator-tab-btn ${activeTab === 'overall' ? 'active' : ''}`}
+                    onClick={() => setActiveTab('overall')}
+                  >
+                    Overall
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Tab content */}
@@ -261,24 +423,7 @@ export default function Spectator() {
                   </div>
                 ) : (
                   <>
-                    {brackets.length > 1 && (
-                      <div className="spectator-bracket-selector">
-                        <label htmlFor="spectator-bracket">Bracket</label>
-                        <select
-                          id="spectator-bracket"
-                          value={selectedBracketId ?? ''}
-                          onChange={(e) =>
-                            setSelectedBracketId(Number(e.target.value) || null)
-                          }
-                        >
-                          {brackets.map((b) => (
-                            <option key={b.id} value={b.id}>
-                              {b.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    {bracketSelector('spectator')}
 
                     {bracketLoading ? (
                       <p>Loading bracket...</p>
@@ -307,6 +452,51 @@ export default function Spectator() {
                       </div>
                     )}
                   </>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'documentation' && finalScoresAvailable && (
+              <div>
+                {docLoading ? (
+                  <p>Loading documentation scores...</p>
+                ) : (
+                  <DocumentationScoresDisplay
+                    categories={docCategories}
+                    scores={docScores}
+                  />
+                )}
+              </div>
+            )}
+
+            {activeTab === 'bracketRankings' && finalScoresAvailable && (
+              <div>
+                {brackets.length === 0 ? (
+                  <div className="card">
+                    <p style={{ color: 'var(--secondary-color)' }}>
+                      No brackets available for this event.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {bracketSelector('spectator-rankings')}
+                    <BracketRankingView
+                      bracketId={selectedBracketId ?? 0}
+                      rankings={bracketRankings}
+                      weight={bracketRankingsWeight}
+                      loading={bracketRankingsLoading}
+                    />
+                  </>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'overall' && finalScoresAvailable && (
+              <div>
+                {overallLoading ? (
+                  <p>Loading overall scores...</p>
+                ) : (
+                  <OverallScoresDisplay rows={overallRows} />
                 )}
               </div>
             )}

@@ -18,7 +18,8 @@ interface BracketDetailViewProps {
   rankings: BracketEntryWithRank[] | null;
   rankingsWeight: number;
   rankingsLoading: boolean;
-  onRefreshRankings: () => void;
+  onRefreshRankings?: () => void;
+  allowedModes?: DetailViewMode[];
 }
 
 export default function BracketDetailView({
@@ -31,36 +32,40 @@ export default function BracketDetailView({
   rankingsWeight,
   rankingsLoading,
   onRefreshRankings,
+  allowedModes,
 }: BracketDetailViewProps) {
-  const [detailViewMode, setDetailViewMode] =
-    useState<DetailViewMode>('bracket');
+  const modes: DetailViewMode[] = allowedModes ?? [
+    'bracket',
+    'ranking',
+    'management',
+  ];
+  const [detailViewMode, setDetailViewMode] = useState<DetailViewMode>(
+    modes[0],
+  );
+
+  const modeLabels: Record<DetailViewMode, string> = {
+    bracket: 'Bracket View',
+    ranking: 'Ranking View',
+    management: 'Management View',
+  };
 
   return (
     <>
       <div className="brackets-controls">
         <button className="btn btn-secondary" onClick={onBack}>
-          ← Back to List
+          &larr; Back to List
         </button>
-        {bracketDetail.games.length > 0 && (
+        {bracketDetail.games.length > 0 && modes.length > 1 && (
           <div className="view-mode-toggle">
-            <button
-              className={`btn ${detailViewMode === 'bracket' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDetailViewMode('bracket')}
-            >
-              Bracket View
-            </button>
-            <button
-              className={`btn ${detailViewMode === 'ranking' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDetailViewMode('ranking')}
-            >
-              Ranking View
-            </button>
-            <button
-              className={`btn ${detailViewMode === 'management' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setDetailViewMode('management')}
-            >
-              Management View
-            </button>
+            {modes.map((mode) => (
+              <button
+                key={mode}
+                className={`btn ${detailViewMode === mode ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setDetailViewMode(mode)}
+              >
+                {modeLabels[mode]}
+              </button>
+            ))}
           </div>
         )}
       </div>

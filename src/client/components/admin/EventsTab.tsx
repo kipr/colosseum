@@ -40,6 +40,8 @@ export default function EventsTab() {
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
 
+  const [togglingRelease, setTogglingRelease] = useState(false);
+
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
@@ -156,6 +158,40 @@ export default function EventsTab() {
       toast.error(
         error instanceof Error ? error.message : 'Failed to update status',
       );
+    }
+  };
+
+  const handleToggleResultsRelease = async (event: Event) => {
+    const releasing = !event.spectator_results_released;
+    setTogglingRelease(true);
+    try {
+      const response = await fetch(`/events/${event.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          spectator_results_released: releasing ? 1 : 0,
+        }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update release state');
+      }
+      toast.success(
+        releasing
+          ? 'Final scores released to spectators!'
+          : 'Final scores hidden from spectators.',
+      );
+      await refreshEvents();
+    } catch (error) {
+      console.error('Error toggling results release:', error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to toggle results release',
+      );
+    } finally {
+      setTogglingRelease(false);
     }
   };
 
@@ -394,6 +430,24 @@ export default function EventsTab() {
                   </button>
                 ))}
               </div>
+              {selectedEvent.status === 'complete' && (
+                <button
+                  className={`btn ${selectedEvent.spectator_results_released ? 'btn-warning' : 'btn-success'}`}
+                  onClick={() => handleToggleResultsRelease(selectedEvent)}
+                  disabled={togglingRelease}
+                  title={
+                    selectedEvent.spectator_results_released
+                      ? 'Hide final score tabs from spectators'
+                      : 'Release documentation, bracket rankings, and overall scores to spectators'
+                  }
+                >
+                  {togglingRelease
+                    ? 'Updating...'
+                    : selectedEvent.spectator_results_released
+                      ? 'Hide Final Scores'
+                      : 'Release Final Scores'}
+                </button>
+              )}
             </div>
           </div>
         </div>
