@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 
@@ -52,8 +52,8 @@ router.get('/scores/event/:eventId', async (req: Request, res: Response) => {
   }
 });
 
-// POST /seeding/scores - Submit seeding score (public for judges)
-router.post('/scores', async (req: Request, res: Response) => {
+// POST /seeding/scores - Submit seeding score (admin only)
+router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { team_id, round_number, score, score_submission_id } = req.body;
 

@@ -156,14 +156,14 @@ describe('Seeding Routes', () => {
   });
 
   // ==========================================================================
-  // POST /seeding/scores (public)
+  // POST /seeding/scores (admin only)
   // ==========================================================================
 
   describe('POST /seeding/scores', () => {
     let server: TestServerHandle;
 
     beforeEach(async () => {
-      const app = createTestApp();
+      const app = createTestApp({ user: { id: 1, is_admin: true } });
       app.use('/seeding', seedingRoutes);
       server = await startServer(app);
     });

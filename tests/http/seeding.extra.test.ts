@@ -26,7 +26,7 @@ describe('Seeding Routes - additional coverage', () => {
     testDb = await createTestDb();
     __setTestDatabaseAdapter(testDb.db);
     const user = await seedUser(testDb.db);
-    const app = createTestApp({ user: { id: user.id, is_admin: false } });
+    const app = createTestApp({ user: { id: user.id, is_admin: true } });
     app.use('/seeding', seedingRoutes);
     server = await startServer(app);
   });
