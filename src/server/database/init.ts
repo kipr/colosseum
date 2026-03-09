@@ -732,21 +732,13 @@ export async function initializeSQLite(db: Database): Promise<void> {
       name TEXT,
       access_token TEXT,
       refresh_token TEXT,
+      token_expires_at INTEGER,
       is_admin BOOLEAN DEFAULT 0,
       last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
-  // Add last_activity column if it doesn't exist (migration)
-  try {
-    await db.exec(
-      `ALTER TABLE users ADD COLUMN last_activity DATETIME DEFAULT CURRENT_TIMESTAMP`,
-    );
-  } catch {
-    // Column might already exist
-  }
 
   // Spreadsheet configurations
   await db.exec(`
@@ -756,7 +748,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       spreadsheet_id TEXT NOT NULL,
       spreadsheet_name TEXT,
       sheet_name TEXT,
-      sheet_purpose TEXT,
+      sheet_purpose TEXT DEFAULT 'scores',
       is_active BOOLEAN DEFAULT 1,
       auto_accept BOOLEAN DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -764,34 +756,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )
   `);
-
-  // Add sheet_purpose column if it doesn't exist
-  try {
-    await db.exec(
-      `ALTER TABLE spreadsheet_configs ADD COLUMN sheet_purpose TEXT DEFAULT 'scores'`,
-    );
-    console.log('✅ Added sheet_purpose column to spreadsheet_configs');
-  } catch {
-    // Column already exists
-  }
-
-  // Add auto_accept column if it doesn't exist
-  try {
-    await db.exec(
-      `ALTER TABLE spreadsheet_configs ADD COLUMN auto_accept BOOLEAN DEFAULT 0`,
-    );
-    console.log('✅ Added auto_accept column to spreadsheet_configs');
-  } catch {
-    // Column already exists
-  }
-
-  // Add token_expires_at column to users table
-  try {
-    await db.exec(`ALTER TABLE users ADD COLUMN token_expires_at INTEGER`);
-    console.log('✅ Added token_expires_at column to users');
-  } catch {
-    // Column already exists
-  }
 
   // Scoresheet field templates
   await db.exec(`
@@ -807,45 +771,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
-  // Migration: Remove type column if it exists
-  try {
-    const tableInfo = await db.all(
-      'PRAGMA table_info(scoresheet_field_templates)',
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasTypeColumn = tableInfo.some((col: any) => col.name === 'type');
-
-    if (hasTypeColumn) {
-      console.log(
-        '⚙️ Migrating scoresheet_field_templates to remove type column...',
-      );
-      await db.exec(`
-        CREATE TABLE scoresheet_field_templates_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          description TEXT,
-          fields_json TEXT NOT NULL,
-          created_by INTEGER,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
-        );
-        INSERT INTO scoresheet_field_templates_new (id, name, description, fields_json, created_by, created_at, updated_at)
-        SELECT id, name, description, fields_json, created_by, created_at, updated_at 
-        FROM scoresheet_field_templates;
-        DROP TABLE scoresheet_field_templates;
-        ALTER TABLE scoresheet_field_templates_new RENAME TO scoresheet_field_templates;
-      `);
-      console.log('✅ Scoresheet field templates table migrated successfully');
-    } else {
-      console.log(
-        '✅ Scoresheet field templates table ready (no migration needed)',
-      );
-    }
-  } catch {
-    console.log('✅ Scoresheet field templates table ready');
-  }
-
   // Scoresheet templates
   await db.exec(`
     CREATE TABLE IF NOT EXISTS scoresheet_templates (
@@ -854,34 +779,14 @@ export async function initializeSQLite(db: Database): Promise<void> {
       description TEXT,
       schema TEXT NOT NULL,
       access_code TEXT NOT NULL,
-      created_by INTEGER,
+      spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       is_active BOOLEAN DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
-
-  // Add access_code column if it doesn't exist
-  try {
-    await db.exec(
-      `ALTER TABLE scoresheet_templates ADD COLUMN access_code TEXT`,
-    );
-  } catch {
-    /* Column already exists */
-  }
-
-  // Add spreadsheet_config_id column if it doesn't exist
-  try {
-    await db.exec(
-      `ALTER TABLE scoresheet_templates ADD COLUMN spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id)`,
-    );
-    console.log(
-      '✅ Added spreadsheet_config_id column to scoresheet_templates',
-    );
-  } catch {
-    /* Column already exists */
-  }
 
   // Score submissions (enhanced with event/bracket context from spec)
   // spreadsheet_config_id nullable for DB-backed (event-scoped) scores
@@ -911,126 +816,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
       FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
-
-  // Update score_submissions if needed (legacy migration for review columns)
-  try {
-    const tableInfo = await db.all('PRAGMA table_info(score_submissions)');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const hasStatus = tableInfo.some((col: any) => col.name === 'status');
-    const hasReviewedBy = tableInfo.some(
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (col: any) => col.name === 'reviewed_by',
-    );
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const userIdColumn = tableInfo.find((col: any) => col.name === 'user_id');
-
-    if (
-      !hasStatus ||
-      !hasReviewedBy ||
-      (userIdColumn && userIdColumn.notnull === 1)
-    ) {
-      // Full rebuild preserving all columns including event-scoped and game_queue_id
-      await db.exec(`
-        CREATE TABLE score_submissions_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER,
-          template_id INTEGER NOT NULL,
-          spreadsheet_config_id INTEGER NOT NULL,
-          participant_name TEXT,
-          match_id TEXT,
-          score_data TEXT NOT NULL,
-          submitted_to_sheet BOOLEAN DEFAULT 0,
-          status TEXT DEFAULT 'pending',
-          reviewed_by INTEGER,
-          reviewed_at DATETIME,
-          event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
-          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE SET NULL,
-          seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
-          score_type TEXT,
-          game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
-          FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
-          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
-        );
-        INSERT INTO score_submissions_new (id, user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, submitted_to_sheet, created_at, updated_at)
-        SELECT id, user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, submitted_to_sheet, created_at, updated_at FROM score_submissions;
-        DROP TABLE score_submissions;
-        ALTER TABLE score_submissions_new RENAME TO score_submissions;
-      `);
-      console.log('✅ Updated score_submissions table with review columns');
-    }
-  } catch {
-    /* Migration error */
-  }
-
-  // Add game_queue_id column if it doesn't exist (Phase 6 migration)
-  try {
-    await db.exec(
-      `ALTER TABLE score_submissions ADD COLUMN game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL`,
-    );
-    console.log('✅ Added game_queue_id column to score_submissions');
-  } catch {
-    /* Column already exists */
-  }
-
-  // Make spreadsheet_config_id nullable for DB-backed scores (event-scoped)
-  try {
-    const tableInfo = await db.all<{ name: string; notnull: number }>(
-      'PRAGMA table_info(score_submissions)',
-    );
-    const configCol = tableInfo.find((c) => c.name === 'spreadsheet_config_id');
-    if (configCol && configCol.notnull === 1) {
-      await db.exec(`
-        CREATE TABLE score_submissions_db_backend (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id INTEGER,
-          template_id INTEGER NOT NULL,
-          spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id) ON DELETE SET NULL,
-          participant_name TEXT,
-          match_id TEXT,
-          score_data TEXT NOT NULL,
-          submitted_to_sheet BOOLEAN DEFAULT 0,
-          status TEXT DEFAULT 'pending',
-          reviewed_by INTEGER,
-          reviewed_at DATETIME,
-          event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
-          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE SET NULL,
-          seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
-          score_type TEXT,
-          game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
-          FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
-          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
-        );
-        INSERT INTO score_submissions_db_backend SELECT * FROM score_submissions;
-        DROP TABLE score_submissions;
-        ALTER TABLE score_submissions_db_backend RENAME TO score_submissions;
-      `);
-      console.log(
-        '✅ Made spreadsheet_config_id nullable for DB-backed scores',
-      );
-    }
-  } catch {
-    /* Migration error or already applied */
-  }
-
-  // ============================================================================
-  // ONE-TIME MIGRATION: Add score_accept_mode to events. Remove after first run.
-  // ============================================================================
-  try {
-    await db.exec(
-      `ALTER TABLE events ADD COLUMN score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all'))`,
-    );
-    console.log('✅ Added score_accept_mode column to events');
-  } catch {
-    /* Column already exists */
-  }
 
   // Active sessions
   await db.exec(`
@@ -1165,92 +950,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
-  // Migration: documentation_score_categories -> documentation_categories + event_documentation_categories
-  try {
-    const tables = await db.all(
-      "SELECT name FROM sqlite_master WHERE type='table' AND name='documentation_score_categories'",
-    );
-    if (tables.length > 0) {
-      console.log(
-        '⚙️ Migrating documentation_score_categories to many-to-many schema...',
-      );
-      const oldRows = await db.all(
-        'SELECT id, event_id, ordinal, name, weight, max_score FROM documentation_score_categories',
-      );
-      const oldIdToNewCategoryId = new Map<number, number>();
-
-      for (const row of oldRows as {
-        id: number;
-        event_id: number;
-        ordinal: number;
-        name: string;
-        weight: number;
-        max_score: number;
-      }[]) {
-        const existing = await db.get(
-          'SELECT id FROM documentation_categories WHERE name = ? AND weight = ? AND max_score = ?',
-          [row.name, row.weight, row.max_score],
-        );
-        let newCategoryId: number;
-        if (existing) {
-          newCategoryId = (existing as { id: number }).id;
-        } else {
-          const insert = await db.run(
-            'INSERT INTO documentation_categories (name, weight, max_score) VALUES (?, ?, ?)',
-            [row.name, row.weight, row.max_score],
-          );
-          newCategoryId = insert.lastID!;
-        }
-        oldIdToNewCategoryId.set(row.id, newCategoryId);
-        await db.run(
-          'INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, ?)',
-          [row.event_id, newCategoryId, row.ordinal],
-        );
-      }
-
-      // Recreate documentation_sub_scores with FK to documentation_categories
-      await db.exec(`
-        CREATE TABLE documentation_sub_scores_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          documentation_score_id INTEGER NOT NULL
-            REFERENCES documentation_scores(id) ON DELETE CASCADE,
-          category_id INTEGER NOT NULL
-            REFERENCES documentation_categories(id) ON DELETE CASCADE,
-          score REAL NOT NULL,
-          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          UNIQUE(documentation_score_id, category_id)
-        )
-      `);
-      const subRows = await db.all(
-        'SELECT id, documentation_score_id, category_id, score, created_at FROM documentation_sub_scores',
-      );
-      for (const sub of subRows as {
-        id: number;
-        documentation_score_id: number;
-        category_id: number;
-        score: number;
-        created_at: string;
-      }[]) {
-        const newCatId = oldIdToNewCategoryId.get(sub.category_id);
-        if (newCatId != null) {
-          await db.run(
-            'INSERT INTO documentation_sub_scores_new (documentation_score_id, category_id, score, created_at) VALUES (?, ?, ?, ?)',
-            [sub.documentation_score_id, newCatId, sub.score, sub.created_at],
-          );
-        }
-      }
-      await db.exec('DROP TABLE documentation_sub_scores');
-      await db.exec(
-        'ALTER TABLE documentation_sub_scores_new RENAME TO documentation_sub_scores',
-      );
-      await db.exec('DROP TABLE documentation_score_categories');
-      console.log('✅ Documentation categories migration complete');
-    }
-  } catch (err) {
-    console.error('Documentation categories migration error:', err);
-    throw err;
-  }
-
   // Documentation scores - one row per team per event (overall score + metadata)
   await db.exec(`
     CREATE TABLE IF NOT EXISTS documentation_scores (
@@ -1358,22 +1057,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
       UNIQUE(bracket_id, game_number)
     )
   `);
-
-  // Add final_rank column to bracket_entries if it doesn't exist (migration)
-  try {
-    await db.exec(`ALTER TABLE bracket_entries ADD COLUMN final_rank INTEGER`);
-  } catch {
-    // Column already exists
-  }
-
-  // Add bracket_raw_score column to bracket_entries if it doesn't exist (migration)
-  try {
-    await db.exec(
-      `ALTER TABLE bracket_entries ADD COLUMN bracket_raw_score REAL`,
-    );
-  } catch {
-    // Column already exists
-  }
 
   // ============================================================================
   // SCORE SUBMISSIONS (Enhanced from existing)
