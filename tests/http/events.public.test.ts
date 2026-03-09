@@ -1,6 +1,6 @@
 /**
- * HTTP route tests for public event endpoints.
- * Verifies GET /events/public and GET /events/:id/public.
+ * HTTP route tests for admin-only event endpoints.
+ * Verifies GET /events/public and GET /events/:id/public require admin.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
@@ -11,10 +11,10 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { seedEvent } from './helpers/seed';
+import { seedEvent, seedUser } from './helpers/seed';
 import eventsRoutes from '../../src/server/routes/events';
 
-describe('Public Events API', () => {
+describe('Admin-only Events API (GET /events/public, GET /events/:id/public)', () => {
   let testDb: TestDb;
   let server: TestServerHandle;
   let baseUrl: string;
@@ -23,7 +23,8 @@ describe('Public Events API', () => {
     testDb = await createTestDb();
     __setTestDatabaseAdapter(testDb.db);
 
-    const app = createTestApp();
+    const adminUser = await seedUser(testDb.db, { is_admin: true });
+    const app = createTestApp({ user: { id: adminUser.id, is_admin: true } });
     app.use('/events', eventsRoutes);
 
     server = await startServer(app);
@@ -97,11 +98,40 @@ describe('Public Events API', () => {
       expect(event).not.toHaveProperty('score_accept_mode');
     });
 
-    it('does not require authentication', async () => {
+    it('returns 403 when not authenticated', async () => {
       await seedEvent(testDb.db, { name: 'Test', status: 'active' });
 
-      const res = await http.get(`${baseUrl}/events/public`);
-      expect(res.status).toBe(200);
+      const app = createTestApp();
+      app.use('/events', eventsRoutes);
+      const unauthServer = await startServer(app);
+
+      try {
+        const res = await http.get(`${unauthServer.baseUrl}/events/public`);
+        expect(res.status).toBe(403);
+        expect((res.json as { error: string }).error).toContain('Admin');
+      } finally {
+        await unauthServer.close();
+      }
+    });
+
+    it('returns 403 when authenticated but not admin', async () => {
+      const nonAdminUser = await seedUser(testDb.db, {
+        is_admin: false,
+        google_id: 'google-non-admin',
+      });
+      const app = createTestApp({
+        user: { id: nonAdminUser.id, is_admin: false },
+      });
+      app.use('/events', eventsRoutes);
+      const nonAdminServer = await startServer(app);
+
+      try {
+        const res = await http.get(`${nonAdminServer.baseUrl}/events/public`);
+        expect(res.status).toBe(403);
+        expect((res.json as { error: string }).error).toContain('Admin');
+      } finally {
+        await nonAdminServer.close();
+      }
     });
   });
 
@@ -147,14 +177,51 @@ describe('Public Events API', () => {
       expect(res.json).toHaveProperty('name', 'Setup Event');
     });
 
-    it('does not require authentication', async () => {
+    it('returns 403 when not authenticated', async () => {
       const event = await seedEvent(testDb.db, {
         name: 'Test',
         status: 'active',
       });
 
-      const res = await http.get(`${baseUrl}/events/${event.id}/public`);
-      expect(res.status).toBe(200);
+      const app = createTestApp();
+      app.use('/events', eventsRoutes);
+      const unauthServer = await startServer(app);
+
+      try {
+        const res = await http.get(
+          `${unauthServer.baseUrl}/events/${event.id}/public`,
+        );
+        expect(res.status).toBe(403);
+        expect((res.json as { error: string }).error).toContain('Admin');
+      } finally {
+        await unauthServer.close();
+      }
+    });
+
+    it('returns 403 when authenticated but not admin', async () => {
+      const event = await seedEvent(testDb.db, {
+        name: 'Test',
+        status: 'active',
+      });
+      const nonAdminUser = await seedUser(testDb.db, {
+        is_admin: false,
+        google_id: 'google-non-admin',
+      });
+      const app = createTestApp({
+        user: { id: nonAdminUser.id, is_admin: false },
+      });
+      app.use('/events', eventsRoutes);
+      const nonAdminServer = await startServer(app);
+
+      try {
+        const res = await http.get(
+          `${nonAdminServer.baseUrl}/events/${event.id}/public`,
+        );
+        expect(res.status).toBe(403);
+        expect((res.json as { error: string }).error).toContain('Admin');
+      } finally {
+        await nonAdminServer.close();
+      }
     });
   });
 });

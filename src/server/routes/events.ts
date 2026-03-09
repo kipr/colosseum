@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 
@@ -42,8 +42,8 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /events/public - List active/complete events (no auth)
-router.get('/public', async (_req: Request, res: Response) => {
+// GET /events/public - List active/complete events (admin only)
+router.get('/public', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
     const events = await db.all(
@@ -58,24 +58,28 @@ router.get('/public', async (_req: Request, res: Response) => {
   }
 });
 
-// GET /events/:id/public - Get single event public info (no auth)
-router.get('/:id/public', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
-    const event = await db.get(
-      `SELECT ${PUBLIC_EVENT_FIELDS} FROM events WHERE id = ?`,
-      [id],
-    );
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
+// GET /events/:id/public - Get single event public info (admin only)
+router.get(
+  '/:id/public',
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const db = await getDatabase();
+      const event = await db.get(
+        `SELECT ${PUBLIC_EVENT_FIELDS} FROM events WHERE id = ?`,
+        [id],
+      );
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      res.json(event);
+    } catch (error) {
+      console.error('Error fetching public event:', error);
+      res.status(500).json({ error: 'Failed to fetch event' });
     }
-    res.json(event);
-  } catch (error) {
-    console.error('Error fetching public event:', error);
-    res.status(500).json({ error: 'Failed to fetch event' });
-  }
-});
+  },
+);
 
 // GET /events/:id - Get single event
 router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {

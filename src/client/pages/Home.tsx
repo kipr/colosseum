@@ -79,33 +79,6 @@ export default function Home() {
             className="role-card role-card-clickable"
             role="button"
             tabIndex={0}
-            onClick={() => navigate('/event')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                navigate('/event');
-              }
-            }}
-          >
-            <div className="role-icon role-icon-text" aria-hidden>
-              <span>📊</span>
-            </div>
-            <h3>Spectator</h3>
-            <p>
-              View live seeding scores, rankings, and tournament brackets for
-              ongoing events.
-            </p>
-            <ul className="role-features">
-              <li>✓ Seeding scores &amp; rankings</li>
-              <li>✓ Tournament brackets</li>
-              <li>✓ No login required</li>
-            </ul>
-          </div>
-
-          <div
-            className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
             onClick={handleAdminClick}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
