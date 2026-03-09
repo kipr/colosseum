@@ -83,9 +83,80 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.games).toHaveLength(1);
     });
 
+    it('does not expose final_rank on public endpoint', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+
+      await testDb.db.run(
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank) VALUES (?, ?, 1, 0, 3)`,
+        [bracket.id, team.id],
+      );
+
+      const res = await http.get(`${baseUrl}/brackets/${bracket.id}`);
+      expect(res.status).toBe(200);
+
+      const body = res.json as { entries: Record<string, unknown>[] };
+      expect(body.entries).toHaveLength(1);
+      expect('final_rank' in body.entries[0]).toBe(false);
+    });
+
     it('returns 404 for non-existent bracket', async () => {
       const res = await http.get(`${baseUrl}/brackets/9999`);
       expect(res.status).toBe(404);
+    });
+  });
+
+  // ==========================================================================
+  // GET /brackets/:id/rankings
+  // ==========================================================================
+
+  describe('GET /brackets/:id/rankings', () => {
+    it('returns entries with final_rank for authenticated admin', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+
+      await testDb.db.run(
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank) VALUES (?, ?, 1, 0, 2)`,
+        [bracket.id, team.id],
+      );
+
+      const res = await http.get(`${baseUrl}/brackets/${bracket.id}/rankings`);
+      expect(res.status).toBe(200);
+
+      const entries = res.json as Record<string, unknown>[];
+      expect(entries).toHaveLength(1);
+      expect(entries[0].final_rank).toBe(2);
+    });
+
+    it('returns 404 for non-existent bracket', async () => {
+      const res = await http.get(`${baseUrl}/brackets/9999/rankings`);
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 401 when not authenticated', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+
+      const app = createTestApp();
+      app.use('/brackets', bracketsRoutes);
+      const unauthServer = await startServer(app);
+
+      try {
+        const res = await http.get(
+          `${unauthServer.baseUrl}/brackets/${bracket.id}/rankings`,
+        );
+        expect(res.status).toBe(401);
+      } finally {
+        await unauthServer.close();
+      }
     });
   });
 

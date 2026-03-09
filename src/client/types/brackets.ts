@@ -28,10 +28,13 @@ export interface BracketEntry {
   seed_position: number;
   initial_slot: number | null;
   is_bye: boolean;
-  final_rank?: number | null;
   team_number?: number;
   team_name?: string;
   display_name?: string | null;
+}
+
+export interface BracketEntryWithRank extends BracketEntry {
+  final_rank: number | null;
 }
 
 export interface BracketGame {
@@ -72,6 +75,8 @@ export interface BracketGame {
 export interface BracketDetail extends Bracket {
   entries: BracketEntry[];
   games: BracketGame[];
+  /** Populated only for authenticated admins via GET /:id/rankings */
+  rankings?: BracketEntryWithRank[];
 }
 
 // Display label mappings for admin management view

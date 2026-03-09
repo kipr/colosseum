@@ -105,6 +105,7 @@ router.get('/templates', async (req: Request, res: Response) => {
 });
 
 // GET /brackets/:id - Get bracket with entries and games (public)
+// final_rank is intentionally excluded here; use GET /:id/rankings (admin) for that.
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -116,13 +117,14 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Bracket not found' });
     }
 
-    // Get entries with team info (sort by final_rank then seed_position for display)
+    // Explicit column list omits final_rank to prevent leaking ranking data
     const entries = await db.all(
-      `SELECT be.*, t.team_number, t.team_name, t.display_name
+      `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
+              t.team_number, t.team_name, t.display_name
        FROM bracket_entries be
        LEFT JOIN teams t ON be.team_id = t.id
        WHERE be.bracket_id = ?
-       ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
+       ORDER BY be.seed_position ASC`,
       [id],
     );
 
@@ -151,6 +153,41 @@ router.get('/:id', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to fetch bracket' });
   }
 });
+
+// GET /brackets/:id/rankings - Get bracket entries with final rankings (admin only)
+router.get(
+  '/:id/rankings',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const db = await getDatabase();
+
+      const bracket = await db.get('SELECT id FROM brackets WHERE id = ?', [
+        id,
+      ]);
+
+      if (!bracket) {
+        return res.status(404).json({ error: 'Bracket not found' });
+      }
+
+      const entries = await db.all(
+        `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
+                be.final_rank, t.team_number, t.team_name, t.display_name
+         FROM bracket_entries be
+         LEFT JOIN teams t ON be.team_id = t.id
+         WHERE be.bracket_id = ?
+         ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
+        [id],
+      );
+
+      res.json(entries);
+    } catch (error) {
+      console.error('Error fetching bracket rankings:', error);
+      res.status(500).json({ error: 'Failed to fetch bracket rankings' });
+    }
+  },
+);
 
 function nextPowerOfTwo(n: number): number {
   if (n <= 0) return 4;

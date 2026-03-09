@@ -5,6 +5,7 @@ import { useEvent } from '../../contexts/EventContext';
 import {
   Bracket,
   BracketDetail,
+  BracketEntryWithRank,
   BracketStatus,
   STATUS_LABELS,
 } from '../../types/brackets';
@@ -128,13 +129,18 @@ export default function BracketsTab() {
   const fetchBracketDetail = useCallback(async (bracketId: number) => {
     setDetailLoading(true);
     try {
-      const response = await fetch(`/brackets/${bracketId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) {
+      const [detailRes, rankingsRes] = await Promise.all([
+        fetch(`/brackets/${bracketId}`, { credentials: 'include' }),
+        fetch(`/brackets/${bracketId}/rankings`, { credentials: 'include' }),
+      ]);
+      if (!detailRes.ok) {
         throw new Error('Failed to fetch bracket details');
       }
-      const data: BracketDetail = await response.json();
+      const data: BracketDetail = await detailRes.json();
+      if (rankingsRes.ok) {
+        const rankings: BracketEntryWithRank[] = await rankingsRes.json();
+        data.rankings = rankings;
+      }
       setBracketDetail(data);
     } catch (error) {
       console.error('Error fetching bracket detail:', error);
