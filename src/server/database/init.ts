@@ -866,14 +866,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
-  try {
-    await db.exec(
-      `ALTER TABLE events ADD COLUMN spectator_results_released INTEGER NOT NULL DEFAULT 0`,
-    );
-  } catch {
-    // Column already exists
-  }
-
   // ============================================================================
   // TEAMS
   // ============================================================================
@@ -1010,15 +1002,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
-  // Migration: add weight column to existing brackets (backfills to 1.0)
-  try {
-    await db.exec(
-      `ALTER TABLE brackets ADD COLUMN weight REAL NOT NULL DEFAULT 1.0`,
-    );
-  } catch {
-    // Column already exists
-  }
-
   // Bracket Entries - Teams assigned to a bracket with their seeding position
   // NOTE: In the schema, team_id can point to a team in a different event than the bracket.
   // Make sure this cannot happen at application-level.
@@ -1042,15 +1025,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
       )
     )
   `);
-
-  // Migration: add weighted_bracket_raw_score column to existing bracket_entries
-  try {
-    await db.exec(
-      `ALTER TABLE bracket_entries ADD COLUMN weighted_bracket_raw_score REAL`,
-    );
-  } catch {
-    // Column already exists
-  }
 
   // Games/Matches - Individual games within a bracket
   // NOTE team1_id/team2_id/winner_id/loser_id can point across events.
