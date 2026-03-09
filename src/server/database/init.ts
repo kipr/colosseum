@@ -1312,6 +1312,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       initial_slot INTEGER,
       is_bye BOOLEAN DEFAULT FALSE,
       final_rank INTEGER,
+      bracket_raw_score REAL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(bracket_id, team_id),
       UNIQUE(bracket_id, seed_position),
@@ -1361,6 +1362,15 @@ export async function initializeSQLite(db: Database): Promise<void> {
   // Add final_rank column to bracket_entries if it doesn't exist (migration)
   try {
     await db.exec(`ALTER TABLE bracket_entries ADD COLUMN final_rank INTEGER`);
+  } catch {
+    // Column already exists
+  }
+
+  // Add bracket_raw_score column to bracket_entries if it doesn't exist (migration)
+  try {
+    await db.exec(
+      `ALTER TABLE bracket_entries ADD COLUMN bracket_raw_score REAL`,
+    );
   } catch {
     // Column already exists
   }

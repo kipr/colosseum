@@ -35,6 +35,7 @@ export interface BracketEntry {
 
 export interface BracketEntryWithRank extends BracketEntry {
   final_rank: number | null;
+  bracket_raw_score: number | null;
 }
 
 export interface BracketGame {

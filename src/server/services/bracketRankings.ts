@@ -124,11 +124,12 @@ export async function calculateBracketRankings(
     [bracketId],
   );
 
+  const n = entries.length;
   const teamToRank = new Map(rankedTeams.map((r) => [r.teamId, r.finalRank]));
 
   await db.transaction(async (tx) => {
     await tx.run(
-      `UPDATE bracket_entries SET final_rank = NULL WHERE bracket_id = ?`,
+      `UPDATE bracket_entries SET final_rank = NULL, bracket_raw_score = NULL WHERE bracket_id = ?`,
       [bracketId],
     );
 
@@ -136,9 +137,10 @@ export async function calculateBracketRankings(
       if (entry.team_id !== null) {
         const rank = teamToRank.get(entry.team_id);
         if (rank !== undefined) {
+          const rawScore = n > 0 ? (n - rank + 1) / n : null;
           await tx.run(
-            `UPDATE bracket_entries SET final_rank = ? WHERE id = ?`,
-            [rank, entry.id],
+            `UPDATE bracket_entries SET final_rank = ?, bracket_raw_score = ? WHERE id = ?`,
+            [rank, rawScore, entry.id],
           );
         }
       }

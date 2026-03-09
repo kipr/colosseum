@@ -136,6 +136,7 @@ CREATE TABLE IF NOT EXISTS bracket_entries (
     initial_slot INTEGER,                        -- Starting slot in bracket (after bye handling)
     is_bye BOOLEAN DEFAULT FALSE,                -- If this slot is a bye (no team)
     final_rank INTEGER,                         -- Official placement (1, 2, 3, 4, 5, 5, 7, 7... ties preserved)
+    bracket_raw_score REAL,                     -- Normalized score: (n - rank + 1) / n where n = non-bye teams
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(bracket_id, team_id),
     UNIQUE(bracket_id, seed_position),

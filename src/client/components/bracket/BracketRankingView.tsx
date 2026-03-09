@@ -75,6 +75,7 @@ export default function BracketRankingView({
             <th>Place</th>
             <th>Team #</th>
             <th>Team Name</th>
+            <th>Raw Score</th>
           </tr>
         </thead>
         <tbody>
@@ -85,13 +86,18 @@ export default function BracketRankingView({
               </td>
               <td>{entry.team_number ?? '—'}</td>
               <td>{entry.team_name ?? entry.display_name ?? '—'}</td>
+              <td>
+                {entry.bracket_raw_score != null
+                  ? entry.bracket_raw_score.toFixed(4)
+                  : '—'}
+              </td>
             </tr>
           ))}
           {unranked.length > 0 && (
             <>
               {ranked.length > 0 && (
                 <tr className="ranking-divider-row">
-                  <td colSpan={3}>
+                  <td colSpan={4}>
                     <span className="ranking-divider-label">
                       Not yet placed
                     </span>
@@ -105,6 +111,7 @@ export default function BracketRankingView({
                   </td>
                   <td>{entry.team_number ?? '—'}</td>
                   <td>{entry.team_name ?? entry.display_name ?? '—'}</td>
+                  <td>—</td>
                 </tr>
               ))}
             </>

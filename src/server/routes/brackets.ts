@@ -117,7 +117,7 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Bracket not found' });
     }
 
-    // Explicit column list omits final_rank to prevent leaking ranking data
+    // Explicit column list omits final_rank and bracket_raw_score to prevent leaking ranking data
     const entries = await db.all(
       `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
               t.team_number, t.team_name, t.display_name
@@ -173,7 +173,7 @@ router.get(
 
       const entries = await db.all(
         `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
-                be.final_rank, t.team_number, t.team_name, t.display_name
+                be.final_rank, be.bracket_raw_score, t.team_number, t.team_name, t.display_name
          FROM bracket_entries be
          LEFT JOIN teams t ON be.team_id = t.id
          WHERE be.bracket_id = ?
@@ -596,11 +596,11 @@ router.post(
       const result = await calculateBracketRankings(id);
       res.json(result);
     } catch (error) {
-      console.error('Error calculating bracket rankings:', error);
       const errMsg = (error as Error).message || '';
       if (errMsg.includes('Cannot calculate rankings')) {
         return res.status(400).json({ error: errMsg });
       }
+      console.error('Error calculating bracket rankings:', error);
       res.status(500).json({ error: 'Failed to calculate bracket rankings' });
     }
   },
