@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
-import { BracketDetail } from '../../types/brackets';
+import { BracketDetail, BracketEntryWithRank } from '../../types/brackets';
 import { STATUS_LABELS } from '../../types/brackets';
 import { getStatusClass } from './bracketUtils';
 import BracketView from './BracketView';
 import BracketManagementView from './BracketManagementView';
+import BracketRankingView from './BracketRankingView';
 import './BracketDisplay.css';
 
-type DetailViewMode = 'management' | 'bracket';
+type DetailViewMode = 'bracket' | 'ranking' | 'management';
 
 interface BracketDetailViewProps {
   bracketDetail: BracketDetail;
@@ -14,6 +15,9 @@ interface BracketDetailViewProps {
   adminActions?: React.ReactNode;
   entriesActions?: React.ReactNode;
   gamesActions?: React.ReactNode;
+  rankings: BracketEntryWithRank[] | null;
+  rankingsLoading: boolean;
+  onRefreshRankings: () => void;
 }
 
 export default function BracketDetailView({
@@ -22,6 +26,9 @@ export default function BracketDetailView({
   adminActions,
   entriesActions,
   gamesActions,
+  rankings,
+  rankingsLoading,
+  onRefreshRankings,
 }: BracketDetailViewProps) {
   const [detailViewMode, setDetailViewMode] =
     useState<DetailViewMode>('bracket');
@@ -39,6 +46,12 @@ export default function BracketDetailView({
               onClick={() => setDetailViewMode('bracket')}
             >
               Bracket View
+            </button>
+            <button
+              className={`btn ${detailViewMode === 'ranking' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setDetailViewMode('ranking')}
+            >
+              Ranking View
             </button>
             <button
               className={`btn ${detailViewMode === 'management' ? 'btn-primary' : 'btn-secondary'}`}
@@ -79,6 +92,16 @@ export default function BracketDetailView({
       {/* Bracket View */}
       {detailViewMode === 'bracket' && (
         <BracketView bracketDetail={bracketDetail} />
+      )}
+
+      {/* Ranking View */}
+      {detailViewMode === 'ranking' && (
+        <BracketRankingView
+          bracketId={bracketDetail.id}
+          rankings={rankings}
+          loading={rankingsLoading}
+          onRefresh={onRefreshRankings}
+        />
       )}
 
       {/* Management View */}

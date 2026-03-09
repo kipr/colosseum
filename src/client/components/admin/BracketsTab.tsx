@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -99,8 +99,13 @@ export default function BracketsTab() {
   const [generatingEntries, setGeneratingEntries] = useState(false);
   const [generatingGames, setGeneratingGames] = useState(false);
 
+  const [rankings, setRankings] = useState<BracketEntryWithRank[] | null>(null);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   const fetchBrackets = useCallback(async () => {
     if (!selectedEventId) {
@@ -138,8 +143,8 @@ export default function BracketsTab() {
       }
       const data: BracketDetail = await detailRes.json();
       if (rankingsRes.ok) {
-        const rankings: BracketEntryWithRank[] = await rankingsRes.json();
-        data.rankings = rankings;
+        const rankingsData: BracketEntryWithRank[] = await rankingsRes.json();
+        data.rankings = rankingsData;
       }
       setBracketDetail(data);
     } catch (error) {
@@ -161,8 +166,30 @@ export default function BracketsTab() {
       fetchBracketDetail(selectedBracketId);
     } else {
       setBracketDetail(null);
+      setRankings(null);
     }
   }, [selectedBracketId, fetchBracketDetail]);
+
+  const fetchRankings = useCallback(async (bracketId: number) => {
+    setRankingsLoading(true);
+    try {
+      await fetch(`/brackets/${bracketId}/rankings/calculate`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const res = await fetch(`/brackets/${bracketId}/rankings`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch rankings');
+      const data: BracketEntryWithRank[] = await res.json();
+      setRankings(data);
+    } catch (error) {
+      console.error('Error fetching bracket rankings:', error);
+      toastRef.current.error('Failed to load rankings');
+    } finally {
+      setRankingsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!showCreateModal || !selectedEventId) {
@@ -621,6 +648,11 @@ export default function BracketsTab() {
               adminActions={renderAdminActions()}
               entriesActions={renderEntriesActions()}
               gamesActions={renderGamesActions()}
+              rankings={rankings}
+              rankingsLoading={rankingsLoading}
+              onRefreshRankings={() => {
+                if (selectedBracketId) fetchRankings(selectedBracketId);
+              }}
             />
           ) : (
             <p>Bracket not found.</p>
