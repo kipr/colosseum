@@ -86,18 +86,27 @@ export default function OverallTab() {
       const brackets: Bracket[] = bracketsData;
       const deMap = new Map<number, number>();
 
-      for (const bracket of brackets) {
-        const rankingsRes = await fetch(`/brackets/${bracket.id}/rankings`, {
-          credentials: 'include',
-        });
-        if (!rankingsRes.ok) continue;
+      const rankingsResults = await Promise.all(
+        brackets.map((bracket) =>
+          fetch(`/brackets/${bracket.id}/rankings`, {
+            credentials: 'include',
+          }),
+        ),
+      );
 
-        const { entries } = (await rankingsRes.json()) as {
-          weight: number;
-          entries: BracketRankingEntry[];
-        };
+      const rankingsData = await Promise.all(
+        rankingsResults.map(async (res) => {
+          if (!res.ok) return null;
+          return (await res.json()) as {
+            weight: number;
+            entries: BracketRankingEntry[];
+          };
+        }),
+      );
 
-        for (const entry of entries) {
+      for (const data of rankingsData) {
+        if (!data) continue;
+        for (const entry of data.entries) {
           if (
             entry.team_id != null &&
             entry.weighted_bracket_raw_score != null
