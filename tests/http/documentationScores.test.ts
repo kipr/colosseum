@@ -115,7 +115,11 @@ describe('Documentation Scores Routes', () => {
           `${server.baseUrl}/documentation-scores/global-categories`,
         );
         expect(res.status).toBe(200);
-        const cats = res.json as { id: number; name: string; max_score: number }[];
+        const cats = res.json as {
+          id: number;
+          name: string;
+          max_score: number;
+        }[];
         expect(cats.length).toBeGreaterThanOrEqual(1);
         const found = cats.find((c) => c.name === 'Global Cat');
         expect(found).toBeDefined();

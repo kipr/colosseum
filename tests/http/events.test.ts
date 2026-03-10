@@ -11,7 +11,13 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { seedEvent, seedUser } from './helpers/seed';
+import {
+  seedEvent,
+  seedUser,
+  seedTeam,
+  seedDocumentationScore,
+  seedSeedingScore,
+} from './helpers/seed';
 import eventsRoutes from '../../src/server/routes/events';
 
 describe('Events Routes', () => {
@@ -291,6 +297,88 @@ describe('Events Routes', () => {
       const events = res.json as { name: string; status: string }[];
       expect(events.length).toBe(1);
       expect(events[0].status).toBe('active');
+    });
+  });
+
+  // ==========================================================================
+  // GET /events/:id/overall (admin overall scores, auth required)
+  // ==========================================================================
+
+  describe('GET /events/:id/overall', () => {
+    it('returns 401 when not authenticated', async () => {
+      const event = await seedEvent(testDb.db);
+      const app = createTestApp();
+      app.use('/events', eventsRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get(
+          `${server.baseUrl}/events/${event.id}/overall`,
+        );
+        expect(res.status).toBe(401);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it('returns 404 when event not found', async () => {
+      const app = createTestApp({ user: { id: 1, is_admin: false } });
+      app.use('/events', eventsRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get(`${server.baseUrl}/events/999/overall`);
+        expect(res.status).toBe(404);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it('returns overall scores when authenticated', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+        team_name: 'Test Team',
+      });
+      await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: team.id,
+        overall_score: 0.5,
+      });
+      await seedSeedingScore(testDb.db, {
+        team_id: team.id,
+        round_number: 1,
+        score: 100,
+      });
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, raw_seed_score) VALUES (?, ?)`,
+        [team.id, 0.8],
+      );
+
+      const app = createTestApp({ user: { id: 1, is_admin: false } });
+      app.use('/events', eventsRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get<
+          {
+            team_number: number;
+            doc_score: number;
+            raw_seed_score: number;
+            total: number;
+          }[]
+        >(`${server.baseUrl}/events/${event.id}/overall`);
+
+        expect(res.status).toBe(200);
+        expect(res.json).toHaveLength(1);
+        expect(res.json[0].team_number).toBe(1);
+        expect(res.json[0].doc_score).toBe(0.5);
+        expect(res.json[0].raw_seed_score).toBe(0.8);
+        expect(res.json[0].total).toBeCloseTo(1.3, 4);
+      } finally {
+        await server.close();
+      }
     });
   });
 

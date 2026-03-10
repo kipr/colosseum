@@ -50,26 +50,21 @@ export async function computeOverallScores(
     [eventId],
   );
 
-  const brackets = await db.all<{ id: number }>(
-    'SELECT id FROM brackets WHERE event_id = ?',
+  const bracketEntries = await db.all<{
+    team_id: number | null;
+    weighted_bracket_raw_score: number | null;
+  }>(
+    `SELECT team_id, weighted_bracket_raw_score
+     FROM bracket_entries
+     WHERE bracket_id IN (SELECT id FROM brackets WHERE event_id = ?)
+       AND team_id IS NOT NULL`,
     [eventId],
   );
 
   const deMap = new Map<number, number>();
-  for (const bracket of brackets) {
-    const entries = await db.all<{
-      team_id: number | null;
-      weighted_bracket_raw_score: number | null;
-    }>(
-      `SELECT team_id, weighted_bracket_raw_score
-       FROM bracket_entries
-       WHERE bracket_id = ? AND team_id IS NOT NULL`,
-      [bracket.id],
-    );
-    for (const entry of entries) {
-      if (entry.team_id != null && entry.weighted_bracket_raw_score != null) {
-        deMap.set(entry.team_id, entry.weighted_bracket_raw_score);
-      }
+  for (const entry of bracketEntries) {
+    if (entry.team_id != null && entry.weighted_bracket_raw_score != null) {
+      deMap.set(entry.team_id, entry.weighted_bracket_raw_score);
     }
   }
 

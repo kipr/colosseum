@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import {
   BrowserRouter as Router,
   Routes,
@@ -9,12 +9,13 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { ChatProvider } from './contexts/ChatContext';
 import { EventProvider } from './contexts/EventContext';
-import Home from './pages/Home';
-import Judge from './pages/Judge';
-import Scoresheet from './pages/Scoresheet';
-import Spectator from './pages/Spectator';
-import Admin from './pages/Admin';
 import PublicChat from './components/PublicChat';
+
+const Home = lazy(() => import('./pages/Home'));
+const Judge = lazy(() => import('./pages/Judge'));
+const Scoresheet = lazy(() => import('./pages/Scoresheet'));
+const Spectator = lazy(() => import('./pages/Spectator'));
+const Admin = lazy(() => import('./pages/Admin'));
 
 /** Feature gate: set to true to enable public chat UI. Chat APIs remain available for internal/admin use. */
 const CHAT_UI_ENABLED = import.meta.env.VITE_ENABLE_CHAT === 'true' || false;
@@ -31,37 +32,39 @@ function App() {
       <AuthProvider>
         <ChatProvider>
           <Router>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/judge" element={<Judge />} />
-              <Route path="/scoresheet" element={<Scoresheet />} />
+            <Suspense fallback={<div className="app-loading">Loading...</div>}>
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/judge" element={<Judge />} />
+                <Route path="/scoresheet" element={<Scoresheet />} />
 
-              {/* Spectator routes */}
-              <Route path="/spectator" element={<Spectator />} />
-              <Route
-                path="/spectator/events/:eventId/brackets/:bracketId"
-                element={<Spectator />}
-              />
-              <Route
-                path="/spectator/events/:eventId"
-                element={<Spectator />}
-              />
+                {/* Spectator routes */}
+                <Route path="/spectator" element={<Spectator />} />
+                <Route
+                  path="/spectator/events/:eventId/brackets/:bracketId"
+                  element={<Spectator />}
+                />
+                <Route
+                  path="/spectator/events/:eventId"
+                  element={<Spectator />}
+                />
 
-              {/* Admin routes */}
-              <Route
-                path="/admin"
-                element={<Navigate to="/admin/events" replace />}
-              />
-              <Route
-                path="/admin/events/:eventId/brackets/:bracketId"
-                element={<AdminWithProvider />}
-              />
-              <Route
-                path="/admin/events/:eventId"
-                element={<AdminWithProvider />}
-              />
-              <Route path="/admin/events" element={<AdminWithProvider />} />
-            </Routes>
+                {/* Admin routes */}
+                <Route
+                  path="/admin"
+                  element={<Navigate to="/admin/events" replace />}
+                />
+                <Route
+                  path="/admin/events/:eventId/brackets/:bracketId"
+                  element={<AdminWithProvider />}
+                />
+                <Route
+                  path="/admin/events/:eventId"
+                  element={<AdminWithProvider />}
+                />
+                <Route path="/admin/events" element={<AdminWithProvider />} />
+              </Routes>
+            </Suspense>
             {CHAT_UI_ENABLED && <PublicChat />}
           </Router>
         </ChatProvider>

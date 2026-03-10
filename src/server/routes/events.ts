@@ -66,6 +66,7 @@ router.get('/public', async (req: Request, res: Response) => {
        WHERE status != 'archived'
        ORDER BY event_date DESC, created_at DESC`,
     );
+    res.setHeader('Cache-Control', 'public, max-age=30');
     res.json(events.map(toPublicEvent));
   } catch (error) {
     console.error('Error fetching public events:', error);
@@ -88,12 +89,36 @@ router.get('/:id/public', async (req: Request, res: Response) => {
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
+    res.setHeader('Cache-Control', 'public, max-age=30');
     res.json(toPublicEvent(event));
   } catch (error) {
     console.error('Error fetching public event:', error);
     res.status(500).json({ error: 'Failed to fetch event' });
   }
 });
+
+// GET /events/:id/overall - Admin overall scores (single request, auth required)
+router.get(
+  '/:id/overall',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const db = await getDatabase();
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        parseInt(id, 10),
+      ]);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const rows = await computeOverallScores(parseInt(id, 10));
+      res.json(rows);
+    } catch (error) {
+      console.error('Error fetching overall scores:', error);
+      res.status(500).json({ error: 'Failed to fetch overall scores' });
+    }
+  },
+);
 
 // GET /events/:id/overall/public - Public overall scores (released completed events only)
 router.get('/:id/overall/public', async (req: Request, res: Response) => {

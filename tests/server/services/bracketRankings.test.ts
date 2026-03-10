@@ -51,10 +51,7 @@ describe('calculateBracketRankings', () => {
     );
   }
 
-  async function addByeEntry(
-    bId: number,
-    seedPosition: number,
-  ): Promise<void> {
+  async function addByeEntry(bId: number, seedPosition: number): Promise<void> {
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, NULL, ?, 1)`,
       [bId, seedPosition],
