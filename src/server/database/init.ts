@@ -25,7 +25,7 @@ export async function initializeDatabase(): Promise<void> {
   console.log('✅ Database initialized successfully');
 }
 
-async function initializePostgres(db: Database): Promise<void> {
+export async function initializePostgres(db: Database): Promise<void> {
   // ============================================================================
   // CORE TABLES
   // ============================================================================
@@ -123,6 +123,7 @@ async function initializePostgres(db: Database): Promise<void> {
       status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
       seeding_rounds INTEGER DEFAULT 3,
       score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
+      spectator_results_released INTEGER NOT NULL DEFAULT 0,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -132,6 +133,14 @@ async function initializePostgres(db: Database): Promise<void> {
   try {
     await db.exec(
       `ALTER TABLE events ADD COLUMN IF NOT EXISTS score_accept_mode TEXT NOT NULL DEFAULT 'manual'`,
+    );
+  } catch {
+    // Column might already exist
+  }
+
+  try {
+    await db.exec(
+      `ALTER TABLE events ADD COLUMN IF NOT EXISTS spectator_results_released INTEGER NOT NULL DEFAULT 0`,
     );
   } catch {
     // Column might already exist
@@ -190,6 +199,64 @@ async function initializePostgres(db: Database): Promise<void> {
   `);
 
   // ============================================================================
+  // DOCUMENTATION SCORES
+  // ============================================================================
+
+  // Global documentation categories (shared across events)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS documentation_categories (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL UNIQUE,
+      weight REAL NOT NULL DEFAULT 1.0,
+      max_score REAL NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Event-to-category junction (ordinal is event-specific)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_documentation_categories (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL REFERENCES documentation_categories(id) ON DELETE CASCADE,
+      ordinal INTEGER NOT NULL CHECK (ordinal >= 1 AND ordinal <= 4),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, ordinal),
+      UNIQUE(event_id, category_id)
+    )
+  `);
+
+  // Documentation scores - one row per team per event (overall score + metadata)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS documentation_scores (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      overall_score REAL,
+      scored_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      scored_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, team_id)
+    )
+  `);
+
+  // Documentation sub-scores - individual category scores per team
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS documentation_sub_scores (
+      id SERIAL PRIMARY KEY,
+      documentation_score_id INTEGER NOT NULL
+        REFERENCES documentation_scores(id) ON DELETE CASCADE,
+      category_id INTEGER NOT NULL
+        REFERENCES documentation_categories(id) ON DELETE CASCADE,
+      score REAL NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(documentation_score_id, category_id)
+    )
+  `);
+
+  // ============================================================================
   // BRACKETS
   // ============================================================================
 
@@ -202,11 +269,21 @@ async function initializePostgres(db: Database): Promise<void> {
       actual_team_count INTEGER,
       status TEXT DEFAULT 'setup'
         CHECK (status IN ('setup', 'in_progress', 'completed')),
+      weight REAL NOT NULL DEFAULT 1.0
+        CHECK (weight > 0 AND weight <= 1),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  try {
+    await db.exec(
+      `ALTER TABLE brackets ADD COLUMN IF NOT EXISTS weight REAL NOT NULL DEFAULT 1.0`,
+    );
+  } catch {
+    // Column might already exist
+  }
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS bracket_entries (
@@ -216,6 +293,9 @@ async function initializePostgres(db: Database): Promise<void> {
       seed_position INTEGER NOT NULL,
       initial_slot INTEGER,
       is_bye BOOLEAN DEFAULT FALSE,
+      final_rank INTEGER,
+      bracket_raw_score REAL,
+      weighted_bracket_raw_score REAL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(bracket_id, team_id),
       UNIQUE(bracket_id, seed_position),
@@ -225,6 +305,20 @@ async function initializePostgres(db: Database): Promise<void> {
       )
     )
   `);
+
+  try {
+    await db.exec(
+      `ALTER TABLE bracket_entries ADD COLUMN IF NOT EXISTS final_rank INTEGER`,
+    );
+    await db.exec(
+      `ALTER TABLE bracket_entries ADD COLUMN IF NOT EXISTS bracket_raw_score REAL`,
+    );
+    await db.exec(
+      `ALTER TABLE bracket_entries ADD COLUMN IF NOT EXISTS weighted_bracket_raw_score REAL`,
+    );
+  } catch {
+    // Columns might already exist
+  }
 
   // Score submissions (must be created before bracket_games due to FK)
   await db.exec(`
@@ -554,6 +648,7 @@ async function initializePostgres(db: Database): Promise<void> {
     'brackets',
     'bracket_games',
     'game_queue',
+    'documentation_scores',
     'award_templates',
     'event_awards',
   ]) {
@@ -756,6 +851,23 @@ async function initializePostgres(db: Database): Promise<void> {
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)`,
+  );
+
+  // Documentation score indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_doc_categories_event ON event_documentation_categories(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_doc_categories_category ON event_documentation_categories(category_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_doc_scores_event ON documentation_scores(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_doc_scores_team ON documentation_scores(team_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_doc_sub_scores_doc ON documentation_sub_scores(documentation_score_id)`,
   );
 
   // Awards indexes

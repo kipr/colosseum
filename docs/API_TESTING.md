@@ -697,13 +697,16 @@ LEFT JOIN users u ON al.user_id = u.id
 ORDER BY al.created_at DESC;
 ```
 
-### Verify Documentation Score Categories
+### Verify Documentation Categories
 
 ```sql
-SELECT * FROM documentation_score_categories ORDER BY event_id, ordinal;
-SELECT dsc.*, e.name as event_name
-FROM documentation_score_categories dsc
-JOIN events e ON dsc.event_id = e.id;
+SELECT * FROM documentation_categories ORDER BY name;
+
+SELECT edc.ordinal, dc.name, dc.weight, dc.max_score, e.name as event_name
+FROM event_documentation_categories edc
+JOIN documentation_categories dc ON edc.category_id = dc.id
+JOIN events e ON edc.event_id = e.id
+ORDER BY edc.event_id, edc.ordinal;
 ```
 
 ### Verify Documentation Scores
@@ -720,9 +723,9 @@ JOIN events e ON ds.event_id = e.id;
 
 ```sql
 SELECT * FROM documentation_sub_scores;
-SELECT dss.*, dsc.name as category_name, dsc.max_score, dsc.weight
+SELECT dss.*, dc.name as category_name, dc.max_score, dc.weight
 FROM documentation_sub_scores dss
-JOIN documentation_score_categories dsc ON dss.category_id = dsc.id;
+JOIN documentation_categories dc ON dss.category_id = dc.id;
 ```
 
 ## Full Test Sequence
