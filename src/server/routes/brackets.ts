@@ -105,6 +105,7 @@ router.get('/templates', async (req: Request, res: Response) => {
     query += ' ORDER BY bracket_size ASC, game_number ASC';
 
     const templates = await db.all(query, params);
+    res.setHeader('Cache-Control', 'public, max-age=60');
     res.json(templates);
   } catch (error) {
     console.error('Error fetching bracket templates:', error);

@@ -1,19 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
-import ScoreSheetsTab from '../components/admin/ScoreSheetsTab';
-import ScoringTab from '../components/admin/ScoringTab';
-import AdminsTab from '../components/admin/AdminsTab';
-import EventsTab from '../components/admin/EventsTab';
-import TeamsTab from '../components/admin/TeamsTab';
-import SeedingTab from '../components/admin/SeedingTab';
-import BracketsTab from '../components/admin/BracketsTab';
-import QueueTab from '../components/admin/QueueTab';
-import AuditTab from '../components/admin/AuditTab';
-import DocumentationTab from '../components/admin/DocumentationTab';
-import OverallTab from '../components/admin/OverallTab';
 import { getEventStatusClass } from '../utils/eventStatus';
 import {
   type AdminView,
@@ -22,6 +11,20 @@ import {
   adminEventsPath,
 } from '../utils/routes';
 import './Admin.css';
+
+const EventsTab = lazy(() => import('../components/admin/EventsTab'));
+const TeamsTab = lazy(() => import('../components/admin/TeamsTab'));
+const ScoreSheetsTab = lazy(() => import('../components/admin/ScoreSheetsTab'));
+const ScoringTab = lazy(() => import('../components/admin/ScoringTab'));
+const SeedingTab = lazy(() => import('../components/admin/SeedingTab'));
+const BracketsTab = lazy(() => import('../components/admin/BracketsTab'));
+const QueueTab = lazy(() => import('../components/admin/QueueTab'));
+const DocumentationTab = lazy(
+  () => import('../components/admin/DocumentationTab'),
+);
+const OverallTab = lazy(() => import('../components/admin/OverallTab'));
+const AdminsTab = lazy(() => import('../components/admin/AdminsTab'));
+const AuditTab = lazy(() => import('../components/admin/AuditTab'));
 
 const LOCAL_STORAGE_TAB_KEY = 'colosseum_last_admin_tab';
 
@@ -215,17 +218,25 @@ export default function Admin() {
               )}
             </div>
 
-            {activeTab === 'events' && <EventsTab />}
-            {activeTab === 'teams' && <TeamsTab />}
-            {activeTab === 'scoresheets' && <ScoreSheetsTab />}
-            {activeTab === 'scoring' && <ScoringTab />}
-            {activeTab === 'seeding' && <SeedingTab />}
-            {activeTab === 'brackets' && <BracketsTab />}
-            {activeTab === 'queue' && <QueueTab />}
-            {activeTab === 'documentation' && <DocumentationTab />}
-            {activeTab === 'overall' && <OverallTab />}
-            {activeTab === 'admins' && <AdminsTab />}
-            {activeTab === 'audit' && <AuditTab onNavigateTab={navigateTab} />}
+            <Suspense
+              fallback={
+                <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>
+              }
+            >
+              {activeTab === 'events' && <EventsTab />}
+              {activeTab === 'teams' && <TeamsTab />}
+              {activeTab === 'scoresheets' && <ScoreSheetsTab />}
+              {activeTab === 'scoring' && <ScoringTab />}
+              {activeTab === 'seeding' && <SeedingTab />}
+              {activeTab === 'brackets' && <BracketsTab />}
+              {activeTab === 'queue' && <QueueTab />}
+              {activeTab === 'documentation' && <DocumentationTab />}
+              {activeTab === 'overall' && <OverallTab />}
+              {activeTab === 'admins' && <AdminsTab />}
+              {activeTab === 'audit' && (
+                <AuditTab onNavigateTab={navigateTab} />
+              )}
+            </Suspense>
           </div>
         </div>
       </main>
