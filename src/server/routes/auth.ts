@@ -1,11 +1,12 @@
 import express, { Request, Response } from 'express';
 import passport from 'passport';
+import { oauthLimiter } from '../middleware/rateLimit';
 
 const router = express.Router();
 
 // Initiate Google OAuth
 // Note: accessType and prompt must be passed exactly as Google expects
-router.get('/google', (req, res, next) => {
+router.get('/google', oauthLimiter, (req, res, next) => {
   passport.authenticate('google', {
     scope: [
       'profile',

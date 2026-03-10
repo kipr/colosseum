@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
+import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import {
   isEventArchived,
@@ -121,19 +122,23 @@ router.get(
 );
 
 // GET /events/:id/overall/public - Public overall scores (released completed events only)
-router.get('/:id/overall/public', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    if (!(await areFinalScoresReleased(id))) {
-      return res.status(404).json({ error: 'Not found' });
+router.get(
+  '/:id/overall/public',
+  publicExpensiveReadLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      if (!(await areFinalScoresReleased(id))) {
+        return res.status(404).json({ error: 'Not found' });
+      }
+      const rows = await computeOverallScores(parseInt(id, 10));
+      res.json(rows);
+    } catch (error) {
+      console.error('Error fetching public overall scores:', error);
+      res.status(500).json({ error: 'Failed to fetch overall scores' });
     }
-    const rows = await computeOverallScores(parseInt(id, 10));
-    res.json(rows);
-  } catch (error) {
-    console.error('Error fetching public overall scores:', error);
-    res.status(500).json({ error: 'Failed to fetch overall scores' });
-  }
-});
+  },
+);
 
 // GET /events/:id - Get single event
 router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {

@@ -350,6 +350,36 @@ npm run lint       # ESLint
 npm run pretty     # Prettier check
 ```
 
+## Rate Limiting
+
+Public and abuse-prone API endpoints are protected by `express-rate-limit` with per-route policies defined in `src/server/middleware/rateLimit.ts`.
+
+### Current Limits
+
+| Limiter | Endpoints | Window | Limit | Key |
+|---|---|---|---|---|
+| `oauthLimiter` | `GET /auth/google` | 15 min | 20 | IP |
+| `scoreSubmitLimiter` | `POST /api/scores/submit` | 1 min | 30 | IP |
+| `accessCodeLimiter` | `POST /scoresheet/templates/:id/verify` | 15 min | 10 | IP + template id |
+| `chatWriteLimiter` | `POST /chat/messages` | 1 min | 15 | IP |
+| `chatReadLimiter` | `GET /chat/messages/:spreadsheetId` | 1 min | 120 | IP |
+| `queueSyncLimiter` | `GET /queue/event/:eventId` (sync=1 only) | 1 min | 10 | IP |
+| `publicExpensiveReadLimiter` | `GET /events/:id/overall/public`, `GET /documentation-scores/event/:eventId/public` | 1 min | 30 | IP |
+
+### Storage Constraints
+
+- Rate-limit counters use the built-in **in-process memory store**. This is a deliberate first-pass choice.
+- Counters **reset on process restart** and are **not shared across workers or instances**.
+- This is acceptable for a single-instance deployment or an initial rollout.
+
+### When to Upgrade the Store
+
+Move to a shared store (e.g. Redis via `rate-limit-redis`) when any of the following apply:
+
+- The app runs on more than one instance (clustering, PM2 workers, Kubernetes replicas)
+- Consistent global rate limits are required across restarts
+- Stricter abuse controls are needed that survive deploys
+
 ## Troubleshooting
 
 ### "Authentication required" errors
