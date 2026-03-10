@@ -151,7 +151,10 @@ export default function BracketsTab() {
           entries: BracketEntryWithRank[];
         };
         data.rankings = rankingsBody.entries;
+        setRankings(rankingsBody.entries);
         setRankingsWeight(rankingsBody.weight);
+      } else {
+        setRankings(null);
       }
       setBracketDetail(data);
     } catch (error) {
