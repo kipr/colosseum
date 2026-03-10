@@ -11,6 +11,7 @@ import { SqliteSessionStore } from './session/SqliteSessionStore';
 import connectPgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import cors from 'cors';
+import compression from 'compression';
 import path from 'path';
 import { setupPassport } from './config/passport';
 import { initializeDatabase } from './database/init';
@@ -40,6 +41,9 @@ const usePostgres = isProduction || !!process.env.DATABASE_URL;
 if (isProduction) {
   app.set('trust proxy', 1);
 }
+
+// Middleware - compression for smaller responses (gzip/brotli)
+app.use(compression());
 
 // Middleware
 app.use(
@@ -136,7 +140,23 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 
 // Static files - serve React build in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client')));
+  const clientPath = path.join(__dirname, '../client');
+  app.use(
+    express.static(clientPath, {
+      etag: true,
+      setHeaders: (res, filePath) => {
+        // Hashed assets (js/css) can be cached long-term
+        const relativePath = path.relative(clientPath, filePath);
+        if (relativePath.startsWith('assets' + path.sep)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        }
+        // index.html - allow revalidate so users get fresh app on deploy
+        else if (path.basename(filePath) === 'index.html') {
+          res.setHeader('Cache-Control', 'no-cache');
+        }
+      },
+    }),
+  );
 } else {
   // In development, Vite serves the React app
   // Keep legacy HTML files for gradual migration

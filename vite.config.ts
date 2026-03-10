@@ -28,6 +28,28 @@ export default defineConfig({
   build: {
     outDir: '../../dist/client',
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // Vendor chunks - stable cache when app code changes
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) {
+              return 'vendor-react';
+            }
+            if (id.includes('react-router')) {
+              return 'vendor-router';
+            }
+          }
+          // Lazy routes are already split by Vite's dynamic import
+          return null;
+        },
+        chunkFileNames: 'assets/[name]-[hash].js',
+        entryFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
+      },
+    },
+    target: 'es2020',
+    cssMinify: true,
   },
   server: {
     port: 5173,
