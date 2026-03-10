@@ -34,7 +34,6 @@ export default defineConfig({
     proxy: {
       '^/api/.*': createProxyConfig('http://localhost:3000'),
       '^/auth/.*': createProxyConfig('http://localhost:3000'),
-      '^/admin/.*': createProxyConfig('http://localhost:3000'),
       '^/scoresheet/.*': createProxyConfig('http://localhost:3000'),
       '^/field-templates.*': createProxyConfig('http://localhost:3000'),
       '^/data/.*': createProxyConfig('http://localhost:3000'),

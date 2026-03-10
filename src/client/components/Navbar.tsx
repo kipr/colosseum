@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import {
+  Link,
+  useLocation,
+  useNavigate,
+  useSearchParams,
+} from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useEvent } from '../contexts/EventContext';
@@ -8,19 +13,32 @@ import {
   getEventStatusLabel,
   formatEventDate,
 } from '../utils/eventStatus';
+import { adminEventPath, adminEventsPath, isAdminView } from '../utils/routes';
 import './Navbar.css';
 
 function AdminEventSelector() {
   const { selectedEvent, events, selectEventById } = useEvent();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const handleEventChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = e.target.value ? Number(e.target.value) : null;
+    selectEventById(id);
+    if (id) {
+      const raw = searchParams.get('view');
+      const view = isAdminView(raw) ? raw : undefined;
+      navigate(adminEventPath(id, view));
+    } else {
+      navigate(adminEventsPath());
+    }
+  };
 
   return (
     <div className="nav-event-selector">
       <select
         className="event-dropdown"
         value={selectedEvent?.id || ''}
-        onChange={(e) =>
-          selectEventById(e.target.value ? Number(e.target.value) : null)
-        }
+        onChange={handleEventChange}
       >
         <option value="">Select an event...</option>
         {events.map((event) => (
@@ -51,6 +69,10 @@ export default function Navbar() {
   const { theme, toggleTheme } = useTheme();
   const [isAboutOpen, setIsAboutOpen] = useState(false);
 
+  const isAdmin = location.pathname.startsWith('/admin');
+  const isJudge = location.pathname === '/judge';
+  const isHome = location.pathname === '/';
+
   const handleLogin = () => {
     window.location.href = '/auth/google';
   };
@@ -63,16 +85,12 @@ export default function Navbar() {
             <Link to="/" className="brand-link">
               <h1>
                 🏛️ Colosseum
-                {location.pathname === '/admin'
-                  ? ' Admin'
-                  : location.pathname === '/judge'
-                    ? ' - Judge'
-                    : ''}
+                {isAdmin ? ' Admin' : isJudge ? ' - Judge' : ''}
               </h1>
             </Link>
           </div>
 
-          {location.pathname === '/admin' && <AdminEventSelector />}
+          {isAdmin && <AdminEventSelector />}
 
           <div className="nav-menu">
             <button
@@ -98,7 +116,7 @@ export default function Navbar() {
                 <span className="user-info">{user.name}</span>
               </>
             ) : (
-              location.pathname === '/' && (
+              isHome && (
                 <button className="nav-item btn-primary" onClick={handleLogin}>
                   Login with Google
                 </button>

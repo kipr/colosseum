@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
@@ -15,55 +15,117 @@ import AuditTab from '../components/admin/AuditTab';
 import DocumentationTab from '../components/admin/DocumentationTab';
 import OverallTab from '../components/admin/OverallTab';
 import { getEventStatusClass } from '../utils/eventStatus';
+import {
+  type AdminView,
+  isAdminView,
+  adminEventPath,
+  adminEventsPath,
+} from '../utils/routes';
 import './Admin.css';
 
-type TabType =
-  | 'events'
-  | 'teams'
-  | 'scoresheets'
-  | 'scoring'
-  | 'seeding'
-  | 'brackets'
-  | 'queue'
-  | 'documentation'
-  | 'overall'
-  | 'admins'
-  | 'audit';
+const LOCAL_STORAGE_TAB_KEY = 'colosseum_last_admin_tab';
+
+const TAB_LABELS: Record<AdminView, string> = {
+  events: 'Manage Events',
+  teams: 'Teams',
+  scoresheets: 'Score Sheets',
+  scoring: 'Scoring',
+  seeding: 'Seeding',
+  brackets: 'Brackets',
+  queue: 'Queue',
+  documentation: 'Documentation',
+  overall: 'Overall',
+  admins: 'Admins',
+  audit: 'Audit',
+};
+
+const TAB_ICONS: Record<AdminView, string> = {
+  events: '📅',
+  teams: '👥',
+  scoresheets: '📝',
+  scoring: '🏆',
+  seeding: '🌱',
+  brackets: '🏅',
+  queue: '🎟️',
+  documentation: '📚',
+  overall: '📊',
+  admins: '🔐',
+  audit: '📋',
+};
+
+function resolveView(searchView: string | null): AdminView {
+  if (isAdminView(searchView)) return searchView;
+
+  const saved = localStorage.getItem(LOCAL_STORAGE_TAB_KEY);
+  if (saved === 'templates') return 'scoresheets';
+  if (isAdminView(saved)) return saved;
+
+  return 'events';
+}
 
 export default function Admin() {
   const { user, loading } = useAuth();
-  const { selectedEvent, loading: eventsLoading } = useEvent();
+  const {
+    selectedEvent,
+    events,
+    loading: eventsLoading,
+    selectEventById,
+  } = useEvent();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabType>(() => {
-    // Initialize from localStorage
-    const saved = localStorage.getItem('colosseum_last_admin_tab');
-    // Handle old 'templates' value
-    if (saved === 'templates') {
-      localStorage.setItem('colosseum_last_admin_tab', 'scoresheets');
-      return 'scoresheets';
-    }
-    if (
-      saved &&
-      (saved === 'events' ||
-        saved === 'teams' ||
-        saved === 'scoresheets' ||
-        saved === 'scoring' ||
-        saved === 'seeding' ||
-        saved === 'brackets' ||
-        saved === 'queue' ||
-        saved === 'documentation' ||
-        saved === 'overall' ||
-        saved === 'admins' ||
-        saved === 'audit')
-    ) {
-      return saved as TabType;
-    }
-    return 'events'; // Default to events now that we have it
-  });
+  const { eventId: eventIdParam, bracketId: bracketIdParam } = useParams<{
+    eventId?: string;
+    bracketId?: string;
+  }>();
+  const [searchParams] = useSearchParams();
+
+  const activeTab: AdminView = bracketIdParam
+    ? 'brackets'
+    : resolveView(searchParams.get('view'));
+
   const [tokenStatus, setTokenStatus] = useState<{
     valid: boolean;
     message?: string;
   } | null>(null);
+
+  // Sync URL eventId to EventContext once events have loaded
+  useEffect(() => {
+    if (eventsLoading || events.length === 0) return;
+
+    if (eventIdParam) {
+      const id = Number(eventIdParam);
+      const exists = events.find((e) => e.id === id);
+      if (exists) {
+        if (selectedEvent?.id !== id) selectEventById(id);
+      } else {
+        navigate(adminEventsPath('events'), { replace: true });
+      }
+    }
+  }, [
+    eventIdParam,
+    events,
+    eventsLoading,
+    selectedEvent?.id,
+    selectEventById,
+    navigate,
+  ]);
+
+  // Keep localStorage in sync as a fallback for next visit
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_TAB_KEY, activeTab);
+  }, [activeTab]);
+
+  const navigateTab = useCallback(
+    (view: AdminView) => {
+      const eid =
+        eventIdParam ?? (selectedEvent ? String(selectedEvent.id) : undefined);
+      if (eid) {
+        navigate(adminEventPath(eid, view));
+      } else {
+        navigate(adminEventsPath(view));
+      }
+    },
+    [navigate, eventIdParam, selectedEvent],
+  );
 
   useEffect(() => {
     if (!loading && !user) {
@@ -71,12 +133,6 @@ export default function Admin() {
     }
   }, [user, loading, navigate]);
 
-  // Save active tab to localStorage whenever it changes
-  useEffect(() => {
-    localStorage.setItem('colosseum_last_admin_tab', activeTab);
-  }, [activeTab]);
-
-  // Check token status periodically
   useEffect(() => {
     if (!user) return;
 
@@ -90,12 +146,8 @@ export default function Admin() {
       }
     };
 
-    // Check on mount
     checkTokens();
-
-    // Check every 5 minutes
     const interval = setInterval(checkTokens, 5 * 60 * 1000);
-
     return () => clearInterval(interval);
   }, [user]);
 
@@ -122,7 +174,6 @@ export default function Admin() {
     <div className="app">
       <Navbar />
 
-      {/* Token expiration warning banner */}
       {tokenStatus && !tokenStatus.valid && (
         <div className="reauth-banner">
           <span>
@@ -139,91 +190,21 @@ export default function Admin() {
         <div className="admin-layout">
           <aside className="admin-sidebar">
             <div className="sidebar-menu">
-              <button
-                className={`sidebar-item ${activeTab === 'events' ? 'active' : ''}`}
-                onClick={() => setActiveTab('events')}
-              >
-                📅 Events
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'teams' ? 'active' : ''}`}
-                onClick={() => setActiveTab('teams')}
-              >
-                👥 Teams
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'scoresheets' ? 'active' : ''}`}
-                onClick={() => setActiveTab('scoresheets')}
-              >
-                📝 Score Sheets
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'scoring' ? 'active' : ''}`}
-                onClick={() => setActiveTab('scoring')}
-              >
-                🏆 Scoring
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'seeding' ? 'active' : ''}`}
-                onClick={() => setActiveTab('seeding')}
-              >
-                🌱 Seeding
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'brackets' ? 'active' : ''}`}
-                onClick={() => setActiveTab('brackets')}
-              >
-                🏅 Brackets
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'queue' ? 'active' : ''}`}
-                onClick={() => setActiveTab('queue')}
-              >
-                🎟️ Queue
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'documentation' ? 'active' : ''}`}
-                onClick={() => setActiveTab('documentation')}
-              >
-                📚 Documentation
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'overall' ? 'active' : ''}`}
-                onClick={() => setActiveTab('overall')}
-              >
-                📊 Overall
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'admins' ? 'active' : ''}`}
-                onClick={() => setActiveTab('admins')}
-              >
-                🔐 Admins
-              </button>
-              <button
-                className={`sidebar-item ${activeTab === 'audit' ? 'active' : ''}`}
-                onClick={() => setActiveTab('audit')}
-              >
-                📋 Audit
-              </button>
+              {(Object.keys(TAB_LABELS) as AdminView[]).map((view) => (
+                <button
+                  key={view}
+                  className={`sidebar-item ${activeTab === view ? 'active' : ''}`}
+                  onClick={() => navigateTab(view)}
+                >
+                  {TAB_ICONS[view]} {TAB_LABELS[view]}
+                </button>
+              ))}
             </div>
           </aside>
 
           <div className="admin-content">
-            {/* Content header with event badge (secondary indicator) */}
             <div className="admin-content-header">
-              <h2>
-                {activeTab === 'events' && 'Manage Events'}
-                {activeTab === 'teams' && 'Teams'}
-                {activeTab === 'scoresheets' && 'Score Sheets'}
-                {activeTab === 'scoring' && 'Scoring'}
-                {activeTab === 'seeding' && 'Seeding'}
-                {activeTab === 'brackets' && 'Brackets'}
-                {activeTab === 'queue' && 'Queue'}
-                {activeTab === 'documentation' && 'Documentation'}
-                {activeTab === 'overall' && 'Overall'}
-                {activeTab === 'admins' && 'Admins'}
-                {activeTab === 'audit' && 'Audit'}
-              </h2>
+              <h2>{TAB_LABELS[activeTab]}</h2>
               {selectedEvent && (
                 <div className="content-header-event-badge">
                   <span
@@ -244,7 +225,7 @@ export default function Admin() {
             {activeTab === 'documentation' && <DocumentationTab />}
             {activeTab === 'overall' && <OverallTab />}
             {activeTab === 'admins' && <AdminsTab />}
-            {activeTab === 'audit' && <AuditTab onNavigateTab={setActiveTab} />}
+            {activeTab === 'audit' && <AuditTab onNavigateTab={navigateTab} />}
           </div>
         </div>
       </main>

@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
+import {
+  adminEventPath,
+  adminBracketPath,
+  isBracketDetailView,
+  type BracketDetailView as BracketDetailViewType,
+} from '../../utils/routes';
 import {
   Bracket,
   BracketDetail,
@@ -71,11 +78,27 @@ const defaultFormData: BracketFormData = {
 export default function BracketsTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
+  const navigate = useNavigate();
+  const { bracketId: bracketIdParam } = useParams<{ bracketId?: string }>();
+  const [searchParams] = useSearchParams();
   const [brackets, setBrackets] = useState<Bracket[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const [selectedBracketId, setSelectedBracketId] = useState<number | null>(
-    null,
+  const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
+
+  const setSelectedBracketId = useCallback(
+    (id: number | null) => {
+      if (id && selectedEventId) {
+        const viewParam = searchParams.get('view');
+        const view: BracketDetailViewType = isBracketDetailView(viewParam)
+          ? viewParam
+          : 'bracket';
+        navigate(adminBracketPath(selectedEventId, id, view));
+      } else if (selectedEventId) {
+        navigate(adminEventPath(selectedEventId, 'brackets'));
+      }
+    },
+    [selectedEventId, navigate, searchParams],
   );
   const [bracketDetail, setBracketDetail] = useState<BracketDetail | null>(
     null,
@@ -134,40 +157,48 @@ export default function BracketsTab() {
     }
   }, [selectedEventId]);
 
-  const fetchBracketDetail = useCallback(async (bracketId: number) => {
-    setDetailLoading(true);
-    try {
-      const [detailRes, rankingsRes] = await Promise.all([
-        fetch(`/brackets/${bracketId}`, { credentials: 'include' }),
-        fetch(`/brackets/${bracketId}/rankings`, { credentials: 'include' }),
-      ]);
-      if (!detailRes.ok) {
-        throw new Error('Failed to fetch bracket details');
+  const fetchBracketDetail = useCallback(
+    async (bracketId: number) => {
+      setDetailLoading(true);
+      try {
+        const [detailRes, rankingsRes] = await Promise.all([
+          fetch(`/brackets/${bracketId}`, { credentials: 'include' }),
+          fetch(`/brackets/${bracketId}/rankings`, { credentials: 'include' }),
+        ]);
+        if (!detailRes.ok) {
+          if (detailRes.status === 404 && selectedEventId) {
+            navigate(adminEventPath(selectedEventId, 'brackets'), {
+              replace: true,
+            });
+            return;
+          }
+          throw new Error('Failed to fetch bracket details');
+        }
+        const data: BracketDetail = await detailRes.json();
+        if (rankingsRes.ok) {
+          const rankingsBody = (await rankingsRes.json()) as {
+            weight: number;
+            entries: BracketEntryWithRank[];
+          };
+          data.rankings = rankingsBody.entries;
+          setRankings(rankingsBody.entries);
+          setRankingsWeight(rankingsBody.weight);
+        } else {
+          setRankings(null);
+        }
+        setBracketDetail(data);
+      } catch (error) {
+        console.error('Error fetching bracket detail:', error);
+        toast.error('Failed to load bracket details');
+      } finally {
+        setDetailLoading(false);
       }
-      const data: BracketDetail = await detailRes.json();
-      if (rankingsRes.ok) {
-        const rankingsBody = (await rankingsRes.json()) as {
-          weight: number;
-          entries: BracketEntryWithRank[];
-        };
-        data.rankings = rankingsBody.entries;
-        setRankings(rankingsBody.entries);
-        setRankingsWeight(rankingsBody.weight);
-      } else {
-        setRankings(null);
-      }
-      setBracketDetail(data);
-    } catch (error) {
-      console.error('Error fetching bracket detail:', error);
-      toast.error('Failed to load bracket details');
-    } finally {
-      setDetailLoading(false);
-    }
-  }, []);
+    },
+    [selectedEventId, navigate],
+  );
 
   useEffect(() => {
     fetchBrackets();
-    setSelectedBracketId(null);
     setBracketDetail(null);
   }, [fetchBrackets]);
 
@@ -403,7 +434,9 @@ export default function BracketsTab() {
 
       toast.success('Bracket deleted');
       if (selectedBracketId === bracket.id) {
-        setSelectedBracketId(null);
+        if (selectedEventId) {
+          navigate(adminEventPath(selectedEventId, 'brackets'));
+        }
         setBracketDetail(null);
       }
       await fetchBrackets();
@@ -665,7 +698,9 @@ export default function BracketsTab() {
             <BracketDetailView
               bracketDetail={bracketDetail}
               onBack={() => {
-                setSelectedBracketId(null);
+                if (selectedEventId) {
+                  navigate(adminEventPath(selectedEventId, 'brackets'));
+                }
                 setBracketDetail(null);
               }}
               adminActions={renderAdminActions()}

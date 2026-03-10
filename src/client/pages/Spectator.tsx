@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import SeedingDisplay from '../components/seeding/SeedingDisplay';
 import BracketLikeView from '../components/bracket/BracketLikeView';
@@ -26,6 +27,12 @@ import {
   getEventStatusClass,
   getEventStatusLabel,
 } from '../utils/eventStatus';
+import {
+  spectatorEventPath,
+  spectatorBracketPath,
+  isSpectatorView,
+  isSpectatorBracketView,
+} from '../utils/routes';
 import '../components/bracket/BracketDisplay.css';
 import './Spectator.css';
 
@@ -39,7 +46,7 @@ interface PublicEvent {
   final_scores_available: boolean;
 }
 
-type SpectatorTab =
+type EffectiveTab =
   | 'seeding'
   | 'bracket'
   | 'documentation'
@@ -47,11 +54,15 @@ type SpectatorTab =
   | 'overall';
 
 export default function Spectator() {
-  const [events, setEvents] = useState<PublicEvent[]>([]);
-  const [selectedEventId, setSelectedEventId] = useState<number | null>(null);
-  const [eventsLoading, setEventsLoading] = useState(true);
+  const navigate = useNavigate();
+  const { eventId: eventIdParam, bracketId: bracketIdParam } = useParams<{
+    eventId?: string;
+    bracketId?: string;
+  }>();
+  const [searchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<SpectatorTab>('seeding');
+  const [events, setEvents] = useState<PublicEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(true);
 
   // Seeding state
   const [teams, setTeams] = useState<Team[]>([]);
@@ -61,9 +72,6 @@ export default function Spectator() {
 
   // Bracket state
   const [brackets, setBrackets] = useState<Bracket[]>([]);
-  const [selectedBracketId, setSelectedBracketId] = useState<number | null>(
-    null,
-  );
   const [bracketGames, setBracketGames] = useState<BracketGame[]>([]);
   const [bracketLoading, setBracketLoading] = useState(false);
 
@@ -88,6 +96,24 @@ export default function Spectator() {
   const [overallLoading, setOverallLoading] = useState(false);
   const [overallLoaded, setOverallLoaded] = useState(false);
 
+  const selectedEventId = eventIdParam ? Number(eventIdParam) : null;
+  const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
+
+  const viewParam = searchParams.get('view');
+
+  const activeTab: EffectiveTab = useMemo(() => {
+    if (bracketIdParam) {
+      if (isSpectatorBracketView(viewParam)) {
+        return viewParam === 'rankings' ? 'bracketRankings' : 'bracket';
+      }
+      return 'bracket';
+    }
+    if (isSpectatorView(viewParam)) {
+      return viewParam === 'bracket' ? 'bracket' : viewParam;
+    }
+    return 'seeding';
+  }, [bracketIdParam, viewParam]);
+
   const selectedEvent = useMemo(
     () => events.find((e) => e.id === selectedEventId) ?? null,
     [events, selectedEventId],
@@ -103,7 +129,7 @@ export default function Spectator() {
     [selectedEvent],
   );
 
-  // Load public events
+  // Load public events and redirect to first event if no eventId in URL
   useEffect(() => {
     (async () => {
       try {
@@ -111,8 +137,10 @@ export default function Spectator() {
         if (!res.ok) throw new Error('Failed to fetch events');
         const data: PublicEvent[] = await res.json();
         setEvents(data);
-        if (data.length > 0) {
-          setSelectedEventId(data[0].id);
+        if (!eventIdParam && data.length > 0) {
+          navigate(spectatorEventPath(data[0].id, 'seeding'), {
+            replace: true,
+          });
         }
       } catch (error) {
         console.error('Error loading events:', error);
@@ -121,6 +149,15 @@ export default function Spectator() {
       }
     })();
   }, []);
+
+  // Redirect to /spectator if eventId is invalid after events load
+  useEffect(() => {
+    if (eventsLoading || !eventIdParam || events.length === 0) return;
+    const exists = events.find((e) => e.id === Number(eventIdParam));
+    if (!exists) {
+      navigate(spectatorEventPath(events[0].id, 'seeding'), { replace: true });
+    }
+  }, [eventsLoading, eventIdParam, events, navigate]);
 
   // Clear lazy-loaded state when event changes
   useEffect(() => {
@@ -166,26 +203,22 @@ export default function Spectator() {
   }, [loadSeeding]);
 
   // Load brackets list when event changes
-  const loadBrackets = useCallback(async () => {
+  useEffect(() => {
     if (!selectedEventId) {
       setBrackets([]);
-      setSelectedBracketId(null);
       return;
     }
-    try {
-      const res = await fetch(`/brackets/event/${selectedEventId}`);
-      if (!res.ok) throw new Error('Failed to fetch brackets');
-      const data: Bracket[] = await res.json();
-      setBrackets(data);
-      setSelectedBracketId(data.length > 0 ? data[0].id : null);
-    } catch (error) {
-      console.error('Error loading brackets:', error);
-    }
+    (async () => {
+      try {
+        const res = await fetch(`/brackets/event/${selectedEventId}`);
+        if (!res.ok) throw new Error('Failed to fetch brackets');
+        const data: Bracket[] = await res.json();
+        setBrackets(data);
+      } catch (error) {
+        console.error('Error loading brackets:', error);
+      }
+    })();
   }, [selectedEventId]);
-
-  useEffect(() => {
-    loadBrackets();
-  }, [loadBrackets]);
 
   // Load bracket games when selected bracket changes
   const loadBracketGames = useCallback(async () => {
@@ -282,9 +315,41 @@ export default function Spectator() {
 
   const handleEventChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = Number(e.target.value);
-    setSelectedEventId(id || null);
-    setActiveTab('seeding');
+    if (id) {
+      navigate(spectatorEventPath(id, 'seeding'));
+    }
   };
+
+  const navigateToTab = useCallback(
+    (tab: EffectiveTab) => {
+      if (!selectedEventId) return;
+      if (tab === 'bracket' || tab === 'bracketRankings') {
+        const bid =
+          selectedBracketId ?? (brackets.length > 0 ? brackets[0].id : null);
+        if (bid) {
+          navigate(
+            spectatorBracketPath(
+              selectedEventId,
+              bid,
+              tab === 'bracketRankings' ? 'rankings' : 'bracket',
+            ),
+          );
+        }
+      } else {
+        navigate(spectatorEventPath(selectedEventId, tab));
+      }
+    },
+    [selectedEventId, selectedBracketId, brackets, navigate],
+  );
+
+  const handleBracketChange = useCallback(
+    (newBracketId: number) => {
+      if (!selectedEventId) return;
+      const view = activeTab === 'bracketRankings' ? 'rankings' : 'bracket';
+      navigate(spectatorBracketPath(selectedEventId, newBracketId, view));
+    },
+    [selectedEventId, activeTab, navigate],
+  );
 
   const winner = useMemo(
     () => (bracketGames.length > 0 ? getBracketWinner(bracketGames) : null),
@@ -298,7 +363,7 @@ export default function Spectator() {
         <select
           id={`${idPrefix}-bracket`}
           value={selectedBracketId ?? ''}
-          onChange={(e) => setSelectedBracketId(Number(e.target.value) || null)}
+          onChange={(e) => handleBracketChange(Number(e.target.value))}
         >
           {brackets.map((b) => (
             <option key={b.id} value={b.id}>
@@ -328,7 +393,6 @@ export default function Spectator() {
           </div>
         ) : (
           <>
-            {/* Event selector */}
             <div className="spectator-event-selector">
               <label htmlFor="spectator-event">Event</label>
               <select
@@ -359,17 +423,16 @@ export default function Spectator() {
               )}
             </div>
 
-            {/* Tabs */}
             <div className="spectator-tabs">
               <button
                 className={`spectator-tab-btn ${activeTab === 'seeding' ? 'active' : ''}`}
-                onClick={() => setActiveTab('seeding')}
+                onClick={() => navigateToTab('seeding')}
               >
                 Seeding
               </button>
               <button
                 className={`spectator-tab-btn ${activeTab === 'bracket' ? 'active' : ''}`}
-                onClick={() => setActiveTab('bracket')}
+                onClick={() => navigateToTab('bracket')}
               >
                 Bracket
               </button>
@@ -377,19 +440,19 @@ export default function Spectator() {
                 <>
                   <button
                     className={`spectator-tab-btn ${activeTab === 'documentation' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('documentation')}
+                    onClick={() => navigateToTab('documentation')}
                   >
                     Documentation
                   </button>
                   <button
                     className={`spectator-tab-btn ${activeTab === 'bracketRankings' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('bracketRankings')}
+                    onClick={() => navigateToTab('bracketRankings')}
                   >
                     Bracket Rankings
                   </button>
                   <button
                     className={`spectator-tab-btn ${activeTab === 'overall' ? 'active' : ''}`}
-                    onClick={() => setActiveTab('overall')}
+                    onClick={() => navigateToTab('overall')}
                   >
                     Overall
                   </button>
@@ -397,7 +460,6 @@ export default function Spectator() {
               )}
             </div>
 
-            {/* Tab content */}
             {activeTab === 'seeding' && (
               <div>
                 {seedingLoading ? (
