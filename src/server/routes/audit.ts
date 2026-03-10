@@ -100,12 +100,21 @@ export async function createAuditEntry(
     ip_address?: string | null;
   },
 ): Promise<number | undefined> {
+  // Validate user_id exists to avoid FK constraint failure (e.g. stale session, test fixtures)
+  let auditUserId: number | null = params.user_id ?? null;
+  if (auditUserId != null) {
+    const exists = await db.get('SELECT 1 FROM users WHERE id = ?', [
+      auditUserId,
+    ]);
+    if (!exists) auditUserId = null;
+  }
+
   const result = await db.run(
     `INSERT INTO audit_log (event_id, user_id, action, entity_type, entity_id, old_value, new_value, ip_address)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       params.event_id ?? null,
-      params.user_id ?? null,
+      auditUserId,
       params.action,
       params.entity_type,
       params.entity_id ?? null,
