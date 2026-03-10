@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import ScoreViewModal from './ScoreViewModal';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
@@ -62,10 +63,31 @@ export default function ScoringTab() {
   );
   const [loading, setLoading] = useState(true);
 
+  // URL-backed pagination
+  const [searchParams, setSearchParams] = useSearchParams();
+  const eventPage = Math.max(1, Number(searchParams.get('page')) || 1);
+  const setEventPage = useCallback(
+    (updater: number | ((prev: number) => number)) => {
+      const next = typeof updater === 'function' ? updater(eventPage) : updater;
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (next <= 1) {
+            p.delete('page');
+          } else {
+            p.set('page', String(next));
+          }
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [eventPage, setSearchParams],
+  );
+
   // Event mode state
   const [eventFilterStatus, setEventFilterStatus] = useState<string>('');
   const [eventFilterType, setEventFilterType] = useState<string>('');
-  const [eventPage, setEventPage] = useState(1);
   const [eventTotalPages, setEventTotalPages] = useState(1);
   const [eventTotalCount, setEventTotalCount] = useState(0);
   const eventLimit = 50;

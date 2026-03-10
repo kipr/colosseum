@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { BracketDetail, BracketEntryWithRank } from '../../types/brackets';
 import { STATUS_LABELS } from '../../types/brackets';
 import { getStatusClass } from './bracketUtils';
 import BracketView from './BracketView';
 import BracketManagementView from './BracketManagementView';
 import BracketRankingView from './BracketRankingView';
+import { isBracketDetailView } from '../../utils/routes';
 import './BracketDisplay.css';
 
 type DetailViewMode = 'bracket' | 'ranking' | 'management';
@@ -34,14 +36,22 @@ export default function BracketDetailView({
   onRefreshRankings,
   allowedModes,
 }: BracketDetailViewProps) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const modes: DetailViewMode[] = allowedModes ?? [
     'bracket',
     'ranking',
     'management',
   ];
-  const [detailViewMode, setDetailViewMode] = useState<DetailViewMode>(
-    modes[0],
-  );
+
+  const viewParam = searchParams.get('view');
+  const detailViewMode: DetailViewMode =
+    isBracketDetailView(viewParam) && modes.includes(viewParam)
+      ? viewParam
+      : modes[0];
+
+  const setDetailViewMode = (mode: DetailViewMode) => {
+    setSearchParams({ view: mode }, { replace: true });
+  };
 
   const modeLabels: Record<DetailViewMode, string> = {
     bracket: 'Bracket View',
@@ -70,7 +80,6 @@ export default function BracketDetailView({
         )}
       </div>
 
-      {/* Bracket Header */}
       <div className="card bracket-header-card">
         <div className="bracket-header">
           <div className="bracket-header-info">
@@ -96,12 +105,10 @@ export default function BracketDetailView({
         </div>
       </div>
 
-      {/* Bracket View */}
       {detailViewMode === 'bracket' && (
         <BracketView bracketDetail={bracketDetail} />
       )}
 
-      {/* Ranking View */}
       {detailViewMode === 'ranking' && (
         <BracketRankingView
           bracketId={bracketDetail.id}
@@ -112,7 +119,6 @@ export default function BracketDetailView({
         />
       )}
 
-      {/* Management View */}
       {detailViewMode === 'management' && (
         <BracketManagementView
           bracketDetail={bracketDetail}

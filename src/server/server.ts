@@ -147,7 +147,7 @@ app.use('/images', express.static(path.join(__dirname, '../../static/images')));
 
 // Routes
 app.use('/auth', authRoutes);
-app.use('/admin', adminRoutes);
+app.use('/api/admin', adminRoutes);
 app.use('/scoresheet', scoresheetRoutes);
 app.use('/field-templates', fieldTemplatesRoutes);
 app.use('/api', apiRoutes);
@@ -169,7 +169,7 @@ app.get('/health', (req: Request, res: Response) => {
 // In production, serve React app for all non-API routes
 if (process.env.NODE_ENV === 'production') {
   // These are the React SPA routes - serve index.html for these exact paths
-  const spaRoutes = ['/', '/admin', '/judge', '/scoresheet'];
+  const spaRoutes = ['/', '/admin', '/judge', '/scoresheet', '/spectator'];
 
   spaRoutes.forEach((route) => {
     app.get(route, (req: Request, res: Response) => {
@@ -181,9 +181,8 @@ if (process.env.NODE_ENV === 'production') {
   app.get('/{*path}', (req: Request, res: Response, next: NextFunction) => {
     // Only serve React for paths that aren't handled by API routes
     const apiPrefixes = [
-      '/api',
+      '/api/',
       '/auth/',
-      '/admin/',
       '/scoresheet/',
       '/scores/',
       '/chat/',
@@ -195,6 +194,7 @@ if (process.env.NODE_ENV === 'production') {
       '/queue/',
       '/audit/',
       '/documentation-scores/',
+      '/health',
     ];
     const isApiRoute = apiPrefixes.some((prefix) =>
       req.path.startsWith(prefix),

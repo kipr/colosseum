@@ -5,6 +5,7 @@ import React, {
   useRef,
   useMemo,
 } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import * as Diff from 'diff';
 import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
@@ -28,20 +29,10 @@ interface AuditLogEntry {
   user_email: string | null;
 }
 
-type TabType =
-  | 'events'
-  | 'teams'
-  | 'spreadsheets'
-  | 'scoresheets'
-  | 'scoring'
-  | 'seeding'
-  | 'brackets'
-  | 'queue'
-  | 'admins'
-  | 'audit';
+import type { AdminView } from '../../utils/routes';
 
 interface AuditTabProps {
-  onNavigateTab: (tab: TabType) => void;
+  onNavigateTab: (tab: AdminView) => void;
 }
 
 function formatUserDisplay(entry: AuditLogEntry): string {
@@ -62,7 +53,7 @@ function summarizeValue(value: string | null): string {
   }
 }
 
-const ENTITY_TYPE_TO_TAB: Record<string, TabType> = {
+const ENTITY_TYPE_TO_TAB: Record<string, AdminView> = {
   team: 'teams',
   teams: 'teams',
   bracket: 'brackets',
@@ -86,6 +77,8 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
   toastRef.current = toast;
   const fetchGenerationRef = useRef(0);
 
+  const [, setSearchParams] = useSearchParams();
+
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [offset, setOffset] = useState(0);
@@ -94,6 +87,24 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
   const [filterEntityType, setFilterEntityType] = useState('');
   const [appliedAction, setAppliedAction] = useState('');
   const [appliedEntityType, setAppliedEntityType] = useState('');
+
+  const setUrlPage = useCallback(
+    (page: number) => {
+      setSearchParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          if (page <= 1) {
+            p.delete('audit_page');
+          } else {
+            p.set('audit_page', String(page));
+          }
+          return p;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const [jsonModal, setJsonModal] = useState<{
     label: string;
@@ -176,18 +187,22 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
   }, [selectedEventId, appliedAction, appliedEntityType, fetchLogs]);
 
   const handleLoadMore = () => {
+    const nextPage = Math.floor(offset / PAGE_SIZE) + 2;
+    setUrlPage(nextPage);
     fetchLogs(true, offset);
   };
 
   const handleApplyFilters = () => {
     setAppliedAction(filterAction.trim());
     setAppliedEntityType(filterEntityType.trim());
+    setUrlPage(1);
   };
 
   const handleClearFilters = () => {
     setFilterAction('');
     setFilterEntityType('');
     setAppliedAction('');
+    setUrlPage(1);
     setAppliedEntityType('');
   };
 

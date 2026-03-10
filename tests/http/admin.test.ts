@@ -1,5 +1,5 @@
 /**
- * HTTP route tests for /admin endpoints.
+ * HTTP route tests for /api/admin endpoints.
  * Covers user listing and authorization.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -26,14 +26,14 @@ describe('Admin Routes', () => {
   // Authentication Boundaries
   // ==========================================================================
 
-  describe('GET /admin/users', () => {
+  describe('GET /api/admin/users', () => {
     it('returns 401 when not authenticated', async () => {
       const app = createTestApp();
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(401);
       } finally {
         await server.close();
@@ -42,11 +42,11 @@ describe('Admin Routes', () => {
 
     it('returns 200 for authenticated user', async () => {
       const app = createTestApp({ user: { id: 1, is_admin: true } });
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
       } finally {
         await server.close();
@@ -55,11 +55,11 @@ describe('Admin Routes', () => {
 
     it('returns empty array when no admin users exist', async () => {
       const app = createTestApp({ user: { id: 1, is_admin: true } });
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
         expect(res.json).toEqual([]);
       } finally {
@@ -82,11 +82,11 @@ describe('Admin Routes', () => {
       });
 
       const app = createTestApp({ user: { id: 1, is_admin: true } });
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
         const users = res.json as {
           name: string;
@@ -114,11 +114,11 @@ describe('Admin Routes', () => {
       });
 
       const app = createTestApp({ user: { id: 1, is_admin: true } });
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
         const users = res.json as { tokenValid: boolean }[];
         expect(users.length).toBe(1);

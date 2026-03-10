@@ -17,7 +17,7 @@ export default function Home() {
 
       if (user) {
         // User is logged in, redirect to admin
-        navigate('/admin', { replace: true });
+        navigate('/admin/events', { replace: true });
       }
     }
   }, [searchParams, user, loading, navigate]);
@@ -33,7 +33,7 @@ export default function Home() {
   const handleAdminClick = () => {
     if (user) {
       // Already logged in, go directly to admin
-      navigate('/admin');
+      navigate('/admin/events');
     } else {
       // Not logged in, initiate OAuth
       sessionStorage.setItem('loginIntent', 'admin');

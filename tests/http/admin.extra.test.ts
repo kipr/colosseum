@@ -27,7 +27,7 @@ describe('Admin Routes - additional coverage', () => {
     testDb.close();
   });
 
-  describe('GET /admin/users', () => {
+  describe('GET /api/admin/users', () => {
     it('returns admin users with last_activity as string', async () => {
       const user = await seedUser(testDb.db, {
         is_admin: true,
@@ -41,11 +41,11 @@ describe('Admin Routes - additional coverage', () => {
       );
 
       const app = createTestApp({ user: { id: user.id, is_admin: false } });
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
         const users = res.json as {
           id: number;
@@ -76,11 +76,11 @@ describe('Admin Routes - additional coverage', () => {
       );
 
       const app = createTestApp({ user: { id: user.id, is_admin: false } });
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
         const users = res.json as {
           id: number;
@@ -114,11 +114,11 @@ describe('Admin Routes - additional coverage', () => {
       ]);
 
       const app = createTestApp({ user: { id: user.id, is_admin: false } });
-      app.use('/admin', adminRoutes);
+      app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
-        const res = await http.get(`${server.baseUrl}/admin/users`);
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
         const users = res.json as {
           id: number;

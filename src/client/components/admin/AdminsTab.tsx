@@ -22,7 +22,9 @@ export default function AdminsTab() {
   const loadAdmins = async () => {
     try {
       setError(null);
-      const response = await fetch('/admin/users', { credentials: 'include' });
+      const response = await fetch('/api/admin/users', {
+        credentials: 'include',
+      });
       if (!response.ok) throw new Error('Failed to load admins');
       const data = await response.json();
       setAdmins(data);
