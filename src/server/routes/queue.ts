@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
+import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import type { Database } from '../database/connection';
 
@@ -212,28 +213,31 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
 }
 
 // GET /queue/event/:eventId - Get queue for event (public for judges)
-router.get('/event/:eventId', async (req: Request, res: Response) => {
-  try {
-    const { eventId } = req.params;
-    const { queue_type, sync } = req.query;
-    const db = await getDatabase();
+router.get(
+  '/event/:eventId',
+  queueSyncLimiter,
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      const { queue_type, sync } = req.query;
+      const db = await getDatabase();
 
-    const eventIdNum = parseInt(eventId, 10);
-    if (isNaN(eventIdNum)) {
-      return res.status(400).json({ error: 'Invalid event ID' });
-    }
-
-    if (sync === '1' || sync === 'true') {
-      const qt = typeof queue_type === 'string' ? queue_type : null;
-      if (!qt || qt === 'seeding') {
-        await syncSeedingQueue(db, eventIdNum);
+      const eventIdNum = parseInt(eventId, 10);
+      if (isNaN(eventIdNum)) {
+        return res.status(400).json({ error: 'Invalid event ID' });
       }
-      if (!qt || qt === 'bracket') {
-        await syncBracketQueue(db, eventIdNum);
-      }
-    }
 
-    let query = `
+      if (sync === '1' || sync === 'true') {
+        const qt = typeof queue_type === 'string' ? queue_type : null;
+        if (!qt || qt === 'seeding') {
+          await syncSeedingQueue(db, eventIdNum);
+        }
+        if (!qt || qt === 'bracket') {
+          await syncBracketQueue(db, eventIdNum);
+        }
+      }
+
+      let query = `
       SELECT gq.*,
              bg.game_number, bg.round_name, bg.bracket_side,
              t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
@@ -246,43 +250,44 @@ router.get('/event/:eventId', async (req: Request, res: Response) => {
       LEFT JOIN teams st ON gq.seeding_team_id = st.id
       WHERE gq.event_id = ?
     `;
-    const params: (string | number)[] = [eventId];
+      const params: (string | number)[] = [eventId];
 
-    const statusParam = req.query.status;
-    if (statusParam) {
-      let statuses: string[] = [];
-      if (Array.isArray(statusParam)) {
-        statuses = statusParam as string[];
-      } else if (typeof statusParam === 'string') {
-        if (statusParam.includes(',')) {
-          statuses = statusParam.split(',');
-        } else if (statusParam.includes('|')) {
-          statuses = statusParam.split('|');
-        } else {
-          statuses = [statusParam];
+      const statusParam = req.query.status;
+      if (statusParam) {
+        let statuses: string[] = [];
+        if (Array.isArray(statusParam)) {
+          statuses = statusParam as string[];
+        } else if (typeof statusParam === 'string') {
+          if (statusParam.includes(',')) {
+            statuses = statusParam.split(',');
+          } else if (statusParam.includes('|')) {
+            statuses = statusParam.split('|');
+          } else {
+            statuses = [statusParam];
+          }
+        }
+
+        if (statuses.length > 0) {
+          query += ` AND gq.status IN (${statuses.map(() => '?').join(',')})`;
+          params.push(...statuses);
         }
       }
 
-      if (statuses.length > 0) {
-        query += ` AND gq.status IN (${statuses.map(() => '?').join(',')})`;
-        params.push(...statuses);
+      if (queue_type) {
+        query += ' AND gq.queue_type = ?';
+        params.push(queue_type as string);
       }
+
+      query += ' ORDER BY gq.queue_position ASC';
+
+      const queue = await db.all(query, params);
+      res.json(queue);
+    } catch (error) {
+      console.error('Error fetching game queue:', error);
+      res.status(500).json({ error: 'Failed to fetch game queue' });
     }
-
-    if (queue_type) {
-      query += ' AND gq.queue_type = ?';
-      params.push(queue_type as string);
-    }
-
-    query += ' ORDER BY gq.queue_position ASC';
-
-    const queue = await db.all(query, params);
-    res.json(queue);
-  } catch (error) {
-    console.error('Error fetching game queue:', error);
-    res.status(500).json({ error: 'Failed to fetch game queue' });
-  }
-});
+  },
+);
 
 // POST /queue - Add item to queue
 router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {

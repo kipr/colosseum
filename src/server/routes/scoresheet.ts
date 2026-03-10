@@ -1,5 +1,6 @@
 import express from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
+import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 
 const router = express.Router();
@@ -127,6 +128,7 @@ router.get(
 // Verify access code and get template (public - for judges)
 router.post(
   '/templates/:id/verify',
+  accessCodeLimiter,
   async (req: express.Request, res: express.Response) => {
     try {
       const { id } = req.params;
