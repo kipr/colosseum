@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import '../admin/DocumentationTab.css';
 
 export interface DocCategoryDisplay {
@@ -32,6 +32,13 @@ interface DocumentationScoresDisplayProps {
   scores: DocScoreDisplay[];
 }
 
+type SortField =
+  | 'team_number'
+  | 'team_name'
+  | 'overall_score'
+  | `cat_${number}`;
+type SortDirection = 'asc' | 'desc';
+
 export default function DocumentationScoresDisplay({
   categories,
   scores,
@@ -39,6 +46,65 @@ export default function DocumentationScoresDisplay({
   const sortedCategories = [...categories].sort(
     (a, b) => a.ordinal - b.ordinal,
   );
+
+  const [sortField, setSortField] = useState<SortField>('team_number');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  const subScoreMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const score of scores) {
+      if (score.sub_scores) {
+        for (const sub of score.sub_scores) {
+          map.set(`${score.team_id}-${sub.category_id}`, sub.score);
+        }
+      }
+    }
+    return map;
+  }, [scores]);
+
+  const sortedScores = useMemo(() => {
+    const sorted = [...scores].sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
+
+      if (sortField === 'team_number') {
+        aVal = a.team_number;
+        bVal = b.team_number;
+      } else if (sortField === 'team_name') {
+        aVal = a.team_name.toLowerCase();
+        bVal = b.team_name.toLowerCase();
+      } else if (sortField === 'overall_score') {
+        aVal = a.overall_score ?? -Infinity;
+        bVal = b.overall_score ?? -Infinity;
+      } else if (sortField.startsWith('cat_')) {
+        const catId = parseInt(sortField.slice(4), 10);
+        aVal = subScoreMap.get(`${a.team_id}-${catId}`) ?? -Infinity;
+        bVal = subScoreMap.get(`${b.team_id}-${catId}`) ?? -Infinity;
+      } else {
+        return 0;
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sorted;
+  }, [scores, subScoreMap, sortField, sortDirection]);
+
+  const handleSort = useCallback(
+    (field: SortField) => {
+      if (sortField === field) {
+        setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortField(field);
+        setSortDirection('asc');
+      }
+    },
+    [sortField],
+  );
+
+  const getSortIndicator = (field: SortField) =>
+    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
 
   if (categories.length === 0) {
     return (
@@ -49,15 +115,6 @@ export default function DocumentationScoresDisplay({
         </p>
       </div>
     );
-  }
-
-  const subScoreMap = new Map<string, number>();
-  for (const score of scores) {
-    if (score.sub_scores) {
-      for (const sub of score.sub_scores) {
-        subScoreMap.set(`${score.team_id}-${sub.category_id}`, sub.score);
-      }
-    }
   }
 
   return (
@@ -76,12 +133,27 @@ export default function DocumentationScoresDisplay({
           <table className="doc-calculator-table">
             <thead>
               <tr>
-                <th>Team #</th>
-                <th>Team Name</th>
+                <th
+                  className="doc-sortable"
+                  onClick={() => handleSort('team_number')}
+                >
+                  Team #{getSortIndicator('team_number')}
+                </th>
+                <th
+                  className="doc-sortable"
+                  onClick={() => handleSort('team_name')}
+                >
+                  Team Name{getSortIndicator('team_name')}
+                </th>
                 {sortedCategories.map((cat, idx) => (
                   <React.Fragment key={cat.id}>
-                    <th title={`Max: ${cat.max_score}`}>
+                    <th
+                      className="doc-sortable"
+                      title={`Max: ${cat.max_score}`}
+                      onClick={() => handleSort(`cat_${cat.id}` as SortField)}
+                    >
                       {cat.name} (&times;{cat.weight})
+                      {getSortIndicator(`cat_${cat.id}` as SortField)}
                     </th>
                     {idx < sortedCategories.length - 1 && (
                       <th className="doc-op">+</th>
@@ -89,11 +161,16 @@ export default function DocumentationScoresDisplay({
                   </React.Fragment>
                 ))}
                 <th className="doc-op">=</th>
-                <th>Overall Score</th>
+                <th
+                  className="doc-sortable"
+                  onClick={() => handleSort('overall_score')}
+                >
+                  Overall Score{getSortIndicator('overall_score')}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {scores.map((score) => (
+              {sortedScores.map((score) => (
                 <tr key={score.team_id}>
                   <td>{score.team_number}</td>
                   <td>{score.team_name}</td>

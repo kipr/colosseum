@@ -56,6 +56,21 @@
   color: var(--secondary-color);
 }
 
+/* Sortable headers – shared by admin (DocumentationTab) and spectator (DocumentationScoresDisplay) */
+.documentation-section .doc-calculator-table .doc-sortable,
+.documentation-tab .doc-calculator-table .doc-sortable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.documentation-section .doc-calculator-table .doc-sortable:hover,
+.documentation-tab .doc-calculator-table .doc-sortable:hover {
+  background-color: var(--bg-color);
+}
+
 .documentation-tab .doc-score-cell {
   display: inline-flex;
   align-items: center;

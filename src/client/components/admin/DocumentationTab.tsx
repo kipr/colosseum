@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -264,13 +264,65 @@ export default function DocumentationTab() {
   const scoreByTeamId = new Map(scores.map((s) => [s.team_id, s]));
   const teamByNumber = new Map(teams.map((t) => [t.team_number, t]));
 
-  const mergedTeams = teams.map((team) => {
-    const doc = scoreByTeamId.get(team.id);
-    return {
-      team,
-      doc,
-    };
-  });
+  type SortField =
+    | 'team_number'
+    | 'team_name'
+    | 'overall_score'
+    | `cat_${number}`;
+  type SortDirection = 'asc' | 'desc';
+
+  const [sortField, setSortField] = useState<SortField>('team_number');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  const mergedTeams = useMemo(() => {
+    const merged = teams.map((team) => {
+      const doc = scoreByTeamId.get(team.id);
+      return { team, doc };
+    });
+    merged.sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
+
+      if (sortField === 'team_number') {
+        aVal = a.team.team_number;
+        bVal = b.team.team_number;
+      } else if (sortField === 'team_name') {
+        aVal = a.team.team_name.toLowerCase();
+        bVal = b.team.team_name.toLowerCase();
+      } else if (sortField === 'overall_score') {
+        aVal = a.doc?.overall_score ?? -Infinity;
+        bVal = b.doc?.overall_score ?? -Infinity;
+      } else if (sortField.startsWith('cat_')) {
+        const catId = parseInt(sortField.slice(4), 10);
+        const subA = a.doc?.sub_scores?.find((s) => s.category_id === catId);
+        const subB = b.doc?.sub_scores?.find((s) => s.category_id === catId);
+        aVal = subA?.score ?? -Infinity;
+        bVal = subB?.score ?? -Infinity;
+      } else {
+        return 0;
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return merged;
+  }, [teams, scores, sortField, sortDirection]);
+
+  const handleSort = useCallback(
+    (field: SortField) => {
+      if (sortField === field) {
+        setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
+      } else {
+        setSortField(field);
+        setSortDirection('asc');
+      }
+    },
+    [sortField],
+  );
+
+  const getSortIndicator = (field: SortField) =>
+    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
 
   if (!selectedEventId) {
     return (
@@ -714,12 +766,27 @@ export default function DocumentationTab() {
             <table className="doc-calculator-table">
               <thead>
                 <tr>
-                  <th>Team #</th>
-                  <th>Team Name</th>
+                  <th
+                    className="doc-sortable"
+                    onClick={() => handleSort('team_number')}
+                  >
+                    Team #{getSortIndicator('team_number')}
+                  </th>
+                  <th
+                    className="doc-sortable"
+                    onClick={() => handleSort('team_name')}
+                  >
+                    Team Name{getSortIndicator('team_name')}
+                  </th>
                   {sortedCategories.map((cat, idx) => (
                     <React.Fragment key={cat.id}>
-                      <th title={`Max: ${cat.max_score}`}>
+                      <th
+                        className="doc-sortable"
+                        title={`Max: ${cat.max_score}`}
+                        onClick={() => handleSort(`cat_${cat.id}` as SortField)}
+                      >
                         {cat.name} (×{cat.weight})
+                        {getSortIndicator(`cat_${cat.id}` as SortField)}
                       </th>
                       {idx < sortedCategories.length - 1 && (
                         <th className="doc-op">+</th>
@@ -727,7 +794,12 @@ export default function DocumentationTab() {
                     </React.Fragment>
                   ))}
                   <th className="doc-op">=</th>
-                  <th>Overall Score</th>
+                  <th
+                    className="doc-sortable"
+                    onClick={() => handleSort('overall_score')}
+                  >
+                    Overall Score{getSortIndicator('overall_score')}
+                  </th>
                   <th>Actions</th>
                 </tr>
               </thead>
