@@ -22,6 +22,7 @@ const QueueTab = lazy(() => import('../components/admin/QueueTab'));
 const DocumentationTab = lazy(
   () => import('../components/admin/DocumentationTab'),
 );
+const AwardsTab = lazy(() => import('../components/admin/AwardsTab'));
 const OverallTab = lazy(() => import('../components/admin/OverallTab'));
 const AdminsTab = lazy(() => import('../components/admin/AdminsTab'));
 const AuditTab = lazy(() => import('../components/admin/AuditTab'));
@@ -37,6 +38,7 @@ const TAB_LABELS: Record<AdminView, string> = {
   brackets: 'Brackets',
   queue: 'Queue',
   documentation: 'Documentation',
+  awards: 'Awards',
   overall: 'Overall',
   admins: 'Admins',
   audit: 'Audit',
@@ -51,6 +53,7 @@ const TAB_ICONS: Record<AdminView, string> = {
   brackets: '🏅',
   queue: '🎟️',
   documentation: '📚',
+  awards: '🏅',
   overall: '📊',
   admins: '🔐',
   audit: '📋',
@@ -231,6 +234,7 @@ export default function Admin() {
               {activeTab === 'brackets' && <BracketsTab />}
               {activeTab === 'queue' && <QueueTab />}
               {activeTab === 'documentation' && <DocumentationTab />}
+              {activeTab === 'awards' && <AwardsTab />}
               {activeTab === 'overall' && <OverallTab />}
               {activeTab === 'admins' && <AdminsTab />}
               {activeTab === 'audit' && (

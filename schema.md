@@ -406,3 +406,55 @@ CREATE TABLE IF NOT EXISTS documentation_sub_scores (
 
 CREATE INDEX IF NOT EXISTS idx_doc_sub_scores_doc ON documentation_sub_scores(documentation_score_id);
 ```
+
+New requirement: awards.
+Awards are published alongside "Release Final Scores." Template edits do not mutate
+existing event awards (name/description are copied at creation). Multiple recipients
+per event award are supported, and duplicate event awards (same name) are allowed.
+
+```sql
+-- ============================================================================
+-- AWARDS
+-- ============================================================================
+
+-- Global award catalog (reusable across events)
+-- Editing a template does NOT retroactively change event awards already created from it.
+CREATE TABLE IF NOT EXISTS award_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Event-specific award instances (snapshot of name/description from template at creation time)
+-- Duplicate names within the same event are intentionally allowed.
+CREATE TABLE IF NOT EXISTS event_awards (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    template_award_id INTEGER REFERENCES award_templates(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,                          -- Copied from template or entered manually
+    description TEXT,                            -- Copied from template or entered manually
+    sort_order INTEGER NOT NULL DEFAULT 0,       -- Display ordering within the event
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_awards_event_sort ON event_awards(event_id, sort_order);
+CREATE INDEX IF NOT EXISTS idx_event_awards_template ON event_awards(template_award_id);
+
+-- Recipients of an event award (many-to-many join with teams)
+-- Multiple recipients per award are allowed; duplicate (award, team) pairs are not.
+-- NOTE: team_id can point to a team in a different event than the award.
+-- Application-level validation prevents cross-event recipients.
+CREATE TABLE IF NOT EXISTS event_award_recipients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_award_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_award_recipients_award ON event_award_recipients(event_award_id);
+CREATE INDEX IF NOT EXISTS idx_event_award_recipients_team ON event_award_recipients(team_id);
+```

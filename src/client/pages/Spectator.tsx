@@ -50,6 +50,7 @@ type EffectiveTab =
   | 'seeding'
   | 'bracket'
   | 'documentation'
+  | 'awards'
   | 'bracketRankings'
   | 'overall';
 
@@ -90,6 +91,20 @@ export default function Spectator() {
   const [bracketRankingsLoadedForId, setBracketRankingsLoadedForId] = useState<
     number | null
   >(null);
+
+  // Awards state (lazy-loaded)
+  interface PublicAward {
+    name: string;
+    description: string | null;
+    sort_order: number;
+    recipients: {
+      team_number: number;
+      team_name: string;
+    }[];
+  }
+  const [publicAwards, setPublicAwards] = useState<PublicAward[]>([]);
+  const [awardsLoading, setAwardsLoading] = useState(false);
+  const [awardsLoaded, setAwardsLoaded] = useState(false);
 
   // Overall state (lazy-loaded)
   const [overallRows, setOverallRows] = useState<OverallRow[]>([]);
@@ -166,6 +181,8 @@ export default function Spectator() {
     setDocScores([]);
     setOverallLoaded(false);
     setOverallRows([]);
+    setAwardsLoaded(false);
+    setPublicAwards([]);
     setBracketRankings(null);
     setBracketRankingsLoadedForId(null);
   }, [selectedEventId]);
@@ -264,6 +281,26 @@ export default function Spectator() {
       .catch((err) => console.error('Error loading documentation scores:', err))
       .finally(() => setDocLoading(false));
   }, [activeTab, selectedEventId, finalScoresAvailable, docLoaded]);
+
+  // Lazy-load awards when tab is opened
+  useEffect(() => {
+    if (
+      activeTab !== 'awards' ||
+      !selectedEventId ||
+      !finalScoresAvailable ||
+      awardsLoaded
+    )
+      return;
+    setAwardsLoading(true);
+    fetch(`/awards/event/${selectedEventId}/public`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to fetch');
+        setPublicAwards(await res.json());
+        setAwardsLoaded(true);
+      })
+      .catch((err) => console.error('Error loading awards:', err))
+      .finally(() => setAwardsLoading(false));
+  }, [activeTab, selectedEventId, finalScoresAvailable, awardsLoaded]);
 
   // Lazy-load bracket rankings when tab is opened
   useEffect(() => {
@@ -445,6 +482,12 @@ export default function Spectator() {
                     Documentation
                   </button>
                   <button
+                    className={`spectator-tab-btn ${activeTab === 'awards' ? 'active' : ''}`}
+                    onClick={() => navigateToTab('awards')}
+                  >
+                    Awards
+                  </button>
+                  <button
                     className={`spectator-tab-btn ${activeTab === 'bracketRankings' ? 'active' : ''}`}
                     onClick={() => navigateToTab('bracketRankings')}
                   >
@@ -527,6 +570,77 @@ export default function Spectator() {
                     categories={docCategories}
                     scores={docScores}
                   />
+                )}
+              </div>
+            )}
+
+            {activeTab === 'awards' && finalScoresAvailable && (
+              <div>
+                {awardsLoading ? (
+                  <p>Loading awards...</p>
+                ) : publicAwards.length === 0 ? (
+                  <div className="card">
+                    <p style={{ color: 'var(--secondary-color)' }}>
+                      No awards have been published for this event.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="card">
+                    <h3 style={{ marginBottom: '1rem' }}>Awards</h3>
+                    {publicAwards.map((award, idx) => (
+                      <div
+                        key={idx}
+                        style={{
+                          marginBottom:
+                            idx < publicAwards.length - 1 ? '1.25rem' : 0,
+                          paddingBottom:
+                            idx < publicAwards.length - 1 ? '1.25rem' : 0,
+                          borderBottom:
+                            idx < publicAwards.length - 1
+                              ? '1px solid var(--border-color)'
+                              : 'none',
+                        }}
+                      >
+                        <strong style={{ fontSize: '1.05rem' }}>
+                          {award.name}
+                        </strong>
+                        {award.description && (
+                          <p
+                            style={{
+                              color: 'var(--secondary-color)',
+                              margin: '0.25rem 0 0.5rem',
+                            }}
+                          >
+                            {award.description}
+                          </p>
+                        )}
+                        {award.recipients.length > 0 ? (
+                          <ul
+                            style={{
+                              margin: '0.5rem 0 0',
+                              paddingLeft: '1.25rem',
+                            }}
+                          >
+                            {award.recipients.map((r, ri) => (
+                              <li key={ri}>
+                                <strong>#{r.team_number}</strong> {r.team_name}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p
+                            style={{
+                              color: 'var(--secondary-color)',
+                              margin: '0.5rem 0 0',
+                              fontStyle: 'italic',
+                            }}
+                          >
+                            No recipients
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

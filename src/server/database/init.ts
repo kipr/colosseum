@@ -485,6 +485,46 @@ async function initializePostgres(db: Database): Promise<void> {
   `);
 
   // ============================================================================
+  // AWARDS
+  // ============================================================================
+
+  // Global award catalog (reusable across events)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS award_templates (
+      id SERIAL PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Event-specific award instances (snapshot of name/description from template)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_awards (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      template_award_id INTEGER REFERENCES award_templates(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Recipients of an event award (many-to-many with teams)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_award_recipients (
+      id SERIAL PRIMARY KEY,
+      event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_award_id, team_id)
+    )
+  `);
+
+  // ============================================================================
   // TRIGGERS
   // ============================================================================
 
@@ -514,6 +554,8 @@ async function initializePostgres(db: Database): Promise<void> {
     'brackets',
     'bracket_games',
     'game_queue',
+    'award_templates',
+    'event_awards',
   ]) {
     await db.exec(`
       DROP TRIGGER IF EXISTS ${table}_updated_at ON ${table};
@@ -714,6 +756,20 @@ async function initializePostgres(db: Database): Promise<void> {
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_audit_log_created ON audit_log(created_at)`,
+  );
+
+  // Awards indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_awards_event_sort ON event_awards(event_id, sort_order)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_awards_template ON event_awards(template_award_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_award ON event_award_recipients(event_award_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_team ON event_award_recipients(team_id)`,
   );
 }
 
@@ -1175,6 +1231,46 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
+  // ============================================================================
+  // AWARDS
+  // ============================================================================
+
+  // Global award catalog (reusable across events)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS award_templates (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Event-specific award instances (snapshot of name/description from template)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_awards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      template_award_id INTEGER REFERENCES award_templates(id) ON DELETE SET NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // Recipients of an event award (many-to-many with teams)
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS event_award_recipients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_award_id, team_id)
+    )
+  `);
+
   // Triggers to update updated_at on all tables that have it
   for (const table of [
     'users',
@@ -1190,6 +1286,8 @@ export async function initializeSQLite(db: Database): Promise<void> {
     'bracket_games',
     'game_queue',
     'documentation_scores',
+    'award_templates',
+    'event_awards',
   ]) {
     await db.exec(`
       CREATE TRIGGER IF NOT EXISTS ${table}_updated_at
@@ -1396,5 +1494,19 @@ export async function initializeSQLite(db: Database): Promise<void> {
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_doc_sub_scores_doc ON documentation_sub_scores(documentation_score_id)`,
+  );
+
+  // Awards indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_awards_event_sort ON event_awards(event_id, sort_order)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_awards_template ON event_awards(template_award_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_award ON event_award_recipients(event_award_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_team ON event_award_recipients(team_id)`,
   );
 }

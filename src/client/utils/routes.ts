@@ -7,6 +7,7 @@ export const ADMIN_VIEWS = [
   'brackets',
   'queue',
   'documentation',
+  'awards',
   'overall',
   'admins',
   'audit',
@@ -18,6 +19,7 @@ export const SPECTATOR_VIEWS = [
   'seeding',
   'bracket',
   'documentation',
+  'awards',
   'overall',
 ] as const;
 
