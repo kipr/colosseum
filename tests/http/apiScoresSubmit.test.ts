@@ -23,6 +23,7 @@ import {
   seedScoreSubmission,
 } from './helpers/seed';
 import apiRoutes from '../../src/server/routes/api';
+import scoresRoutes from '../../src/server/routes/scores';
 import { JUDGE_SESSION_TTL_MS } from '../../src/server/middleware/auth';
 
 describe('API Score Submit Routes', () => {
@@ -38,6 +39,7 @@ describe('API Score Submit Routes', () => {
     // Use admin auth so validation/business-logic tests bypass judge session
     const app = createTestApp({ user: { id: 1, is_admin: true } });
     app.use('/api', apiRoutes);
+    app.use('/scores', scoresRoutes);
 
     server = await startServer(app);
     baseUrl = server.baseUrl;
@@ -685,6 +687,58 @@ describe('API Score Submit Routes', () => {
           expect(ranking?.seed_average).toBe(200);
         });
 
+        it('allows reverting auto-accepted seeding score via revert-event', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_seeding',
+          });
+          const team = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 1,
+            team_name: 'Revert Team',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'DB Seeding Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 200, type: 'calculated' },
+            },
+            eventId: event.id,
+            scoreType: 'seeding',
+          });
+
+          expect(submitRes.status).toBe(200);
+          const submission = submitRes.json as { id: number; status: string; reviewed_by: number | null };
+          expect(submission.status).toBe('accepted');
+          expect(submission.reviewed_by).toBeNull();
+
+          const revertRes = await http.post(
+            `${baseUrl}/scores/${submission.id}/revert-event`,
+            { confirm: true },
+          );
+          expect(revertRes.status).toBe(200);
+
+          const updated = await testDb.db.get(
+            'SELECT * FROM score_submissions WHERE id = ?',
+            [submission.id],
+          );
+          expect(updated?.status).toBe('pending');
+          expect(updated?.reviewed_by).toBeNull();
+          expect(updated?.seeding_score_id).toBeNull();
+
+          const seedingScore = await testDb.db.get(
+            'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+            [team.id, 1],
+          );
+          expect(seedingScore).toBeUndefined();
+        });
+
         it('leaves bracket score pending when event has auto_accept_seeding only', async () => {
           const event = await seedEvent(testDb.db, {
             score_accept_mode: 'auto_accept_seeding',
@@ -767,6 +821,76 @@ describe('API Score Submit Routes', () => {
           };
           expect(submission.status).toBe('accepted');
           expect(submission.reviewed_by).toBeNull();
+        });
+
+        it('allows reverting auto-accepted bracket score via revert-event', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_all',
+          });
+          const team1 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 1,
+            team_name: 'Winner',
+          });
+          const team2 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 2,
+            team_name: 'Loser',
+          });
+          const bracket = await seedBracket(testDb.db, {
+            event_id: event.id,
+            name: 'Main',
+            bracket_size: 4,
+          });
+          const game = await seedBracketGame(testDb.db, {
+            bracket_id: bracket.id,
+            game_number: 1,
+            team1_id: team1.id,
+            team2_id: team2.id,
+            status: 'ready',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'DB Bracket Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: {
+              winner_team_id: { value: team1.id, type: 'number' },
+              team1_score: { value: 100, type: 'number' },
+              team2_score: { value: 80, type: 'number' },
+            },
+            eventId: event.id,
+            scoreType: 'bracket',
+            bracket_game_id: game.id,
+          });
+
+          expect(submitRes.status).toBe(200);
+          const submission = submitRes.json as { id: number; status: string; reviewed_by: number | null };
+          expect(submission.status).toBe('accepted');
+          expect(submission.reviewed_by).toBeNull();
+
+          const revertRes = await http.post(
+            `${baseUrl}/scores/${submission.id}/revert-event`,
+            { confirm: true },
+          );
+          expect(revertRes.status).toBe(200);
+
+          const updated = await testDb.db.get(
+            'SELECT * FROM score_submissions WHERE id = ?',
+            [submission.id],
+          );
+          expect(updated?.status).toBe('pending');
+          expect(updated?.reviewed_by).toBeNull();
+
+          const bracketGame = await testDb.db.get(
+            'SELECT winner_id, status FROM bracket_games WHERE id = ?',
+            [game.id],
+          );
+          expect(bracketGame?.winner_id).toBeNull();
+          expect(bracketGame?.status).not.toBe('completed');
         });
 
         it('leaves score pending when auto-accept hits conflict (force=false)', async () => {
