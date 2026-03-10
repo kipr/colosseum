@@ -21,11 +21,14 @@ import {
   seedDocumentationScoreCategory,
   seedDocumentationSubScore,
   seedSeedingScore,
+  seedEventAward,
+  seedEventAwardRecipient,
 } from './helpers/seed';
 import eventsRoutes from '../../src/server/routes/events';
 import bracketsRoutes from '../../src/server/routes/brackets';
 import docScoresRoutes from '../../src/server/routes/documentationScores';
 import seedingRoutes from '../../src/server/routes/seeding';
+import awardsRoutes from '../../src/server/routes/awards';
 
 describe('Public Final Scores API', () => {
   let testDb: TestDb;
@@ -42,6 +45,7 @@ describe('Public Final Scores API', () => {
     app.use('/brackets', bracketsRoutes);
     app.use('/documentation-scores', docScoresRoutes);
     app.use('/seeding', seedingRoutes);
+    app.use('/awards', awardsRoutes);
 
     server = await startServer(app);
     baseUrl = server.baseUrl;
@@ -288,6 +292,40 @@ describe('Public Final Scores API', () => {
       expect(res.json[0].doc_score).toBe(0.5);
       expect(res.json[0].raw_seed_score).toBe(0.8);
       expect(res.json[0].total).toBeCloseTo(1.3, 4);
+    });
+  });
+
+  describe('GET /awards/event/:eventId/public', () => {
+    it('returns 404 for unreleased complete event', async () => {
+      const event = await createUnreleasedEvent();
+      const res = await http.get(
+        `${baseUrl}/awards/event/${event.id}/public`,
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it('returns awards for released event', async () => {
+      const event = await createReleasedEvent();
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 10,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Best Bot',
+      });
+      await seedEventAwardRecipient(testDb.db, {
+        event_award_id: award.id,
+        team_id: team.id,
+      });
+
+      const res = await http.get<
+        { name: string; recipients: { team_number: number }[] }[]
+      >(`${baseUrl}/awards/event/${event.id}/public`);
+      expect(res.status).toBe(200);
+      expect(res.json).toHaveLength(1);
+      expect(res.json[0].name).toBe('Best Bot');
+      expect(res.json[0].recipients).toHaveLength(1);
     });
   });
 

@@ -29,6 +29,7 @@ import bracketsRoutes from './routes/brackets';
 import queueRoutes from './routes/queue';
 import auditRoutes from './routes/audit';
 import documentationScoresRoutes from './routes/documentationScores';
+import awardsRoutes from './routes/awards';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -160,6 +161,7 @@ app.use('/brackets', bracketsRoutes);
 app.use('/queue', queueRoutes);
 app.use('/audit', auditRoutes);
 app.use('/documentation-scores', documentationScoresRoutes);
+app.use('/awards', awardsRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -194,6 +196,7 @@ if (process.env.NODE_ENV === 'production') {
       '/queue/',
       '/audit/',
       '/documentation-scores/',
+      '/awards/',
       '/health',
     ];
     const isApiRoute = apiPrefixes.some((prefix) =>

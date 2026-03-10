@@ -55,6 +55,7 @@ export default defineConfig({
       '^/documentation-scores(?:/.*)?$': createProxyConfig(
         'http://localhost:3000',
       ),
+      '^/awards(?:/.*)?$': createProxyConfig('http://localhost:3000'),
     },
   },
   resolve: {

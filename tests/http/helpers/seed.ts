@@ -441,3 +441,63 @@ export async function seedDocumentationSubScore(
   );
   return { id: result.lastID! };
 }
+
+// ── Awards ──
+
+export interface SeedAwardTemplateData {
+  name?: string;
+  description?: string | null;
+}
+
+export async function seedAwardTemplate(
+  db: Database,
+  data: SeedAwardTemplateData = {},
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO award_templates (name, description) VALUES (?, ?)`,
+    [data.name ?? 'Test Award', data.description ?? null],
+  );
+  return { id: result.lastID! };
+}
+
+export interface SeedEventAwardData {
+  event_id: number;
+  name?: string;
+  description?: string | null;
+  template_award_id?: number | null;
+  sort_order?: number;
+}
+
+export async function seedEventAward(
+  db: Database,
+  data: SeedEventAwardData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO event_awards (event_id, template_award_id, name, description, sort_order)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      data.event_id,
+      data.template_award_id ?? null,
+      data.name ?? 'Test Event Award',
+      data.description ?? null,
+      data.sort_order ?? 0,
+    ],
+  );
+  return { id: result.lastID! };
+}
+
+export interface SeedEventAwardRecipientData {
+  event_award_id: number;
+  team_id: number;
+}
+
+export async function seedEventAwardRecipient(
+  db: Database,
+  data: SeedEventAwardRecipientData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?)`,
+    [data.event_award_id, data.team_id],
+  );
+  return { id: result.lastID! };
+}
