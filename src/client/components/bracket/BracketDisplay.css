@@ -1,4 +1,4 @@
-/* Shared bracket display styles (used by admin BracketsTab and public EventView) */
+/* Shared bracket display styles (used by admin BracketsTab) */
 
 /* Status badges */
 .bracket-status-badge {
@@ -306,6 +306,82 @@
 .team-tbd {
   color: var(--secondary-color);
   font-style: italic;
+}
+
+/* Rankings table */
+.ranking-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ranking-table th,
+.ranking-table td {
+  padding: 0.625rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ranking-table th {
+  background: var(--card-bg);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--secondary-color);
+}
+
+.ranking-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ranking-table tbody tr:hover {
+  background: var(--bg-color);
+}
+
+.ranking-place {
+  min-width: 4rem;
+  font-size: 0.95rem;
+}
+
+.ranking-row-gold td {
+  background: rgba(234, 179, 8, 0.08);
+}
+
+.ranking-row-gold .ranking-place strong {
+  color: #b8860b;
+}
+
+.ranking-row-silver td {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.ranking-row-silver .ranking-place strong {
+  color: #64748b;
+}
+
+.ranking-row-bronze td {
+  background: rgba(180, 120, 60, 0.08);
+}
+
+.ranking-row-bronze .ranking-place strong {
+  color: #92400e;
+}
+
+.ranking-row-unranked td {
+  color: var(--secondary-color);
+}
+
+.ranking-divider-row td {
+  padding: 0.375rem 0.75rem;
+  background: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.ranking-divider-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--secondary-color);
 }
 
 /* Responsive adjustments */

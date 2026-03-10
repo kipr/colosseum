@@ -4,6 +4,11 @@ import { getDatabase } from '../database/connection';
 import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
+import { calculateBracketRankings } from '../services/bracketRankings';
+import {
+  isEventArchived,
+  areFinalScoresReleased,
+} from '../utils/eventVisibility';
 
 const router = express.Router();
 
@@ -13,6 +18,7 @@ const ALLOWED_BRACKET_UPDATE_FIELDS = [
   'bracket_size',
   'actual_team_count',
   'status',
+  'weight',
 ];
 
 const ALLOWED_GAME_UPDATE_FIELDS = [
@@ -60,10 +66,13 @@ router.get(
   },
 );
 
-// GET /brackets/event/:eventId - List brackets for event (public)
+// GET /brackets/event/:eventId - List brackets for event (public; blocked for archived events)
 router.get('/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
+    if (await isEventArchived(eventId)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const db = await getDatabase();
 
     const brackets = await db.all(
@@ -103,7 +112,8 @@ router.get('/templates', async (req: Request, res: Response) => {
   }
 });
 
-// GET /brackets/:id - Get bracket with entries and games (public)
+// GET /brackets/:id - Get bracket with entries and games (public; blocked for archived events)
+// final_rank is intentionally excluded here; use GET /:id/rankings (admin) for that.
 router.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -111,13 +121,18 @@ router.get('/:id', async (req: Request, res: Response) => {
 
     const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [id]);
 
+    if (bracket && (await isEventArchived(bracket.event_id))) {
+      return res.status(404).json({ error: 'Bracket not found' });
+    }
+
     if (!bracket) {
       return res.status(404).json({ error: 'Bracket not found' });
     }
 
-    // Get entries with team info
+    // Explicit column list omits final_rank and bracket_raw_score to prevent leaking ranking data
     const entries = await db.all(
-      `SELECT be.*, t.team_number, t.team_name, t.display_name
+      `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
+              t.team_number, t.team_name, t.display_name
        FROM bracket_entries be
        LEFT JOIN teams t ON be.team_id = t.id
        WHERE be.bracket_id = ?
@@ -151,6 +166,81 @@ router.get('/:id', async (req: Request, res: Response) => {
   }
 });
 
+// GET /brackets/:id/rankings/public - Public bracket rankings (released completed events only)
+router.get('/:id/rankings/public', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+
+    const bracket = await db.get<{
+      id: number;
+      weight: number;
+      event_id: number;
+    }>('SELECT id, weight, event_id FROM brackets WHERE id = ?', [id]);
+
+    if (!bracket) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    if (!(await areFinalScoresReleased(bracket.event_id))) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+
+    const entries = await db.all(
+      `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.is_bye,
+                be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+                t.team_number, t.team_name, t.display_name
+         FROM bracket_entries be
+         LEFT JOIN teams t ON be.team_id = t.id
+         WHERE be.bracket_id = ?
+         ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
+      [id],
+    );
+
+    res.json({ weight: bracket.weight, entries });
+  } catch (error) {
+    console.error('Error fetching public bracket rankings:', error);
+    res.status(500).json({ error: 'Failed to fetch bracket rankings' });
+  }
+});
+
+// GET /brackets/:id/rankings - Get bracket entries with final rankings (admin only)
+router.get(
+  '/:id/rankings',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const db = await getDatabase();
+
+      const bracket = await db.get<{ id: number; weight: number }>(
+        'SELECT id, weight FROM brackets WHERE id = ?',
+        [id],
+      );
+
+      if (!bracket) {
+        return res.status(404).json({ error: 'Bracket not found' });
+      }
+
+      const entries = await db.all(
+        `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
+                be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+                t.team_number, t.team_name, t.display_name
+         FROM bracket_entries be
+         LEFT JOIN teams t ON be.team_id = t.id
+         WHERE be.bracket_id = ?
+         ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
+        [id],
+      );
+
+      res.json({ weight: bracket.weight, entries });
+    } catch (error) {
+      console.error('Error fetching bracket rankings:', error);
+      res.status(500).json({ error: 'Failed to fetch bracket rankings' });
+    }
+  },
+);
+
 function nextPowerOfTwo(n: number): number {
   if (n <= 0) return 4;
   const p = Math.pow(2, Math.ceil(Math.log2(n)));
@@ -166,10 +256,21 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       bracket_size,
       actual_team_count,
       status,
+      weight,
       team_ids,
     } = req.body;
 
     const db = await getDatabase();
+
+    if (
+      weight !== undefined &&
+      (typeof weight !== 'number' || weight <= 0 || weight > 1)
+    ) {
+      return res
+        .status(400)
+        .json({ error: 'weight must be a number in (0, 1]' });
+    }
+    const bracketWeight: number = weight ?? 1.0;
 
     if (Array.isArray(team_ids) && team_ids.length > 0) {
       // New flow: create bracket from explicit team selection
@@ -273,14 +374,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       let bracketId: number | null = null;
       await db.transaction(async (tx) => {
         const br = await tx.run(
-          `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, created_by)
-           VALUES (?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             event_id,
             name,
             bracketSize,
             actualTeamCount,
             status || 'setup',
+            bracketWeight,
             req.user?.id || null,
           ],
         );
@@ -454,14 +556,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     }
 
     const result = await db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         event_id,
         name,
         bracket_size,
         actual_team_count ?? null,
         status || 'setup',
+        bracketWeight,
         req.user?.id || null,
       ],
     );
@@ -489,6 +592,17 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    if (
+      req.body.weight !== undefined &&
+      (typeof req.body.weight !== 'number' ||
+        req.body.weight <= 0 ||
+        req.body.weight > 1)
+    ) {
+      return res
+        .status(400)
+        .json({ error: 'weight must be a number in (0, 1]' });
+    }
+
     const updates = Object.entries(req.body).filter(([key]) =>
       ALLOWED_BRACKET_UPDATE_FIELDS.includes(key),
     );
@@ -515,7 +629,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     console.error('Error updating bracket:', error);
     const errMsg = (error as Error).message || '';
     if (errMsg.includes('CHECK constraint failed')) {
-      return res.status(400).json({ error: 'Invalid status value' });
+      return res
+        .status(400)
+        .json({ error: 'Invalid field value (check constraint failed)' });
     }
     res.status(500).json({ error: 'Failed to update bracket' });
   }
@@ -535,6 +651,38 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Failed to delete bracket' });
   }
 });
+
+// POST /brackets/:id/rankings/calculate - Calculate final bracket rankings (admin)
+router.post(
+  '/:id/rankings/calculate',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid bracket ID' });
+      }
+
+      const db = await getDatabase();
+      const bracket = await db.get('SELECT id FROM brackets WHERE id = ?', [
+        id,
+      ]);
+      if (!bracket) {
+        return res.status(404).json({ error: 'Bracket not found' });
+      }
+
+      const result = await calculateBracketRankings(id);
+      res.json(result);
+    } catch (error) {
+      const errMsg = (error as Error).message || '';
+      if (errMsg.includes('Cannot calculate rankings')) {
+        return res.status(400).json({ error: errMsg });
+      }
+      console.error('Error calculating bracket rankings:', error);
+      res.status(500).json({ error: 'Failed to calculate bracket rankings' });
+    }
+  },
+);
 
 // ============================================================================
 // BRACKET ENTRIES

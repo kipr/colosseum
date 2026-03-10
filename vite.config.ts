@@ -46,6 +46,9 @@ export default defineConfig({
       '^/brackets(?:/.*)?$': createProxyConfig('http://localhost:3000'),
       '^/queue(?:/.*)?$': createProxyConfig('http://localhost:3000'),
       '^/audit/.*': createProxyConfig('http://localhost:3000'),
+      '^/documentation-scores(?:/.*)?$': createProxyConfig(
+        'http://localhost:3000',
+      ),
     },
   },
   resolve: {

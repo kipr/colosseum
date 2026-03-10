@@ -361,3 +361,83 @@ export async function seedScoreSubmission(
   );
   return { id: result.lastID! };
 }
+
+export interface SeedDocumentationScoreCategoryData {
+  event_id: number;
+  ordinal: number;
+  name?: string;
+  weight?: number;
+  max_score: number;
+}
+
+export async function seedDocumentationScoreCategory(
+  db: Database,
+  data: SeedDocumentationScoreCategoryData,
+): Promise<{ id: number }> {
+  const name = data.name ?? `Category ${data.ordinal}`;
+  const weight = data.weight ?? 1.0;
+  const maxScore = data.max_score;
+
+  let categoryId: number;
+  const existing = await db.get(
+    'SELECT id FROM documentation_categories WHERE name = ? AND weight = ? AND max_score = ?',
+    [name, weight, maxScore],
+  );
+  if (existing) {
+    categoryId = (existing as { id: number }).id;
+  } else {
+    const catResult = await db.run(
+      'INSERT INTO documentation_categories (name, weight, max_score) VALUES (?, ?, ?)',
+      [name, weight, maxScore],
+    );
+    categoryId = catResult.lastID!;
+  }
+
+  await db.run(
+    'INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, ?)',
+    [data.event_id, categoryId, data.ordinal],
+  );
+  return { id: categoryId };
+}
+
+export interface SeedDocumentationScoreData {
+  event_id: number;
+  team_id: number;
+  overall_score?: number | null;
+  scored_by?: number | null;
+}
+
+export async function seedDocumentationScore(
+  db: Database,
+  data: SeedDocumentationScoreData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_by, scored_at)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [
+      data.event_id,
+      data.team_id,
+      data.overall_score ?? null,
+      data.scored_by ?? null,
+    ],
+  );
+  return { id: result.lastID! };
+}
+
+export interface SeedDocumentationSubScoreData {
+  documentation_score_id: number;
+  category_id: number;
+  score: number;
+}
+
+export async function seedDocumentationSubScore(
+  db: Database,
+  data: SeedDocumentationSubScoreData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
+     VALUES (?, ?, ?)`,
+    [data.documentation_score_id, data.category_id, data.score],
+  );
+  return { id: result.lastID! };
+}

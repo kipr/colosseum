@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import {
   Bracket,
   BracketDetail,
+  BracketEntryWithRank,
   BracketStatus,
   STATUS_LABELS,
 } from '../../types/brackets';
@@ -17,6 +18,7 @@ interface BracketFormData {
   name: string;
   bracket_size: number;
   actual_team_count: string;
+  weight: string;
 }
 
 interface CreateModalTeam {
@@ -63,6 +65,7 @@ const defaultFormData: BracketFormData = {
   name: '',
   bracket_size: 8,
   actual_team_count: '',
+  weight: '1',
 };
 
 export default function BracketsTab() {
@@ -98,8 +101,14 @@ export default function BracketsTab() {
   const [generatingEntries, setGeneratingEntries] = useState(false);
   const [generatingGames, setGeneratingGames] = useState(false);
 
+  const [rankings, setRankings] = useState<BracketEntryWithRank[] | null>(null);
+  const [rankingsWeight, setRankingsWeight] = useState<number>(1);
+  const [rankingsLoading, setRankingsLoading] = useState(false);
+
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
+  const toastRef = useRef(toast);
+  toastRef.current = toast;
 
   const fetchBrackets = useCallback(async () => {
     if (!selectedEventId) {
@@ -128,13 +137,25 @@ export default function BracketsTab() {
   const fetchBracketDetail = useCallback(async (bracketId: number) => {
     setDetailLoading(true);
     try {
-      const response = await fetch(`/brackets/${bracketId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) {
+      const [detailRes, rankingsRes] = await Promise.all([
+        fetch(`/brackets/${bracketId}`, { credentials: 'include' }),
+        fetch(`/brackets/${bracketId}/rankings`, { credentials: 'include' }),
+      ]);
+      if (!detailRes.ok) {
         throw new Error('Failed to fetch bracket details');
       }
-      const data: BracketDetail = await response.json();
+      const data: BracketDetail = await detailRes.json();
+      if (rankingsRes.ok) {
+        const rankingsBody = (await rankingsRes.json()) as {
+          weight: number;
+          entries: BracketEntryWithRank[];
+        };
+        data.rankings = rankingsBody.entries;
+        setRankings(rankingsBody.entries);
+        setRankingsWeight(rankingsBody.weight);
+      } else {
+        setRankings(null);
+      }
       setBracketDetail(data);
     } catch (error) {
       console.error('Error fetching bracket detail:', error);
@@ -155,8 +176,34 @@ export default function BracketsTab() {
       fetchBracketDetail(selectedBracketId);
     } else {
       setBracketDetail(null);
+      setRankings(null);
     }
   }, [selectedBracketId, fetchBracketDetail]);
+
+  const fetchRankings = useCallback(async (bracketId: number) => {
+    setRankingsLoading(true);
+    try {
+      await fetch(`/brackets/${bracketId}/rankings/calculate`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const res = await fetch(`/brackets/${bracketId}/rankings`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Failed to fetch rankings');
+      const body = (await res.json()) as {
+        weight: number;
+        entries: BracketEntryWithRank[];
+      };
+      setRankings(body.entries);
+      setRankingsWeight(body.weight);
+    } catch (error) {
+      console.error('Error fetching bracket rankings:', error);
+      toastRef.current.error('Failed to load rankings');
+    } finally {
+      setRankingsLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!showCreateModal || !selectedEventId) {
@@ -236,6 +283,7 @@ export default function BracketsTab() {
           event_id: selectedEventId,
           name: formData.name.trim(),
           team_ids: teamIds,
+          weight: formData.weight ? parseFloat(formData.weight) : undefined,
         }),
       });
 
@@ -297,6 +345,13 @@ export default function BracketsTab() {
         }
       } else {
         body.actual_team_count = null;
+      }
+
+      if (formData.weight) {
+        const w = parseFloat(formData.weight);
+        if (!isNaN(w) && w > 0 && w <= 1) {
+          body.weight = w;
+        }
       }
 
       const response = await fetch(`/brackets/${bracketDetail.id}`, {
@@ -477,6 +532,7 @@ export default function BracketsTab() {
       name: bracketDetail.name,
       bracket_size: bracketDetail.bracket_size,
       actual_team_count: bracketDetail.actual_team_count?.toString() || '',
+      weight: bracketDetail.weight?.toString() || '1',
     });
     setShowEditModal(true);
   };
@@ -615,6 +671,12 @@ export default function BracketsTab() {
               adminActions={renderAdminActions()}
               entriesActions={renderEntriesActions()}
               gamesActions={renderGamesActions()}
+              rankings={rankings}
+              rankingsWeight={rankingsWeight}
+              rankingsLoading={rankingsLoading}
+              onRefreshRankings={() => {
+                if (selectedBracketId) fetchRankings(selectedBracketId);
+              }}
             />
           ) : (
             <p>Bracket not found.</p>
@@ -658,6 +720,23 @@ export default function BracketsTab() {
                   placeholder="e.g., Main Bracket, Division A"
                   required
                   autoFocus
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="bracket-weight">Weight</label>
+                <input
+                  id="bracket-weight"
+                  type="number"
+                  className="field-input"
+                  value={formData.weight}
+                  onChange={(e) =>
+                    setFormData({ ...formData, weight: e.target.value })
+                  }
+                  placeholder="1"
+                  min={0.01}
+                  max={1}
+                  step="any"
                 />
               </div>
 
@@ -976,6 +1055,23 @@ export default function BracketsTab() {
                   placeholder={`1-${formData.bracket_size}`}
                   min={1}
                   max={formData.bracket_size}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="edit-bracket-weight">Weight</label>
+                <input
+                  id="edit-bracket-weight"
+                  type="number"
+                  className="field-input"
+                  value={formData.weight}
+                  onChange={(e) =>
+                    setFormData({ ...formData, weight: e.target.value })
+                  }
+                  placeholder="1"
+                  min={0.01}
+                  max={1}
+                  step="any"
                 />
               </div>
 

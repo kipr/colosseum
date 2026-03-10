@@ -113,9 +113,7 @@ describe('Chat Routes', () => {
     });
 
     it('returns empty array when no messages exist', async () => {
-      const res = await http.get(
-        `${server.baseUrl}/chat/messages/nonexistent`,
-      );
+      const res = await http.get(`${server.baseUrl}/chat/messages/nonexistent`);
       expect(res.status).toBe(200);
       expect(res.json).toEqual([]);
     });
@@ -395,9 +393,7 @@ describe('Chat Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.get(
-            `${server.baseUrl}/chat/admin/messages`,
-          );
+          const res = await http.get(`${server.baseUrl}/chat/admin/messages`);
           expect(res.status).toBe(401);
         } finally {
           await server.close();
@@ -410,9 +406,7 @@ describe('Chat Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.get(
-            `${server.baseUrl}/chat/admin/messages`,
-          );
+          const res = await http.get(`${server.baseUrl}/chat/admin/messages`);
           expect(res.status).toBe(403);
         } finally {
           await server.close();
@@ -432,9 +426,7 @@ describe('Chat Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.get(
-            `${server.baseUrl}/chat/admin/messages`,
-          );
+          const res = await http.get(`${server.baseUrl}/chat/admin/messages`);
           expect(res.status).toBe(200);
           const messages = res.json as { message: string }[];
           expect(messages.length).toBe(1);
@@ -452,10 +444,9 @@ describe('Chat Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.post(
-            `${server.baseUrl}/chat/admin/messages`,
-            { message: 'Test' },
-          );
+          const res = await http.post(`${server.baseUrl}/chat/admin/messages`, {
+            message: 'Test',
+          });
           expect(res.status).toBe(401);
         } finally {
           await server.close();
@@ -468,10 +459,9 @@ describe('Chat Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.post(
-            `${server.baseUrl}/chat/admin/messages`,
-            { message: 'Test' },
-          );
+          const res = await http.post(`${server.baseUrl}/chat/admin/messages`, {
+            message: 'Test',
+          });
           expect(res.status).toBe(403);
         } finally {
           await server.close();
@@ -504,10 +494,9 @@ describe('Chat Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.post(
-            `${server.baseUrl}/chat/admin/messages`,
-            { message: 'x'.repeat(1001) },
-          );
+          const res = await http.post(`${server.baseUrl}/chat/admin/messages`, {
+            message: 'x'.repeat(1001),
+          });
           expect(res.status).toBe(400);
           expect((res.json as { error: string }).error).toContain(
             'Message too long',
@@ -529,10 +518,9 @@ describe('Chat Routes', () => {
         const server = await startServer(app);
 
         try {
-          const res = await http.post(
-            `${server.baseUrl}/chat/admin/messages`,
-            { message: 'Admin broadcast' },
-          );
+          const res = await http.post(`${server.baseUrl}/chat/admin/messages`, {
+            message: 'Admin broadcast',
+          });
           expect(res.status).toBe(200);
           const msg = res.json as {
             message: string;

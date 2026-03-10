@@ -188,10 +188,10 @@ describe('scoreAccept - additional coverage', () => {
       team2_id: team2.id,
       status: 'completed',
     });
-    await testDb.db.run(
-      'UPDATE bracket_games SET winner_id = ? WHERE id = ?',
-      [team1.id, game.id],
-    );
+    await testDb.db.run('UPDATE bracket_games SET winner_id = ? WHERE id = ?', [
+      team1.id,
+      game.id,
+    ]);
     const template = await seedScoresheetTemplate(testDb.db);
     const score = await seedScoreSubmission(testDb.db, {
       template_id: template.id,

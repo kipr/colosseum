@@ -28,6 +28,7 @@ import seedingRoutes from './routes/seeding';
 import bracketsRoutes from './routes/brackets';
 import queueRoutes from './routes/queue';
 import auditRoutes from './routes/audit';
+import documentationScoresRoutes from './routes/documentationScores';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -158,6 +159,7 @@ app.use('/seeding', seedingRoutes);
 app.use('/brackets', bracketsRoutes);
 app.use('/queue', queueRoutes);
 app.use('/audit', auditRoutes);
+app.use('/documentation-scores', documentationScoresRoutes);
 
 // Health check
 app.get('/health', (req: Request, res: Response) => {
@@ -192,6 +194,7 @@ if (process.env.NODE_ENV === 'production') {
       '/brackets/',
       '/queue/',
       '/audit/',
+      '/documentation-scores/',
     ];
     const isApiRoute = apiPrefixes.some((prefix) =>
       req.path.startsWith(prefix),

@@ -21,6 +21,7 @@ export interface Event {
   status: EventStatus;
   seeding_rounds: number;
   score_accept_mode: ScoreAcceptMode;
+  spectator_results_released: boolean;
   created_by: number | null;
   created_at: string;
   updated_at: string;

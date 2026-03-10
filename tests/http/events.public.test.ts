@@ -1,6 +1,7 @@
 /**
  * HTTP route tests for public event endpoints.
- * Verifies GET /events/public and GET /events/:id/public.
+ * Verifies GET /events/public and GET /events/:id/public are truly public
+ * and only return non-archived events.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
@@ -11,10 +12,10 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { seedEvent } from './helpers/seed';
+import { seedEvent, seedUser } from './helpers/seed';
 import eventsRoutes from '../../src/server/routes/events';
 
-describe('Public Events API', () => {
+describe('Public Events API (GET /events/public, GET /events/:id/public)', () => {
   let testDb: TestDb;
   let server: TestServerHandle;
   let baseUrl: string;
@@ -23,7 +24,8 @@ describe('Public Events API', () => {
     testDb = await createTestDb();
     __setTestDatabaseAdapter(testDb.db);
 
-    const app = createTestApp();
+    const adminUser = await seedUser(testDb.db, { is_admin: true });
+    const app = createTestApp({ user: { id: adminUser.id, is_admin: true } });
     app.use('/events', eventsRoutes);
 
     server = await startServer(app);
@@ -43,7 +45,7 @@ describe('Public Events API', () => {
       expect(res.json).toEqual([]);
     });
 
-    it('returns only active and complete events', async () => {
+    it('returns all non-archived events', async () => {
       await seedEvent(testDb.db, { name: 'Setup Event', status: 'setup' });
       await seedEvent(testDb.db, { name: 'Active Event', status: 'active' });
       await seedEvent(testDb.db, {
@@ -61,9 +63,9 @@ describe('Public Events API', () => {
       expect(res.status).toBe(200);
 
       const names = res.json.map((e) => e.name);
+      expect(names).toContain('Setup Event');
       expect(names).toContain('Active Event');
       expect(names).toContain('Complete Event');
-      expect(names).not.toContain('Setup Event');
       expect(names).not.toContain('Archived Event');
     });
 
@@ -97,11 +99,48 @@ describe('Public Events API', () => {
       expect(event).not.toHaveProperty('score_accept_mode');
     });
 
-    it('does not require authentication', async () => {
+    it('is accessible without authentication', async () => {
       await seedEvent(testDb.db, { name: 'Test', status: 'active' });
 
-      const res = await http.get(`${baseUrl}/events/public`);
-      expect(res.status).toBe(200);
+      const app = createTestApp();
+      app.use('/events', eventsRoutes);
+      const unauthServer = await startServer(app);
+
+      try {
+        const res = await http.get<{ name: string }[]>(
+          `${unauthServer.baseUrl}/events/public`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.json).toHaveLength(1);
+        expect(res.json[0].name).toBe('Test');
+      } finally {
+        await unauthServer.close();
+      }
+    });
+
+    it('is accessible by non-admin users', async () => {
+      await seedEvent(testDb.db, { name: 'Test', status: 'active' });
+
+      const nonAdminUser = await seedUser(testDb.db, {
+        is_admin: false,
+        google_id: 'google-non-admin',
+      });
+      const app = createTestApp({
+        user: { id: nonAdminUser.id, is_admin: false },
+      });
+      app.use('/events', eventsRoutes);
+      const nonAdminServer = await startServer(app);
+
+      try {
+        const res = await http.get<{ name: string }[]>(
+          `${nonAdminServer.baseUrl}/events/public`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.json).toHaveLength(1);
+        expect(res.json[0].name).toBe('Test');
+      } finally {
+        await nonAdminServer.close();
+      }
     });
   });
 
@@ -134,7 +173,7 @@ describe('Public Events API', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns event regardless of status (even setup/archived)', async () => {
+    it('returns setup event by ID (non-archived)', async () => {
       const event = await seedEvent(testDb.db, {
         name: 'Setup Event',
         status: 'setup',
@@ -147,14 +186,61 @@ describe('Public Events API', () => {
       expect(res.json).toHaveProperty('name', 'Setup Event');
     });
 
-    it('does not require authentication', async () => {
+    it('returns 404 for archived event', async () => {
+      const event = await seedEvent(testDb.db, {
+        name: 'Old Event',
+        status: 'archived',
+      });
+
+      const res = await http.get(`${baseUrl}/events/${event.id}/public`);
+      expect(res.status).toBe(404);
+    });
+
+    it('is accessible without authentication', async () => {
       const event = await seedEvent(testDb.db, {
         name: 'Test',
         status: 'active',
       });
 
-      const res = await http.get(`${baseUrl}/events/${event.id}/public`);
-      expect(res.status).toBe(200);
+      const app = createTestApp();
+      app.use('/events', eventsRoutes);
+      const unauthServer = await startServer(app);
+
+      try {
+        const res = await http.get<Record<string, unknown>>(
+          `${unauthServer.baseUrl}/events/${event.id}/public`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.json).toHaveProperty('name', 'Test');
+      } finally {
+        await unauthServer.close();
+      }
+    });
+
+    it('is accessible by non-admin users', async () => {
+      const event = await seedEvent(testDb.db, {
+        name: 'Test',
+        status: 'active',
+      });
+      const nonAdminUser = await seedUser(testDb.db, {
+        is_admin: false,
+        google_id: 'google-non-admin',
+      });
+      const app = createTestApp({
+        user: { id: nonAdminUser.id, is_admin: false },
+      });
+      app.use('/events', eventsRoutes);
+      const nonAdminServer = await startServer(app);
+
+      try {
+        const res = await http.get<Record<string, unknown>>(
+          `${nonAdminServer.baseUrl}/events/${event.id}/public`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.json).toHaveProperty('name', 'Test');
+      } finally {
+        await nonAdminServer.close();
+      }
     });
   });
 });

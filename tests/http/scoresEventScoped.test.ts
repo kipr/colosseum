@@ -1270,7 +1270,9 @@ describe('Event-Scoped Scores Routes', () => {
         status: 'pending',
       });
 
-      const res = await http.post(`${server.baseUrl}/scores/${score.id}/reject`);
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/reject`,
+      );
       expect(res.status).toBe(200);
 
       const queueItem = await testDb.db.get(
@@ -1320,7 +1322,9 @@ describe('Event-Scoped Scores Routes', () => {
         status: 'pending',
       });
 
-      const res = await http.post(`${server.baseUrl}/scores/${score.id}/reject`);
+      const res = await http.post(
+        `${server.baseUrl}/scores/${score.id}/reject`,
+      );
       expect(res.status).toBe(200);
 
       const queueItem = await testDb.db.get(

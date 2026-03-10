@@ -91,9 +91,7 @@ describe('Brackets Entry & Game Generation', () => {
     });
 
     it('returns 404 when bracket not found', async () => {
-      const res = await http.post(
-        `${baseUrl}/brackets/9999/entries/generate`,
-      );
+      const res = await http.post(`${baseUrl}/brackets/9999/entries/generate`);
       expect(res.status).toBe(404);
     });
 
@@ -128,7 +126,9 @@ describe('Brackets Entry & Game Generation', () => {
         `${baseUrl}/brackets/${bracket.id}/entries/generate`,
       );
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain('already has entries');
+      expect((res.json as { error: string }).error).toContain(
+        'already has entries',
+      );
     });
 
     it('replaces entries when force=true', async () => {
@@ -181,7 +181,9 @@ describe('Brackets Entry & Game Generation', () => {
         `${baseUrl}/brackets/${bracket.id}/entries/generate`,
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('No ranked teams');
+      expect((res.json as { error: string }).error).toContain(
+        'No ranked teams',
+      );
     });
   });
 
@@ -236,9 +238,7 @@ describe('Brackets Entry & Game Generation', () => {
     });
 
     it('returns 404 when bracket not found', async () => {
-      const res = await http.post(
-        `${baseUrl}/brackets/9999/games/generate`,
-      );
+      const res = await http.post(`${baseUrl}/brackets/9999/games/generate`);
       expect(res.status).toBe(404);
     });
 
@@ -276,7 +276,9 @@ describe('Brackets Entry & Game Generation', () => {
         `${baseUrl}/brackets/${bracket.id}/games/generate`,
       );
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain('already has games');
+      expect((res.json as { error: string }).error).toContain(
+        'already has games',
+      );
     });
 
     it('replaces games when force=true', async () => {
@@ -313,7 +315,9 @@ describe('Brackets Entry & Game Generation', () => {
         `${baseUrl}/brackets/${bracket.id}/games/generate?force=true`,
       );
       expect(res.status).toBe(200);
-      expect((res.json as { gamesCreated: number }).gamesCreated).toBeGreaterThan(0);
+      expect(
+        (res.json as { gamesCreated: number }).gamesCreated,
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -328,7 +332,9 @@ describe('Brackets Entry & Game Generation', () => {
         team_ids: [1, 2],
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('event_id and name');
+      expect((res.json as { error: string }).error).toContain(
+        'event_id and name',
+      );
     });
 
     it('returns 400 when name missing with team_ids', async () => {
@@ -347,7 +353,9 @@ describe('Brackets Entry & Game Generation', () => {
         team_ids: [1, 2],
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('Event does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Event does not exist',
+      );
     });
 
     it('returns 400 when team_ids has duplicates', async () => {
@@ -414,10 +422,18 @@ describe('Brackets Entry & Game Generation', () => {
       await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, team1_id, team2_id, winner_id, loser_id, status, winner_advances_to_id, winner_slot, loser_advances_to_id, loser_slot)
          VALUES (?, 1, 'Winners R1', 1, 'winners', ?, ?, ?, ?, 'completed', ?, 'team1', ?, 'team1')`,
-        [bracket.id, t1.id, t2.id, t1.id, t2.id, winnerDest.lastID, loserDest.lastID],
+        [
+          bracket.id,
+          t1.id,
+          t2.id,
+          t1.id,
+          t2.id,
+          winnerDest.lastID,
+          loserDest.lastID,
+        ],
       );
       const sourceGame = await testDb.db.get(
-        "SELECT id FROM bracket_games WHERE bracket_id = ? AND game_number = 1",
+        'SELECT id FROM bracket_games WHERE bracket_id = ? AND game_number = 1',
         [bracket.id],
       );
 

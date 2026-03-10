@@ -1,9 +1,14 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import {
+  isEventArchived,
+  areFinalScoresReleased,
+} from '../utils/eventVisibility';
+import { computeOverallScores } from '../services/overallScores';
 
 const PUBLIC_EVENT_FIELDS =
-  'id, name, status, event_date, location, seeding_rounds';
+  'id, name, status, event_date, location, seeding_rounds, spectator_results_released';
 
 const router = express.Router();
 
@@ -16,6 +21,7 @@ const ALLOWED_UPDATE_FIELDS = [
   'status',
   'seeding_rounds',
   'score_accept_mode',
+  'spectator_results_released',
 ];
 
 // GET /events - List all events
@@ -42,26 +48,38 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /events/public - List active/complete events (no auth)
-router.get('/public', async (_req: Request, res: Response) => {
+function toPublicEvent(row: Record<string, unknown>) {
+  const { spectator_results_released, ...rest } = row;
+  return {
+    ...rest,
+    final_scores_available:
+      rest.status === 'complete' && !!spectator_results_released,
+  };
+}
+
+// GET /events/public - List non-archived events (public, for spectators)
+router.get('/public', async (req: Request, res: Response) => {
   try {
     const db = await getDatabase();
     const events = await db.all(
       `SELECT ${PUBLIC_EVENT_FIELDS} FROM events
-       WHERE status IN ('active', 'complete')
+       WHERE status != 'archived'
        ORDER BY event_date DESC, created_at DESC`,
     );
-    res.json(events);
+    res.json(events.map(toPublicEvent));
   } catch (error) {
     console.error('Error fetching public events:', error);
     res.status(500).json({ error: 'Failed to fetch events' });
   }
 });
 
-// GET /events/:id/public - Get single event public info (no auth)
+// GET /events/:id/public - Get single event public info (public, for spectators)
 router.get('/:id/public', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
+    if (await isEventArchived(id)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
     const db = await getDatabase();
     const event = await db.get(
       `SELECT ${PUBLIC_EVENT_FIELDS} FROM events WHERE id = ?`,
@@ -70,10 +88,25 @@ router.get('/:id/public', async (req: Request, res: Response) => {
     if (!event) {
       return res.status(404).json({ error: 'Event not found' });
     }
-    res.json(event);
+    res.json(toPublicEvent(event));
   } catch (error) {
     console.error('Error fetching public event:', error);
     res.status(500).json({ error: 'Failed to fetch event' });
+  }
+});
+
+// GET /events/:id/overall/public - Public overall scores (released completed events only)
+router.get('/:id/overall/public', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    if (!(await areFinalScoresReleased(id))) {
+      return res.status(404).json({ error: 'Not found' });
+    }
+    const rows = await computeOverallScores(parseInt(id, 10));
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching public overall scores:', error);
+    res.status(500).json({ error: 'Failed to fetch overall scores' });
   }
 });
 
@@ -153,6 +186,16 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    // If status is changing away from 'complete', auto-clear spectator release
+    const statusUpdate = updates.find(([key]) => key === 'status');
+    if (
+      statusUpdate &&
+      statusUpdate[1] !== 'complete' &&
+      !updates.some(([key]) => key === 'spectator_results_released')
+    ) {
+      updates.push(['spectator_results_released', 0]);
     }
 
     const setClause = updates.map(([key]) => `${key} = ?`).join(', ');

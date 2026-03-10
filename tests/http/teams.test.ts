@@ -582,10 +582,7 @@ describe('Teams Routes', () => {
     });
 
     it('returns 404 when team not found', async () => {
-      const res = await http.patch(
-        `${server.baseUrl}/teams/999/check-in`,
-        {},
-      );
+      const res = await http.patch(`${server.baseUrl}/teams/999/check-in`, {});
       expect(res.status).toBe(404);
     });
 

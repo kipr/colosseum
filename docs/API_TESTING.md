@@ -503,6 +503,88 @@ curl -X POST http://localhost:3000/audit \
   }'
 ```
 
+## Documentation Scores API
+
+All endpoints require admin auth.
+
+### Get categories for event (auth required)
+
+```bash
+curl -X GET http://localhost:3000/documentation-scores/categories/event/1 \
+  -H "Cookie: $COOKIE"
+```
+
+### Create category (auth required)
+
+```bash
+curl -X POST http://localhost:3000/documentation-scores/categories \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{
+    "event_id": 1,
+    "ordinal": 1,
+    "name": "Code Quality",
+    "weight": 1.0,
+    "max_score": 20
+  }'
+```
+
+### Update category (auth required)
+
+```bash
+curl -X PATCH http://localhost:3000/documentation-scores/categories/1 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{
+    "name": "Updated Name",
+    "max_score": 25
+  }'
+```
+
+### Delete category (auth required)
+
+```bash
+curl -X DELETE http://localhost:3000/documentation-scores/categories/1 \
+  -H "Cookie: $COOKIE"
+```
+
+### Get documentation scores for event (auth required)
+
+```bash
+curl -X GET http://localhost:3000/documentation-scores/event/1 \
+  -H "Cookie: $COOKIE"
+```
+
+### Get documentation score for team (auth required)
+
+```bash
+curl -X GET http://localhost:3000/documentation-scores/team/1 \
+  -H "Cookie: $COOKIE"
+```
+
+### Upsert team documentation score (auth required)
+
+Creates or updates sub-scores for a team. `overall_score` is computed server-side as `sum((score/max_score)*weight)`.
+
+```bash
+curl -X PUT http://localhost:3000/documentation-scores/event/1/team/1 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: $COOKIE" \
+  -d '{
+    "sub_scores": [
+      {"category_id": 1, "score": 15},
+      {"category_id": 2, "score": 18}
+    ]
+  }'
+```
+
+### Delete team documentation score (auth required)
+
+```bash
+curl -X DELETE http://localhost:3000/documentation-scores/event/1/team/1 \
+  -H "Cookie: $COOKIE"
+```
+
 ## SQLite Verification Queries
 
 Run these in the SQLite CLI to verify the curl commands worked:
@@ -561,6 +643,15 @@ SELECT * FROM bracket_entries;
 SELECT be.*, t.team_number, t.team_name
 FROM bracket_entries be
 LEFT JOIN teams t ON be.team_id = t.id;
+
+-- Bracket rankings with raw and weighted scores
+SELECT be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+       b.weight AS bracket_weight, t.team_number, t.team_name
+FROM bracket_entries be
+JOIN brackets b ON be.bracket_id = b.id
+LEFT JOIN teams t ON be.team_id = t.id
+WHERE be.final_rank IS NOT NULL
+ORDER BY be.final_rank;
 ```
 
 ### Verify Bracket Games
@@ -604,6 +695,34 @@ SELECT al.*, u.name as user_name
 FROM audit_log al
 LEFT JOIN users u ON al.user_id = u.id
 ORDER BY al.created_at DESC;
+```
+
+### Verify Documentation Score Categories
+
+```sql
+SELECT * FROM documentation_score_categories ORDER BY event_id, ordinal;
+SELECT dsc.*, e.name as event_name
+FROM documentation_score_categories dsc
+JOIN events e ON dsc.event_id = e.id;
+```
+
+### Verify Documentation Scores
+
+```sql
+SELECT * FROM documentation_scores;
+SELECT ds.*, t.team_number, t.team_name, e.name as event_name
+FROM documentation_scores ds
+JOIN teams t ON ds.team_id = t.id
+JOIN events e ON ds.event_id = e.id;
+```
+
+### Verify Documentation Sub-Scores
+
+```sql
+SELECT * FROM documentation_sub_scores;
+SELECT dss.*, dsc.name as category_name, dsc.max_score, dsc.weight
+FROM documentation_sub_scores dss
+JOIN documentation_score_categories dsc ON dss.category_id = dsc.id;
 ```
 
 ## Full Test Sequence
@@ -664,4 +783,9 @@ curl -X POST http://localhost:3000/queue -H "Content-Type: application/json" -H 
 
 # 9. View queue
 curl -X GET http://localhost:3000/queue/event/1
+
+# 10. Documentation scores (optional)
+curl -X POST http://localhost:3000/documentation-scores/categories -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d '{"event_id": 1, "ordinal": 1, "name": "Code Quality", "weight": 1, "max_score": 20}'
+curl -X PUT http://localhost:3000/documentation-scores/event/1/team/1 -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d '{"sub_scores": [{"category_id": 1, "score": 15}]}'
+curl -X GET http://localhost:3000/documentation-scores/event/1
 ```

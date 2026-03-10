@@ -1,0 +1,94 @@
+.documentation-tab {
+  width: 100%;
+}
+
+.documentation-section {
+  margin-bottom: 1.5rem;
+}
+
+.documentation-section h3 {
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+}
+
+.documentation-tab .bulk-preview {
+  background: var(--bg-color);
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.documentation-tab .bulk-preview h4,
+.documentation-tab .bulk-errors h4,
+.documentation-tab .bulk-results h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.9rem;
+}
+
+.documentation-tab .bulk-errors ul,
+.documentation-tab .bulk-results ul {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.documentation-tab .bulk-preview-table {
+  overflow-x: auto;
+}
+
+.documentation-tab .bulk-preview-table table {
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+.documentation-tab .doc-scores-table-wrapper {
+  overflow-x: auto;
+}
+
+.documentation-tab .doc-calculator-table {
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.documentation-tab .doc-calculator-table .doc-op {
+  width: 1.5rem;
+  min-width: 1.5rem;
+  text-align: center;
+  font-weight: 600;
+  color: var(--secondary-color);
+}
+
+/* Sortable headers – shared by admin (DocumentationTab) and spectator (DocumentationScoresDisplay) */
+.documentation-section .doc-calculator-table .doc-sortable,
+.documentation-tab .doc-calculator-table .doc-sortable {
+  cursor: pointer;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+}
+
+.documentation-section .doc-calculator-table .doc-sortable:hover,
+.documentation-tab .doc-calculator-table .doc-sortable:hover {
+  background-color: var(--bg-color);
+}
+
+.documentation-tab .doc-score-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.documentation-tab .doc-score-input {
+  width: 5.5rem;
+  min-width: 5.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-color);
+}
+
+.documentation-tab .doc-fraction {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-color);
+  white-space: nowrap;
+}

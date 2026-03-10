@@ -42,7 +42,9 @@ describe('SqliteSessionStore', () => {
   });
 
   it('returns null and deletes row when session is expired', async () => {
-    db.prepare(`INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)`).run(
+    db.prepare(
+      `INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)`,
+    ).run(
       'expired-sid',
       JSON.stringify({ cookie: {}, userId: 7 }),
       Date.now() - 1,
@@ -58,11 +60,9 @@ describe('SqliteSessionStore', () => {
   });
 
   it('returns null for invalid JSON session rows', async () => {
-    db.prepare(`INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)`).run(
-      'bad-json',
-      '{not-json',
-      Date.now() + 60_000,
-    );
+    db.prepare(
+      `INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)`,
+    ).run('bad-json', '{not-json', Date.now() + 60_000);
 
     const loaded = await getSession(store, 'bad-json');
     expect(loaded).toBeNull();
@@ -81,19 +81,18 @@ describe('SqliteSessionStore', () => {
   });
 
   it('touch updates expiry and clearExpired removes expired sessions', () => {
-    store.set('sid-active', { cookie: { maxAge: 90_000 } } as session.SessionData);
+    store.set('sid-active', {
+      cookie: { maxAge: 90_000 },
+    } as session.SessionData);
 
-    db.prepare(`INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)`).run(
-      'sid-old',
-      JSON.stringify({ cookie: {} }),
-      Date.now() - 10_000,
-    );
+    db.prepare(
+      `INSERT INTO sessions (sid, sess, expires) VALUES (?, ?, ?)`,
+    ).run('sid-old', JSON.stringify({ cookie: {} }), Date.now() - 10_000);
 
     store.clearExpired();
-    store.touch(
-      'sid-active',
-      { cookie: { maxAge: 120_000 } } as session.SessionData,
-    );
+    store.touch('sid-active', {
+      cookie: { maxAge: 120_000 },
+    } as session.SessionData);
 
     const expiredRow = db
       .prepare(`SELECT sid FROM sessions WHERE sid = ?`)

@@ -16,6 +16,7 @@ export interface Bracket {
   bracket_size: number;
   actual_team_count: number | null;
   status: BracketStatus;
+  weight: number;
   created_by: number | null;
   created_at: string;
   updated_at: string;
@@ -31,6 +32,12 @@ export interface BracketEntry {
   team_number?: number;
   team_name?: string;
   display_name?: string | null;
+}
+
+export interface BracketEntryWithRank extends BracketEntry {
+  final_rank: number | null;
+  bracket_raw_score: number | null;
+  weighted_bracket_raw_score: number | null;
 }
 
 export interface BracketGame {
@@ -71,6 +78,8 @@ export interface BracketGame {
 export interface BracketDetail extends Bracket {
   entries: BracketEntry[];
   games: BracketGame[];
+  /** Populated only for authenticated admins via GET /:id/rankings */
+  rankings?: BracketEntryWithRank[];
 }
 
 // Display label mappings for admin management view

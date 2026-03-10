@@ -28,6 +28,7 @@ import './BracketLikeView.css';
 interface BracketLikeViewProps {
   games: BracketGame[];
   initialSide?: BracketSide;
+  emptyMessage?: string;
 }
 
 interface RoundData {
@@ -186,6 +187,7 @@ function BracketTreeDesktop({
 export default function BracketLikeView({
   games,
   initialSide = 'winners',
+  emptyMessage = 'No games available. Generate games to view the bracket.',
 }: BracketLikeViewProps) {
   const [selectedSide, setSelectedSide] = useState<BracketSide>(initialSide);
   const [isMobile, setIsMobile] = useState(false);
@@ -341,9 +343,7 @@ export default function BracketLikeView({
   if (games.length === 0) {
     return (
       <div className="bracket-like-view">
-        <p className="no-games-message">
-          No games available. Generate games to view the bracket.
-        </p>
+        <p className="no-games-message">{emptyMessage}</p>
       </div>
     );
   }

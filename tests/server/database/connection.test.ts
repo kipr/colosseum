@@ -60,16 +60,17 @@ describe('createSqliteDatabase', () => {
     const db = new SQLite(':memory:');
     const adapter = createSqliteDatabase(db);
 
-    await adapter.exec(
-      'CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)',
-    );
+    await adapter.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)');
 
     const insert = await adapter.run('INSERT INTO t (val) VALUES (?)', [
       'test',
     ]);
     expect(insert.lastID).toBe(1);
 
-    const row = await adapter.get<{ val: string }>('SELECT val FROM t WHERE id = ?', [1]);
+    const row = await adapter.get<{ val: string }>(
+      'SELECT val FROM t WHERE id = ?',
+      [1],
+    );
     expect(row?.val).toBe('test');
 
     db.close();
@@ -102,9 +103,7 @@ describe('createSqliteDatabase', () => {
     const db = new SQLite(':memory:');
     const adapter = createSqliteDatabase(db);
 
-    await adapter.exec(
-      'CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)',
-    );
+    await adapter.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)');
 
     const result = await adapter.transaction(async (tx) => {
       await tx.run('INSERT INTO t (val) VALUES (?)', ['x']);

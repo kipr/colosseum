@@ -7,8 +7,7 @@ import { EventProvider } from './contexts/EventContext';
 import Home from './pages/Home';
 import Judge from './pages/Judge';
 import Scoresheet from './pages/Scoresheet';
-import EventList from './pages/EventList';
-import EventView from './pages/EventView';
+import Spectator from './pages/Spectator';
 import Admin from './pages/Admin';
 import PublicChat from './components/PublicChat';
 
@@ -24,9 +23,8 @@ function App() {
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/judge" element={<Judge />} />
+              <Route path="/spectator" element={<Spectator />} />
               <Route path="/scoresheet" element={<Scoresheet />} />
-              <Route path="/event" element={<EventList />} />
-              <Route path="/event/:eventId" element={<EventView />} />
               <Route
                 path="/admin"
                 element={

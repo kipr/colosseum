@@ -150,7 +150,11 @@ describe('Scoresheet Templates Event Scope', () => {
       );
 
       expect(res.status).toBe(200);
-      const body = res.json as { id: number; schema: unknown; access_code?: string };
+      const body = res.json as {
+        id: number;
+        schema: unknown;
+        access_code?: string;
+      };
       expect(body.id).toBe(template.id);
       expect(body.schema).toEqual({ fields: [{ id: 'score' }] });
       expect(body.access_code).toBeUndefined();
@@ -185,7 +189,9 @@ describe('Scoresheet Templates Event Scope', () => {
         schema: JSON.stringify({ fields: [] }),
       });
 
-      const res = await http.get(`${baseUrl}/scoresheet/templates/${template.id}`);
+      const res = await http.get(
+        `${baseUrl}/scoresheet/templates/${template.id}`,
+      );
 
       expect(res.status).toBe(200);
       const body = res.json as { id: number; name: string; schema: unknown };

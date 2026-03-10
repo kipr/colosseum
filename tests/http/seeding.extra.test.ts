@@ -26,7 +26,7 @@ describe('Seeding Routes - additional coverage', () => {
     testDb = await createTestDb();
     __setTestDatabaseAdapter(testDb.db);
     const user = await seedUser(testDb.db);
-    const app = createTestApp({ user: { id: user.id, is_admin: false } });
+    const app = createTestApp({ user: { id: user.id, is_admin: true } });
     app.use('/seeding', seedingRoutes);
     server = await startServer(app);
   });
@@ -78,10 +78,9 @@ describe('Seeding Routes - additional coverage', () => {
     });
 
     it('returns 404 when seeding score not found', async () => {
-      const res = await http.patch(
-        `${server.baseUrl}/seeding/scores/9999`,
-        { score: 200 },
-      );
+      const res = await http.patch(`${server.baseUrl}/seeding/scores/9999`, {
+        score: 200,
+      });
       expect(res.status).toBe(404);
     });
   });
@@ -167,7 +166,9 @@ describe('Seeding Routes - additional coverage', () => {
         score: 100,
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('Team does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Team does not exist',
+      );
     });
 
     it('returns 400 when missing required fields', async () => {

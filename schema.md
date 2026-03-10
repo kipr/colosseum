@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS brackets (
     actual_team_count INTEGER,                   -- Actual number of teams assigned (may be < bracket_size)
     status TEXT DEFAULT 'setup'
         CHECK (status IN ('setup', 'in_progress', 'completed')),
+    weight REAL NOT NULL DEFAULT 1.0             -- Bracket weight in (0, 1]; used to scale raw scores
+        CHECK (weight > 0 AND weight <= 1),
     created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -135,6 +137,9 @@ CREATE TABLE IF NOT EXISTS bracket_entries (
     seed_position INTEGER NOT NULL,              -- 1-N position based on seeding (1 = top seed)
     initial_slot INTEGER,                        -- Starting slot in bracket (after bye handling)
     is_bye BOOLEAN DEFAULT FALSE,                -- If this slot is a bye (no team)
+    final_rank INTEGER,                         -- Official placement (1, 2, 3, 4, 5, 5, 7, 7... ties preserved)
+    bracket_raw_score REAL,                     -- Normalized score: (n - rank + 1) / n where n = non-bye teams
+    weighted_bracket_raw_score REAL,            -- bracket_raw_score * bracket.weight
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(bracket_id, team_id),
     UNIQUE(bracket_id, seed_position),
@@ -336,4 +341,68 @@ END;
 -- 3. seeding_scores: Clear scored_at when score -> NULL
 -- 4. bracket_games: Clear started_at/completed_at on status rollback
 
+```
+
+New requirement: calculate overall score.
+The overall score is a value [0..3] for regionals and [0..4] for GCER.
+
+```sql
+-- ============================================================================
+-- DOCUMENTATION SCORES
+-- ============================================================================
+
+-- Global documentation categories (shared across events)
+CREATE TABLE IF NOT EXISTS documentation_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    weight REAL NOT NULL DEFAULT 1.0,
+    max_score REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Event-to-category junction (ordinal is event-specific; 1-4 categories per event)
+CREATE TABLE IF NOT EXISTS event_documentation_categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL REFERENCES documentation_categories(id) ON DELETE CASCADE,
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 1 AND ordinal <= 4),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, ordinal),
+    UNIQUE(event_id, category_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_doc_categories_event ON event_documentation_categories(event_id);
+CREATE INDEX IF NOT EXISTS idx_event_doc_categories_category ON event_documentation_categories(category_id);
+
+-- Documentation scores - one row per team per event (overall score + metadata)
+-- Admin enters scores directly (no scoresheet/access-code flow)
+CREATE TABLE IF NOT EXISTS documentation_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+    team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+    overall_score REAL,
+    scored_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    scored_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(event_id, team_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_doc_scores_event ON documentation_scores(event_id);
+CREATE INDEX IF NOT EXISTS idx_doc_scores_team ON documentation_scores(team_id);
+
+-- Documentation sub-scores - individual category scores per team
+CREATE TABLE IF NOT EXISTS documentation_sub_scores (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    documentation_score_id INTEGER NOT NULL
+        REFERENCES documentation_scores(id) ON DELETE CASCADE,
+    category_id INTEGER NOT NULL
+        REFERENCES documentation_categories(id) ON DELETE CASCADE,
+    score REAL NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(documentation_score_id, category_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_doc_sub_scores_doc ON documentation_sub_scores(documentation_score_id);
 ```

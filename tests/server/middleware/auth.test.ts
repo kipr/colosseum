@@ -3,7 +3,11 @@
  */
 import { describe, it, expect, vi } from 'vitest';
 import type { Response, NextFunction } from 'express';
-import { requireAuth, requireAdmin, AuthRequest } from '../../../src/server/middleware/auth';
+import {
+  requireAuth,
+  requireAdmin,
+  AuthRequest,
+} from '../../../src/server/middleware/auth';
 
 function mockReq(overrides: Partial<AuthRequest> = {}): AuthRequest {
   return {

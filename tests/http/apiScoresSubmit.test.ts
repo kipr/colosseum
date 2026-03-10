@@ -849,7 +849,9 @@ describe('API Score Submit Routes', () => {
       const unauthServer = await startServer(app);
 
       try {
-        const res = await http.get(`${unauthServer.baseUrl}/api/scores/history`);
+        const res = await http.get(
+          `${unauthServer.baseUrl}/api/scores/history`,
+        );
         expect(res.status).toBe(401);
       } finally {
         await unauthServer.close();
@@ -893,7 +895,10 @@ describe('API Score Submit Routes', () => {
       try {
         const res = await http.get(`${server.baseUrl}/api/scores/history`);
         expect(res.status).toBe(200);
-        const scores = res.json as { template_name: string; score_data: unknown }[];
+        const scores = res.json as {
+          template_name: string;
+          score_data: unknown;
+        }[];
         expect(scores.length).toBe(1);
         expect(scores[0].template_name).toBe('History Template');
         expect(scores[0].score_data).toEqual({ points: 100, round: 1 });

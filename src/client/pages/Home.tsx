@@ -26,6 +26,10 @@ export default function Home() {
     navigate('/judge');
   };
 
+  const handleSpectatorClick = () => {
+    navigate('/spectator');
+  };
+
   const handleAdminClick = () => {
     if (user) {
       // Already logged in, go directly to admin
@@ -79,33 +83,6 @@ export default function Home() {
             className="role-card role-card-clickable"
             role="button"
             tabIndex={0}
-            onClick={() => navigate('/event')}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                navigate('/event');
-              }
-            }}
-          >
-            <div className="role-icon role-icon-text" aria-hidden>
-              <span>📊</span>
-            </div>
-            <h3>Spectator</h3>
-            <p>
-              View live seeding scores, rankings, and tournament brackets for
-              ongoing events.
-            </p>
-            <ul className="role-features">
-              <li>✓ Seeding scores &amp; rankings</li>
-              <li>✓ Tournament brackets</li>
-              <li>✓ No login required</li>
-            </ul>
-          </div>
-
-          <div
-            className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
             onClick={handleAdminClick}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
@@ -127,6 +104,34 @@ export default function Home() {
               <li>✓ Create custom templates</li>
               <li>✓ View submission history</li>
               <li>✓ Manage configurations</li>
+            </ul>
+          </div>
+
+          <div
+            className="role-card role-card-clickable"
+            role="button"
+            tabIndex={0}
+            onClick={handleSpectatorClick}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleSpectatorClick();
+              }
+            }}
+          >
+            <div className="role-icon role-icon-text">
+              <span>📊</span>
+            </div>
+            <h3>Spectator</h3>
+            <p>
+              Follow along with live seeding scores, rankings, and bracket
+              results for active events.
+            </p>
+            <ul className="role-features">
+              <li>✓ View seeding scores and rankings</li>
+              <li>✓ Follow bracket progress</li>
+              <li>✓ No login required</li>
+              <li>✓ Real-time updates</li>
             </ul>
           </div>
         </div>
