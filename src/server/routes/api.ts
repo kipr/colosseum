@@ -1,5 +1,9 @@
 import express from 'express';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import {
+  requireAuth,
+  AuthRequest,
+  requireJudgeSession,
+} from '../middleware/auth';
 import { scoreSubmitLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
@@ -12,10 +16,11 @@ import {
 
 const router = express.Router();
 
-// Submit a score (public - for judges without login)
+// Submit a score (requires judge session or admin auth)
 router.post(
   '/scores/submit',
   scoreSubmitLimiter,
+  requireJudgeSession,
   async (req: express.Request, res: express.Response) => {
     try {
       const {

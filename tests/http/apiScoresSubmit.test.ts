@@ -17,11 +17,13 @@ import {
   seedBracket,
   seedBracketGame,
   seedScoresheetTemplate,
+  seedEventScoresheetTemplate,
   seedQueueItem,
   seedUser,
   seedScoreSubmission,
 } from './helpers/seed';
 import apiRoutes from '../../src/server/routes/api';
+import { JUDGE_SESSION_TTL_MS } from '../../src/server/middleware/auth';
 
 describe('API Score Submit Routes', () => {
   let testDb: TestDb;
@@ -33,8 +35,8 @@ describe('API Score Submit Routes', () => {
     testDb = await createTestDb();
     __setTestDatabaseAdapter(testDb.db);
 
-    // The POST /api/scores/submit endpoint is public (no auth required)
-    const app = createTestApp();
+    // Use admin auth so validation/business-logic tests bypass judge session
+    const app = createTestApp({ user: { id: 1, is_admin: true } });
     app.use('/api', apiRoutes);
 
     server = await startServer(app);
@@ -835,6 +837,236 @@ describe('API Score Submit Routes', () => {
           expect(submission.status).toBe('pending');
         });
       });
+    });
+  });
+
+  // ==========================================================================
+  // Judge Session Enforcement
+  // ==========================================================================
+
+  describe('Judge Session Enforcement', () => {
+    it('returns 401 when no judge session and no admin auth', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Auth Template',
+        created_by: null,
+        spreadsheet_config_id: null,
+      });
+      const event = await seedEvent(testDb.db);
+
+      const app = createTestApp();
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: { points: 100 },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(401);
+        expect((res.json as { error: string }).error).toContain(
+          'Judge session required',
+        );
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it('returns 401 when judge session is expired', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Expired Template',
+        created_by: null,
+        spreadsheet_config_id: null,
+      });
+      const event = await seedEvent(testDb.db);
+
+      const app = createTestApp({
+        judgeSession: {
+          templateId: template.id,
+          eventIds: [event.id],
+          issuedAt: Date.now() - JUDGE_SESSION_TTL_MS - 60_000,
+          expiresAt: Date.now() - 60_000,
+        },
+      });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: { points: 100 },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(401);
+        expect((res.json as { error: string }).error).toContain(
+          'session expired',
+        );
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it('returns 403 when judge session templateId does not match', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Mismatch Template',
+        created_by: null,
+        spreadsheet_config_id: null,
+      });
+      const event = await seedEvent(testDb.db);
+
+      const app = createTestApp({
+        judgeSession: {
+          templateId: template.id + 999,
+          eventIds: [event.id],
+          issuedAt: Date.now(),
+          expiresAt: Date.now() + JUDGE_SESSION_TTL_MS,
+        },
+      });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: { points: 100 },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(403);
+        expect((res.json as { error: string }).error).toContain(
+          'does not match the requested template',
+        );
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it('returns 403 when judge session eventId does not match', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Event Mismatch Template',
+        created_by: null,
+        spreadsheet_config_id: null,
+      });
+      const eventA = await seedEvent(testDb.db);
+      const eventB = await seedEvent(testDb.db);
+
+      const app = createTestApp({
+        judgeSession: {
+          templateId: template.id,
+          eventIds: [eventB.id],
+          issuedAt: Date.now(),
+          expiresAt: Date.now() + JUDGE_SESSION_TTL_MS,
+        },
+      });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: { points: 100 },
+          eventId: eventA.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(403);
+        expect((res.json as { error: string }).error).toContain(
+          'does not match the requested event',
+        );
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it('allows submission with valid judge session', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 50,
+        team_name: 'Judge Team',
+      });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Judge Auth Template',
+        created_by: null,
+        spreadsheet_config_id: null,
+      });
+
+      const app = createTestApp({
+        judgeSession: {
+          templateId: template.id,
+          eventIds: [event.id],
+          issuedAt: Date.now(),
+          expiresAt: Date.now() + JUDGE_SESSION_TTL_MS,
+        },
+      });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Judge Team',
+          matchId: '1',
+          scoreData: {
+            team_id: { value: team.id, type: 'number' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 100, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as { event_id: number; score_type: string };
+        expect(submission.event_id).toBe(event.id);
+        expect(submission.score_type).toBe('seeding');
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it('allows admin user to submit without judge session', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 60,
+        team_name: 'Admin Team',
+      });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Admin Submit Template',
+        created_by: null,
+        spreadsheet_config_id: null,
+      });
+
+      const app = createTestApp({ user: { id: 1, is_admin: true } });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Admin Team',
+          matchId: '1',
+          scoreData: {
+            team_id: { value: team.id, type: 'number' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 100, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as { event_id: number };
+        expect(submission.event_id).toBe(event.id);
+      } finally {
+        await srv.close();
+      }
     });
   });
 

@@ -692,6 +692,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         }),
       });
 
+      if (response.status === 401 || response.status === 403) {
+        const data = await response.json().catch(() => ({}));
+        const msg =
+          (data as { error?: string }).error ||
+          'Session expired. Redirecting to scoresheet selection...';
+        showNotification(msg, 'error');
+        sessionStorage.removeItem('currentTemplate');
+        setTimeout(() => {
+          window.location.href = '/judge';
+        }, 2000);
+        return;
+      }
       if (!response.ok) throw new Error('Failed to submit score');
 
       // Cache the round number for next submission (seeding only, not queue-based)

@@ -52,7 +52,8 @@ describe('Rate Limiting', () => {
       __setTestDatabaseAdapter(testDb.db);
       resetAllRateLimiters();
 
-      const app = createTestApp();
+      // Use admin auth to bypass judge session requirement (testing rate limits, not auth)
+      const app = createTestApp({ user: { id: 1, is_admin: true } });
       app.use('/api', apiRoutes);
       server = await startServer(app);
       baseUrl = server.baseUrl;
