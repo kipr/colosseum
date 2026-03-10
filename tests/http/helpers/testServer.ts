@@ -5,6 +5,7 @@
  */
 import express, { Express, Request, Response, NextFunction } from 'express';
 import type { Server } from 'http';
+import type { JudgeAuth } from '../../../src/server/middleware/auth';
 
 export interface TestUser {
   id: number;
@@ -17,6 +18,8 @@ export interface TestUser {
 export interface TestAppOptions {
   /** If provided, requests will be authenticated as this user */
   user?: TestUser;
+  /** If provided, requests will carry this judge session */
+  judgeSession?: JudgeAuth;
 }
 
 /**
@@ -46,6 +49,17 @@ export function createTestApp(options: TestAppOptions = {}): Express {
       (req as any).isAuthenticated = () => false;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (req as any).user = undefined;
+      next();
+    });
+  }
+
+  // Judge session shim
+  if (options.judgeSession) {
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (!(req as any).session) (req as any).session = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (req as any).session.judgeAuth = options.judgeSession;
       next();
     });
   }

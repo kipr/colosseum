@@ -1,5 +1,9 @@
 import express from 'express';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import {
+  requireAuth,
+  AuthRequest,
+  JUDGE_SESSION_TTL_MS,
+} from '../middleware/auth';
 import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 
@@ -147,6 +151,25 @@ router.post(
       // Verify access code
       if (template.access_code !== accessCode) {
         return res.status(403).json({ error: 'Invalid access code' });
+      }
+
+      // Mint a judge session scoped to this template and its linked events
+      if (req.session) {
+        const linkedEvents = await db.all(
+          `SELECT event_id FROM event_scoresheet_templates WHERE template_id = ?`,
+          [id],
+        );
+        const eventIds = linkedEvents.map(
+          (row: { event_id: number }) => row.event_id,
+        );
+
+        const now = Date.now();
+        req.session.judgeAuth = {
+          templateId: Number(id),
+          eventIds,
+          issuedAt: now,
+          expiresAt: now + JUDGE_SESSION_TTL_MS,
+        };
       }
 
       // Parse JSON schema and remove sensitive data
