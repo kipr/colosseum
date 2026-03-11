@@ -349,6 +349,104 @@ describe('Scores Revert-Event Edge Cases', () => {
     expect(updatedGame.status).toBe('ready');
   });
 
+  it('reverts queue status of downstream bracket games during cascade revert', async () => {
+    const event = await seedEvent(testDb.db);
+    const bracket = await seedBracket(testDb.db, { event_id: event.id });
+    const team1 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    const team2 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 2,
+    });
+    const team3 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 3,
+    });
+    const team4 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 4,
+    });
+
+    // G2: downstream game that winner of G1 advances to
+    const g2 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 2,
+      team1_id: team1.id,
+      team2_id: team3.id,
+      status: 'completed',
+    });
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id = ?, loser_id = ?, team1_source = 'winner:1', team2_source = 'seed:3' WHERE id = ?`,
+      [team1.id, team3.id, g2.id],
+    );
+
+    // G1: source game (team1 vs team2, team1 wins, winner advances to G2 team1)
+    const g1 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 1,
+      team1_id: team1.id,
+      team2_id: team2.id,
+      status: 'completed',
+    });
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id = ?, loser_id = ?, winner_advances_to_id = ?, winner_slot = 'team1', team1_source = 'seed:1', team2_source = 'seed:2' WHERE id = ?`,
+      [team1.id, team2.id, g2.id, g1.id],
+    );
+
+    // Queue items for both games, both completed
+    await seedQueueItem(testDb.db, {
+      event_id: event.id,
+      queue_type: 'bracket',
+      queue_position: 1,
+      bracket_game_id: g1.id,
+      status: 'completed',
+    });
+    await seedQueueItem(testDb.db, {
+      event_id: event.id,
+      queue_type: 'bracket',
+      queue_position: 2,
+      bracket_game_id: g2.id,
+      status: 'completed',
+    });
+
+    const template = await seedScoresheetTemplate(testDb.db);
+    const score = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        winner_team_id: { value: team1.id },
+      }),
+      event_id: event.id,
+      score_type: 'bracket',
+      bracket_game_id: g1.id,
+      status: 'accepted',
+    });
+
+    const res = await http.post(
+      `${server.baseUrl}/scores/${score.id}/revert-event`,
+      { confirm: true },
+    );
+    expect(res.status).toBe(200);
+    const data = res.json as { success: boolean; revertedGames: number };
+    expect(data.success).toBe(true);
+    expect(data.revertedGames).toBe(2);
+
+    // Source game queue item should be reverted to queued
+    const q1 = await testDb.db.get(
+      'SELECT status FROM game_queue WHERE bracket_game_id = ?',
+      [g1.id],
+    );
+    expect(q1.status).toBe('queued');
+
+    // Downstream game queue item should also be reverted to queued
+    const q2 = await testDb.db.get(
+      'SELECT status FROM game_queue WHERE bracket_game_id = ?',
+      [g2.id],
+    );
+    expect(q2.status).toBe('queued');
+  });
+
   it('rejects a score and creates audit entry for event-scoped score', async () => {
     const event = await seedEvent(testDb.db);
     const template = await seedScoresheetTemplate(testDb.db);

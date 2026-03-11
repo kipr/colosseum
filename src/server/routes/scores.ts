@@ -1198,6 +1198,10 @@ router.post(
 
         await updateBracketQueueItem(db, score.event_id, bracketGameId, false);
 
+        for (const affected of affectedGames) {
+          await updateBracketQueueItem(db, score.event_id, affected.id, false);
+        }
+
         return res.json({
           success: true,
           scoreType: 'bracket',
