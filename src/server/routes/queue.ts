@@ -240,11 +240,13 @@ router.get(
       let query = `
       SELECT gq.*,
              bg.game_number, bg.round_name, bg.bracket_side,
+             b.name as bracket_name,
              t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
              t2.team_number as team2_number, t2.team_name as team2_name, t2.display_name as team2_display,
              st.team_number as seeding_team_number, st.team_name as seeding_team_name, st.display_name as seeding_team_display
       FROM game_queue gq
       LEFT JOIN bracket_games bg ON gq.bracket_game_id = bg.id
+      LEFT JOIN brackets b ON bg.bracket_id = b.id
       LEFT JOIN teams t1 ON bg.team1_id = t1.id
       LEFT JOIN teams t2 ON bg.team2_id = t2.id
       LEFT JOIN teams st ON gq.seeding_team_id = st.id

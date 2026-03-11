@@ -228,6 +228,40 @@ describe('Queue Routes', () => {
       expect(items[0].queue_type).toBe('bracket');
     });
 
+    it('returns bracket_name for bracket queue items', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const bracket = await seedBracket(testDb.db, {
+        event_id: event.id,
+        name: 'Main Bracket',
+      });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team.id,
+        team2_id: team.id,
+        status: 'ready',
+      });
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+      });
+
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=bracket`,
+      );
+
+      expect(res.status).toBe(200);
+      const items = res.json as { bracket_name: string }[];
+      expect(items.length).toBe(1);
+      expect(items[0].bracket_name).toBe('Main Bracket');
+    });
+
     it('with sync=1 and queue_type=seeding populates team×round items and sets completed when seeding_scores exist', async () => {
       const event = await seedEvent(testDb.db, { seeding_rounds: 2 });
       const team1 = await seedTeam(testDb.db, {
