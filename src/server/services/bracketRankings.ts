@@ -120,8 +120,8 @@ export async function calculateBracketRankings(
 
   // 7. Update bracket_entries
   const entries = await db.all<{ id: number; team_id: number | null }>(
-    'SELECT id, team_id FROM bracket_entries WHERE bracket_id = ? AND is_bye = 0',
-    [bracketId],
+    'SELECT id, team_id FROM bracket_entries WHERE bracket_id = ? AND is_bye = ?',
+    [bracketId, false],
   );
 
   const n = entries.length;
