@@ -1,12 +1,21 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { BracketDetail, BracketEntryWithRank } from '../../types/brackets';
+import {
+  BracketDetail,
+  BracketEntryWithRank,
+  BracketSide,
+} from '../../types/brackets';
 import { STATUS_LABELS } from '../../types/brackets';
 import { getStatusClass } from './bracketUtils';
 import BracketView from './BracketView';
 import BracketManagementView from './BracketManagementView';
 import BracketRankingView from './BracketRankingView';
-import { isBracketDetailView } from '../../utils/routes';
+import {
+  isBracketDetailView,
+  isBracketSide,
+  paramToBracketSide,
+  bracketSideToParam,
+} from '../../utils/routes';
 import './BracketDisplay.css';
 
 type DetailViewMode = 'bracket' | 'ranking' | 'management';
@@ -44,14 +53,31 @@ export default function BracketDetailView({
   ];
 
   const viewParam = searchParams.get('view');
+  const sideParam = searchParams.get('side');
   const detailViewMode: DetailViewMode =
     isBracketDetailView(viewParam) && modes.includes(viewParam)
       ? viewParam
       : modes[0];
 
+  const bracketSide: BracketSide | undefined = isBracketSide(sideParam)
+    ? paramToBracketSide(sideParam)
+    : undefined;
+
   const setDetailViewMode = (mode: DetailViewMode) => {
-    setSearchParams({ view: mode }, { replace: true });
+    const next: Record<string, string> = { view: mode };
+    if (sideParam) next.side = sideParam;
+    setSearchParams(next, { replace: true });
   };
+
+  const handleSideChange = useCallback(
+    (side: BracketSide) => {
+      const next: Record<string, string> = { side: bracketSideToParam(side) };
+      const currentView = searchParams.get('view');
+      if (currentView) next.view = currentView;
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const modeLabels: Record<DetailViewMode, string> = {
     bracket: 'Bracket View',
@@ -106,7 +132,11 @@ export default function BracketDetailView({
       </div>
 
       {detailViewMode === 'bracket' && (
-        <BracketView bracketDetail={bracketDetail} />
+        <BracketView
+          bracketDetail={bracketDetail}
+          side={bracketSide}
+          onSideChange={handleSideChange}
+        />
       )}
 
       {detailViewMode === 'ranking' && (
