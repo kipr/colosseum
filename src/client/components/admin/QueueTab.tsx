@@ -22,6 +22,7 @@ interface QueueItem {
   game_number: number | null;
   round_name: string | null;
   bracket_side: string | null;
+  bracket_name: string | null;
   team1_number: number | null;
   team1_name: string | null;
   team1_display: string | null;
@@ -552,7 +553,8 @@ export default function QueueTab() {
           {team1Name} vs {team2Name}
         </span>
         <span className="queue-game-teams">
-          Game {item.game_number}
+          {item.bracket_name && `${item.bracket_name} · `}Game{' '}
+          {item.game_number}
           {item.round_name && ` - ${item.round_name}`}
         </span>
       </div>
