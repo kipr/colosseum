@@ -371,6 +371,190 @@ describe('Scores Revert-Event Edge Cases', () => {
     expect(audit.event_id).toBe(event.id);
   });
 
+  it('clears redemption team from Grand Final when reverting upstream game', async () => {
+    const event = await seedEvent(testDb.db);
+    const bracket = await seedBracket(testDb.db, { event_id: event.id });
+    const teamA = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    const teamB = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 2,
+    });
+    const teamC = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 3,
+    });
+    const teamD = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 4,
+    });
+
+    // Build a minimal 4-team double-elimination bracket:
+    // G1 (Winners R1): seed 1 vs seed 4
+    // G2 (Winners R1): seed 2 vs seed 3
+    // G3 (Winners Final): winner:1 vs winner:2
+    // G4 (Redemption R1): loser:1 vs loser:2
+    // G5 (Redemption Final): winner:4 vs loser:3
+    // G6 (Grand Final): winner:3 (team1) vs winner:5 (team2)
+    // G7 (Reset): winner:6 vs loser:6
+
+    const g7 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 7,
+      round_name: 'Championship Reset',
+      round_number: 4,
+      bracket_side: 'finals',
+      status: 'pending',
+    });
+    const g6 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 6,
+      round_name: 'Grand Final',
+      round_number: 3,
+      bracket_side: 'finals',
+      team1_id: teamA.id,
+      team2_id: teamD.id,
+      status: 'completed',
+    });
+    const g5 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 5,
+      round_name: 'Redemption Final',
+      round_number: 2,
+      bracket_side: 'losers',
+      team1_id: teamB.id,
+      team2_id: teamD.id,
+      status: 'completed',
+    });
+    const g4 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 4,
+      round_name: 'Redemption R1',
+      round_number: 1,
+      bracket_side: 'losers',
+      team1_id: teamB.id,
+      team2_id: teamD.id,
+      status: 'completed',
+    });
+    const g3 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 3,
+      round_name: 'Winners Final',
+      round_number: 2,
+      bracket_side: 'winners',
+      team1_id: teamA.id,
+      team2_id: teamC.id,
+      status: 'completed',
+    });
+    const g2 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 2,
+      round_name: 'Winners R1',
+      round_number: 1,
+      bracket_side: 'winners',
+      team1_id: teamC.id,
+      team2_id: teamB.id,
+      status: 'completed',
+    });
+    const g1 = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 1,
+      round_name: 'Winners R1',
+      round_number: 1,
+      bracket_side: 'winners',
+      team1_id: teamA.id,
+      team2_id: teamD.id,
+      status: 'completed',
+    });
+
+    // Set winners, losers, sources, and advancement pointers
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id=?, loser_id=?,
+       winner_advances_to_id=?, winner_slot='team1',
+       loser_advances_to_id=?, loser_slot='team1',
+       team1_source='seed:1', team2_source='seed:4'
+       WHERE id=?`,
+      [teamA.id, teamD.id, g3.id, g4.id, g1.id],
+    );
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id=?, loser_id=?,
+       winner_advances_to_id=?, winner_slot='team2',
+       loser_advances_to_id=?, loser_slot='team2',
+       team1_source='seed:2', team2_source='seed:3'
+       WHERE id=?`,
+      [teamC.id, teamB.id, g3.id, g4.id, g2.id],
+    );
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id=?, loser_id=?,
+       winner_advances_to_id=?, winner_slot='team1',
+       loser_advances_to_id=?, loser_slot='team2',
+       team1_source='winner:1', team2_source='winner:2'
+       WHERE id=?`,
+      [teamA.id, teamC.id, g6.id, g5.id, g3.id],
+    );
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id=?, loser_id=?,
+       winner_advances_to_id=?, winner_slot='team1',
+       team1_source='loser:1', team2_source='loser:2'
+       WHERE id=?`,
+      [teamB.id, teamD.id, g5.id, g4.id],
+    );
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id=?, loser_id=?,
+       winner_advances_to_id=?, winner_slot='team2',
+       team1_source='winner:4', team2_source='loser:3'
+       WHERE id=?`,
+      [teamD.id, teamC.id, g6.id, g5.id],
+    );
+    await testDb.db.run(
+      `UPDATE bracket_games SET winner_id=?, loser_id=?,
+       winner_advances_to_id=?, winner_slot='team1',
+       loser_advances_to_id=?, loser_slot='team2',
+       team1_source='winner:3', team2_source='winner:5'
+       WHERE id=?`,
+      [teamA.id, teamD.id, g7.id, g7.id, g6.id],
+    );
+    await testDb.db.run(
+      `UPDATE bracket_games SET
+       team1_source='winner:6', team2_source='loser:6'
+       WHERE id=?`,
+      [g7.id],
+    );
+
+    // Create accepted score submission for G1
+    const template = await seedScoresheetTemplate(testDb.db);
+    const score = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        winner_team_id: { value: teamA.id },
+      }),
+      event_id: event.id,
+      score_type: 'bracket',
+      bracket_game_id: g1.id,
+      status: 'accepted',
+    });
+
+    // Revert G1 with confirmation
+    const res = await http.post(
+      `${server.baseUrl}/scores/${score.id}/revert-event`,
+      { confirm: true },
+    );
+    expect(res.status).toBe(200);
+    const data = res.json as { success: boolean };
+    expect(data.success).toBe(true);
+
+    // Grand Final (G6) should have BOTH team1 and team2 cleared
+    const grandFinal = await testDb.db.get(
+      'SELECT team1_id, team2_id, winner_id FROM bracket_games WHERE id = ?',
+      [g6.id],
+    );
+    expect(grandFinal.team1_id).toBeNull();
+    expect(grandFinal.team2_id).toBeNull();
+    expect(grandFinal.winner_id).toBeNull();
+  });
+
   // ==========================================================================
   // Bulk accept edge cases
   // ==========================================================================
