@@ -199,6 +199,12 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
           );
+        } else if (
+          !isEligible &&
+          !isCompleted &&
+          (game.team1_id == null || game.team2_id == null)
+        ) {
+          await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
         }
       } else if (isEligible || isCompleted) {
         const status = isCompleted ? 'completed' : 'queued';
