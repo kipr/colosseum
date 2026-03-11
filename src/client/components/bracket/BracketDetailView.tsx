@@ -10,7 +10,12 @@ import { getStatusClass } from './bracketUtils';
 import BracketView from './BracketView';
 import BracketManagementView from './BracketManagementView';
 import BracketRankingView from './BracketRankingView';
-import { isBracketDetailView, isBracketSide } from '../../utils/routes';
+import {
+  isBracketDetailView,
+  isBracketSide,
+  paramToBracketSide,
+  bracketSideToParam,
+} from '../../utils/routes';
 import './BracketDisplay.css';
 
 type DetailViewMode = 'bracket' | 'ranking' | 'management';
@@ -55,7 +60,7 @@ export default function BracketDetailView({
       : modes[0];
 
   const bracketSide: BracketSide | undefined = isBracketSide(sideParam)
-    ? sideParam
+    ? paramToBracketSide(sideParam)
     : undefined;
 
   const setDetailViewMode = (mode: DetailViewMode) => {
@@ -66,7 +71,7 @@ export default function BracketDetailView({
 
   const handleSideChange = useCallback(
     (side: BracketSide) => {
-      const next: Record<string, string> = { side };
+      const next: Record<string, string> = { side: bracketSideToParam(side) };
       const currentView = searchParams.get('view');
       if (currentView) next.view = currentView;
       setSearchParams(next, { replace: true });

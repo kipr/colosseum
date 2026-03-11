@@ -37,7 +37,7 @@ export const SPECTATOR_BRACKET_VIEWS = ['bracket', 'rankings'] as const;
 
 export type SpectatorBracketView = (typeof SPECTATOR_BRACKET_VIEWS)[number];
 
-export const BRACKET_SIDES = ['winners', 'losers', 'finals'] as const;
+export const BRACKET_SIDES = ['winners', 'redemption', 'finals'] as const;
 
 export type BracketSideParam = (typeof BRACKET_SIDES)[number];
 
@@ -67,6 +67,18 @@ export function isBracketSide(
   v: string | null | undefined,
 ): v is BracketSideParam {
   return BRACKET_SIDES.includes(v as BracketSideParam);
+}
+
+export function paramToBracketSide(
+  param: BracketSideParam,
+): 'winners' | 'losers' | 'finals' {
+  return param === 'redemption' ? 'losers' : param;
+}
+
+export function bracketSideToParam(
+  side: 'winners' | 'losers' | 'finals',
+): BracketSideParam {
+  return side === 'losers' ? 'redemption' : side;
 }
 
 function qs(params: Record<string, string | number | undefined>): string {

@@ -34,6 +34,8 @@ import {
   isSpectatorView,
   isSpectatorBracketView,
   isBracketSide,
+  paramToBracketSide,
+  bracketSideToParam,
 } from '../utils/routes';
 import '../components/bracket/BracketDisplay.css';
 import './Spectator.css';
@@ -120,12 +122,12 @@ export default function Spectator() {
   const sideParam = searchParams.get('side');
 
   const bracketSide: BracketSide | undefined = isBracketSide(sideParam)
-    ? sideParam
+    ? paramToBracketSide(sideParam)
     : undefined;
 
   const handleSideChange = useCallback(
     (side: BracketSide) => {
-      const next: Record<string, string> = { side };
+      const next: Record<string, string> = { side: bracketSideToParam(side) };
       const currentView = searchParams.get('view');
       if (currentView) next.view = currentView;
       setSearchParams(next, { replace: true });
