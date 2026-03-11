@@ -439,12 +439,12 @@ describe('Scores Revert-Event Edge Cases', () => {
     );
     expect(q1.status).toBe('queued');
 
-    // Downstream game queue item should also be reverted to queued
+    // Downstream game lost a team during cascade; its queue item should be removed
     const q2 = await testDb.db.get(
       'SELECT status FROM game_queue WHERE bracket_game_id = ?',
       [g2.id],
     );
-    expect(q2.status).toBe('queued');
+    expect(q2).toBeUndefined();
   });
 
   it('rejects a score and creates audit entry for event-scoped score', async () => {

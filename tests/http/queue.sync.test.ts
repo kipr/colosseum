@@ -170,6 +170,38 @@ describe('Queue Routes – sync edge cases', () => {
       expect(item!.status).toBe('queued');
     });
 
+    it('removes queued bracket item when game loses teams after rollback', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: null,
+        status: 'pending',
+      });
+
+      // Simulate a stale queue item left after rollback cleared team2
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+        status: 'queued',
+      });
+
+      // Sync should remove the stale item
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=bracket&sync=1`,
+      );
+      expect(res.status).toBe(200);
+      expect(res.json).toEqual([]);
+    });
+
     it('does not add ineligible bracket games (missing teams)', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
