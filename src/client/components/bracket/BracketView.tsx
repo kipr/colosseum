@@ -1,14 +1,20 @@
 import React from 'react';
-import { BracketDetail } from '../../types/brackets';
+import { BracketDetail, BracketSide } from '../../types/brackets';
 import { getBracketWinner } from './bracketUtils';
 import BracketLikeView from './BracketLikeView';
 import './BracketDisplay.css';
 
 interface BracketViewProps {
   bracketDetail: BracketDetail;
+  side?: BracketSide;
+  onSideChange?: (side: BracketSide) => void;
 }
 
-export default function BracketView({ bracketDetail }: BracketViewProps) {
+export default function BracketView({
+  bracketDetail,
+  side,
+  onSideChange,
+}: BracketViewProps) {
   const winner =
     bracketDetail.games.length > 0
       ? getBracketWinner(bracketDetail.games)
@@ -30,7 +36,11 @@ export default function BracketView({ bracketDetail }: BracketViewProps) {
           </span>
         </div>
       )}
-      <BracketLikeView games={bracketDetail.games} />
+      <BracketLikeView
+        games={bracketDetail.games}
+        side={side}
+        onSideChange={onSideChange}
+      />
     </div>
   );
 }

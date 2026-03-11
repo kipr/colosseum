@@ -28,6 +28,8 @@ import './BracketLikeView.css';
 interface BracketLikeViewProps {
   games: BracketGame[];
   initialSide?: BracketSide;
+  side?: BracketSide;
+  onSideChange?: (side: BracketSide) => void;
   emptyMessage?: string;
 }
 
@@ -187,9 +189,20 @@ function BracketTreeDesktop({
 export default function BracketLikeView({
   games,
   initialSide = 'winners',
+  side: controlledSide,
+  onSideChange,
   emptyMessage = 'No games available. Generate games to view the bracket.',
 }: BracketLikeViewProps) {
-  const [selectedSide, setSelectedSide] = useState<BracketSide>(initialSide);
+  const [internalSide, setInternalSide] = useState<BracketSide>(initialSide);
+  const isControlled = controlledSide !== undefined;
+  const selectedSide = isControlled ? controlledSide : internalSide;
+  const setSelectedSide = useCallback(
+    (s: BracketSide) => {
+      if (!isControlled) setInternalSide(s);
+      onSideChange?.(s);
+    },
+    [isControlled, onSideChange],
+  );
   const [isMobile, setIsMobile] = useState(false);
   const [selectedRoundIndex, setSelectedRoundIndex] = useState(0);
 
@@ -217,7 +230,7 @@ export default function BracketLikeView({
     if (availableSides.length > 0 && !availableSides.includes(selectedSide)) {
       setSelectedSide(availableSides[0]);
     }
-  }, [availableSides, selectedSide]);
+  }, [availableSides, selectedSide, setSelectedSide]);
 
   // Filter and group games by round for the selected side
   const rounds = useMemo((): RoundData[] => {

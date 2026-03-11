@@ -37,6 +37,10 @@ export const SPECTATOR_BRACKET_VIEWS = ['bracket', 'rankings'] as const;
 
 export type SpectatorBracketView = (typeof SPECTATOR_BRACKET_VIEWS)[number];
 
+export const BRACKET_SIDES = ['winners', 'losers', 'finals'] as const;
+
+export type BracketSideParam = (typeof BRACKET_SIDES)[number];
+
 export function isAdminView(v: string | null | undefined): v is AdminView {
   return ADMIN_VIEWS.includes(v as AdminView);
 }
@@ -57,6 +61,12 @@ export function isSpectatorBracketView(
   v: string | null | undefined,
 ): v is SpectatorBracketView {
   return SPECTATOR_BRACKET_VIEWS.includes(v as SpectatorBracketView);
+}
+
+export function isBracketSide(
+  v: string | null | undefined,
+): v is BracketSideParam {
+  return BRACKET_SIDES.includes(v as BracketSideParam);
 }
 
 function qs(params: Record<string, string | number | undefined>): string {
@@ -82,8 +92,9 @@ export function adminBracketPath(
   eventId: number | string,
   bracketId: number | string,
   view?: BracketDetailView,
+  side?: BracketSideParam,
 ): string {
-  return `/admin/events/${eventId}/brackets/${bracketId}` + qs({ view });
+  return `/admin/events/${eventId}/brackets/${bracketId}` + qs({ view, side });
 }
 
 export function spectatorEventPath(
@@ -97,6 +108,9 @@ export function spectatorBracketPath(
   eventId: number | string,
   bracketId: number | string,
   view?: SpectatorBracketView,
+  side?: BracketSideParam,
 ): string {
-  return `/spectator/events/${eventId}/brackets/${bracketId}` + qs({ view });
+  return (
+    `/spectator/events/${eventId}/brackets/${bracketId}` + qs({ view, side })
+  );
 }

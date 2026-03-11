@@ -16,6 +16,7 @@ import type {
   Bracket,
   BracketGame,
   BracketEntryWithRank,
+  BracketSide,
 } from '../types/brackets';
 import type {
   DocCategoryDisplay,
@@ -32,6 +33,7 @@ import {
   spectatorBracketPath,
   isSpectatorView,
   isSpectatorBracketView,
+  isBracketSide,
 } from '../utils/routes';
 import '../components/bracket/BracketDisplay.css';
 import './Spectator.css';
@@ -60,7 +62,7 @@ export default function Spectator() {
     eventId?: string;
     bracketId?: string;
   }>();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [events, setEvents] = useState<PublicEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
@@ -115,6 +117,21 @@ export default function Spectator() {
   const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
 
   const viewParam = searchParams.get('view');
+  const sideParam = searchParams.get('side');
+
+  const bracketSide: BracketSide | undefined = isBracketSide(sideParam)
+    ? sideParam
+    : undefined;
+
+  const handleSideChange = useCallback(
+    (side: BracketSide) => {
+      const next: Record<string, string> = { side };
+      const currentView = searchParams.get('view');
+      if (currentView) next.view = currentView;
+      setSearchParams(next, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
 
   const activeTab: EffectiveTab = useMemo(() => {
     if (bracketIdParam) {
@@ -552,6 +569,8 @@ export default function Spectator() {
                         )}
                         <BracketLikeView
                           games={bracketGames}
+                          side={bracketSide}
+                          onSideChange={handleSideChange}
                           emptyMessage="No bracket games available yet."
                         />
                       </div>
