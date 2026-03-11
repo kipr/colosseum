@@ -753,6 +753,91 @@ async function findAffectedBracketGames(
     }
   }
 
+  // Stabilization: BFS may visit a game before all its source games are
+  // corrupted (e.g., Grand Final reached via the shorter winners path before
+  // the longer redemption path is fully processed). Re-scan visited games
+  // to catch any slots missed due to ordering.
+  let stabilized = false;
+  while (!stabilized) {
+    stabilized = true;
+    for (const visitedId of visited) {
+      const game = gamesById.get(visitedId);
+      if (!game) continue;
+
+      const existingIdx = affected.findIndex((a) => a.id === visitedId);
+      const currentSlots: AffectedSlot[] =
+        existingIdx >= 0 ? affected[existingIdx].affectedSlots : [];
+
+      const newSlots: AffectedSlot[] = [];
+
+      const t1 = parseTeamSource(game.team1_source);
+      if (
+        t1 &&
+        corruptedGameNumbers.has(t1.gameNumber) &&
+        !currentSlots.includes('team1')
+      ) {
+        newSlots.push('team1');
+      }
+
+      const t2 = parseTeamSource(game.team2_source);
+      if (
+        t2 &&
+        corruptedGameNumbers.has(t2.gameNumber) &&
+        !currentSlots.includes('team2')
+      ) {
+        newSlots.push('team2');
+      }
+
+      const srcEntry = slotSources.get(visitedId);
+      if (srcEntry) {
+        for (const srcId of srcEntry.team1Sources) {
+          if (
+            corruptedGameIds.has(srcId) &&
+            !currentSlots.includes('team1') &&
+            !newSlots.includes('team1')
+          ) {
+            newSlots.push('team1');
+          }
+        }
+        for (const srcId of srcEntry.team2Sources) {
+          if (
+            corruptedGameIds.has(srcId) &&
+            !currentSlots.includes('team2') &&
+            !newSlots.includes('team2')
+          ) {
+            newSlots.push('team2');
+          }
+        }
+      }
+
+      if (
+        newSlots.length > 0 &&
+        game.winner_id &&
+        !currentSlots.includes('winner')
+      ) {
+        newSlots.push('winner');
+      }
+
+      if (newSlots.length > 0) {
+        if (existingIdx >= 0) {
+          affected[existingIdx].affectedSlots.push(...newSlots);
+        } else {
+          affected.push({
+            id: game.id,
+            game_number: game.game_number,
+            round_name: game.round_name || `Round ${game.round_number}`,
+            affectedSlots: newSlots,
+          });
+        }
+        if (!corruptedGameIds.has(game.id)) {
+          corruptedGameIds.add(game.id);
+          corruptedGameNumbers.add(game.game_number);
+          stabilized = false;
+        }
+      }
+    }
+  }
+
   return affected;
 }
 
