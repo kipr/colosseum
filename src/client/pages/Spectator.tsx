@@ -163,7 +163,14 @@ export default function Spectator() {
     [selectedEvent],
   );
 
-  // Load public events and redirect to first event if no eventId in URL
+  // If no eventId in URL, redirect to event selection page
+  useEffect(() => {
+    if (!eventIdParam) {
+      navigate('/spectator', { replace: true });
+    }
+  }, [eventIdParam, navigate]);
+
+  // Load public events list (for the selected event metadata)
   useEffect(() => {
     (async () => {
       try {
@@ -171,11 +178,6 @@ export default function Spectator() {
         if (!res.ok) throw new Error('Failed to fetch events');
         const data: PublicEvent[] = await res.json();
         setEvents(data);
-        if (!eventIdParam && data.length > 0) {
-          navigate(spectatorEventPath(data[0].id, 'seeding'), {
-            replace: true,
-          });
-        }
       } catch (error) {
         console.error('Error loading events:', error);
       } finally {
@@ -189,7 +191,7 @@ export default function Spectator() {
     if (eventsLoading || !eventIdParam || events.length === 0) return;
     const exists = events.find((e) => e.id === Number(eventIdParam));
     if (!exists) {
-      navigate(spectatorEventPath(events[0].id, 'seeding'), { replace: true });
+      navigate('/spectator', { replace: true });
     }
   }, [eventsLoading, eventIdParam, events, navigate]);
 
@@ -369,13 +371,6 @@ export default function Spectator() {
       .finally(() => setOverallLoading(false));
   }, [activeTab, selectedEventId, finalScoresAvailable, overallLoaded]);
 
-  const handleEventChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = Number(e.target.value);
-    if (id) {
-      navigate(spectatorEventPath(id, 'seeding'));
-    }
-  };
-
   const navigateToTab = useCallback(
     (tab: EffectiveTab) => {
       if (!selectedEventId) return;
@@ -435,7 +430,7 @@ export default function Spectator() {
       <Navbar />
       <main className="spectator-container">
         <div className="spectator-header">
-          <h2>Spectator</h2>
+          <h2>{selectedEvent ? selectedEvent.name : 'Spectator'}</h2>
           <p>View live seeding scores and bracket results.</p>
         </div>
 
@@ -449,19 +444,13 @@ export default function Spectator() {
           </div>
         ) : (
           <>
-            <div className="spectator-event-selector">
-              <label htmlFor="spectator-event">Event</label>
-              <select
-                id="spectator-event"
-                value={selectedEventId ?? ''}
-                onChange={handleEventChange}
+            <div className="spectator-event-info">
+              <button
+                className="spectator-back-btn"
+                onClick={() => navigate('/spectator')}
               >
-                {events.map((event) => (
-                  <option key={event.id} value={event.id}>
-                    {event.name}
-                  </option>
-                ))}
-              </select>
+                ← All Events
+              </button>
               {selectedEvent && (
                 <div className="spectator-event-meta">
                   <span

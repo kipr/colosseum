@@ -1,0 +1,160 @@
+.spectator-events-container {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.spectator-events-header {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.spectator-events-header h2 {
+  margin: 0 0 0.25rem;
+}
+
+.spectator-events-header p {
+  color: var(--secondary-color);
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+/* Event cards grid */
+.spectator-events-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+/* Individual event card */
+.spectator-event-card {
+  background-color: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition:
+    border-color 0.3s,
+    box-shadow 0.3s,
+    transform 0.3s;
+  box-shadow: var(--shadow);
+}
+
+.spectator-event-card:hover {
+  border-color: var(--primary-color);
+  box-shadow: var(--shadow-lg);
+  transform: translateY(-4px);
+}
+
+.spectator-event-card:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.spectator-event-card-header {
+  margin-bottom: 0.75rem;
+}
+
+.spectator-event-card-header .event-status-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.spectator-event-card-header .event-status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.spectator-event-card-header .event-status-setup {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.spectator-event-card-header .event-status-complete {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+[data-theme='dark'] .spectator-event-card-header .event-status-active {
+  background: #14532d;
+  color: #86efac;
+}
+
+[data-theme='dark'] .spectator-event-card-header .event-status-setup {
+  background: #78350f;
+  color: #fde68a;
+}
+
+[data-theme='dark'] .spectator-event-card-header .event-status-complete {
+  background: #1e3a8a;
+  color: #93c5fd;
+}
+
+.spectator-event-card h3 {
+  font-size: 1.25rem;
+  margin: 0 0 0.75rem;
+  color: var(--text-color);
+}
+
+.spectator-event-card-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.spectator-event-card-detail {
+  font-size: 0.875rem;
+  color: var(--secondary-color);
+}
+
+.spectator-event-card-badge {
+  display: inline-block;
+  margin-top: 0.75rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+[data-theme='dark'] .spectator-event-card-badge {
+  background: #1e3a8a;
+  color: #93c5fd;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .spectator-events-container {
+    padding: 1rem;
+  }
+
+  .spectator-events-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+
+  .spectator-event-card {
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .spectator-events-container {
+    padding: 0.75rem;
+  }
+
+  .spectator-event-card {
+    padding: 1rem;
+    border-radius: 0.75rem;
+  }
+
+  .spectator-event-card h3 {
+    font-size: 1.1rem;
+  }
+}

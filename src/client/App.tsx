@@ -14,6 +14,7 @@ import PublicChat from './components/PublicChat';
 const Home = lazy(() => import('./pages/Home'));
 const Judge = lazy(() => import('./pages/Judge'));
 const Scoresheet = lazy(() => import('./pages/Scoresheet'));
+const SpectatorEvents = lazy(() => import('./pages/SpectatorEvents'));
 const Spectator = lazy(() => import('./pages/Spectator'));
 const Admin = lazy(() => import('./pages/Admin'));
 
@@ -39,7 +40,7 @@ function App() {
                 <Route path="/scoresheet" element={<Scoresheet />} />
 
                 {/* Spectator routes */}
-                <Route path="/spectator" element={<Spectator />} />
+                <Route path="/spectator" element={<SpectatorEvents />} />
                 <Route
                   path="/spectator/events/:eventId/brackets/:bracketId"
                   element={<Spectator />}
