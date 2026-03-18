@@ -12,5 +12,9 @@ RUN apt-get update \
 
 WORKDIR /workspaces/colosseum
 
+RUN npx playwright install-deps
+
 # Use the non-root node user for dev
 USER node
+
+RUN npx playwright install
