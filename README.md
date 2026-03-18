@@ -169,9 +169,11 @@ colosseum/
 │   ├── TEMPLATE_SCHEMA_GUIDE.md   # Score sheet template schema reference
 │   └── API_TESTING.md             # API testing guide with curl examples
 ├── templates/                     # Example score sheet templates
-├── tests/                         # Test suite
+├── tests/                         # Unit & integration tests (Vitest)
+├── e2e/                           # End-to-end tests (Playwright)
 ├── database/                      # SQLite databases (auto-created)
 ├── dist/                          # Build output
+├── playwright.config.ts           # Playwright E2E config
 ├── vite.config.ts                 # Vite configuration
 ├── tsconfig.json                  # TypeScript config
 ├── package.json
@@ -300,7 +302,7 @@ The application uses SQLite (development) or PostgreSQL (production) with the fo
 - **Backend**: Node.js, Express 5, TypeScript
 - **Database**: SQLite (dev) / PostgreSQL (production)
 - **Authentication**: Passport.js with Google OAuth 2.0
-- **Testing**: Vitest
+- **Testing**: Vitest (unit/integration), Playwright (E2E)
 - **Build Tools**: Vite (frontend), TypeScript Compiler (backend)
 
 ### Building
@@ -337,11 +339,35 @@ npm run dev:server  # Express only
 
 ### Testing
 
+**Unit & integration tests** (Vitest):
+
 ```bash
 npm test           # Run tests in watch mode
 npm run test:run   # Run tests once
 npm run coverage   # Run with coverage report
 ```
+
+**End-to-end tests** (Playwright):
+
+Playwright tests live in the `e2e/` directory and run against the full application (Express API + Vite dev server). The Playwright config (`playwright.config.ts`) starts both servers automatically via `webServer` entries, so no manual server setup is needed.
+
+```bash
+# First-time setup — download Chromium and install required OS libraries.
+# The --with-deps flag requires sudo/root to install system packages
+# (e.g. libnspr4, libnss3). If sudo is unavailable, run the two steps
+# separately:
+#   npx playwright install chromium
+#   npx playwright install-deps chromium
+npx playwright install chromium --with-deps
+
+# Run E2E tests
+npm run test:e2e
+```
+
+> **Note:** `npm install` pulls the `@playwright/test` Node package, but the
+> actual Chromium browser binary and its OS-level shared libraries are installed
+> separately via `npx playwright install`. Without this step, tests will fail
+> with missing-library errors (e.g. `libnspr4.so`).
 
 ### Linting and Formatting
 
