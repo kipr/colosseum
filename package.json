@@ -16,6 +16,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "lint": "npx eslint src",
     "pretty": "npx prettier src/ --check"
   },
@@ -42,6 +43,7 @@
   "devDependencies": {
     "@eslint/css": "^0.14.1",
     "@eslint/js": "^9.39.2",
+    "@playwright/test": "^1.58.2",
     "@types/better-sqlite3": "^7.6.13",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/cors": "^2.8.19",
