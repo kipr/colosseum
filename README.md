@@ -350,24 +350,32 @@ npm run coverage   # Run with coverage report
 **End-to-end tests** (Playwright):
 
 Playwright tests live in the `e2e/` directory and run against the full application (Express API + Vite dev server). The Playwright config (`playwright.config.ts`) starts both servers automatically via `webServer` entries, so no manual server setup is needed.
+Before your first run, you will need to download Playwright's headless browser builds and their required OS libraries.
+This is not handled by `npm install`.
+
+> [!NOTE]
+> If you are using the [Devcontainer](https://docs.projectbluefin.io/devcontainers) setup, you do not need to run these commands manually.
+> Simply go straight to `npm run test:e2e` below.
 
 ```bash
 # First-time setup — download Chromium and install required OS libraries.
-# The --with-deps flag requires sudo/root to install system packages
-# (e.g. libnspr4, libnss3). If sudo is unavailable, run the two steps
-# separately:
-#   npx playwright install chromium
-#   npx playwright install-deps chromium
-npx playwright install chromium --with-deps
+# If in an environment without sudo (e.g. container), install in two steps.
+# First, run as root to install OS-level libraries and dependencies:
+npx playwright install-deps
 
+# Then, as your user, run:
+npx playwright install
+
+# If in an environment with sudo access, you can do this in one step with:
+npx playwright install --with-deps
+```
+
+Once the dependencies are installed, run Playwright tests with:
+
+```
 # Run E2E tests
 npm run test:e2e
 ```
-
-> **Note:** `npm install` pulls the `@playwright/test` Node package, but the
-> actual Chromium browser binary and its OS-level shared libraries are installed
-> separately via `npx playwright install`. Without this step, tests will fail
-> with missing-library errors (e.g. `libnspr4.so`).
 
 ### Linting and Formatting
 
