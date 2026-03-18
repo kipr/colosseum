@@ -171,7 +171,9 @@ test.describe('Scoresheet Field Rendering', () => {
 
   /* ── All field types render simultaneously ─────────────────────── */
 
-  test('renders all five field types in a single form', async ({ page }) => {
+  test('renders all five field types with correct element counts', async ({
+    page,
+  }) => {
     await enterAsJudge(page);
 
     const form = page.locator('.scoresheet-form');
@@ -212,9 +214,9 @@ test.describe('Scoresheet Field Rendering', () => {
     ).toBeVisible();
   });
 
-  /* ── Text field rendering ──────────────────────────────────────── */
+  /* ── Text field rendering + interaction ────────────────────────── */
 
-  test('text fields render with correct placeholder and required attributes', async ({
+  test('text fields render with correct attributes and accept input', async ({
     page,
   }) => {
     await enterAsJudge(page);
@@ -239,31 +241,18 @@ test.describe('Scoresheet Field Rendering', () => {
       'Optional feedback',
     );
     await expect(commentsInput).not.toHaveAttribute('required', '');
-  });
 
-  /* ── Text field interaction ────────────────────────────────────── */
-
-  test('text fields accept and display user input', async ({ page }) => {
-    await enterAsJudge(page);
-
-    const judgeInput = page
-      .locator('.score-field')
-      .filter({ hasText: 'Judge Name' })
-      .locator('input[type="text"]');
+    // Interaction: type into both fields
     await judgeInput.fill('Jane Doe');
     await expect(judgeInput).toHaveValue('Jane Doe');
 
-    const commentsInput = page
-      .locator('.score-field')
-      .filter({ hasText: 'Comments' })
-      .locator('input[type="text"]');
     await commentsInput.fill('Great performance overall');
     await expect(commentsInput).toHaveValue('Great performance overall');
   });
 
-  /* ── Number field rendering ────────────────────────────────────── */
+  /* ── Number field rendering + interaction ──────────────────────── */
 
-  test('number fields render with correct min, max, step, and required attributes', async ({
+  test('number fields render with correct constraints and accept input', async ({
     page,
   }) => {
     await enterAsJudge(page);
@@ -291,35 +280,22 @@ test.describe('Scoresheet Field Rendering', () => {
     await expect(creativityInput).toHaveAttribute('max', '100');
     await expect(creativityInput).toHaveAttribute('step', '1');
     await expect(creativityInput).not.toHaveAttribute('required', '');
-  });
 
-  /* ── Number field interaction ──────────────────────────────────── */
-
-  test('number fields accept numeric input', async ({ page }) => {
-    await enterAsJudge(page);
-
-    const techInput = page
-      .locator('.score-field')
-      .filter({ hasText: 'Technical Score' })
-      .locator('input[type="number"]');
-
+    // Interaction
     await techInput.fill('');
     await techInput.fill('25.5');
     await expect(techInput).toHaveValue('25.5');
-
-    const creativityInput = page
-      .locator('.score-field')
-      .filter({ hasText: 'Creativity Score' })
-      .locator('input[type="number"]');
 
     await creativityInput.fill('');
     await creativityInput.fill('88');
     await expect(creativityInput).toHaveValue('88');
   });
 
-  /* ── Dropdown field rendering ──────────────────────────────────── */
+  /* ── Dropdown field rendering + interaction ────────────────────── */
 
-  test('dropdown field renders with correct options', async ({ page }) => {
+  test('dropdown field renders with correct options and allows selection', async ({
+    page,
+  }) => {
     await enterAsJudge(page);
 
     const divisionField = page
@@ -334,7 +310,7 @@ test.describe('Scoresheet Field Rendering', () => {
       hasText: 'Select...',
     });
     await expect(placeholder).toBeAttached();
-    await expect(placeholder).toHaveValue('');
+    await expect(placeholder).toHaveAttribute('value', '');
 
     // Defined options
     await expect(divisionSelect.locator('option')).toHaveCount(4);
@@ -347,20 +323,8 @@ test.describe('Scoresheet Field Rendering', () => {
     await expect(divisionSelect.locator('option[value="pro"]')).toHaveText(
       'Professional',
     );
-  });
 
-  /* ── Dropdown field interaction ────────────────────────────────── */
-
-  test('dropdown field allows selecting and changing options', async ({
-    page,
-  }) => {
-    await enterAsJudge(page);
-
-    const divisionSelect = page
-      .locator('.score-field')
-      .filter({ hasText: 'Division' })
-      .locator('select');
-
+    // Interaction: select and change
     await expect(divisionSelect).toHaveValue('');
     await divisionSelect.selectOption('senior');
     await expect(divisionSelect).toHaveValue('senior');
@@ -368,9 +332,9 @@ test.describe('Scoresheet Field Rendering', () => {
     await expect(divisionSelect).toHaveValue('pro');
   });
 
-  /* ── Buttons field rendering ───────────────────────────────────── */
+  /* ── Buttons field rendering + interaction ─────────────────────── */
 
-  test('button group field renders with correct options and no initial selection', async ({
+  test('button group renders options and supports single-select', async ({
     page,
   }) => {
     await enterAsJudge(page);
@@ -395,29 +359,15 @@ test.describe('Scoresheet Field Rendering', () => {
     await expect(
       buttonGroup.locator('.score-option-button.selected'),
     ).toHaveCount(0);
-  });
 
-  /* ── Buttons field interaction ─────────────────────────────────── */
-
-  test('button group selection adds selected class and is single-select', async ({
-    page,
-  }) => {
-    await enterAsJudge(page);
-
-    const buttonGroup = page
-      .locator('.score-field')
-      .filter({ hasText: 'Performance Rating' })
-      .locator('.score-button-group');
-    const buttons = buttonGroup.locator('.score-option-button');
-
-    // Click "Good"
+    // Click "Good" – it becomes selected
     await buttons.nth(1).click();
     await expect(buttons.nth(1)).toHaveClass(/selected/);
     await expect(
       buttonGroup.locator('.score-option-button.selected'),
     ).toHaveCount(1);
 
-    // Switch to "Excellent"
+    // Switch to "Excellent" – only it is selected
     await buttons.nth(0).click();
     await expect(buttons.nth(0)).toHaveClass(/selected/);
     await expect(buttons.nth(1)).not.toHaveClass(/selected/);
@@ -426,9 +376,11 @@ test.describe('Scoresheet Field Rendering', () => {
     ).toHaveCount(1);
   });
 
-  /* ── Checkbox field rendering ──────────────────────────────────── */
+  /* ── Checkbox field rendering + interaction ────────────────────── */
 
-  test('checkbox field renders unchecked by default', async ({ page }) => {
+  test('checkbox field renders unchecked and toggles on click', async ({
+    page,
+  }) => {
     await enterAsJudge(page);
 
     const checkboxField = page
@@ -440,21 +392,12 @@ test.describe('Scoresheet Field Rendering', () => {
     const checkbox = checkboxField.locator('input[type="checkbox"]');
     await expect(checkbox).toBeVisible();
     await expect(checkbox).not.toBeChecked();
-  });
 
-  /* ── Checkbox field interaction ────────────────────────────────── */
-
-  test('checkbox field toggles on click', async ({ page }) => {
-    await enterAsJudge(page);
-
-    const checkbox = page
-      .locator('.score-field')
-      .filter({ hasText: 'Time Violation' })
-      .locator('input[type="checkbox"]');
-
-    await expect(checkbox).not.toBeChecked();
+    // Toggle on
     await checkbox.check();
     await expect(checkbox).toBeChecked();
+
+    // Toggle off
     await checkbox.uncheck();
     await expect(checkbox).not.toBeChecked();
   });
@@ -472,7 +415,7 @@ test.describe('Scoresheet Field Rendering', () => {
     const leftCol = columns.nth(0);
     const rightCol = columns.nth(1);
 
-    // Left column has Technical Score (number) and Performance Rating (buttons)
+    // Left column: Technical Score (number) and Performance Rating (buttons)
     await expect(
       leftCol.locator('.score-label', { hasText: 'Technical Score' }),
     ).toBeVisible();
@@ -480,7 +423,7 @@ test.describe('Scoresheet Field Rendering', () => {
       leftCol.locator('.score-label', { hasText: 'Performance Rating' }),
     ).toBeVisible();
 
-    // Right column has Creativity Score (number) and Time Violation (checkbox)
+    // Right column: Creativity Score (number) and Time Violation (checkbox)
     await expect(
       rightCol.locator('.score-label', { hasText: 'Creativity Score' }),
     ).toBeVisible();
