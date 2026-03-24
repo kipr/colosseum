@@ -2,6 +2,10 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
+import {
+  buildBulkImportSubScores,
+  parseDocScoresText,
+} from './documentationBulkImport';
 import '../Modal.css';
 import './DocumentationTab.css';
 
@@ -64,77 +68,6 @@ const defaultCategoryForm: CategoryFormData = {
   max_score: '',
 };
 
-interface ParsedDocRow {
-  team_number: number;
-  scores: number[];
-}
-
-function parseDocScoresText(
-  text: string,
-  categoryCount: number,
-): { rows: ParsedDocRow[]; errors: string[] } {
-  const lines = text
-    .trim()
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-  const rows: ParsedDocRow[] = [];
-  const errors: string[] = [];
-  const expectedCols = 1 + categoryCount;
-
-  let startIndex = 0;
-  if (lines.length > 0) {
-    const first = lines[0];
-    const delim = first.includes('\t') ? '\t' : ',';
-    const firstParts = first.split(delim).map((p) => p.trim());
-    const firstCol = firstParts[0];
-    if (
-      firstCol &&
-      firstCol.length > 0 &&
-      !/^\d+$/.test(firstCol) &&
-      isNaN(parseInt(firstCol, 10))
-    ) {
-      startIndex = 1;
-    }
-  }
-
-  for (let i = startIndex; i < lines.length; i++) {
-    const line = lines[i];
-    const delim = line.includes('\t') ? '\t' : ',';
-    const parts = line.split(delim).map((p) => p.trim());
-
-    if (parts.length !== expectedCols) {
-      errors.push(
-        `Line ${i + 1}: Expected ${expectedCols} columns, got ${parts.length}`,
-      );
-      continue;
-    }
-
-    const teamNumber = parseInt(parts[0], 10);
-    if (isNaN(teamNumber) || teamNumber <= 0) {
-      errors.push(`Line ${i + 1}: Invalid team number "${parts[0]}"`);
-      continue;
-    }
-
-    const scores: number[] = [];
-    let rowError = false;
-    for (let c = 1; c < parts.length; c++) {
-      const val = parseFloat(parts[c]);
-      if (!Number.isFinite(val) || val < 0) {
-        errors.push(`Line ${i + 1}, col ${c + 1}: Invalid score "${parts[c]}"`);
-        rowError = true;
-        break;
-      }
-      scores.push(val);
-    }
-    if (!rowError) {
-      rows.push({ team_number: teamNumber, scores });
-    }
-  }
-
-  return { rows, errors };
-}
-
 export default function DocumentationTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
@@ -168,6 +101,7 @@ export default function DocumentationTab() {
 
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkText, setBulkText] = useState('');
+  const [bulkImportCategoryId, setBulkImportCategoryId] = useState('');
   const [bulkImporting, setBulkImporting] = useState(false);
   const [bulkResults, setBulkResults] = useState<{
     success: number;
@@ -495,6 +429,9 @@ export default function DocumentationTab() {
   const sortedCategories = [...categories].sort(
     (a, b) => a.ordinal - b.ordinal,
   );
+  const selectedBulkCategory =
+    sortedCategories.find((cat) => String(cat.id) === bulkImportCategoryId) ??
+    null;
 
   const getCellValue = (
     teamId: number,
@@ -594,9 +531,12 @@ export default function DocumentationTab() {
     }
   };
 
+  const bulkPreviewCategories = selectedBulkCategory
+    ? [selectedBulkCategory]
+    : sortedCategories;
   const { rows: bulkParsed, errors: bulkParseErrors } = parseDocScoresText(
     bulkText,
-    categories.length,
+    bulkPreviewCategories.length,
   );
 
   const handleBulkImport = async () => {
@@ -615,10 +555,16 @@ export default function DocumentationTab() {
         continue;
       }
 
-      const sub_scores = categories.map((cat, idx) => ({
-        category_id: cat.id,
-        score: row.scores[idx] ?? 0,
-      }));
+      const existingDoc = scoreByTeamId.get(team.id);
+      const sub_scores = buildBulkImportSubScores({
+        categories: sortedCategories,
+        rowScores: row.scores,
+        selectedCategoryId: selectedBulkCategory?.id ?? null,
+        existingSubScores: existingDoc?.sub_scores?.map((subScore) => ({
+          category_id: subScore.category_id,
+          score: subScore.score,
+        })),
+      });
 
       try {
         const res = await fetch(
@@ -661,6 +607,7 @@ export default function DocumentationTab() {
   const handleCloseBulkImport = () => {
     setShowBulkImport(false);
     setBulkText('');
+    setBulkImportCategoryId('');
     setBulkResults(null);
   };
 
@@ -1100,12 +1047,31 @@ export default function DocumentationTab() {
               &times;
             </span>
             <h3>Bulk Import Documentation Scores</h3>
+            <div className="form-group">
+              <label htmlFor="bulk-doc-category">Category</label>
+              <select
+                id="bulk-doc-category"
+                className="field-input"
+                value={bulkImportCategoryId}
+                onChange={(e) => {
+                  setBulkImportCategoryId(e.target.value);
+                  setBulkResults(null);
+                }}
+              >
+                <option value="">All categories</option>
+                {sortedCategories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </select>
+            </div>
             <p
               style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
             >
-              Paste CSV or TSV. Format: team_number, score1, score2, ... (scores
-              in category ordinal order). Optional header row (skipped if first
-              column is non-numeric).
+              {selectedBulkCategory
+                ? `Paste CSV or TSV. Format: team_number, ${selectedBulkCategory.name} score. Optional header row (skipped if first column is non-numeric).`
+                : 'Paste CSV or TSV. Format: team_number, score1, score2, ... (scores in category ordinal order). Optional header row (skipped if first column is non-numeric).'}
             </p>
             <p
               style={{
@@ -1114,9 +1080,9 @@ export default function DocumentationTab() {
                 fontSize: '0.875rem',
               }}
             >
-              Expected columns: 1 + {categories.length} ={' '}
-              {1 + categories.length} (team_number +{' '}
-              {categories.map((c) => c.name).join(', ')})
+              Expected columns: 1 + {bulkPreviewCategories.length} ={' '}
+              {1 + bulkPreviewCategories.length} (team_number +{' '}
+              {bulkPreviewCategories.map((c) => c.name).join(', ')})
             </p>
             <div className="form-group">
               <label htmlFor="bulk-doc-text">Data</label>
@@ -1125,8 +1091,15 @@ export default function DocumentationTab() {
                 className="field-input"
                 rows={10}
                 value={bulkText}
-                onChange={(e) => setBulkText(e.target.value)}
-                placeholder={`Example:\n101\t15\t18\t12\n102\t20\t16\t14`}
+                onChange={(e) => {
+                  setBulkText(e.target.value);
+                  setBulkResults(null);
+                }}
+                placeholder={
+                  selectedBulkCategory
+                    ? 'Example:\n101\t15\n102\t20'
+                    : 'Example:\n101\t15\t18\t12\n102\t20\t16\t14'
+                }
               />
             </div>
             {bulkParsed.length > 0 && (
@@ -1137,7 +1110,7 @@ export default function DocumentationTab() {
                     <thead>
                       <tr>
                         <th>Team #</th>
-                        {categories.map((c) => (
+                        {bulkPreviewCategories.map((c) => (
                           <th key={c.id}>{c.name}</th>
                         ))}
                       </tr>
@@ -1154,7 +1127,7 @@ export default function DocumentationTab() {
                       {bulkParsed.length > 10 && (
                         <tr>
                           <td
-                            colSpan={1 + categories.length}
+                            colSpan={1 + bulkPreviewCategories.length}
                             style={{
                               textAlign: 'center',
                               fontStyle: 'italic',
