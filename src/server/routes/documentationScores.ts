@@ -6,6 +6,22 @@ import { areFinalScoresReleased } from '../utils/eventVisibility';
 
 const router = express.Router();
 
+function isUniqueConstraintError(error: unknown): boolean {
+  const code =
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof (error as { code?: unknown }).code === 'string'
+      ? ((error as { code: string }).code as string)
+      : '';
+  const message = error instanceof Error ? error.message : '';
+  return (
+    code === '23505' ||
+    message.includes('UNIQUE constraint failed') ||
+    message.includes('duplicate key value violates unique constraint')
+  );
+}
+
 /**
  * Compute overall_score from sub-scores using:
  * sum((score / max_score) * weight)
@@ -116,7 +132,8 @@ router.post(
         return res.status(404).json({ error: 'Event not found' });
       }
 
-      let categoryId: number;
+      let categoryId: number | null = null;
+      let linkedInTransaction = false;
 
       if (category_id != null) {
         const existing = await db.get(
@@ -146,19 +163,37 @@ router.post(
             error: 'max_score must be a positive number',
           });
         }
-        const result = await db.run(
-          `INSERT INTO documentation_categories (name, weight, max_score)
-           VALUES (?, ?, ?)`,
-          [String(name).trim(), w, max],
-        );
-        categoryId = result.lastID!;
+        const trimmedName = String(name).trim();
+
+        await db.transaction(async (tx) => {
+          const result = await tx.run(
+            `INSERT INTO documentation_categories (name, weight, max_score)
+             VALUES (?, ?, ?)`,
+            [trimmedName, w, max],
+          );
+          categoryId = result.lastID!;
+          await tx.run(
+            `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
+             VALUES (?, ?, ?)`,
+            [event_id, categoryId, ord],
+          );
+        });
+        linkedInTransaction = true;
       }
 
-      await db.run(
-        `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
-         VALUES (?, ?, ?)`,
-        [event_id, categoryId, ord],
-      );
+      if (categoryId == null) {
+        return res
+          .status(500)
+          .json({ error: 'Failed to determine documentation category id' });
+      }
+
+      if (!linkedInTransaction) {
+        await db.run(
+          `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
+           VALUES (?, ?, ?)`,
+          [event_id, categoryId, ord],
+        );
+      }
 
       const category = await db.get(
         `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
@@ -170,8 +205,7 @@ router.post(
       res.status(201).json(category);
     } catch (error) {
       console.error('Error creating documentation category:', error);
-      const errMsg = (error as Error).message || '';
-      if (errMsg.includes('UNIQUE constraint failed')) {
+      if (isUniqueConstraintError(error)) {
         return res.status(409).json({
           error:
             'A category with this ordinal already exists for this event, or this category is already linked',
@@ -234,8 +268,7 @@ router.patch(
       res.json(category);
     } catch (error) {
       console.error('Error updating documentation category:', error);
-      const errMsg = (error as Error).message || '';
-      if (errMsg.includes('UNIQUE constraint failed')) {
+      if (isUniqueConstraintError(error)) {
         return res.status(409).json({
           error: 'A category with this ordinal already exists for this event',
         });
@@ -248,7 +281,8 @@ router.patch(
 );
 
 // DELETE /documentation-scores/categories/:id
-// :id is the global category_id; event_id required as query param (removes link only)
+// :id is the global category_id; event_id required as query param
+// Removes the event link and deletes the global category when unreferenced.
 router.delete(
   '/categories/:id',
   requireAdmin,
@@ -263,13 +297,33 @@ router.delete(
       }
 
       const db = await getDatabase();
+      let removedLink = false;
+      const categoryId = parseInt(id, 10);
 
-      const result = await db.run(
-        'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
-        [eventId, id],
-      );
+      await db.transaction(async (tx) => {
+        const result = await tx.run(
+          'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
+          [eventId, categoryId],
+        );
+        removedLink = (result.changes ?? 0) > 0;
+        if (!removedLink) {
+          return;
+        }
 
-      if (result.changes === 0) {
+        // Clean up now-unreferenced global categories.
+        await tx.run(
+          `DELETE FROM documentation_categories
+           WHERE id = ?
+             AND NOT EXISTS (
+               SELECT 1
+               FROM event_documentation_categories
+               WHERE category_id = ?
+             )`,
+          [categoryId, categoryId],
+        );
+      });
+
+      if (!removedLink) {
         return res
           .status(404)
           .json({ error: 'Category not found for this event' });

@@ -295,6 +295,33 @@ describe('Documentation Scores Routes', () => {
       );
       expect(res.status).toBe(409);
     });
+
+    it('does not leave orphan global category when event link insert fails', async () => {
+      const event = await seedEvent(testDb.db);
+      await seedDocumentationScoreCategory(testDb.db, {
+        event_id: event.id,
+        ordinal: 1,
+        name: 'Existing',
+        max_score: 10,
+      });
+
+      const res = await http.post(
+        `${server.baseUrl}/documentation-scores/categories`,
+        {
+          event_id: event.id,
+          ordinal: 1,
+          name: 'ShouldRollback',
+          max_score: 7,
+        },
+      );
+      expect(res.status).toBe(409);
+
+      const orphan = await testDb.db.get<{ id: number }>(
+        'SELECT id FROM documentation_categories WHERE name = ?',
+        ['ShouldRollback'],
+      );
+      expect(orphan).toBeUndefined();
+    });
   });
 
   // ==========================================================================
@@ -397,6 +424,62 @@ describe('Documentation Scores Routes', () => {
         `${server.baseUrl}/documentation-scores/categories/${cat.id}?event_id=${event.id}`,
       );
       expect(res.status).toBe(204);
+    });
+
+    it('deletes global category when no events reference it anymore', async () => {
+      const event = await seedEvent(testDb.db);
+      const cat = await seedDocumentationScoreCategory(testDb.db, {
+        event_id: event.id,
+        ordinal: 1,
+        name: 'DeleteWhenUnreferenced',
+        max_score: 10,
+      });
+
+      const res = await http.delete(
+        `${server.baseUrl}/documentation-scores/categories/${cat.id}?event_id=${event.id}`,
+      );
+      expect(res.status).toBe(204);
+
+      const existingGlobal = await testDb.db.get<{ id: number }>(
+        'SELECT id FROM documentation_categories WHERE id = ?',
+        [cat.id],
+      );
+      expect(existingGlobal).toBeUndefined();
+    });
+
+    it('keeps global category when another event still references it', async () => {
+      const event1 = await seedEvent(testDb.db, { name: 'Event 1' });
+      const event2 = await seedEvent(testDb.db, { name: 'Event 2' });
+
+      const cat = await seedDocumentationScoreCategory(testDb.db, {
+        event_id: event1.id,
+        ordinal: 1,
+        name: 'SharedCategory',
+        max_score: 12,
+      });
+      await seedDocumentationScoreCategory(testDb.db, {
+        event_id: event2.id,
+        ordinal: 2,
+        name: 'SharedCategory',
+        max_score: 12,
+      });
+
+      const res = await http.delete(
+        `${server.baseUrl}/documentation-scores/categories/${cat.id}?event_id=${event1.id}`,
+      );
+      expect(res.status).toBe(204);
+
+      const existingGlobal = await testDb.db.get<{ id: number }>(
+        'SELECT id FROM documentation_categories WHERE id = ?',
+        [cat.id],
+      );
+      expect(existingGlobal).toBeDefined();
+
+      const remainingLinks = await testDb.db.all<{ event_id: number }>(
+        'SELECT event_id FROM event_documentation_categories WHERE category_id = ?',
+        [cat.id],
+      );
+      expect(remainingLinks).toEqual([{ event_id: event2.id }]);
     });
   });
 
