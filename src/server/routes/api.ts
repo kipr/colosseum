@@ -190,8 +190,8 @@ router.post(
           ip_address: req.ip ?? null,
         });
 
-        // Remove from active queue as soon as the score is submitted.
-        // If the submission is later rejected, scores.ts will restore it.
+        // Mark queue item as score_submitted (pending review).
+        // Acceptance will move it to completed; rejection will restore it to queued.
         if (scoreType === 'seeding' && resolvedTeamId) {
           const roundNumber =
             scoreData.round?.value ?? scoreData.round_number?.value;
@@ -201,7 +201,7 @@ router.post(
               eventId,
               resolvedTeamId,
               Number(roundNumber),
-              true,
+              'score_submitted',
             );
           }
         } else if (scoreType === 'bracket' && bracket_game_id != null) {
@@ -209,7 +209,7 @@ router.post(
             db,
             eventId,
             Number(bracket_game_id),
-            true,
+            'score_submitted',
           );
         }
 
