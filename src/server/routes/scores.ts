@@ -88,7 +88,18 @@ router.get(
           gq.queue_position,
           ss.round_number as seeding_round,
           seeding_team.team_number as team_display_number,
-          seeding_team.team_name as team_name
+          seeding_team.team_name as team_name,
+          bg.team1_score as bracket_team1_score,
+          bg.team2_score as bracket_team2_score,
+          bt1.team_number as bracket_team1_number,
+          bt1.team_name as bracket_team1_name,
+          bt1.display_name as bracket_team1_display,
+          bt2.team_number as bracket_team2_number,
+          bt2.team_name as bracket_team2_name,
+          bt2.display_name as bracket_team2_display,
+          bw.team_number as bracket_winner_number,
+          bw.team_name as bracket_winner_name,
+          bw.display_name as bracket_winner_display
         FROM score_submissions s
         LEFT JOIN scoresheet_templates t ON s.template_id = t.id
         LEFT JOIN users submitter ON s.user_id = submitter.id
@@ -98,6 +109,9 @@ router.get(
         LEFT JOIN brackets b ON bg.bracket_id = b.id
         LEFT JOIN seeding_scores ss ON s.seeding_score_id = ss.id
         LEFT JOIN teams seeding_team ON ss.team_id = seeding_team.id
+        LEFT JOIN teams bt1 ON bg.team1_id = bt1.id
+        LEFT JOIN teams bt2 ON bg.team2_id = bt2.id
+        LEFT JOIN teams bw ON bg.winner_id = bw.id
         WHERE ${dataWhereClause}
         ORDER BY s.created_at DESC
         LIMIT ? OFFSET ?`,

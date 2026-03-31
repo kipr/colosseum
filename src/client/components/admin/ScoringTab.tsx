@@ -35,6 +35,18 @@ interface ScoreSubmission {
   game_number?: number;
   queue_position?: number;
   seeding_round?: number;
+  // Bracket-specific joined display fields
+  bracket_team1_score?: number | null;
+  bracket_team2_score?: number | null;
+  bracket_team1_number?: number | null;
+  bracket_team1_name?: string | null;
+  bracket_team1_display?: string | null;
+  bracket_team2_number?: number | null;
+  bracket_team2_name?: string | null;
+  bracket_team2_display?: string | null;
+  bracket_winner_number?: number | null;
+  bracket_winner_name?: string | null;
+  bracket_winner_display?: string | null;
 }
 
 interface EventScoresResponse {
@@ -368,6 +380,79 @@ export default function ScoringTab() {
     loadEventScores(false);
   };
 
+  const getSeedingRowDisplay = (score: ScoreSubmission) => {
+    const data = score.score_data || {};
+    const teamNum =
+      score.team_display_number ||
+      data.team_number?.value ||
+      data.team_a_number?.value ||
+      '-';
+    const teamName =
+      score.team_name || data.team_name?.value || data.team_a_name?.value || '';
+    const round = score.seeding_round || data.round?.value;
+    const roundLabel = round ? `Round ${round}` : '-';
+    const total =
+      data.grand_total?.value ??
+      data.team_a_total?.value ??
+      data.score?.value ??
+      '-';
+    return { teamNum, teamName, roundLabel, total };
+  };
+
+  const getBracketRowDisplay = (score: ScoreSubmission) => {
+    const data = score.score_data || {};
+
+    const team1Label =
+      score.bracket_team1_display ||
+      score.bracket_team1_name ||
+      (score.bracket_team1_number != null
+        ? String(score.bracket_team1_number)
+        : null) ||
+      data.team_a_name?.value ||
+      data.team_a_number?.value ||
+      'TBD';
+    const team2Label =
+      score.bracket_team2_display ||
+      score.bracket_team2_name ||
+      (score.bracket_team2_number != null
+        ? String(score.bracket_team2_number)
+        : null) ||
+      data.team_b_name?.value ||
+      data.team_b_number?.value ||
+      'TBD';
+
+    const bracketName = score.bracket_name || 'Bracket';
+    const gameNum = score.game_number || data.game_number?.value;
+    const gameLabel = gameNum ? `Game ${gameNum}` : '-';
+
+    const team1Score =
+      data.team1_score?.value ?? score.bracket_team1_score ?? null;
+    const team2Score =
+      data.team2_score?.value ?? score.bracket_team2_score ?? null;
+    const scoreLabel =
+      team1Score != null && team2Score != null
+        ? `${team1Score} – ${team2Score}`
+        : '-';
+
+    const winnerLabel =
+      score.bracket_winner_display ||
+      score.bracket_winner_name ||
+      (score.bracket_winner_number != null
+        ? String(score.bracket_winner_number)
+        : null) ||
+      data.winner_name?.value ||
+      '-';
+
+    return {
+      team1Label,
+      team2Label,
+      bracketName,
+      gameLabel,
+      scoreLabel,
+      winnerLabel,
+    };
+  };
+
   const getStatusBadge = (score: ScoreSubmission) => {
     const { status, reviewed_by } = score;
     switch (status) {
@@ -389,16 +474,23 @@ export default function ScoringTab() {
     }
   };
 
-  // Render table for event-scoped scores
-  const renderEventTable = () => (
+  const seedingScores = useMemo(
+    () => scores.filter((s) => s.score_type === 'seeding'),
+    [scores],
+  );
+  const bracketScores = useMemo(
+    () => scores.filter((s) => s.score_type === 'bracket'),
+    [scores],
+  );
+
+  const renderSeedingTable = (rows: ScoreSubmission[], showType: boolean) => (
     <table>
       <thead>
         <tr>
-          <th>Type</th>
+          {showType && <th>Type</th>}
           <th>Team</th>
-          <th>Context</th>
+          <th>Round</th>
           <th>Total</th>
-          <th>Submitted By</th>
           <th>Submitted</th>
           <th>Status</th>
           <th>Reviewed</th>
@@ -406,49 +498,16 @@ export default function ScoringTab() {
         </tr>
       </thead>
       <tbody>
-        {scores.map((score) => {
-          const data = score.score_data || {};
-          const scoreType = score.score_type || 'unknown';
-          const totalScore =
-            data.grand_total?.value ??
-            data.team_a_total?.value ??
-            data.score?.value ??
-            '-';
-
-          // Context display
-          let context = '-';
-          if (scoreType === 'seeding') {
-            const round = score.seeding_round || data.round?.value;
-            context = round ? `Round ${round}` : '-';
-          } else if (scoreType === 'bracket') {
-            const bracketName = score.bracket_name || 'Bracket';
-            const gameNum = score.game_number || data.game_number?.value;
-            context = gameNum
-              ? `${bracketName} - Game ${gameNum}`
-              : bracketName;
-          }
-
-          // Team display
-          const teamNum =
-            score.team_display_number ||
-            data.team_number?.value ||
-            data.team_a_number?.value ||
-            '-';
-          const teamName =
-            score.team_name ||
-            data.team_name?.value ||
-            data.team_a_name?.value ||
-            '';
-
+        {rows.map((score) => {
+          const { teamNum, teamName, roundLabel, total } =
+            getSeedingRowDisplay(score);
           return (
             <tr key={score.id}>
-              <td>
-                <span
-                  className={`badge ${scoreType === 'seeding' ? 'badge-info' : 'badge-purple'}`}
-                >
-                  {scoreType === 'seeding' ? 'Seeding' : 'Bracket'}
-                </span>
-              </td>
+              {showType && (
+                <td>
+                  <span className="badge badge-info">Seeding</span>
+                </td>
+              )}
               <td>
                 <div>
                   <strong>{teamNum}</strong>
@@ -459,13 +518,12 @@ export default function ScoringTab() {
                   </small>
                 )}
               </td>
-              <td>{context}</td>
+              <td>{roundLabel}</td>
               <td>
                 <strong style={{ color: 'var(--primary-color)' }}>
-                  {totalScore}
+                  {total}
                 </strong>
               </td>
-              <td>{score.submitted_by || '-'}</td>
               <td>{formatDateTime(score.created_at)}</td>
               <td>{getStatusBadge(score)}</td>
               <td>
@@ -484,6 +542,93 @@ export default function ScoringTab() {
       </tbody>
     </table>
   );
+
+  const renderBracketTable = (rows: ScoreSubmission[], showType: boolean) => (
+    <table>
+      <thead>
+        <tr>
+          {showType && <th>Type</th>}
+          <th>Matchup</th>
+          <th>Game</th>
+          <th>Score</th>
+          <th>Winner</th>
+          <th>Submitted</th>
+          <th>Status</th>
+          <th>Reviewed</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((score) => {
+          const { team1Label, team2Label, gameLabel, scoreLabel, winnerLabel } =
+            getBracketRowDisplay(score);
+          return (
+            <tr key={score.id}>
+              {showType && (
+                <td>
+                  <span className="badge badge-purple">Bracket</span>
+                </td>
+              )}
+              <td>
+                <div className="bracket-matchup-cell">
+                  <span>{team1Label}</span>
+                  <span className="bracket-vs">vs</span>
+                  <span>{team2Label}</span>
+                </div>
+              </td>
+              <td>{gameLabel}</td>
+              <td>
+                <strong style={{ color: 'var(--primary-color)' }}>
+                  {scoreLabel}
+                </strong>
+              </td>
+              <td>
+                <span className="bracket-winner-cell">{winnerLabel}</span>
+              </td>
+              <td>{formatDateTime(score.created_at)}</td>
+              <td>{getStatusBadge(score)}</td>
+              <td>
+                {score.reviewer_name || '-'}
+                {score.reviewed_at && (
+                  <>
+                    <br />
+                    <small>{formatDateTime(score.reviewed_at)}</small>
+                  </>
+                )}
+              </td>
+              <td>{renderEventActions(score)}</td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
+  const renderEventTables = () => {
+    if (eventFilterType === 'seeding') {
+      return renderSeedingTable(scores, false);
+    }
+    if (eventFilterType === 'bracket') {
+      return renderBracketTable(scores, false);
+    }
+    // "All" — show stacked sections so columns stay stable
+    return (
+      <>
+        {seedingScores.length > 0 && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <h4 style={{ margin: '0.5rem 0' }}>Seeding Scores</h4>
+            {renderSeedingTable(seedingScores, false)}
+          </div>
+        )}
+        {bracketScores.length > 0 && (
+          <div>
+            <h4 style={{ margin: '0.5rem 0' }}>Bracket Scores</h4>
+            {renderBracketTable(bracketScores, false)}
+          </div>
+        )}
+      </>
+    );
+  };
 
   // Render actions for event-scoped scores
   const renderEventActions = (score: ScoreSubmission) => (
@@ -665,7 +810,7 @@ export default function ScoringTab() {
           <p>No scores found for this event with the selected filters.</p>
         ) : (
           <>
-            {renderEventTable()}
+            {renderEventTables()}
             {eventTotalPages > 1 && renderEventPagination()}
           </>
         )}
@@ -741,28 +886,34 @@ export default function ScoringTab() {
                 </p>
               ) : (
                 pendingScores.map((score) => {
-                  const data = score.score_data || {};
                   const scoreType = score.score_type || 'unknown';
-                  const totalScore =
-                    data.grand_total?.value ??
-                    data.team_a_total?.value ??
-                    data.score?.value ??
-                    '-';
-                  let context = '-';
-                  if (scoreType === 'seeding') {
-                    const round = score.seeding_round || data.round?.value;
-                    context = round ? `Round ${round}` : '-';
-                  } else if (scoreType === 'bracket') {
-                    const gameNum =
-                      score.game_number || data.game_number?.value;
-                    context = gameNum ? `Game ${gameNum}` : 'Bracket';
-                  }
-                  const teamNum =
-                    score.team_display_number ||
-                    data.team_number?.value ||
-                    data.team_a_number?.value ||
-                    '-';
 
+                  if (scoreType === 'bracket') {
+                    const {
+                      team1Label,
+                      team2Label,
+                      gameLabel,
+                      scoreLabel,
+                      winnerLabel,
+                    } = getBracketRowDisplay(score);
+                    return (
+                      <label key={score.id} className="bulk-accept-item">
+                        <input
+                          type="checkbox"
+                          checked={bulkAcceptSelected.has(score.id)}
+                          onChange={() => handleToggleBulkAcceptScore(score.id)}
+                        />
+                        <span className="bulk-accept-context">{gameLabel}</span>
+                        <span className="bulk-accept-detail">
+                          {team1Label} vs {team2Label} — {scoreLabel} →{' '}
+                          {winnerLabel}
+                        </span>
+                      </label>
+                    );
+                  }
+
+                  const { teamNum, roundLabel, total } =
+                    getSeedingRowDisplay(score);
                   return (
                     <label key={score.id} className="bulk-accept-item">
                       <input
@@ -770,9 +921,9 @@ export default function ScoringTab() {
                         checked={bulkAcceptSelected.has(score.id)}
                         onChange={() => handleToggleBulkAcceptScore(score.id)}
                       />
-                      <span className="bulk-accept-context">{context}</span>
+                      <span className="bulk-accept-context">{roundLabel}</span>
                       <span className="bulk-accept-detail">
-                        Team {teamNum} — {totalScore}
+                        Team {teamNum} — {total}
                       </span>
                     </label>
                   );

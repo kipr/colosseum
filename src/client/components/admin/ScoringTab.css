@@ -38,3 +38,27 @@
   color: var(--text-color);
   flex: 1;
 }
+
+/* Bracket score table cells */
+.bracket-matchup-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  line-height: 1.3;
+}
+
+.bracket-matchup-cell .bracket-vs {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.bracket-winner-cell {
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .bracket-matchup-cell {
+    font-size: 0.85rem;
+  }
+}
