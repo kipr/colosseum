@@ -4,6 +4,156 @@ import path from 'path';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const usePostgres = isProduction || !!process.env.DATABASE_URL;
+const GAME_QUEUE_STATUSES = [
+  'queued',
+  'called',
+  'on_deck',
+  'at_table',
+  'score_submitted',
+] as const;
+const GAME_QUEUE_STATUS_SQL = GAME_QUEUE_STATUSES.map(
+  (status) => `'${status}'`,
+).join(', ');
+
+async function migratePostgresGameQueueStatuses(db: Database): Promise<void> {
+  const gameQueueExists = await db.get<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = 'game_queue'
+     ) AS exists`,
+  );
+  if (!gameQueueExists?.exists) {
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    await tx.run(
+      `UPDATE score_submissions
+       SET game_queue_id = NULL
+       WHERE game_queue_id IN (
+         SELECT id FROM game_queue WHERE status = 'completed'
+       )`,
+    );
+    await tx.run(`DELETE FROM game_queue WHERE status = 'completed'`);
+    await tx.run(
+      `UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`,
+    );
+    await tx.run(`UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`);
+  });
+
+  await db.exec(`
+    DO $$
+    DECLARE
+      constraint_name TEXT;
+    BEGIN
+      FOR constraint_name IN
+        SELECT con.conname
+        FROM pg_constraint con
+        JOIN pg_class rel ON rel.oid = con.conrelid
+        JOIN pg_namespace nsp ON nsp.oid = rel.relnamespace
+        WHERE nsp.nspname = 'public'
+          AND rel.relname = 'game_queue'
+          AND con.contype = 'c'
+          AND pg_get_constraintdef(con.oid) LIKE '%status IN%'
+      LOOP
+        EXECUTE format(
+          'ALTER TABLE public.game_queue DROP CONSTRAINT IF EXISTS %I',
+          constraint_name
+        );
+      END LOOP;
+    END $$;
+  `);
+
+  await db.exec(`
+    ALTER TABLE game_queue
+    ADD CONSTRAINT game_queue_status_check
+    CHECK (status IN (${GAME_QUEUE_STATUS_SQL}))
+  `);
+}
+
+async function migrateSqliteGameQueueStatuses(db: Database): Promise<void> {
+  const existingTable = await db.get<{ sql: string | null }>(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'game_queue'`,
+  );
+  if (!existingTable?.sql || existingTable.sql.includes('score_submitted')) {
+    return;
+  }
+
+  await db.exec('PRAGMA foreign_keys = OFF');
+  try {
+    await db.transaction(async (tx) => {
+      await tx.run(
+        `UPDATE score_submissions
+         SET game_queue_id = NULL
+         WHERE game_queue_id IN (
+           SELECT id FROM game_queue WHERE status = 'completed'
+         )`,
+      );
+      await tx.exec(`ALTER TABLE game_queue RENAME TO game_queue_old`);
+      await tx.exec(`
+        CREATE TABLE game_queue (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
+          seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+          seeding_round INTEGER,
+          queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+          queue_position INTEGER NOT NULL,
+          status TEXT DEFAULT 'queued'
+            CHECK (status IN (${GAME_QUEUE_STATUS_SQL})),
+          called_at DATETIME,
+          table_number INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          CHECK (
+            (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
+            OR
+            (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL)
+          )
+        )
+      `);
+      await tx.exec(`
+        INSERT INTO game_queue (
+          id,
+          event_id,
+          bracket_game_id,
+          seeding_team_id,
+          seeding_round,
+          queue_type,
+          queue_position,
+          status,
+          called_at,
+          table_number,
+          created_at,
+          updated_at
+        )
+        SELECT
+          id,
+          event_id,
+          bracket_game_id,
+          seeding_team_id,
+          seeding_round,
+          queue_type,
+          queue_position,
+          CASE
+            WHEN status = 'in_progress' THEN 'at_table'
+            WHEN status = 'skipped' THEN 'queued'
+            ELSE status
+          END,
+          called_at,
+          table_number,
+          created_at,
+          updated_at
+        FROM game_queue_old
+        WHERE status <> 'completed'
+      `);
+      await tx.exec(`DROP TABLE game_queue_old`);
+    });
+  } finally {
+    await db.exec('PRAGMA foreign_keys = ON');
+  }
+}
 
 export async function initializeDatabase(): Promise<void> {
   const db = await getDatabase();
@@ -464,7 +614,7 @@ export async function initializePostgres(db: Database): Promise<void> {
       queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
+        CHECK (status IN (${GAME_QUEUE_STATUS_SQL})),
       called_at TIMESTAMP,
       table_number INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -495,6 +645,8 @@ export async function initializePostgres(db: Database): Promise<void> {
   } catch {
     // FK might already exist
   }
+
+  await migratePostgresGameQueueStatuses(db);
 
   // ============================================================================
   // BRACKET TEMPLATES
@@ -1283,7 +1435,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
+        CHECK (status IN (${GAME_QUEUE_STATUS_SQL})),
       called_at DATETIME,
       table_number INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1295,6 +1447,8 @@ export async function initializeSQLite(db: Database): Promise<void> {
       )
     )
   `);
+
+  await migrateSqliteGameQueueStatuses(db);
 
   // ============================================================================
   // BRACKET TEMPLATES (For generating bracket structures)

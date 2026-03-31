@@ -4,67 +4,89 @@ import { toAuditJson } from '../utils/auditJson';
 import { resolveBracketByes } from './bracketByeResolver';
 import { recalculateSeedingRankings } from './seedingRankings';
 
-/** Mark seeding queue item completed on accept, or queued on revert. Inserts if missing. */
+export type QueueUpdateAction = 'restore' | 'mark_submitted' | 'remove';
+
+async function getNextQueuePosition(
+  db: Database,
+  eventId: number,
+): Promise<number> {
+  const maxPos = await db.get<{ max_pos: number | null }>(
+    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+    [eventId],
+  );
+  return (maxPos?.max_pos ?? 0) + 1;
+}
+
+/**
+ * Restore a seeding item to queued, mark it score-submitted, or remove it when accepted.
+ * When restored, any prior call/table assignment is cleared so the admin can re-run the flow.
+ */
 export async function updateSeedingQueueItem(
   db: Database,
   eventId: number,
   teamId: number,
   roundNumber: number,
-  completed: boolean,
+  action: QueueUpdateAction,
 ): Promise<void> {
   const existing = await db.get<{ id: number }>(
     `SELECT id FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ? AND queue_type = 'seeding'`,
     [eventId, teamId, roundNumber],
   );
-  if (existing) {
-    await db.run(
-      `UPDATE game_queue SET status = ?, called_at = NULL, table_number = NULL WHERE id = ?`,
-      [completed ? 'completed' : 'queued', existing.id],
-    );
-  } else {
-    const maxPos = await db.get<{ max_pos: number | null }>(
-      'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-      [eventId],
-    );
-    const pos = (maxPos?.max_pos ?? 0) + 1;
-    await db.run(
-      `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-       VALUES (?, ?, ?, 'seeding', ?, ?)`,
-      [eventId, teamId, roundNumber, pos, completed ? 'completed' : 'queued'],
-    );
+
+  if (action === 'remove') {
+    if (existing) {
+      await db.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+    }
+    return;
   }
+
+  if (existing) {
+    if (action === 'restore') {
+      await db.run(
+        `UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?`,
+        [existing.id],
+      );
+      return;
+    }
+
+    await db.run(`UPDATE game_queue SET status = 'score_submitted' WHERE id = ?`, [
+      existing.id,
+    ]);
+    return;
+  }
+
+  const pos = await getNextQueuePosition(db, eventId);
+  await db.run(
+    `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
+     VALUES (?, ?, ?, 'seeding', ?, ?)`,
+    [
+      eventId,
+      teamId,
+      roundNumber,
+      pos,
+      action === 'restore' ? 'queued' : 'score_submitted',
+    ],
+  );
 }
 
-/** Mark bracket queue item completed on accept, or queued on revert. Inserts if missing.
- *  On revert (completed=false), removes the queue item when the game no longer has both teams. */
+/**
+ * Restore a bracket item to queued, mark it score-submitted, or remove it when accepted.
+ * Restoring removes queue rows for games that are no longer eligible because a team slot is empty.
+ */
 export async function updateBracketQueueItem(
   db: Database,
   eventId: number,
   bracketGameId: number,
-  completed: boolean,
+  action: QueueUpdateAction,
 ): Promise<void> {
   const existing = await db.get<{ id: number }>(
     `SELECT id FROM game_queue WHERE event_id = ? AND bracket_game_id = ? AND queue_type = 'bracket'`,
     [eventId, bracketGameId],
   );
 
-  if (completed) {
+  if (action === 'remove') {
     if (existing) {
-      await db.run(
-        `UPDATE game_queue SET status = 'completed', called_at = NULL, table_number = NULL WHERE id = ?`,
-        [existing.id],
-      );
-    } else {
-      const maxPos = await db.get<{ max_pos: number | null }>(
-        'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-        [eventId],
-      );
-      const pos = (maxPos?.max_pos ?? 0) + 1;
-      await db.run(
-        `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-         VALUES (?, ?, 'bracket', ?, 'completed')`,
-        [eventId, bracketGameId, pos],
-      );
+      await db.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
     }
     return;
   }
@@ -79,24 +101,31 @@ export async function updateBracketQueueItem(
     game != null && game.team1_id != null && game.team2_id != null;
 
   if (existing) {
-    if (hasBothTeams) {
+    if (!hasBothTeams) {
+      await db.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+      return;
+    }
+
+    if (action === 'restore') {
       await db.run(
         `UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?`,
         [existing.id],
       );
-    } else {
-      await db.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+      return;
     }
-  } else if (hasBothTeams) {
-    const maxPos = await db.get<{ max_pos: number | null }>(
-      'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-      [eventId],
-    );
-    const pos = (maxPos?.max_pos ?? 0) + 1;
+
+    await db.run(`UPDATE game_queue SET status = 'score_submitted' WHERE id = ?`, [
+      existing.id,
+    ]);
+    return;
+  }
+
+  if (hasBothTeams) {
+    const pos = await getNextQueuePosition(db, eventId);
     await db.run(
       `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-       VALUES (?, ?, 'bracket', ?, 'queued')`,
-      [eventId, bracketGameId, pos],
+       VALUES (?, ?, 'bracket', ?, ?)`,
+      [eventId, bracketGameId, pos, action === 'restore' ? 'queued' : 'score_submitted'],
     );
   }
 }
@@ -240,7 +269,13 @@ export async function acceptEventScore(
       ip_address: ipAddress,
     });
 
-    await updateSeedingQueueItem(db, score.event_id, teamId, roundNumber, true);
+    await updateSeedingQueueItem(
+      db,
+      score.event_id,
+      teamId,
+      roundNumber,
+      'remove',
+    );
     await recalculateSeedingRankings(score.event_id);
 
     return {
@@ -423,7 +458,12 @@ export async function acceptEventScore(
       ip_address: ipAddress,
     });
 
-    await updateBracketQueueItem(db, score.event_id, bracketGameId, true);
+    await updateBracketQueueItem(
+      db,
+      score.event_id,
+      bracketGameId,
+      'remove',
+    );
 
     return {
       ok: true,

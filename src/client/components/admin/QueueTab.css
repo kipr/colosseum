@@ -100,19 +100,19 @@
   color: #b45309;
 }
 
-.queue-status-in-progress {
+.queue-status-on-deck {
   background-color: #e0e7ff;
   color: #4338ca;
 }
 
-.queue-status-completed {
+.queue-status-at-table {
   background-color: #dcfce7;
   color: #166534;
 }
 
-.queue-status-skipped {
-  background-color: #e2e8f0;
-  color: #475569;
+.queue-status-score-submitted {
+  background-color: #fce7f3;
+  color: #9d174d;
 }
 
 [data-theme='dark'] .queue-status-queued {
@@ -125,19 +125,19 @@
   color: #fcd34d;
 }
 
-[data-theme='dark'] .queue-status-in-progress {
+[data-theme='dark'] .queue-status-on-deck {
   background-color: #3730a3;
   color: #c7d2fe;
 }
 
-[data-theme='dark'] .queue-status-completed {
+[data-theme='dark'] .queue-status-at-table {
   background-color: #14532d;
   color: #86efac;
 }
 
-[data-theme='dark'] .queue-status-skipped {
-  background-color: #334155;
-  color: #94a3b8;
+[data-theme='dark'] .queue-status-score-submitted {
+  background-color: #831843;
+  color: #fbcfe8;
 }
 
 /* Queue type badges */
@@ -213,6 +213,12 @@
 }
 
 .queue-called-at {
+  font-size: 0.875rem;
+  color: var(--secondary-color);
+  white-space: nowrap;
+}
+
+.queue-table-number {
   font-size: 0.875rem;
   color: var(--secondary-color);
   white-space: nowrap;

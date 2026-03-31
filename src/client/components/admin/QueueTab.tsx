@@ -66,9 +66,9 @@ interface Team {
 type QueueStatus =
   | 'queued'
   | 'called'
-  | 'in_progress'
-  | 'completed'
-  | 'skipped';
+  | 'on_deck'
+  | 'at_table'
+  | 'score_submitted';
 type QueueType = 'seeding' | 'bracket';
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';
@@ -88,11 +88,41 @@ function getStatusClass(status: QueueStatus): string {
 }
 
 const STATUS_LABELS: Record<QueueStatus, string> = {
-  queued: 'Pending',
+  queued: 'Queued',
   called: 'Called',
-  in_progress: 'In Progress',
-  completed: 'Completed',
-  skipped: 'Skipped',
+  on_deck: 'On Deck Arrived',
+  at_table: 'Sent to Table',
+  score_submitted: 'Score Submitted',
+};
+
+const DEFAULT_FILTER_STATUSES: QueueStatus[] = [
+  'queued',
+  'called',
+  'on_deck',
+  'at_table',
+];
+
+const STATUS_ACTIONS: Record<
+  QueueStatus,
+  Array<{
+    label: string;
+    nextStatus: QueueStatus;
+    style: 'btn-success' | 'btn-secondary' | 'btn-warning';
+  }>
+> = {
+  queued: [{ label: 'Call', nextStatus: 'called', style: 'btn-success' }],
+  called: [
+    { label: 'Back to Queue', nextStatus: 'queued', style: 'btn-secondary' },
+    { label: 'Mark On Deck', nextStatus: 'on_deck', style: 'btn-warning' },
+  ],
+  on_deck: [
+    { label: 'Back to Called', nextStatus: 'called', style: 'btn-secondary' },
+    { label: 'Send to Table', nextStatus: 'at_table', style: 'btn-success' },
+  ],
+  at_table: [
+    { label: 'Back to On Deck', nextStatus: 'on_deck', style: 'btn-secondary' },
+  ],
+  score_submitted: [],
 };
 
 export default function QueueTab() {
@@ -102,11 +132,8 @@ export default function QueueTab() {
   // Queue state
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filterStatuses, setFilterStatuses] = useState<QueueStatus[]>([
-    'queued',
-    'called',
-    'in_progress',
-  ]);
+  const [filterStatuses, setFilterStatuses] =
+    useState<QueueStatus[]>(DEFAULT_FILTER_STATUSES);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
   const [sortField, setSortField] = useState<SortField>('gameNumber');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -465,30 +492,28 @@ export default function QueueTab() {
     }
   };
 
-  // Handle call toggle (between queued and called)
-  const handleCallToggle = async (item: QueueItem) => {
-    const newStatus: QueueStatus =
-      item.status === 'called' ? 'queued' : 'called';
+  const updateQueueItem = (updatedItem: QueueItem) => {
+    setQueue((prev) =>
+      prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
+    );
+  };
 
+  const handleAdvanceStatus = async (
+    item: QueueItem,
+    nextStatus: QueueStatus,
+  ) => {
     try {
-      let response;
-
-      if (newStatus === 'called') {
-        // Use the special call endpoint to record called_at
-        response = await fetch(`/queue/${item.id}/call`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({}),
-        });
-      } else {
-        response = await fetch(`/queue/${item.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ status: newStatus }),
-        });
+      const payload: Record<string, number | QueueStatus> = { status: nextStatus };
+      if (nextStatus === 'at_table' && item.table_number == null) {
+        payload.table_number = item.queue_position;
       }
+
+      const response = await fetch(`/queue/${item.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -496,24 +521,8 @@ export default function QueueTab() {
       }
 
       const updatedItem = (await response.json()) as QueueItem;
-      setQueue((prev) =>
-        prev.map((q) =>
-          q.id === item.id
-            ? {
-                ...q,
-                status: updatedItem.status ?? newStatus,
-                called_at:
-                  newStatus === 'queued'
-                    ? null
-                    : (updatedItem.called_at ?? q.called_at),
-                table_number:
-                  newStatus === 'queued'
-                    ? null
-                    : (updatedItem.table_number ?? q.table_number),
-              }
-            : q,
-        ),
-      );
+      updateQueueItem(updatedItem);
+      toast.success(`Match marked ${STATUS_LABELS[nextStatus].toLowerCase()}`);
     } catch (error) {
       console.error('Error updating status:', error);
       toast.error(
@@ -561,6 +570,13 @@ export default function QueueTab() {
     );
   };
 
+  const renderTableNumber = (item: QueueItem) => {
+    if (item.status !== 'at_table' && item.status !== 'score_submitted') {
+      return '—';
+    }
+    return item.table_number != null ? `Table ${item.table_number}` : 'Assigned';
+  };
+
   // Handle status toggle
   const toggleStatus = (status: QueueStatus) => {
     setFilterStatuses((prev) => {
@@ -582,8 +598,7 @@ export default function QueueTab() {
   const toggleAllStatuses = () => {
     const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
     if (filterStatuses.length === allStatuses.length) {
-      // If all are selected, revert to default set
-      setFilterStatuses(['queued', 'called', 'in_progress']);
+      setFilterStatuses(DEFAULT_FILTER_STATUSES);
     } else {
       setFilterStatuses(allStatuses);
     }
@@ -796,8 +811,9 @@ export default function QueueTab() {
                 </th>
                 <th style={{ width: '80px' }}>Type</th>
                 <th style={{ width: '120px' }}>Called At</th>
+                <th style={{ width: '110px' }}>Table</th>
                 <th style={{ width: '100px' }}>Status</th>
-                <th style={{ width: '200px' }}>Actions</th>
+                <th style={{ width: '250px' }}>Actions</th>
                 <th style={{ width: '60px' }}>Order</th>
               </tr>
             </thead>
@@ -819,6 +835,7 @@ export default function QueueTab() {
                     <td className="queue-called-at">
                       {formatCalledAt(item.called_at)}
                     </td>
+                    <td className="queue-called-at">{renderTableNumber(item)}</td>
                     <td>
                       <span
                         className={`queue-status-badge ${getStatusClass(item.status)}`}
@@ -828,15 +845,17 @@ export default function QueueTab() {
                     </td>
                     <td>
                       <div className="queue-actions">
-                        {(item.status === 'queued' ||
-                          item.status === 'called') && (
+                        {STATUS_ACTIONS[item.status].map((action) => (
                           <button
-                            className={`btn ${item.status === 'queued' ? 'btn-success' : 'btn-secondary'}`}
-                            onClick={() => handleCallToggle(item)}
+                            key={`${item.id}-${action.nextStatus}`}
+                            className={`btn ${action.style}`}
+                            onClick={() =>
+                              handleAdvanceStatus(item, action.nextStatus)
+                            }
                           >
-                            {item.status === 'queued' ? 'Call' : 'Uncall'}
+                            {action.label}
                           </button>
-                        )}
+                        ))}
                       </div>
                     </td>
                     <td>

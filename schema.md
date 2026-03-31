@@ -260,9 +260,9 @@ CREATE TABLE IF NOT EXISTS game_queue (
     queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
     queue_position INTEGER NOT NULL,             -- Order in queue
     status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
-    called_at DATETIME,                          -- When announced/called (cleared if status -> queued)
-    table_number INTEGER,                        -- Which scoring table
+        CHECK (status IN ('queued', 'called', 'on_deck', 'at_table', 'score_submitted')),
+    called_at DATETIME,                          -- When first called (cleared if status -> queued)
+    table_number INTEGER,                        -- Which scoring table once sent to table
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     CHECK (

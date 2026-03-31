@@ -5,11 +5,12 @@ import { getDatabase } from '../database/connection';
 import type { Database } from '../database/connection';
 
 const router = express.Router();
+const ACTIVE_QUEUE_STATUSES = ['queued', 'called', 'on_deck', 'at_table'] as const;
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
 
-/** Non-destructive sync: ensure game_queue has all team×round items for seeding, with correct status from seeding_scores. */
+/** Non-destructive sync: ensure game_queue has all team×round items for seeding, and drop items once a score is accepted. */
 async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
   const event = await db.get(
     'SELECT id, seeding_rounds FROM events WHERE id = ?',
@@ -103,29 +104,30 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
 
       if (existing) {
         if (combo.scored) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'completed' WHERE id = ?",
-            [existing.id],
-          );
-        } else if (existing.status === 'completed') {
+          await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+        } else if (
+          existing.status === 'score_submitted' &&
+          !submittedSet.has(key)
+        ) {
           await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
           );
         }
       } else {
-        const status = combo.scored ? 'completed' : 'queued';
-        await tx.run(
-          `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-           VALUES (?, ?, ?, 'seeding', ?, ?)`,
-          [eventId, combo.team_id, combo.round, nextPos++, status],
-        );
+        if (!combo.scored) {
+          await tx.run(
+            `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
+             VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+            [eventId, combo.team_id, combo.round, nextPos++],
+          );
+        }
       }
     }
   });
 }
 
-/** Non-destructive sync: ensure game_queue has eligible bracket games, with correct status from bracket_games. */
+/** Non-destructive sync: ensure game_queue has eligible bracket games, and drop items once a score is accepted. */
 async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
   const brackets = await db.all<{ id: number }>(
     'SELECT id FROM brackets WHERE event_id = ?',
@@ -190,11 +192,8 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
 
       if (existing) {
         if (isCompleted) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'completed' WHERE id = ?",
-            [existing.id],
-          );
-        } else if (existing.status === 'completed' && isEligible) {
+          await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+        } else if (existing.status === 'score_submitted' && isEligible) {
           await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
@@ -206,12 +205,11 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
         ) {
           await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
         }
-      } else if (isEligible || isCompleted) {
-        const status = isCompleted ? 'completed' : 'queued';
+      } else if (isEligible) {
         await tx.run(
           `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
            VALUES (?, ?, 'bracket', ?, ?)`,
-          [eventId, game.id, nextPos++, status],
+          [eventId, game.id, nextPos++, 'queued'],
         );
       }
     }
@@ -612,6 +610,7 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
+    const nextStatus = req.body.status;
 
     const updates = Object.entries(req.body).filter(([key]) =>
       ALLOWED_UPDATE_FIELDS.includes(key),
@@ -619,6 +618,13 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    if (
+      typeof nextStatus === 'string' &&
+      ![...ACTIVE_QUEUE_STATUSES, 'score_submitted'].includes(nextStatus)
+    ) {
+      return res.status(400).json({ error: 'Invalid status transition' });
     }
 
     const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
@@ -647,7 +653,7 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// PATCH /queue/:id/call - Call team/game (sets status to 'called' and records time)
+// PATCH /queue/:id/call - Convenience endpoint for the first queue transition.
 router.patch(
   '/:id/call',
   requireAuth,
@@ -657,7 +663,7 @@ router.patch(
       const { table_number } = req.body;
       const db = await getDatabase();
 
-      let query = `UPDATE game_queue SET status = 'called', called_at = CURRENT_TIMESTAMP`;
+      let query = `UPDATE game_queue SET status = 'called', called_at = COALESCE(called_at, CURRENT_TIMESTAMP)`;
       const params: (string | number | null)[] = [];
 
       if (table_number !== undefined) {

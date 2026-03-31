@@ -413,7 +413,7 @@ router.post(
           eventIdNum,
           op.teamId,
           op.roundNumber,
-          true,
+          'remove',
         );
         accepted.push({ id: op.id, scoreType: 'seeding' });
       }
@@ -458,7 +458,7 @@ router.post(
           new_value: toAuditJson(updatedGame),
           ip_address: ipAddress,
         });
-        await updateBracketQueueItem(db, eventIdNum, op.bracketGameId, true);
+        await updateBracketQueueItem(db, eventIdNum, op.bracketGameId, 'remove');
         accepted.push({ id: op.id, scoreType: 'bracket' });
 
         const bracketId = (op.game as { bracket_id: number }).bracket_id;
@@ -949,7 +949,7 @@ router.post(
               score.event_id,
               teamId,
               roundNumber,
-              false,
+              'restore',
             );
           }
           const updatedScore = await db.get(
@@ -1005,7 +1005,7 @@ router.post(
             score.event_id,
             oldSeedingScore.team_id,
             oldSeedingScore.round_number,
-            false,
+            'restore',
           );
         }
 
@@ -1090,7 +1090,7 @@ router.post(
             db,
             score.event_id,
             bracketGameId,
-            false,
+            'restore',
           );
           const updatedScore = await db.get(
             'SELECT * FROM score_submissions WHERE id = ?',
@@ -1212,10 +1212,20 @@ router.post(
           ip_address: req.ip ?? null,
         });
 
-        await updateBracketQueueItem(db, score.event_id, bracketGameId, false);
+        await updateBracketQueueItem(
+          db,
+          score.event_id,
+          bracketGameId,
+          'restore',
+        );
 
         for (const affected of affectedGames) {
-          await updateBracketQueueItem(db, score.event_id, affected.id, false);
+          await updateBracketQueueItem(
+            db,
+            score.event_id,
+            affected.id,
+            'restore',
+          );
         }
 
         return res.json({
@@ -1277,7 +1287,7 @@ router.post(
               oldScore.event_id,
               Number(teamId),
               Number(roundNumber),
-              false,
+              'restore',
             );
           }
         } catch {
@@ -1292,7 +1302,7 @@ router.post(
           db,
           oldScore.event_id,
           oldScore.bracket_game_id,
-          false,
+          'restore',
         );
       }
 
