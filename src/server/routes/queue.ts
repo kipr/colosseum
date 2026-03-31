@@ -6,8 +6,29 @@ import type { Database } from '../database/connection';
 
 const router = express.Router();
 
-// Allowed fields for PATCH updates
-const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
+// Allowed fields for PATCH updates (table_number only; status goes through /transition)
+const ALLOWED_UPDATE_FIELDS = ['table_number'];
+
+type QueueStatus =
+  | 'queued'
+  | 'on_deck'
+  | 'at_table'
+  | 'score_submitted'
+  | 'completed';
+
+const VALID_TRANSITIONS: Record<QueueStatus, QueueStatus[]> = {
+  queued: ['on_deck'],
+  on_deck: ['at_table', 'queued'],
+  at_table: ['on_deck', 'queued'],
+  score_submitted: ['queued'],
+  completed: ['queued'],
+};
+
+const ACTIVE_STATUSES: QueueStatus[] = [
+  'on_deck',
+  'at_table',
+  'score_submitted',
+];
 
 /** Non-destructive sync: ensure game_queue has all team×round items for seeding, with correct status from seeding_scores. */
 async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
@@ -102,17 +123,21 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
       const existing = existingMap.get(key);
 
       if (existing) {
-        if (combo.scored) {
+        if (combo.scored && existing.status !== 'completed') {
           await tx.run(
             "UPDATE game_queue SET status = 'completed' WHERE id = ?",
             [existing.id],
           );
-        } else if (existing.status === 'completed') {
+        } else if (
+          !combo.scored &&
+          existing.status === 'completed'
+        ) {
           await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
           );
         }
+        // Do NOT touch items in active admin-controlled states (on_deck, at_table, score_submitted)
       } else {
         const status = combo.scored ? 'completed' : 'queued';
         await tx.run(
@@ -189,7 +214,11 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
       const existing = existingByGameId.get(game.id);
 
       if (existing) {
-        if (isCompleted) {
+        const isActive = ACTIVE_STATUSES.includes(
+          existing.status as QueueStatus,
+        );
+
+        if (isCompleted && existing.status !== 'completed') {
           await tx.run(
             "UPDATE game_queue SET status = 'completed' WHERE id = ?",
             [existing.id],
@@ -202,10 +231,12 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
         } else if (
           !isEligible &&
           !isCompleted &&
+          !isActive &&
           (game.team1_id == null || game.team2_id == null)
         ) {
           await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
         }
+        // Do NOT touch items in active admin-controlled states
       } else if (isEligible || isCompleted) {
         const status = isCompleted ? 'completed' : 'queued';
         await tx.run(
@@ -607,7 +638,7 @@ router.post(
   },
 );
 
-// PATCH /queue/:id - Update queue item status (MUST be after specific routes like /reorder)
+// PATCH /queue/:id - Update queue item fields (table_number only; use /transition for status)
 router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -647,18 +678,49 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// PATCH /queue/:id/call - Call team/game (sets status to 'called' and records time)
+// PATCH /queue/:id/transition - Transition queue item to a new status with validation
 router.patch(
-  '/:id/call',
+  '/:id/transition',
   requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const { table_number } = req.body;
+      const { status: targetStatus, table_number } = req.body;
       const db = await getDatabase();
 
-      let query = `UPDATE game_queue SET status = 'called', called_at = CURRENT_TIMESTAMP`;
-      const params: (string | number | null)[] = [];
+      if (!targetStatus) {
+        return res
+          .status(400)
+          .json({ error: 'status is required for transition' });
+      }
+
+      const item = await db.get<{ id: number; status: string }>(
+        'SELECT id, status FROM game_queue WHERE id = ?',
+        [id],
+      );
+      if (!item) {
+        return res.status(404).json({ error: 'Queue item not found' });
+      }
+
+      const currentStatus = item.status as QueueStatus;
+      const allowed = VALID_TRANSITIONS[currentStatus];
+      if (!allowed || !allowed.includes(targetStatus as QueueStatus)) {
+        return res.status(400).json({
+          error: `Cannot transition from '${currentStatus}' to '${targetStatus}'`,
+          allowed,
+        });
+      }
+
+      let query = `UPDATE game_queue SET status = ?`;
+      const params: (string | number | null)[] = [targetStatus];
+
+      if (targetStatus === 'on_deck') {
+        query += ', called_at = CURRENT_TIMESTAMP';
+      }
+
+      if (targetStatus === 'queued') {
+        query += ', called_at = NULL, table_number = NULL';
+      }
 
       if (table_number !== undefined) {
         query += ', table_number = ?';
@@ -668,19 +730,15 @@ router.patch(
       query += ' WHERE id = ?';
       params.push(id);
 
-      const result = await db.run(query, params);
-
-      if (result.changes === 0) {
-        return res.status(404).json({ error: 'Queue item not found' });
-      }
+      await db.run(query, params);
 
       const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
         id,
       ]);
       res.json(queueItem);
     } catch (error) {
-      console.error('Error calling queue item:', error);
-      res.status(500).json({ error: 'Failed to call queue item' });
+      console.error('Error transitioning queue item:', error);
+      res.status(500).json({ error: 'Failed to transition queue item' });
     }
   },
 );
