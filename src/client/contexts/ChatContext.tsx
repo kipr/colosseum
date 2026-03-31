@@ -69,6 +69,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(false);
   const [view, setViewState] = useState<'list' | 'chat' | 'settings'>('list');
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+  const [isDocumentVisible, setIsDocumentVisible] = useState(() =>
+    typeof document === 'undefined'
+      ? true
+      : document.visibilityState === 'visible',
+  );
   const [lastSeenMessageId, setLastSeenMessageId] = useState<number>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(LAST_SEEN_MESSAGE_KEY);
@@ -194,6 +199,18 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     isOpenRef.current = isOpen;
   }, [isOpen]);
 
+  // Pause chat polling while the tab is hidden.
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisibilityChange = () => {
+      setIsDocumentVisible(document.visibilityState === 'visible');
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, []);
+
   // Load messages for selected spreadsheet
   const loadMessages = useCallback(
     async (checkUnread = false) => {
@@ -242,15 +259,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     [selectedSpreadsheet],
   );
 
-  // Auto-load messages when spreadsheet is selected (poll always if a chat is remembered)
+  // Poll quickly only while chat is open; poll slowly in background for unread counts.
   useEffect(() => {
-    if (selectedSpreadsheet) {
-      loadMessages();
-      // Set up polling for new messages every 3 seconds (even when closed, to detect new messages)
-      const interval = setInterval(() => loadMessages(true), 3000);
-      return () => clearInterval(interval);
-    }
-  }, [selectedSpreadsheet, loadMessages]);
+    if (!selectedSpreadsheet || !isDocumentVisible) return;
+
+    const isActiveChat = isOpen && view === 'chat';
+    const pollMs = isActiveChat ? 3000 : 30000;
+
+    loadMessages(!isActiveChat);
+    const interval = setInterval(() => loadMessages(true), pollMs);
+    return () => clearInterval(interval);
+  }, [selectedSpreadsheet, loadMessages, isOpen, view, isDocumentVisible]);
 
   // Clear unread when opening chat
   useEffect(() => {

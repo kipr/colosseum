@@ -37,6 +37,11 @@ const PORT = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
 const usePostgres = isProduction || !!process.env.DATABASE_URL;
 
+// Keep health checks DB-free by handling them before session/auth middleware.
+app.get('/health', (req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 // Trust Cloud Run's load balancer
 if (isProduction) {
   app.set('trust proxy', 1);
@@ -73,11 +78,22 @@ if (usePostgres) {
   // Use PostgreSQL session store in production
   const PgSession = connectPgSimple(session);
   const pgPool = getPostgresPool();
+  const disableTouch = process.env.SESSION_DISABLE_TOUCH !== 'false';
+  const pruneIntervalRaw = Number.parseInt(
+    process.env.SESSION_PRUNE_INTERVAL_SECONDS || '3600',
+    10,
+  );
+  const pruneSessionInterval =
+    Number.isFinite(pruneIntervalRaw) && pruneIntervalRaw > 0
+      ? pruneIntervalRaw
+      : false;
   if (pgPool) {
     sessionConfig.store = new PgSession({
       pool: pgPool,
       tableName: 'session',
       createTableIfMissing: true,
+      disableTouch,
+      pruneSessionInterval,
     });
     console.log('Using PostgreSQL session store');
   }
@@ -162,11 +178,6 @@ app.use('/queue', queueRoutes);
 app.use('/audit', auditRoutes);
 app.use('/documentation-scores', documentationScoresRoutes);
 app.use('/awards', awardsRoutes);
-
-// Health check
-app.get('/health', (req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 // In production, serve React app for all non-API routes
 if (process.env.NODE_ENV === 'production') {
