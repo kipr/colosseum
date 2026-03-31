@@ -104,7 +104,7 @@ describe('Queue Routes', () => {
         queue_position: 2,
         seeding_team_id: team.id,
         seeding_round: 2,
-        status: 'called',
+        status: 'on_deck',
       });
 
       const res = await http.get(
@@ -137,7 +137,7 @@ describe('Queue Routes', () => {
         queue_position: 2,
         seeding_team_id: team.id,
         seeding_round: 2,
-        status: 'called',
+        status: 'on_deck',
       });
       await seedQueueItem(testDb.db, {
         event_id: event.id,
@@ -149,13 +149,13 @@ describe('Queue Routes', () => {
       });
 
       const res = await http.get(
-        `${baseUrl}/queue/event/${event.id}?status=queued,called`,
+        `${baseUrl}/queue/event/${event.id}?status=queued,on_deck`,
       );
 
       expect(res.status).toBe(200);
       const items = res.json as { status: string }[];
       expect(items.length).toBe(2);
-      expect(items.map((i) => i.status).sort()).toEqual(['called', 'queued']);
+      expect(items.map((i) => i.status).sort()).toEqual(['on_deck', 'queued']);
     });
 
     it('filters by pipe-separated status values', async () => {
@@ -178,11 +178,11 @@ describe('Queue Routes', () => {
         queue_position: 2,
         seeding_team_id: team.id,
         seeding_round: 2,
-        status: 'in_progress',
+        status: 'at_table',
       });
 
       const res = await http.get(
-        `${baseUrl}/queue/event/${event.id}?status=queued|in_progress`,
+        `${baseUrl}/queue/event/${event.id}?status=queued|at_table`,
       );
 
       expect(res.status).toBe(200);
@@ -1066,7 +1066,7 @@ describe('Queue Routes', () => {
 
       try {
         const res = await http.patch(`${unauthServer.baseUrl}/queue/1`, {
-          status: 'called',
+          table_number: 1,
         });
         expect(res.status).toBe(401);
       } finally {
@@ -1098,34 +1098,12 @@ describe('Queue Routes', () => {
       );
     });
 
-    it('returns 404 when item not found', async () => {
+    it('returns 400 when trying to set status directly (use /transition)', async () => {
       const res = await http.patch(`${baseUrl}/queue/999`, {
-        status: 'called',
+        status: 'on_deck',
       });
 
-      expect(res.status).toBe(404);
-    });
-
-    it('updates status successfully', async () => {
-      const event = await seedEvent(testDb.db);
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 101,
-      });
-      const item = await seedQueueItem(testDb.db, {
-        event_id: event.id,
-        queue_type: 'seeding',
-        queue_position: 1,
-        seeding_team_id: team.id,
-        seeding_round: 1,
-      });
-
-      const res = await http.patch(`${baseUrl}/queue/${item.id}`, {
-        status: 'in_progress',
-      });
-
-      expect(res.status).toBe(200);
-      expect((res.json as { status: string }).status).toBe('in_progress');
+      expect(res.status).toBe(400);
     });
 
     it('updates table_number successfully', async () => {
@@ -1149,35 +1127,13 @@ describe('Queue Routes', () => {
       expect(res.status).toBe(200);
       expect((res.json as { table_number: number }).table_number).toBe(5);
     });
-
-    it('returns 400 for invalid status value', async () => {
-      const event = await seedEvent(testDb.db);
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 101,
-      });
-      const item = await seedQueueItem(testDb.db, {
-        event_id: event.id,
-        queue_type: 'seeding',
-        queue_position: 1,
-        seeding_team_id: team.id,
-        seeding_round: 1,
-      });
-
-      const res = await http.patch(`${baseUrl}/queue/${item.id}`, {
-        status: 'invalid_status',
-      });
-
-      expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('Invalid status');
-    });
   });
 
   // ==========================================================================
-  // PATCH /queue/:id/call
+  // PATCH /queue/:id/transition
   // ==========================================================================
 
-  describe('PATCH /queue/:id/call', () => {
+  describe('PATCH /queue/:id/transition', () => {
     it('returns 401 when not authenticated', async () => {
       const unauthApp = createTestApp();
       unauthApp.use('/queue', queueRoutes);
@@ -1185,8 +1141,8 @@ describe('Queue Routes', () => {
 
       try {
         const res = await http.patch(
-          `${unauthServer.baseUrl}/queue/1/call`,
-          {},
+          `${unauthServer.baseUrl}/queue/1/transition`,
+          { status: 'on_deck' },
         );
         expect(res.status).toBe(401);
       } finally {
@@ -1195,12 +1151,14 @@ describe('Queue Routes', () => {
     });
 
     it('returns 404 when item not found', async () => {
-      const res = await http.patch(`${baseUrl}/queue/999/call`, {});
+      const res = await http.patch(`${baseUrl}/queue/999/transition`, {
+        status: 'on_deck',
+      });
 
       expect(res.status).toBe(404);
     });
 
-    it('sets status to called and called_at', async () => {
+    it('transitions from queued to on_deck and sets called_at', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -1214,15 +1172,17 @@ describe('Queue Routes', () => {
         seeding_round: 1,
       });
 
-      const res = await http.patch(`${baseUrl}/queue/${item.id}/call`, {});
+      const res = await http.patch(`${baseUrl}/queue/${item.id}/transition`, {
+        status: 'on_deck',
+      });
 
       expect(res.status).toBe(200);
       const result = res.json as { status: string; called_at: string | null };
-      expect(result.status).toBe('called');
+      expect(result.status).toBe('on_deck');
       expect(result.called_at).not.toBeNull();
     });
 
-    it('optionally updates table_number', async () => {
+    it('transitions from on_deck to at_table with table_number', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -1234,16 +1194,42 @@ describe('Queue Routes', () => {
         queue_position: 1,
         seeding_team_id: team.id,
         seeding_round: 1,
+        status: 'on_deck',
       });
 
-      const res = await http.patch(`${baseUrl}/queue/${item.id}/call`, {
+      const res = await http.patch(`${baseUrl}/queue/${item.id}/transition`, {
+        status: 'at_table',
         table_number: 3,
       });
 
       expect(res.status).toBe(200);
       const result = res.json as { status: string; table_number: number };
-      expect(result.status).toBe('called');
+      expect(result.status).toBe('at_table');
       expect(result.table_number).toBe(3);
+    });
+
+    it('rejects invalid transitions', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const item = await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'seeding',
+        queue_position: 1,
+        seeding_team_id: team.id,
+        seeding_round: 1,
+      });
+
+      const res = await http.patch(`${baseUrl}/queue/${item.id}/transition`, {
+        status: 'at_table',
+      });
+
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain(
+        'Cannot transition',
+      );
     });
   });
 

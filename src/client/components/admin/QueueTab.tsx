@@ -516,11 +516,7 @@ export default function QueueTab() {
     const tableStr = prompt('Enter table number:');
     if (tableStr === null) return;
     const tableNum = parseInt(tableStr, 10);
-    await handleTransition(
-      item,
-      'at_table',
-      isNaN(tableNum) ? null : tableNum,
-    );
+    await handleTransition(item, 'at_table', isNaN(tableNum) ? null : tableNum);
   };
 
   // Render item details
@@ -836,9 +832,7 @@ export default function QueueTab() {
                         {item.status === 'queued' && (
                           <button
                             className="btn btn-success"
-                            onClick={() =>
-                              handleTransition(item, 'on_deck')
-                            }
+                            onClick={() => handleTransition(item, 'on_deck')}
                           >
                             On Deck
                           </button>
@@ -853,9 +847,7 @@ export default function QueueTab() {
                             </button>
                             <button
                               className="btn btn-secondary"
-                              onClick={() =>
-                                handleTransition(item, 'queued')
-                              }
+                              onClick={() => handleTransition(item, 'queued')}
                             >
                               Return
                             </button>
@@ -864,9 +856,7 @@ export default function QueueTab() {
                         {item.status === 'at_table' && (
                           <button
                             className="btn btn-secondary"
-                            onClick={() =>
-                              handleTransition(item, 'queued')
-                            }
+                            onClick={() => handleTransition(item, 'queued')}
                           >
                             Return to Queue
                           </button>
@@ -874,9 +864,7 @@ export default function QueueTab() {
                         {item.status === 'score_submitted' && (
                           <button
                             className="btn btn-secondary"
-                            onClick={() =>
-                              handleTransition(item, 'queued')
-                            }
+                            onClick={() => handleTransition(item, 'queued')}
                           >
                             Return to Queue
                           </button>

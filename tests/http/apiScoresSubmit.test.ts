@@ -382,7 +382,7 @@ describe('API Score Submit Routes', () => {
         expect(submission.score_type).toBe('seeding');
       });
 
-      it('marks matching seeding queue item completed immediately on submit', async () => {
+      it('marks matching seeding queue item score_submitted on submit', async () => {
         const event = await seedEvent(testDb.db);
         const team = await seedTeam(testDb.db, {
           event_id: event.id,
@@ -423,7 +423,7 @@ describe('API Score Submit Routes', () => {
           [event.id, team.id, 1],
         );
         expect(queueItem).toBeDefined();
-        expect(queueItem.status).toBe('completed');
+        expect(queueItem.status).toBe('score_submitted');
       });
 
       it('creates DB-backed bracket score submission with bracket_game_id', async () => {
@@ -493,7 +493,7 @@ describe('API Score Submit Routes', () => {
         expect(auditLogs.length).toBe(1);
       });
 
-      it('marks matching bracket queue item completed immediately on submit', async () => {
+      it('marks matching bracket queue item score_submitted on submit', async () => {
         const event = await seedEvent(testDb.db);
         const team1 = await seedTeam(testDb.db, {
           event_id: event.id,
@@ -522,7 +522,7 @@ describe('API Score Submit Routes', () => {
           queue_type: 'bracket',
           queue_position: 1,
           bracket_game_id: game.id,
-          status: 'called',
+          status: 'on_deck',
         });
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Bracket Template',
@@ -553,7 +553,7 @@ describe('API Score Submit Routes', () => {
           [event.id, game.id],
         );
         expect(queueItem).toBeDefined();
-        expect(queueItem.status).toBe('completed');
+        expect(queueItem.status).toBe('score_submitted');
       });
 
       it('returns 400 when bracket_game_id missing for DB-backed bracket submission', async () => {

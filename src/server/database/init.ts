@@ -479,9 +479,15 @@ export async function initializePostgres(db: Database): Promise<void> {
 
   // Migrate legacy queue statuses to new lifecycle values
   try {
-    await db.run(`UPDATE game_queue SET status = 'on_deck' WHERE status = 'called'`);
-    await db.run(`UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`);
-    await db.run(`UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`);
+    await db.run(
+      `UPDATE game_queue SET status = 'on_deck' WHERE status = 'called'`,
+    );
+    await db.run(
+      `UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`,
+    );
+    await db.run(
+      `UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`,
+    );
   } catch {
     // Table may not exist yet on first run
   }
@@ -1307,9 +1313,15 @@ export async function initializeSQLite(db: Database): Promise<void> {
 
   // Migrate legacy queue statuses to new lifecycle values (SQLite)
   try {
-    await db.run(`UPDATE game_queue SET status = 'on_deck' WHERE status = 'called'`);
-    await db.run(`UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`);
-    await db.run(`UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`);
+    await db.run(
+      `UPDATE game_queue SET status = 'on_deck' WHERE status = 'called'`,
+    );
+    await db.run(
+      `UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`,
+    );
+    await db.run(
+      `UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`,
+    );
   } catch {
     // Table may not exist yet on first run
   }

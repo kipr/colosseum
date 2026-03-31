@@ -128,10 +128,7 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
             "UPDATE game_queue SET status = 'completed' WHERE id = ?",
             [existing.id],
           );
-        } else if (
-          !combo.scored &&
-          existing.status === 'completed'
-        ) {
+        } else if (!combo.scored && existing.status === 'completed') {
           await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
