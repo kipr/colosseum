@@ -464,7 +464,7 @@ export async function initializePostgres(db: Database): Promise<void> {
       queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
+        CHECK (status IN ('queued', 'on_deck', 'at_table', 'score_submitted', 'completed')),
       called_at TIMESTAMP,
       table_number INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -476,6 +476,15 @@ export async function initializePostgres(db: Database): Promise<void> {
       )
     )
   `);
+
+  // Migrate legacy queue statuses to new lifecycle values
+  try {
+    await db.run(`UPDATE game_queue SET status = 'on_deck' WHERE status = 'called'`);
+    await db.run(`UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`);
+    await db.run(`UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`);
+  } catch {
+    // Table may not exist yet on first run
+  }
 
   // Add deferred FK from score_submissions -> game_queue now that table exists
   try {
@@ -1283,7 +1292,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
+        CHECK (status IN ('queued', 'on_deck', 'at_table', 'score_submitted', 'completed')),
       called_at DATETIME,
       table_number INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1295,6 +1304,15 @@ export async function initializeSQLite(db: Database): Promise<void> {
       )
     )
   `);
+
+  // Migrate legacy queue statuses to new lifecycle values (SQLite)
+  try {
+    await db.run(`UPDATE game_queue SET status = 'on_deck' WHERE status = 'called'`);
+    await db.run(`UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`);
+    await db.run(`UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`);
+  } catch {
+    // Table may not exist yet on first run
+  }
 
   // ============================================================================
   // BRACKET TEMPLATES (For generating bracket structures)
