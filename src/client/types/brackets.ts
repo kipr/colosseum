@@ -38,6 +38,9 @@ export interface BracketEntryWithRank extends BracketEntry {
   final_rank: number | null;
   bracket_raw_score: number | null;
   weighted_bracket_raw_score: number | null;
+  doc_score: number;
+  raw_seed_score: number;
+  total: number;
 }
 
 export interface BracketGame {

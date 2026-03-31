@@ -329,6 +329,15 @@
   color: var(--secondary-color);
 }
 
+.ranking-table .ranking-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.ranking-table .ranking-sortable:hover {
+  color: var(--primary-color);
+}
+
 .ranking-table tbody tr:last-child td {
   border-bottom: none;
 }
