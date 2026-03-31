@@ -42,15 +42,15 @@ describe('Queue Routes – sync edge cases', () => {
     testDb.close();
   });
 
-  describe('seeding sync – re-queue completed items when score removed', () => {
-    it('resets completed queue item to queued when seeding score no longer exists', async () => {
+  describe('seeding sync – re-queue submitted items when score removed', () => {
+    it('resets score-submitted queue item to queued when accepted score no longer exists', async () => {
       const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
         team_number: 1,
       });
 
-      // Seed a score and a completed queue item
+      // Seed an accepted score submission and a submitted queue item
       const score = await seedSeedingScore(testDb.db, {
         team_id: team.id,
         round_number: 1,
@@ -62,7 +62,7 @@ describe('Queue Routes – sync edge cases', () => {
         queue_position: 1,
         seeding_team_id: team.id,
         seeding_round: 1,
-        status: 'completed',
+        status: 'score_submitted',
       });
 
       // Remove the score
@@ -70,7 +70,7 @@ describe('Queue Routes – sync edge cases', () => {
         score.id,
       ]);
 
-      // Sync should reset item to queued
+      // Sync should reset item to queued once the accepted score is gone.
       const res = await http.get(
         `${baseUrl}/queue/event/${event.id}?queue_type=seeding&sync=1`,
       );
@@ -91,8 +91,8 @@ describe('Queue Routes – sync edge cases', () => {
     });
   });
 
-  describe('bracket sync – completed game status', () => {
-    it('marks bracket queue item completed when bracket game is completed', async () => {
+  describe('bracket sync – accepted/completed games leave the queue', () => {
+    it('removes bracket queue item when bracket game is completed', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -120,18 +120,17 @@ describe('Queue Routes – sync edge cases', () => {
         status: 'queued',
       });
 
-      // Sync should mark it completed
+      // Sync should remove it from the queue once the game is completed.
       const res = await http.get(
         `${baseUrl}/queue/event/${event.id}?queue_type=bracket&sync=1`,
       );
       expect(res.status).toBe(200);
       const items = res.json as { bracket_game_id: number; status: string }[];
       const item = items.find((i) => i.bracket_game_id === game.id);
-      expect(item).toBeDefined();
-      expect(item!.status).toBe('completed');
+      expect(item).toBeUndefined();
     });
 
-    it('re-queues bracket item when game status reverts to ready', async () => {
+    it('re-queues bracket item when game status reverts to ready after submission rollback', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -150,16 +149,16 @@ describe('Queue Routes – sync edge cases', () => {
         status: 'ready',
       });
 
-      // Pre-seed a completed bracket queue item
+      // Pre-seed a score-submitted bracket queue item.
       await seedQueueItem(testDb.db, {
         event_id: event.id,
         queue_type: 'bracket',
         queue_position: 1,
         bracket_game_id: game.id,
-        status: 'completed',
+        status: 'score_submitted',
       });
 
-      // Sync should reset it to queued since game is ready and eligible
+      // Sync should reset it to queued since the game is ready and eligible again.
       const res = await http.get(
         `${baseUrl}/queue/event/${event.id}?queue_type=bracket&sync=1`,
       );

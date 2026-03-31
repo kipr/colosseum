@@ -458,7 +458,12 @@ router.post(
           new_value: toAuditJson(updatedGame),
           ip_address: ipAddress,
         });
-        await updateBracketQueueItem(db, eventIdNum, op.bracketGameId, 'remove');
+        await updateBracketQueueItem(
+          db,
+          eventIdNum,
+          op.bracketGameId,
+          'remove',
+        );
         accepted.push({ id: op.id, scoreType: 'bracket' });
 
         const bracketId = (op.game as { bracket_id: number }).bracket_id;

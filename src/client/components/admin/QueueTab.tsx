@@ -132,8 +132,9 @@ export default function QueueTab() {
   // Queue state
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
-  const [filterStatuses, setFilterStatuses] =
-    useState<QueueStatus[]>(DEFAULT_FILTER_STATUSES);
+  const [filterStatuses, setFilterStatuses] = useState<QueueStatus[]>(
+    DEFAULT_FILTER_STATUSES,
+  );
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
   const [sortField, setSortField] = useState<SortField>('gameNumber');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -503,7 +504,9 @@ export default function QueueTab() {
     nextStatus: QueueStatus,
   ) => {
     try {
-      const payload: Record<string, number | QueueStatus> = { status: nextStatus };
+      const payload: Record<string, number | QueueStatus> = {
+        status: nextStatus,
+      };
       if (nextStatus === 'at_table' && item.table_number == null) {
         payload.table_number = item.queue_position;
       }
@@ -574,7 +577,9 @@ export default function QueueTab() {
     if (item.status !== 'at_table' && item.status !== 'score_submitted') {
       return '—';
     }
-    return item.table_number != null ? `Table ${item.table_number}` : 'Assigned';
+    return item.table_number != null
+      ? `Table ${item.table_number}`
+      : 'Assigned';
   };
 
   // Handle status toggle
@@ -835,7 +840,9 @@ export default function QueueTab() {
                     <td className="queue-called-at">
                       {formatCalledAt(item.called_at)}
                     </td>
-                    <td className="queue-called-at">{renderTableNumber(item)}</td>
+                    <td className="queue-called-at">
+                      {renderTableNumber(item)}
+                    </td>
                     <td>
                       <span
                         className={`queue-status-badge ${getStatusClass(item.status)}`}

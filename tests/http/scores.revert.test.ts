@@ -90,7 +90,7 @@ describe('Scores Revert-Event Edge Cases', () => {
       queue_position: 1,
       seeding_team_id: team.id,
       seeding_round: 1,
-      status: 'completed',
+      status: 'score_submitted',
     });
     const template = await seedScoresheetTemplate(testDb.db);
     const score = await seedScoreSubmission(testDb.db, {
@@ -200,7 +200,7 @@ describe('Scores Revert-Event Edge Cases', () => {
       queue_type: 'bracket',
       queue_position: 1,
       bracket_game_id: game.id,
-      status: 'completed',
+      status: 'score_submitted',
     });
     const template = await seedScoresheetTemplate(testDb.db);
     const score = await seedScoreSubmission(testDb.db, {
@@ -395,20 +395,20 @@ describe('Scores Revert-Event Edge Cases', () => {
       [team1.id, team2.id, g2.id, g1.id],
     );
 
-    // Queue items for both games, both completed
+    // Queue items for both games, both score-submitted
     await seedQueueItem(testDb.db, {
       event_id: event.id,
       queue_type: 'bracket',
       queue_position: 1,
       bracket_game_id: g1.id,
-      status: 'completed',
+      status: 'score_submitted',
     });
     await seedQueueItem(testDb.db, {
       event_id: event.id,
       queue_type: 'bracket',
       queue_position: 2,
       bracket_game_id: g2.id,
-      status: 'completed',
+      status: 'score_submitted',
     });
 
     const template = await seedScoresheetTemplate(testDb.db);

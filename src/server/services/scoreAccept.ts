@@ -49,9 +49,10 @@ export async function updateSeedingQueueItem(
       return;
     }
 
-    await db.run(`UPDATE game_queue SET status = 'score_submitted' WHERE id = ?`, [
-      existing.id,
-    ]);
+    await db.run(
+      `UPDATE game_queue SET status = 'score_submitted' WHERE id = ?`,
+      [existing.id],
+    );
     return;
   }
 
@@ -114,9 +115,10 @@ export async function updateBracketQueueItem(
       return;
     }
 
-    await db.run(`UPDATE game_queue SET status = 'score_submitted' WHERE id = ?`, [
-      existing.id,
-    ]);
+    await db.run(
+      `UPDATE game_queue SET status = 'score_submitted' WHERE id = ?`,
+      [existing.id],
+    );
     return;
   }
 
@@ -125,7 +127,12 @@ export async function updateBracketQueueItem(
     await db.run(
       `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
        VALUES (?, ?, 'bracket', ?, ?)`,
-      [eventId, bracketGameId, pos, action === 'restore' ? 'queued' : 'score_submitted'],
+      [
+        eventId,
+        bracketGameId,
+        pos,
+        action === 'restore' ? 'queued' : 'score_submitted',
+      ],
     );
   }
 }
@@ -458,12 +465,7 @@ export async function acceptEventScore(
       ip_address: ipAddress,
     });
 
-    await updateBracketQueueItem(
-      db,
-      score.event_id,
-      bracketGameId,
-      'remove',
-    );
+    await updateBracketQueueItem(db, score.event_id, bracketGameId, 'remove');
 
     return {
       ok: true,

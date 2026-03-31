@@ -5,7 +5,12 @@ import { getDatabase } from '../database/connection';
 import type { Database } from '../database/connection';
 
 const router = express.Router();
-const ACTIVE_QUEUE_STATUSES = ['queued', 'called', 'on_deck', 'at_table'] as const;
+const ACTIVE_QUEUE_STATUSES = [
+  'queued',
+  'called',
+  'on_deck',
+  'at_table',
+] as const;
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];

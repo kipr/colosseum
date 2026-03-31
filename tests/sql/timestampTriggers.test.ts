@@ -134,7 +134,7 @@ describe('Timestamp Cleanup Triggers', () => {
       expect(item.called_at).toBeNull();
     });
 
-    it('should NOT clear called_at when status changes to in_progress or completed', async () => {
+    it('should NOT clear called_at when status changes to on_deck, at_table, or score_submitted', async () => {
       // Create seeded item
       const teamResult = await testDb.db.run(
         `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
@@ -148,9 +148,9 @@ describe('Timestamp Cleanup Triggers', () => {
       );
       const queueId = queueResult.lastID!;
 
-      // Update to in_progress
+      // Update to on_deck
       await testDb.db.run(
-        `UPDATE game_queue SET status = 'in_progress' WHERE id = ?`,
+        `UPDATE game_queue SET status = 'on_deck' WHERE id = ?`,
         [queueId],
       );
 
@@ -159,9 +159,20 @@ describe('Timestamp Cleanup Triggers', () => {
       ]);
       expect(item.called_at).not.toBeNull();
 
-      // Update to completed
+      // Update to at_table
       await testDb.db.run(
-        `UPDATE game_queue SET status = 'completed' WHERE id = ?`,
+        `UPDATE game_queue SET status = 'at_table' WHERE id = ?`,
+        [queueId],
+      );
+
+      item = await testDb.db.get(`SELECT * FROM game_queue WHERE id = ?`, [
+        queueId,
+      ]);
+      expect(item.called_at).not.toBeNull();
+
+      // Update to score_submitted
+      await testDb.db.run(
+        `UPDATE game_queue SET status = 'score_submitted' WHERE id = ?`,
         [queueId],
       );
 

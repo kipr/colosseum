@@ -39,7 +39,9 @@ async function migratePostgresGameQueueStatuses(db: Database): Promise<void> {
     await tx.run(
       `UPDATE game_queue SET status = 'at_table' WHERE status = 'in_progress'`,
     );
-    await tx.run(`UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`);
+    await tx.run(
+      `UPDATE game_queue SET status = 'queued' WHERE status = 'skipped'`,
+    );
   });
 
   await db.exec(`
@@ -76,79 +78,352 @@ async function migrateSqliteGameQueueStatuses(db: Database): Promise<void> {
   const existingTable = await db.get<{ sql: string | null }>(
     `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'game_queue'`,
   );
-  if (!existingTable?.sql || existingTable.sql.includes('score_submitted')) {
+  const scoreSubmissionsTable = await db.get<{ sql: string | null }>(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'score_submissions'`,
+  );
+  const scoreDetailsTable = await db.get<{ sql: string | null }>(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'score_details'`,
+  );
+  const seedingScoresTable = await db.get<{ sql: string | null }>(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'seeding_scores'`,
+  );
+  const bracketGamesTable = await db.get<{ sql: string | null }>(
+    `SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'bracket_games'`,
+  );
+  const needsQueueMigration =
+    !!existingTable?.sql && !existingTable.sql.includes('score_submitted');
+  const needsScoreSubmissionMigration =
+    scoreSubmissionsTable?.sql?.includes('game_queue_old') ?? false;
+  const needsScoreDetailsMigration =
+    scoreDetailsTable?.sql?.includes('score_submissions_old') ?? false;
+  const needsSeedingScoresMigration =
+    seedingScoresTable?.sql?.includes('score_submissions_old') ?? false;
+  const needsBracketGamesMigration =
+    bracketGamesTable?.sql?.includes('score_submissions_old') ?? false;
+
+  if (
+    !needsQueueMigration &&
+    !needsScoreSubmissionMigration &&
+    !needsScoreDetailsMigration &&
+    !needsSeedingScoresMigration &&
+    !needsBracketGamesMigration
+  ) {
     return;
   }
 
   await db.exec('PRAGMA foreign_keys = OFF');
   try {
     await db.transaction(async (tx) => {
-      await tx.run(
-        `UPDATE score_submissions
-         SET game_queue_id = NULL
-         WHERE game_queue_id IN (
-           SELECT id FROM game_queue WHERE status = 'completed'
-         )`,
+      if (needsQueueMigration) {
+        await tx.run(
+          `UPDATE score_submissions
+           SET game_queue_id = NULL
+           WHERE game_queue_id IN (
+             SELECT id FROM game_queue WHERE status = 'completed'
+           )`,
+        );
+        await tx.exec(`ALTER TABLE game_queue RENAME TO game_queue_old`);
+        await tx.exec(`
+          CREATE TABLE game_queue (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
+            seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+            seeding_round INTEGER,
+            queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+            queue_position INTEGER NOT NULL,
+            status TEXT DEFAULT 'queued'
+              CHECK (status IN (${GAME_QUEUE_STATUS_SQL})),
+            called_at DATETIME,
+            table_number INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            CHECK (
+              (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
+              OR
+              (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL)
+            )
+          )
+        `);
+        await tx.exec(`
+          INSERT INTO game_queue (
+            id,
+            event_id,
+            bracket_game_id,
+            seeding_team_id,
+            seeding_round,
+            queue_type,
+            queue_position,
+            status,
+            called_at,
+            table_number,
+            created_at,
+            updated_at
+          )
+          SELECT
+            id,
+            event_id,
+            bracket_game_id,
+            seeding_team_id,
+            seeding_round,
+            queue_type,
+            queue_position,
+            CASE
+              WHEN status = 'in_progress' THEN 'at_table'
+              WHEN status = 'skipped' THEN 'queued'
+              ELSE status
+            END,
+            called_at,
+            table_number,
+            created_at,
+            updated_at
+          FROM game_queue_old
+          WHERE status <> 'completed'
+        `);
+        await tx.exec(`DROP TABLE game_queue_old`);
+      }
+
+      await tx.exec(
+        `ALTER TABLE score_submissions RENAME TO score_submissions_old`,
       );
-      await tx.exec(`ALTER TABLE game_queue RENAME TO game_queue_old`);
       await tx.exec(`
-        CREATE TABLE game_queue (
+        CREATE TABLE score_submissions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
-          seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
-          seeding_round INTEGER,
-          queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
-          queue_position INTEGER NOT NULL,
-          status TEXT DEFAULT 'queued'
-            CHECK (status IN (${GAME_QUEUE_STATUS_SQL})),
-          called_at DATETIME,
-          table_number INTEGER,
+          user_id INTEGER,
+          template_id INTEGER NOT NULL,
+          spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id) ON DELETE SET NULL,
+          participant_name TEXT,
+          match_id TEXT,
+          score_data TEXT NOT NULL,
+          submitted_to_sheet BOOLEAN DEFAULT 0,
+          status TEXT DEFAULT 'pending',
+          reviewed_by INTEGER,
+          reviewed_at DATETIME,
+          event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE SET NULL,
+          seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
+          score_type TEXT,
+          game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-          CHECK (
-            (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
-            OR
-            (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL)
-          )
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
+          FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
+          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
         )
       `);
       await tx.exec(`
-        INSERT INTO game_queue (
+        INSERT INTO score_submissions (
           id,
+          user_id,
+          template_id,
+          spreadsheet_config_id,
+          participant_name,
+          match_id,
+          score_data,
+          submitted_to_sheet,
+          status,
+          reviewed_by,
+          reviewed_at,
           event_id,
           bracket_game_id,
-          seeding_team_id,
-          seeding_round,
-          queue_type,
-          queue_position,
-          status,
-          called_at,
-          table_number,
+          seeding_score_id,
+          score_type,
+          game_queue_id,
           created_at,
           updated_at
         )
         SELECT
           id,
+          user_id,
+          template_id,
+          spreadsheet_config_id,
+          participant_name,
+          match_id,
+          score_data,
+          submitted_to_sheet,
+          status,
+          reviewed_by,
+          reviewed_at,
           event_id,
           bracket_game_id,
-          seeding_team_id,
-          seeding_round,
-          queue_type,
-          queue_position,
-          CASE
-            WHEN status = 'in_progress' THEN 'at_table'
-            WHEN status = 'skipped' THEN 'queued'
-            ELSE status
-          END,
-          called_at,
-          table_number,
+          seeding_score_id,
+          score_type,
+          game_queue_id,
           created_at,
           updated_at
-        FROM game_queue_old
-        WHERE status <> 'completed'
+        FROM score_submissions_old
       `);
-      await tx.exec(`DROP TABLE game_queue_old`);
+
+      if (needsScoreDetailsMigration) {
+        await tx.exec(`ALTER TABLE score_details RENAME TO score_details_old`);
+        await tx.exec(`
+          CREATE TABLE score_details (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            score_submission_id INTEGER NOT NULL REFERENCES score_submissions(id) ON DELETE CASCADE,
+            field_id TEXT NOT NULL,
+            field_value TEXT,
+            calculated_value INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        await tx.exec(`
+          INSERT INTO score_details (
+            id,
+            score_submission_id,
+            field_id,
+            field_value,
+            calculated_value,
+            created_at
+          )
+          SELECT
+            id,
+            score_submission_id,
+            field_id,
+            field_value,
+            calculated_value,
+            created_at
+          FROM score_details_old
+        `);
+        await tx.exec(`DROP TABLE score_details_old`);
+      }
+
+      if (needsSeedingScoresMigration) {
+        await tx.exec(
+          `ALTER TABLE seeding_scores RENAME TO seeding_scores_old`,
+        );
+        await tx.exec(`
+          CREATE TABLE seeding_scores (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+            round_number INTEGER NOT NULL CHECK (round_number > 0),
+            score INTEGER,
+            score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
+            scored_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(team_id, round_number)
+          )
+        `);
+        await tx.exec(`
+          INSERT INTO seeding_scores (
+            id,
+            team_id,
+            round_number,
+            score,
+            score_submission_id,
+            scored_at,
+            created_at,
+            updated_at
+          )
+          SELECT
+            id,
+            team_id,
+            round_number,
+            score,
+            score_submission_id,
+            scored_at,
+            created_at,
+            updated_at
+          FROM seeding_scores_old
+        `);
+        await tx.exec(`DROP TABLE seeding_scores_old`);
+      }
+
+      if (needsBracketGamesMigration) {
+        await tx.exec(`ALTER TABLE bracket_games RENAME TO bracket_games_old`);
+        await tx.exec(`
+          CREATE TABLE bracket_games (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            bracket_id INTEGER NOT NULL REFERENCES brackets(id) ON DELETE CASCADE,
+            game_number INTEGER NOT NULL,
+            round_name TEXT,
+            round_number INTEGER,
+            bracket_side TEXT
+              CHECK (bracket_side IN ('winners', 'losers', 'finals')),
+            team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+            team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+            team1_source TEXT,
+            team2_source TEXT,
+            status TEXT DEFAULT 'pending'
+              CHECK (status IN ('pending', 'ready', 'in_progress', 'completed', 'bye')),
+            winner_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+            loser_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+            winner_advances_to_id INTEGER REFERENCES bracket_games(id),
+            loser_advances_to_id INTEGER REFERENCES bracket_games(id),
+            winner_slot TEXT,
+            loser_slot TEXT,
+            team1_score INTEGER,
+            team2_score INTEGER,
+            score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
+            scheduled_time DATETIME,
+            started_at DATETIME,
+            completed_at DATETIME,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(bracket_id, game_number)
+          )
+        `);
+        await tx.exec(`
+          INSERT INTO bracket_games (
+            id,
+            bracket_id,
+            game_number,
+            round_name,
+            round_number,
+            bracket_side,
+            team1_id,
+            team2_id,
+            team1_source,
+            team2_source,
+            status,
+            winner_id,
+            loser_id,
+            winner_advances_to_id,
+            loser_advances_to_id,
+            winner_slot,
+            loser_slot,
+            team1_score,
+            team2_score,
+            score_submission_id,
+            scheduled_time,
+            started_at,
+            completed_at,
+            created_at,
+            updated_at
+          )
+          SELECT
+            id,
+            bracket_id,
+            game_number,
+            round_name,
+            round_number,
+            bracket_side,
+            team1_id,
+            team2_id,
+            team1_source,
+            team2_source,
+            status,
+            winner_id,
+            loser_id,
+            winner_advances_to_id,
+            loser_advances_to_id,
+            winner_slot,
+            loser_slot,
+            team1_score,
+            team2_score,
+            score_submission_id,
+            scheduled_time,
+            started_at,
+            completed_at,
+            created_at,
+            updated_at
+          FROM bracket_games_old
+        `);
+        await tx.exec(`DROP TABLE bracket_games_old`);
+      }
+
+      await tx.exec(`DROP TABLE score_submissions_old`);
     });
   } finally {
     await db.exec('PRAGMA foreign_keys = ON');

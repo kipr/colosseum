@@ -152,7 +152,7 @@ export interface SeedQueueItemData {
   bracket_game_id?: number | null;
   seeding_team_id?: number | null;
   seeding_round?: number | null;
-  status?: string;
+  status?: 'queued' | 'called' | 'on_deck' | 'at_table' | 'score_submitted';
   table_number?: number | null;
 }
 
