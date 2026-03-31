@@ -84,19 +84,15 @@
   min-width: 60px;
 }
 
-/* Rankings table specific */
-.rankings-table th:nth-child(1),
-.rankings-table td:nth-child(1) {
+.seeding-unified-table .seed-rank-col,
+.seeding-unified-table th.seed-rank-col {
   width: 100px;
 }
 
-.rankings-table th:nth-child(4),
-.rankings-table td:nth-child(4),
-.rankings-table th:nth-child(5),
-.rankings-table td:nth-child(5),
-.rankings-table th:nth-child(6),
-.rankings-table td:nth-child(6) {
-  text-align: center;
+.ranking-metric-col,
+.ranking-metric-cell {
+  text-align: center !important;
+  min-width: 88px;
 }
 
 /* Summary */

@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import './SeedingTables.css';
 
 export interface Team {
@@ -65,8 +65,34 @@ export function buildTeamRowData(
   });
 }
 
-type SortField = 'team_number' | 'team_name';
+/** Sort field: meta keys or `round:${n}` for round score columns */
+type SortField = string;
 type SortDirection = 'asc' | 'desc';
+
+function roundField(round: number): string {
+  return `round:${round}`;
+}
+
+function parseRoundField(field: SortField): number | null {
+  if (!field.startsWith('round:')) return null;
+  const n = Number(field.slice('round:'.length));
+  return Number.isFinite(n) ? n : null;
+}
+
+function compareNullableNumber(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  dir: SortDirection,
+): number {
+  const aNull = a === null || a === undefined;
+  const bNull = b === null || b === undefined;
+  if (aNull && bNull) return 0;
+  if (aNull) return 1;
+  if (bNull) return -1;
+  if (a < b) return dir === 'asc' ? -1 : 1;
+  if (a > b) return dir === 'asc' ? 1 : -1;
+  return 0;
+}
 
 interface SeedingScoresTableProps {
   teamRowData: TeamRowData[];
@@ -80,22 +106,51 @@ export default function SeedingScoresTable({
   const [sortField, setSortField] = useState<SortField>('team_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
-  const sortedTeamRowData = [...teamRowData].sort((a, b) => {
-    let aVal: string | number;
-    let bVal: string | number;
+  const sortedTeamRowData = useMemo(() => {
+    return [...teamRowData].sort((a, b) => {
+      const roundNum = parseRoundField(sortField);
+      if (roundNum !== null) {
+        const sa = a.scores.get(roundNum)?.score;
+        const sb = b.scores.get(roundNum)?.score;
+        return compareNullableNumber(sa ?? null, sb ?? null, sortDirection);
+      }
 
-    if (sortField === 'team_number') {
-      aVal = a.team.team_number;
-      bVal = b.team.team_number;
-    } else {
-      aVal = a.team.team_name.toLowerCase();
-      bVal = b.team.team_name.toLowerCase();
-    }
-
-    if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-    if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-    return 0;
-  });
+      switch (sortField) {
+        case 'seed_rank': {
+          const ra = a.ranking?.seed_rank;
+          const rb = b.ranking?.seed_rank;
+          return compareNullableNumber(ra ?? null, rb ?? null, sortDirection);
+        }
+        case 'team_number':
+          return compareNullableNumber(
+            a.team.team_number,
+            b.team.team_number,
+            sortDirection,
+          );
+        case 'team_name': {
+          const av = a.team.team_name.toLowerCase();
+          const bv = b.team.team_name.toLowerCase();
+          if (av < bv) return sortDirection === 'asc' ? -1 : 1;
+          if (av > bv) return sortDirection === 'asc' ? 1 : -1;
+          return 0;
+        }
+        case 'seed_average':
+          return compareNullableNumber(
+            a.ranking?.seed_average ?? null,
+            b.ranking?.seed_average ?? null,
+            sortDirection,
+          );
+        case 'raw_seed_score':
+          return compareNullableNumber(
+            a.ranking?.raw_seed_score ?? null,
+            b.ranking?.raw_seed_score ?? null,
+            sortDirection,
+          );
+        default:
+          return 0;
+      }
+    });
+  }, [teamRowData, sortField, sortDirection]);
 
   const handleSort = useCallback(
     (field: SortField) => {
@@ -118,16 +173,24 @@ export default function SeedingScoresTable({
     <div className="card seeding-section">
       <div className="seeding-section-header">
         <div>
-          <h3>Seeding Scores</h3>
+          <h3>Seeding scores and rankings</h3>
           <p className="seeding-section-description">
-            Seeding scores for each team and round.
+            Per-round scores and final seed metrics. Rankings use seed averages
+            (e.g. top 2 of 3 scores). Raw seed score: 75% rank position + 25%
+            score ratio.
           </p>
         </div>
       </div>
       <div className="table-responsive">
-        <table className="seeding-table">
+        <table className="seeding-table seeding-unified-table">
           <thead>
             <tr>
+              <th
+                className="sortable seed-rank-col"
+                onClick={() => handleSort('seed_rank')}
+              >
+                Seed Rank{getSortIndicator('seed_rank')}
+              </th>
               <th
                 className="sortable"
                 onClick={() => handleSort('team_number')}
@@ -137,17 +200,38 @@ export default function SeedingScoresTable({
               <th className="sortable" onClick={() => handleSort('team_name')}>
                 Team Name{getSortIndicator('team_name')}
               </th>
-              {Array.from({ length: effectiveRounds }, (_, i) => (
-                <th key={i + 1} className="score-col">
-                  Round {i + 1}
-                </th>
-              ))}
-              <th className="avg-col">Seed Avg</th>
+              {Array.from({ length: effectiveRounds }, (_, i) => {
+                const round = i + 1;
+                const rf = roundField(round);
+                return (
+                  <th
+                    key={round}
+                    className="sortable score-col"
+                    onClick={() => handleSort(rf)}
+                  >
+                    Round {round}
+                    {getSortIndicator(rf)}
+                  </th>
+                );
+              })}
+              <th
+                className="sortable avg-col ranking-metric-col"
+                onClick={() => handleSort('seed_average')}
+              >
+                Seed Avg{getSortIndicator('seed_average')}
+              </th>
+              <th
+                className="sortable ranking-metric-col"
+                onClick={() => handleSort('raw_seed_score')}
+              >
+                Raw Seed Score{getSortIndicator('raw_seed_score')}
+              </th>
             </tr>
           </thead>
           <tbody>
             {sortedTeamRowData.map((row) => (
               <tr key={row.team.id}>
+                <td className="rank-cell">{row.ranking?.seed_rank ?? '—'}</td>
                 <td>{row.team.team_number}</td>
                 <td>{row.team.team_name}</td>
                 {Array.from({ length: effectiveRounds }, (_, i) => {
@@ -163,6 +247,12 @@ export default function SeedingScoresTable({
                   {row.ranking?.seed_average !== null &&
                   row.ranking?.seed_average !== undefined
                     ? row.ranking.seed_average.toFixed(2)
+                    : '—'}
+                </td>
+                <td className="ranking-metric-cell">
+                  {row.ranking?.raw_seed_score !== null &&
+                  row.ranking?.raw_seed_score !== undefined
+                    ? row.ranking.raw_seed_score.toFixed(4)
                     : '—'}
                 </td>
               </tr>

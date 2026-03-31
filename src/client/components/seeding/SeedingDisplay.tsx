@@ -5,7 +5,6 @@ import SeedingScoresTable, {
   type SeedingScore,
   type SeedingRanking,
 } from './SeedingScoresTable';
-import SeedingRankingsTable from './SeedingRankingsTable';
 
 interface SeedingDisplayProps {
   teams: Team[];
@@ -43,8 +42,6 @@ export default function SeedingDisplay({
         teamRowData={teamRowData}
         effectiveRounds={effectiveRounds}
       />
-
-      <SeedingRankingsTable rankings={rankings} />
 
       <div className="seeding-summary">
         {teams.length} team{teams.length !== 1 ? 's' : ''} •{' '}
