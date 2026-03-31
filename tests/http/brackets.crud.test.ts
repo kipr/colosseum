@@ -117,7 +117,7 @@ describe('Brackets CRUD & Game Management', () => {
   // ==========================================================================
 
   describe('GET /brackets/:id/rankings', () => {
-    it('returns entries with final_rank, bracket_raw_score, and weighted_bracket_raw_score for authenticated admin', async () => {
+    it('returns entries with rank and per-bracket overall scoring fields for authenticated admin', async () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
       const team = await seedTeam(testDb.db, {
@@ -142,6 +142,9 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.entries[0].final_rank).toBe(2);
       expect(body.entries[0].bracket_raw_score).toBe(0.75);
       expect(body.entries[0].weighted_bracket_raw_score).toBe(0.75);
+      expect(body.entries[0].doc_score).toBe(0);
+      expect(body.entries[0].raw_seed_score).toBe(0);
+      expect(body.entries[0].total).toBe(0.75);
     });
 
     it('returns 404 for non-existent bracket', async () => {

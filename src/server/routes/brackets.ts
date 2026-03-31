@@ -190,12 +190,19 @@ router.get('/:id/rankings/public', async (req: Request, res: Response) => {
     const entries = await db.all(
       `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.is_bye,
                 be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+                COALESCE(ds.overall_score, 0) AS doc_score,
+                COALESCE(sr.raw_seed_score, 0) AS raw_seed_score,
+                COALESCE(ds.overall_score, 0) + COALESCE(sr.raw_seed_score, 0) +
+                  COALESCE(be.weighted_bracket_raw_score, 0) AS total,
                 t.team_number, t.team_name, t.display_name
          FROM bracket_entries be
          LEFT JOIN teams t ON be.team_id = t.id
+         LEFT JOIN documentation_scores ds
+           ON ds.team_id = be.team_id AND ds.event_id = ?
+         LEFT JOIN seeding_rankings sr ON sr.team_id = be.team_id
          WHERE be.bracket_id = ?
          ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
-      [id],
+      [bracket.event_id, id],
     );
 
     res.json({ weight: bracket.weight, entries });
@@ -214,10 +221,11 @@ router.get(
       const { id } = req.params;
       const db = await getDatabase();
 
-      const bracket = await db.get<{ id: number; weight: number }>(
-        'SELECT id, weight FROM brackets WHERE id = ?',
-        [id],
-      );
+      const bracket = await db.get<{
+        id: number;
+        weight: number;
+        event_id: number;
+      }>('SELECT id, weight, event_id FROM brackets WHERE id = ?', [id]);
 
       if (!bracket) {
         return res.status(404).json({ error: 'Bracket not found' });
@@ -226,12 +234,19 @@ router.get(
       const entries = await db.all(
         `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
                 be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
+                COALESCE(ds.overall_score, 0) AS doc_score,
+                COALESCE(sr.raw_seed_score, 0) AS raw_seed_score,
+                COALESCE(ds.overall_score, 0) + COALESCE(sr.raw_seed_score, 0) +
+                  COALESCE(be.weighted_bracket_raw_score, 0) AS total,
                 t.team_number, t.team_name, t.display_name
          FROM bracket_entries be
          LEFT JOIN teams t ON be.team_id = t.id
+         LEFT JOIN documentation_scores ds
+           ON ds.team_id = be.team_id AND ds.event_id = ?
+         LEFT JOIN seeding_rankings sr ON sr.team_id = be.team_id
          WHERE be.bracket_id = ?
          ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
-        [id],
+        [bracket.event_id, id],
       );
 
       res.json({ weight: bracket.weight, entries });

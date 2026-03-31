@@ -220,21 +220,44 @@ describe('Public Final Scores API', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns rankings for released event', async () => {
+    it('returns rankings with per-bracket overall fields for released event', async () => {
       const event = await createReleasedEvent();
       const bracket = await seedBracket(testDb.db, {
         event_id: event.id,
         status: 'completed',
       });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 7,
+        team_name: 'Ranked Team',
+      });
+      await testDb.db.run(
+        `INSERT INTO bracket_entries (
+          bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score
+        ) VALUES (?, ?, 1, 0, 1, 1.0, 1.0)`,
+        [bracket.id, team.id],
+      );
 
       const res = await http.get<{
         weight: number;
-        entries: { team_id: number | null }[];
+        entries: {
+          team_id: number | null;
+          doc_score: number;
+          raw_seed_score: number;
+          weighted_bracket_raw_score: number | null;
+          total: number;
+        }[];
       }>(`${baseUrl}/brackets/${bracket.id}/rankings/public`);
 
       expect(res.status).toBe(200);
       expect(res.json).toHaveProperty('weight');
       expect(res.json).toHaveProperty('entries');
+      expect(res.json.entries).toHaveLength(1);
+      expect(res.json.entries[0].team_id).toBe(team.id);
+      expect(res.json.entries[0].doc_score).toBe(0);
+      expect(res.json.entries[0].raw_seed_score).toBe(0);
+      expect(res.json.entries[0].weighted_bracket_raw_score).toBe(1);
+      expect(res.json.entries[0].total).toBe(1);
     });
   });
 
