@@ -89,6 +89,8 @@ router.get(
           ss.round_number as seeding_round,
           seeding_team.team_number as team_display_number,
           seeding_team.team_name as team_name,
+          bg.team1_id as bracket_team1_id,
+          bg.team2_id as bracket_team2_id,
           bg.team1_score as bracket_team1_score,
           bg.team2_score as bracket_team2_score,
           bt1.team_number as bracket_team1_number,

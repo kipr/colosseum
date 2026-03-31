@@ -36,6 +36,8 @@ interface ScoreSubmission {
   queue_position?: number;
   seeding_round?: number;
   // Bracket-specific joined display fields
+  bracket_team1_id?: number | null;
+  bracket_team2_id?: number | null;
   bracket_team1_score?: number | null;
   bracket_team2_score?: number | null;
   bracket_team1_number?: number | null;
@@ -434,14 +436,30 @@ export default function ScoringTab() {
         ? `${team1Score} – ${team2Score}`
         : '-';
 
-    const winnerLabel =
+    let winnerLabel =
       score.bracket_winner_display ||
       score.bracket_winner_name ||
       (score.bracket_winner_number != null
         ? String(score.bracket_winner_number)
         : null) ||
       data.winner_name?.value ||
-      '-';
+      null;
+
+    if (!winnerLabel) {
+      const winnerId =
+        data.winner_team_id?.value ?? data.winner_id?.value ?? null;
+      if (winnerId != null) {
+        if (winnerId === score.bracket_team1_id) {
+          winnerLabel = team1Label;
+        } else if (winnerId === score.bracket_team2_id) {
+          winnerLabel = team2Label;
+        } else {
+          winnerLabel = `Team ${winnerId}`;
+        }
+      } else {
+        winnerLabel = '-';
+      }
+    }
 
     return {
       team1Label,
