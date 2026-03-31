@@ -65,10 +65,10 @@ interface Team {
 
 type QueueStatus =
   | 'queued'
-  | 'called'
-  | 'in_progress'
-  | 'completed'
-  | 'skipped';
+  | 'on_deck'
+  | 'at_table'
+  | 'score_submitted'
+  | 'completed';
 type QueueType = 'seeding' | 'bracket';
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';
@@ -84,15 +84,15 @@ function getTypeClass(type: QueueType): string {
 }
 
 function getStatusClass(status: QueueStatus): string {
-  return `queue-status-${status.replace('_', '-')}`;
+  return `queue-status-${status.replace(/_/g, '-')}`;
 }
 
 const STATUS_LABELS: Record<QueueStatus, string> = {
-  queued: 'Pending',
-  called: 'Called',
-  in_progress: 'In Progress',
+  queued: 'Queued',
+  on_deck: 'On Deck',
+  at_table: 'At Table',
+  score_submitted: 'Score Submitted',
   completed: 'Completed',
-  skipped: 'Skipped',
 };
 
 export default function QueueTab() {
@@ -104,8 +104,9 @@ export default function QueueTab() {
   const [loading, setLoading] = useState(false);
   const [filterStatuses, setFilterStatuses] = useState<QueueStatus[]>([
     'queued',
-    'called',
-    'in_progress',
+    'on_deck',
+    'at_table',
+    'score_submitted',
   ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
   const [sortField, setSortField] = useState<SortField>('gameNumber');
@@ -465,30 +466,24 @@ export default function QueueTab() {
     }
   };
 
-  // Handle call toggle (between queued and called)
-  const handleCallToggle = async (item: QueueItem) => {
-    const newStatus: QueueStatus =
-      item.status === 'called' ? 'queued' : 'called';
-
+  // Handle queue state transition
+  const handleTransition = async (
+    item: QueueItem,
+    targetStatus: QueueStatus,
+    tableNumber?: number | null,
+  ) => {
     try {
-      let response;
-
-      if (newStatus === 'called') {
-        // Use the special call endpoint to record called_at
-        response = await fetch(`/queue/${item.id}/call`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({}),
-        });
-      } else {
-        response = await fetch(`/queue/${item.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ status: newStatus }),
-        });
+      const body: Record<string, unknown> = { status: targetStatus };
+      if (tableNumber !== undefined) {
+        body.table_number = tableNumber;
       }
+
+      const response = await fetch(`/queue/${item.id}/transition`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -501,15 +496,9 @@ export default function QueueTab() {
           q.id === item.id
             ? {
                 ...q,
-                status: updatedItem.status ?? newStatus,
-                called_at:
-                  newStatus === 'queued'
-                    ? null
-                    : (updatedItem.called_at ?? q.called_at),
-                table_number:
-                  newStatus === 'queued'
-                    ? null
-                    : (updatedItem.table_number ?? q.table_number),
+                status: updatedItem.status ?? targetStatus,
+                called_at: updatedItem.called_at ?? null,
+                table_number: updatedItem.table_number ?? null,
               }
             : q,
         ),
@@ -520,6 +509,18 @@ export default function QueueTab() {
         error instanceof Error ? error.message : 'Failed to update status',
       );
     }
+  };
+
+  // Prompt for table number and transition to at_table
+  const handleSendToTable = async (item: QueueItem) => {
+    const tableStr = prompt('Enter table number:');
+    if (tableStr === null) return;
+    const tableNum = parseInt(tableStr, 10);
+    await handleTransition(
+      item,
+      'at_table',
+      isNaN(tableNum) ? null : tableNum,
+    );
   };
 
   // Render item details
@@ -583,7 +584,7 @@ export default function QueueTab() {
     const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
     if (filterStatuses.length === allStatuses.length) {
       // If all are selected, revert to default set
-      setFilterStatuses(['queued', 'called', 'in_progress']);
+      setFilterStatuses(['queued', 'on_deck', 'at_table', 'score_submitted']);
     } else {
       setFilterStatuses(allStatuses);
     }
@@ -795,9 +796,10 @@ export default function QueueTab() {
                   </button>
                 </th>
                 <th style={{ width: '80px' }}>Type</th>
+                <th style={{ width: '70px' }}>Table</th>
                 <th style={{ width: '120px' }}>Called At</th>
-                <th style={{ width: '100px' }}>Status</th>
-                <th style={{ width: '200px' }}>Actions</th>
+                <th style={{ width: '130px' }}>Status</th>
+                <th style={{ width: '260px' }}>Actions</th>
                 <th style={{ width: '60px' }}>Order</th>
               </tr>
             </thead>
@@ -816,6 +818,9 @@ export default function QueueTab() {
                         {item.queue_type}
                       </span>
                     </td>
+                    <td className="queue-table-number">
+                      {item.table_number ?? '—'}
+                    </td>
                     <td className="queue-called-at">
                       {formatCalledAt(item.called_at)}
                     </td>
@@ -828,13 +833,52 @@ export default function QueueTab() {
                     </td>
                     <td>
                       <div className="queue-actions">
-                        {(item.status === 'queued' ||
-                          item.status === 'called') && (
+                        {item.status === 'queued' && (
                           <button
-                            className={`btn ${item.status === 'queued' ? 'btn-success' : 'btn-secondary'}`}
-                            onClick={() => handleCallToggle(item)}
+                            className="btn btn-success"
+                            onClick={() =>
+                              handleTransition(item, 'on_deck')
+                            }
                           >
-                            {item.status === 'queued' ? 'Call' : 'Uncall'}
+                            On Deck
+                          </button>
+                        )}
+                        {item.status === 'on_deck' && (
+                          <>
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => handleSendToTable(item)}
+                            >
+                              Send to Table
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              onClick={() =>
+                                handleTransition(item, 'queued')
+                              }
+                            >
+                              Return
+                            </button>
+                          </>
+                        )}
+                        {item.status === 'at_table' && (
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() =>
+                              handleTransition(item, 'queued')
+                            }
+                          >
+                            Return to Queue
+                          </button>
+                        )}
+                        {item.status === 'score_submitted' && (
+                          <button
+                            className="btn btn-secondary"
+                            onClick={() =>
+                              handleTransition(item, 'queued')
+                            }
+                          >
+                            Return to Queue
                           </button>
                         )}
                       </div>
