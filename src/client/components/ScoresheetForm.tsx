@@ -1,15 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
+import {
+  BracketGameOption,
+  findBracketGameBySelection,
+  formatBracketGameOptionLabel,
+  getBracketGameOptionValue,
+  getBracketSourceEventId,
+  isEventScopedBracketSource,
+} from './scoresheetUtils';
 import '../pages/Scoresheet.css';
-
-interface BracketGame {
-  gameNumber: number;
-  team1: { teamNumber: string; displayName: string } | null;
-  team2: { teamNumber: string; displayName: string } | null;
-  hasWinner?: boolean;
-  winner?: string;
-  bracketGameId?: number; // DB bracket_games.id for DB-backed submissions
-}
 
 interface ScoresheetFormProps {
   template: any;
@@ -19,6 +18,14 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const schema = template.schema;
   const isHeadToHead = schema.mode === 'head-to-head';
   const gameAreasImage = schema.gameAreasImage;
+  const isEventScopedBracket = isEventScopedBracketSource(
+    schema.bracketSource,
+    schema.eventId,
+  );
+  const bracketSourceEventId = getBracketSourceEventId(
+    schema.bracketSource,
+    schema.eventId,
+  );
 
   // Use queue for DB-backed seeding: replace team+round selection with queue picker
   const useQueueForSeeding =
@@ -48,7 +55,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const [formData, setFormData] =
     useState<Record<string, any>>(getInitialFormData);
   const [dynamicData, setDynamicData] = useState<Record<string, any[]>>({});
-  const [bracketGames, setBracketGames] = useState<BracketGame[]>([]);
+  const [bracketGames, setBracketGames] = useState<BracketGameOption[]>([]);
   const [teamsData, setTeamsData] = useState<any[]>([]); // Teams lookup for head-to-head
   const [calculatedValues, setCalculatedValues] = useState<
     Record<string, number>
@@ -155,9 +162,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       const bracketSource = schema.bracketSource;
       if (!bracketSource) return;
 
-      if (bracketSource.type === 'db' && bracketSource.bracketId) {
+      if (
+        bracketSource.type === 'db' &&
+        isEventScopedBracket &&
+        bracketSourceEventId
+      ) {
         const response = await fetch(
-          `/brackets/${bracketSource.bracketId}/games`,
+          `/brackets/event/${bracketSourceEventId}/games?eligible=scoreable`,
           { credentials: 'include' },
         );
         if (!response.ok) {
@@ -166,7 +177,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           return;
         }
         const dbGames = await response.json();
-        const mapped: BracketGame[] = dbGames.map((g: any) => {
+        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
           const team1 =
             g.team1_id != null && (g.team1_number != null || g.team1_name)
               ? {
@@ -185,6 +196,49 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
               : null;
           return {
             gameNumber: g.game_number,
+            bracketId: g.bracket_id,
+            bracketName: g.bracket_name,
+            roundName: g.round_name,
+            bracketSide: g.bracket_side,
+            queuePosition: g.queue_position ?? null,
+            team1,
+            team2,
+            hasWinner: !!g.winner_id || g.status === 'completed',
+            bracketGameId: g.bracket_game_id ?? g.id,
+          };
+        });
+        setBracketGames(mapped);
+      } else if (bracketSource.type === 'db' && bracketSource.bracketId) {
+        const response = await fetch(
+          `/brackets/${bracketSource.bracketId}/games`,
+          { credentials: 'include' },
+        );
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('Failed to load bracket games from DB:', errorData);
+          return;
+        }
+        const dbGames = await response.json();
+        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
+          const team1 =
+            g.team1_id != null && (g.team1_number != null || g.team1_name)
+              ? {
+                  teamNumber: String(g.team1_number ?? g.team1_name ?? ''),
+                  displayName:
+                    g.team1_display || g.team1_name || String(g.team1_number),
+                }
+              : null;
+          const team2 =
+            g.team2_id != null && (g.team2_number != null || g.team2_name)
+              ? {
+                  teamNumber: String(g.team2_number ?? g.team2_name ?? ''),
+                  displayName:
+                    g.team2_display || g.team2_name || String(g.team2_number),
+                }
+              : null;
+          return {
+            gameNumber: g.game_number,
+            bracketId: g.bracket_id ?? bracketSource.bracketId,
             team1,
             team2,
             hasWinner: !!g.winner_id || g.status === 'completed',
@@ -365,55 +419,75 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }));
   };
 
+  const handleBracketGameSelect = (selectedValue: string) => {
+    const selectedGame = findBracketGameBySelection(
+      bracketGames,
+      selectedValue,
+      isEventScopedBracket,
+    );
+
+    if (!selectedGame) {
+      setFormData((prev) => {
+        const next = { ...prev };
+        delete next.game_number;
+        delete next.bracket_game_id;
+        delete next.team_a_number;
+        delete next.team_a_name;
+        delete next.team_a_bracket_display;
+        delete next.team_b_number;
+        delete next.team_b_name;
+        delete next.team_b_bracket_display;
+        delete next.winner;
+        return next;
+      });
+      return;
+    }
+
+    const updates: Record<string, any> = {
+      game_number: selectedGame.gameNumber,
+      winner: '',
+    };
+
+    if (selectedGame.team1) {
+      const teamNumRaw = selectedGame.team1.teamNumber;
+      const teamNum = String(parseInt(teamNumRaw, 10) || teamNumRaw);
+      const fullName = lookupTeamName(teamNum);
+      updates.team_a_number = teamNum;
+      updates.team_a_name = fullName;
+      updates.team_a_bracket_display = selectedGame.team1.displayName;
+    } else {
+      updates.team_a_number = 'Bye';
+      updates.team_a_name = 'Bye';
+      updates.team_a_bracket_display = 'Bye';
+    }
+
+    if (selectedGame.team2) {
+      const teamNumRaw = selectedGame.team2.teamNumber;
+      const teamNum = String(parseInt(teamNumRaw, 10) || teamNumRaw);
+      const fullName = lookupTeamName(teamNum);
+      updates.team_b_number = teamNum;
+      updates.team_b_name = fullName;
+      updates.team_b_bracket_display = selectedGame.team2.displayName;
+    } else {
+      updates.team_b_number = 'Bye';
+      updates.team_b_name = 'Bye';
+      updates.team_b_bracket_display = 'Bye';
+    }
+
+    if (selectedGame.bracketGameId != null) {
+      updates.bracket_game_id = selectedGame.bracketGameId;
+    }
+
+    setFormData((prev) => ({ ...prev, ...updates }));
+  };
+
   const handleInputChange = (fieldId: string, value: any, field?: any) => {
     const updates: Record<string, any> = { [fieldId]: value };
 
     // Handle bracket game selection - populate both teams
     if (fieldId === 'game_number' && isHeadToHead) {
-      if (!value) {
-        updates.bracket_game_id = undefined;
-      }
-      const selectedGame = bracketGames.find(
-        (g) => g.gameNumber === Number(value),
-      );
-      if (selectedGame) {
-        if (selectedGame.team1) {
-          const teamNumRaw = selectedGame.team1.teamNumber;
-          // Normalize team number (strip leading zeros)
-          const teamNum = String(parseInt(teamNumRaw, 10) || teamNumRaw);
-          const fullName = lookupTeamName(teamNum);
-          updates.team_a_number = teamNum;
-          updates.team_a_name = fullName;
-          // Store the original bracket display format for when we write the winner
-          updates.team_a_bracket_display = selectedGame.team1.displayName;
-        } else {
-          updates.team_a_number = 'Bye';
-          updates.team_a_name = 'Bye';
-          updates.team_a_bracket_display = 'Bye';
-        }
-        if (selectedGame.team2) {
-          const teamNumRaw = selectedGame.team2.teamNumber;
-          // Normalize team number (strip leading zeros)
-          const teamNum = String(parseInt(teamNumRaw, 10) || teamNumRaw);
-          const fullName = lookupTeamName(teamNum);
-          updates.team_b_number = teamNum;
-          updates.team_b_name = fullName;
-          // Store the original bracket display format for when we write the winner
-          updates.team_b_bracket_display = selectedGame.team2.displayName;
-        } else {
-          updates.team_b_number = 'Bye';
-          updates.team_b_name = 'Bye';
-          updates.team_b_bracket_display = 'Bye';
-        }
-        // Store bracket_game_id for DB-backed submissions
-        if (selectedGame.bracketGameId != null) {
-          updates.bracket_game_id = selectedGame.bracketGameId;
-        } else {
-          delete updates.bracket_game_id;
-        }
-        // Reset winner when game changes
-        updates.winner = '';
-      }
+      handleBracketGameSelect(String(value));
+      return;
     }
 
     // Handle cascading fields (e.g., team number selection updates team name)
@@ -882,8 +956,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return (
         <select
           className="score-input"
-          value={value}
-          onChange={(e) => handleInputChange(field.id, e.target.value, field)}
+          value={
+            isEventScopedBracket
+              ? String(formData.bracket_game_id ?? '')
+              : value
+          }
+          onChange={(e) => handleBracketGameSelect(e.target.value)}
           required={field.required}
           style={{ width: '250px' }}
         >
@@ -894,11 +972,14 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             </option>
           ) : (
             availableGames.map((game) => {
-              const team1Display = game.team1?.displayName || 'Bye';
-              const team2Display = game.team2?.displayName || 'Bye';
               return (
-                <option key={game.gameNumber} value={game.gameNumber}>
-                  Game {game.gameNumber}: {team1Display} vs {team2Display}
+                <option
+                  key={
+                    game.bracketGameId ?? `${game.bracketId}-${game.gameNumber}`
+                  }
+                  value={getBracketGameOptionValue(game, isEventScopedBracket)}
+                >
+                  {formatBracketGameOptionLabel(game)}
                 </option>
               );
             })

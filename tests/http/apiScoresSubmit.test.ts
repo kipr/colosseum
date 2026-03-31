@@ -25,6 +25,8 @@ import {
 import apiRoutes from '../../src/server/routes/api';
 import scoresRoutes from '../../src/server/routes/scores';
 import { JUDGE_SESSION_TTL_MS } from '../../src/server/middleware/auth';
+import { calculateBracketRankings } from '../../src/server/services/bracketRankings';
+import { resetAllRateLimiters } from '../../src/server/middleware/rateLimit';
 
 describe('API Score Submit Routes', () => {
   let testDb: TestDb;
@@ -35,6 +37,7 @@ describe('API Score Submit Routes', () => {
     // Create fresh in-memory DB with schema
     testDb = await createTestDb();
     __setTestDatabaseAdapter(testDb.db);
+    resetAllRateLimiters();
 
     // Use admin auth so validation/business-logic tests bypass judge session
     const app = createTestApp({ user: { id: 1, is_admin: true } });
@@ -49,6 +52,7 @@ describe('API Score Submit Routes', () => {
     await server.close();
     __setTestDatabaseAdapter(null);
     testDb.close();
+    resetAllRateLimiters();
   });
 
   // ==========================================================================
@@ -714,7 +718,11 @@ describe('API Score Submit Routes', () => {
           });
 
           expect(submitRes.status).toBe(200);
-          const submission = submitRes.json as { id: number; status: string; reviewed_by: number | null };
+          const submission = submitRes.json as {
+            id: number;
+            status: string;
+            reviewed_by: number | null;
+          };
           expect(submission.status).toBe('accepted');
           expect(submission.reviewed_by).toBeNull();
 
@@ -823,6 +831,192 @@ describe('API Score Submit Routes', () => {
           expect(submission.reviewed_by).toBeNull();
         });
 
+        it('accepts scores from two brackets through one template and keeps rankings bracket-scoped', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_all',
+          });
+          const template = await seedScoresheetTemplate(testDb.db, {
+            name: 'Event-Wide Bracket Template',
+            created_by: null,
+            spreadsheet_config_id: null,
+          });
+
+          const bracketA = await seedBracket(testDb.db, {
+            event_id: event.id,
+            name: 'Alpha',
+            bracket_size: 4,
+          });
+          const alpha1 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 11,
+            team_name: 'Alpha One',
+          });
+          const alpha2 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 12,
+            team_name: 'Alpha Two',
+          });
+          const alpha3 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 13,
+            team_name: 'Alpha Three',
+          });
+          await testDb.db.run(
+            `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
+             VALUES (?, ?, 1, 0), (?, ?, 2, 0), (?, ?, 3, 0)`,
+            [
+              bracketA.id,
+              alpha1.id,
+              bracketA.id,
+              alpha2.id,
+              bracketA.id,
+              alpha3.id,
+            ],
+          );
+          const alphaFinal = await seedBracketGame(testDb.db, {
+            bracket_id: bracketA.id,
+            game_number: 2,
+            round_name: 'Final',
+            round_number: 2,
+            bracket_side: 'finals',
+            team1_id: alpha3.id,
+            status: 'pending',
+          });
+          const alphaSemi = await seedBracketGame(testDb.db, {
+            bracket_id: bracketA.id,
+            game_number: 1,
+            round_name: 'Semi',
+            round_number: 1,
+            bracket_side: 'winners',
+            team1_id: alpha1.id,
+            team2_id: alpha2.id,
+            status: 'ready',
+          });
+          await testDb.db.run(
+            `UPDATE bracket_games
+             SET winner_advances_to_id = ?, winner_slot = 'team2'
+             WHERE id = ?`,
+            [alphaFinal.id, alphaSemi.id],
+          );
+
+          const bracketB = await seedBracket(testDb.db, {
+            event_id: event.id,
+            name: 'Beta',
+            bracket_size: 2,
+          });
+          const beta1 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 21,
+            team_name: 'Beta One',
+          });
+          const beta2 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 22,
+            team_name: 'Beta Two',
+          });
+          await testDb.db.run(
+            `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
+             VALUES (?, ?, 1, 0), (?, ?, 2, 0)`,
+            [bracketB.id, beta1.id, bracketB.id, beta2.id],
+          );
+          await testDb.db.run(
+            `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank)
+             VALUES (?, ?, ?), (?, ?, ?)`,
+            [beta1.id, 100, 1, beta2.id, 90, 2],
+          );
+          const betaFinal = await seedBracketGame(testDb.db, {
+            bracket_id: bracketB.id,
+            game_number: 1,
+            round_name: 'Final',
+            round_number: 1,
+            bracket_side: 'finals',
+            team1_id: beta1.id,
+            team2_id: beta2.id,
+            status: 'ready',
+          });
+
+          const alphaSubmit = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            participantName: '11 - Alpha One',
+            matchId: '1',
+            scoreData: {
+              winner_team_id: { value: alpha1.id, type: 'number' },
+              team1_score: { value: 140, type: 'number' },
+              team2_score: { value: 120, type: 'number' },
+            },
+            isHeadToHead: true,
+            eventId: event.id,
+            scoreType: 'bracket',
+            bracket_game_id: alphaSemi.id,
+          });
+          expect(alphaSubmit.status).toBe(200);
+
+          const betaSubmit = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            participantName: '22 - Beta Two',
+            matchId: '1',
+            scoreData: {
+              winner_team_id: { value: beta2.id, type: 'number' },
+              team1_score: { value: 95, type: 'number' },
+              team2_score: { value: 110, type: 'number' },
+            },
+            isHeadToHead: true,
+            eventId: event.id,
+            scoreType: 'bracket',
+            bracket_game_id: betaFinal.id,
+          });
+          expect(betaSubmit.status).toBe(200);
+
+          const updatedAlphaSemi = await testDb.db.get(
+            'SELECT winner_id, status, score_submission_id FROM bracket_games WHERE id = ?',
+            [alphaSemi.id],
+          );
+          expect(updatedAlphaSemi?.winner_id).toBe(alpha1.id);
+          expect(updatedAlphaSemi?.status).toBe('completed');
+
+          const updatedAlphaFinal = await testDb.db.get(
+            'SELECT team1_id, team2_id, status FROM bracket_games WHERE id = ?',
+            [alphaFinal.id],
+          );
+          expect(updatedAlphaFinal?.team1_id).toBe(alpha3.id);
+          expect(updatedAlphaFinal?.team2_id).toBe(alpha1.id);
+          expect(updatedAlphaFinal?.status).toBe('ready');
+
+          const updatedBetaFinal = await testDb.db.get(
+            'SELECT winner_id, loser_id, status FROM bracket_games WHERE id = ?',
+            [betaFinal.id],
+          );
+          expect(updatedBetaFinal?.winner_id).toBe(beta2.id);
+          expect(updatedBetaFinal?.loser_id).toBe(beta1.id);
+          expect(updatedBetaFinal?.status).toBe('completed');
+
+          const betaRankings = await calculateBracketRankings(bracketB.id);
+          expect(betaRankings.teamsRanked).toBe(2);
+
+          const betaEntries = await testDb.db.all(
+            `SELECT team_id, final_rank
+             FROM bracket_entries
+             WHERE bracket_id = ?
+             ORDER BY final_rank ASC`,
+            [bracketB.id],
+          );
+          expect(betaEntries).toEqual([
+            { team_id: beta2.id, final_rank: 1 },
+            { team_id: beta1.id, final_rank: 2 },
+          ]);
+
+          const alphaRanks = await testDb.db.all(
+            'SELECT team_id, final_rank FROM bracket_entries WHERE bracket_id = ? ORDER BY seed_position ASC',
+            [bracketA.id],
+          );
+          expect(
+            alphaRanks.every(
+              (entry: { final_rank: number | null }) =>
+                entry.final_rank == null,
+            ),
+          ).toBe(true);
+        });
+
         it('allows reverting auto-accepted bracket score via revert-event', async () => {
           const event = await seedEvent(testDb.db, {
             score_accept_mode: 'auto_accept_all',
@@ -868,7 +1062,11 @@ describe('API Score Submit Routes', () => {
           });
 
           expect(submitRes.status).toBe(200);
-          const submission = submitRes.json as { id: number; status: string; reviewed_by: number | null };
+          const submission = submitRes.json as {
+            id: number;
+            status: string;
+            reviewed_by: number | null;
+          };
           expect(submission.status).toBe('accepted');
           expect(submission.reviewed_by).toBeNull();
 

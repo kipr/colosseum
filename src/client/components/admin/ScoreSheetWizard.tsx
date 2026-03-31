@@ -1,16 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import { useEvent } from '../../contexts/EventContext';
+import { buildDoubleEliminationSchema } from '../scoresheetUtils';
 import '../Modal.css';
-
-interface Bracket {
-  id: number;
-  event_id: number;
-  name: string;
-  bracket_size: number;
-  actual_team_count: number | null;
-  status: string;
-}
 
 interface FieldTemplate {
   id: number;
@@ -30,7 +22,7 @@ interface ScoreSheetWizardProps {
   onCancel: () => void;
 }
 
-type StepType = 'type' | 'template' | 'basic' | 'destination' | 'review';
+type StepType = 'type' | 'template' | 'basic' | 'review';
 type SheetType = 'seeding' | 'de';
 
 export default function ScoreSheetWizard({
@@ -48,20 +40,11 @@ export default function ScoreSheetWizard({
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
 
-  // Data sources (teams come from DB via selected event)
   const { selectedEvent } = useEvent();
-  const [selectedBracket, setSelectedBracket] = useState<Bracket | null>(null); // For DE only (DB bracket)
-  const [brackets, setBrackets] = useState<Bracket[]>([]);
 
   useEffect(() => {
     loadFieldTemplates();
   }, []);
-
-  useEffect(() => {
-    if (currentStep === 'destination' && selectedEvent?.id) {
-      loadBrackets();
-    }
-  }, [currentStep, selectedEvent?.id]);
 
   // Load field templates when entering template step
   useEffect(() => {
@@ -85,25 +68,6 @@ export default function ScoreSheetWizard({
       setFieldTemplates(templatesWithParsedFields);
     } catch (error) {
       console.error('Error loading field templates:', error);
-    }
-  };
-
-  const loadBrackets = async () => {
-    if (!selectedEvent?.id) return;
-    try {
-      const response = await fetch(`/brackets/event/${selectedEvent.id}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load brackets');
-      const data = await response.json();
-      setBrackets(data);
-      if (!data.some((b: Bracket) => b.id === selectedBracket?.id)) {
-        setSelectedBracket(null);
-      }
-    } catch (error) {
-      console.error('Error loading brackets:', error);
-      setBrackets([]);
-      setSelectedBracket(null);
     }
   };
 
@@ -223,174 +187,11 @@ export default function ScoreSheetWizard({
   };
 
   const generateDESchema = () => {
-    const schema: any = {
-      layout: 'two-column',
-      mode: 'head-to-head',
+    return buildDoubleEliminationSchema({
       title: name || 'Double Elimination Score Sheet',
       eventId: selectedEvent?.id ?? null,
-      scoreDestination: 'db',
-      bracketSource: {
-        type: 'db',
-        bracketId: selectedBracket?.id ?? null,
-      },
-      teamsDataSource: {
-        type: 'db',
-        eventId: selectedEvent?.id,
-        teamNumberField: 'team_number',
-        teamNameField: 'team_name',
-      },
-      fields: [],
-    };
-
-    // Game selection (always included)
-    schema.fields.push({
-      id: 'game_number',
-      label: 'Game',
-      type: 'dropdown',
-      required: true,
-      dataSource: {
-        type: 'bracket',
-      },
-      cascades: {
-        team_a_number: 'team1.teamNumber',
-        team_a_name: 'team1.displayName',
-        team_b_number: 'team2.teamNumber',
-        team_b_name: 'team2.displayName',
-      },
+      templateFields: selectedTemplate?.fields ?? null,
     });
-
-    // Team info fields (always included)
-    schema.fields.push({
-      id: 'team_a_number',
-      label: 'Team A Number',
-      type: 'text',
-      required: true,
-      autoPopulated: true,
-      placeholder: 'Select game first',
-    });
-
-    schema.fields.push({
-      id: 'team_a_name',
-      label: 'Team A Name',
-      type: 'text',
-      required: true,
-      autoPopulated: true,
-      placeholder: 'Select game first',
-    });
-
-    schema.fields.push({
-      id: 'team_b_number',
-      label: 'Team B Number',
-      type: 'text',
-      required: true,
-      autoPopulated: true,
-      placeholder: 'Select game first',
-    });
-
-    schema.fields.push({
-      id: 'team_b_name',
-      label: 'Team B Name',
-      type: 'text',
-      required: true,
-      autoPopulated: true,
-      placeholder: 'Select game first',
-    });
-
-    // Winner selector (always included)
-    schema.fields.push({
-      id: 'winner',
-      label: 'Winner',
-      type: 'winner-select',
-      required: true,
-      options: [
-        { value: 'team_a', label: 'Team A Wins' },
-        { value: 'team_b', label: 'Team B Wins' },
-      ],
-    });
-
-    // Add scoring fields from template if selected
-    if (selectedTemplate && selectedTemplate.fields) {
-      // When using a template for DE, we need to adapt Side A/B to Team A/B
-      const adaptedFields = selectedTemplate.fields.map((field) => {
-        const newField = { ...field };
-
-        // Replace side_a with team_a in IDs and formulas
-        if (newField.id) {
-          newField.id = newField.id
-            .replace(/side_a/g, 'team_a')
-            .replace(/side_b/g, 'team_b');
-        }
-        if (newField.formula) {
-          newField.formula = newField.formula
-            .replace(/side_a/g, 'team_a')
-            .replace(/side_b/g, 'team_b');
-        }
-        // Update section header labels
-        if (newField.type === 'section_header') {
-          if (newField.label === 'SIDE A') newField.label = 'TEAM A';
-          if (newField.label === 'SIDE B') newField.label = 'TEAM B';
-        }
-
-        return newField;
-      });
-
-      schema.fields.push(...adaptedFields);
-    } else {
-      // Default basic scoring fields
-      schema.fields.push({
-        id: 'section_header_team_a',
-        label: 'TEAM A',
-        type: 'section_header',
-        column: 'left',
-      });
-
-      schema.fields.push({
-        id: 'team_a_score',
-        label: 'Team A Score',
-        type: 'number',
-        column: 'left',
-        required: false,
-        min: 0,
-        step: 1,
-      });
-
-      schema.fields.push({
-        id: 'team_a_total',
-        label: 'TEAM A TOTAL',
-        type: 'calculated',
-        column: 'left',
-        isTotal: true,
-        formula: 'team_a_score',
-      });
-
-      schema.fields.push({
-        id: 'section_header_team_b',
-        label: 'TEAM B',
-        type: 'section_header',
-        column: 'right',
-      });
-
-      schema.fields.push({
-        id: 'team_b_score',
-        label: 'Team B Score',
-        type: 'number',
-        column: 'right',
-        required: false,
-        min: 0,
-        step: 1,
-      });
-
-      schema.fields.push({
-        id: 'team_b_total',
-        label: 'TEAM B TOTAL',
-        type: 'calculated',
-        column: 'right',
-        isTotal: true,
-        formula: 'team_b_score',
-      });
-    }
-
-    return schema;
   };
 
   const handleNext = () => {
@@ -405,22 +206,6 @@ export default function ScoreSheetWizard({
       }
       if (!selectedEvent?.id) {
         alert('Please select an event first. Teams are loaded from the event.');
-        return;
-      }
-      // Seeding: scores go to DB, skip destination step
-      // DE: need bracket sheet for games
-      if (sheetType === 'seeding') {
-        setCurrentStep('review');
-      } else {
-        setCurrentStep('destination');
-      }
-    } else if (currentStep === 'destination') {
-      if (!selectedBracket) {
-        alert(
-          brackets.length === 0
-            ? 'No brackets found for this event. Create a bracket first.'
-            : 'Please select a bracket',
-        );
         return;
       }
       setCurrentStep('review');
@@ -443,10 +228,8 @@ export default function ScoreSheetWizard({
       setCurrentStep('type');
     } else if (currentStep === 'basic') {
       setCurrentStep('template');
-    } else if (currentStep === 'destination') {
-      setCurrentStep('basic');
     } else if (currentStep === 'review') {
-      setCurrentStep(sheetType === 'seeding' ? 'basic' : 'destination');
+      setCurrentStep('basic');
     }
   };
 
@@ -454,11 +237,11 @@ export default function ScoreSheetWizard({
     const steps: StepType[] =
       sheetType === 'seeding'
         ? ['type', 'template', 'basic', 'review']
-        : ['type', 'template', 'basic', 'destination', 'review'];
+        : ['type', 'template', 'basic', 'review'];
     return steps.indexOf(currentStep) + 1;
   };
 
-  const getTotalSteps = () => (sheetType === 'seeding' ? 4 : 5);
+  const getTotalSteps = () => 4;
 
   return (
     <div
@@ -696,43 +479,7 @@ export default function ScoreSheetWizard({
           </div>
         )}
 
-        {/* Step 4: Destination (DE only - select bracket) */}
-        {currentStep === 'destination' && (
-          <div>
-            <h4>Bracket</h4>
-
-            <div className="form-group">
-              <label>Bracket *</label>
-              <select
-                className="field-input"
-                value={selectedBracket?.id || ''}
-                onChange={(e) => {
-                  const id = Number(e.target.value);
-                  const bracket = brackets.find((b) => b.id === id) || null;
-                  setSelectedBracket(bracket);
-                }}
-              >
-                <option value="">Select bracket...</option>
-                {brackets.length === 0 ? (
-                  <option value="" disabled>
-                    No brackets found for this event. Create a bracket first.
-                  </option>
-                ) : (
-                  brackets.map((bracket) => (
-                    <option key={bracket.id} value={bracket.id}>
-                      {bracket.name} ({bracket.bracket_size}-team)
-                    </option>
-                  ))
-                )}
-              </select>
-              <small>
-                Games and winners are stored in the database for this bracket
-              </small>
-            </div>
-          </div>
-        )}
-
-        {/* Step 6: Review */}
+        {/* Step 4: Review */}
         {currentStep === 'review' && (
           <div>
             <h4>Review & Generate</h4>
@@ -781,10 +528,10 @@ export default function ScoreSheetWizard({
                   <strong>Score Destination:</strong> Database ( seeding_scores)
                 </div>
               )}
-              {sheetType === 'de' && selectedBracket && (
+              {sheetType === 'de' && (
                 <div style={{ marginBottom: '0.75rem' }}>
-                  <strong>Bracket:</strong> {selectedBracket.name} (
-                  {selectedBracket.bracket_size}-team)
+                  <strong>Bracket Games:</strong> Database (all brackets in{' '}
+                  {selectedEvent?.name || selectedEvent?.id || 'this event'})
                 </div>
               )}
             </div>

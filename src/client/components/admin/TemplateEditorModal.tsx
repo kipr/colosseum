@@ -1,5 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from 'react';
+import {
+  getBracketSourceEventId,
+  isEventScopedBracketSource,
+} from '../scoresheetUtils';
 import '../Modal.css';
 
 interface TemplateEditorModalProps {
@@ -40,20 +44,27 @@ export default function TemplateEditorModal({
   const [gameAreasImage, setGameAreasImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [brackets, setBrackets] = useState<Bracket[]>([]);
-  const [selectedBracketId, setSelectedBracketId] = useState<number | ''>('');
   const [isBracketScoreSheet, setIsBracketScoreSheet] = useState(false);
+  const [legacyBracketId, setLegacyBracketId] = useState<number | null>(null);
+  const [eventScopedBracketSource, setEventScopedBracketSource] =
+    useState(false);
 
   const updateBracketStateFromSchema = (schemaData: any) => {
     const isBracket =
       schemaData?.bracketSource?.type === 'db' ||
       schemaData?.mode === 'head-to-head';
     setIsBracketScoreSheet(isBracket);
-
-    if (isBracket) {
-      setSelectedBracketId(schemaData?.bracketSource?.bracketId ?? '');
-    } else {
-      setSelectedBracketId('');
-    }
+    setLegacyBracketId(
+      typeof schemaData?.bracketSource?.bracketId === 'number'
+        ? schemaData.bracketSource.bracketId
+        : null,
+    );
+    setEventScopedBracketSource(
+      isEventScopedBracketSource(
+        schemaData?.bracketSource,
+        schemaData?.eventId,
+      ),
+    );
   };
 
   const loadBrackets = async () => {
@@ -109,7 +120,8 @@ export default function TemplateEditorModal({
         ),
       );
       setIsBracketScoreSheet(false);
-      setSelectedBracketId('');
+      setLegacyBracketId(null);
+      setEventScopedBracketSource(false);
     }
   }, [templateId, initialData]);
 
@@ -189,19 +201,6 @@ export default function TemplateEditorModal({
     try {
       const parsedSchema = JSON.parse(schema);
 
-      if (
-        (parsedSchema?.bracketSource?.type === 'db' ||
-          parsedSchema?.mode === 'head-to-head') &&
-        !selectedBracketId
-      ) {
-        alert('Please select a bracket for this bracket score sheet.');
-        return;
-      }
-
-      if (parsedSchema?.bracketSource?.type === 'db') {
-        parsedSchema.bracketSource.bracketId = selectedBracketId || null;
-      }
-
       // Add game areas image to schema if present
       if (gameAreasImage) {
         parsedSchema.gameAreasImage = gameAreasImage;
@@ -263,6 +262,20 @@ export default function TemplateEditorModal({
     document.body.appendChild(messageDiv);
     setTimeout(() => messageDiv.remove(), 3000);
   };
+
+  const legacyBracket = legacyBracketId
+    ? (brackets.find((bracket) => bracket.id === legacyBracketId) ?? null)
+    : null;
+  const bracketSourceEventId = getBracketSourceEventId(
+    (() => {
+      try {
+        return JSON.parse(schema)?.bracketSource;
+      } catch {
+        return null;
+      }
+    })(),
+    eventId,
+  );
 
   return (
     <div className="modal show" onClick={onClose}>
@@ -434,36 +447,50 @@ export default function TemplateEditorModal({
             </div>
             {isBracketScoreSheet && (
               <div className="form-group">
-                <label>
-                  Bracket{' '}
-                  <span style={{ color: 'var(--danger-color)' }}>*</span>
-                </label>
-                <select
-                  className="field-input"
-                  value={selectedBracketId}
-                  onChange={(e) =>
-                    setSelectedBracketId(
-                      e.target.value ? Number(e.target.value) : '',
-                    )
-                  }
-                  required
+                <label>Bracket Source</label>
+                <div
+                  style={{
+                    background: 'var(--bg-color)',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '0.5rem',
+                    padding: '0.9rem 1rem',
+                  }}
                 >
-                  <option value="">Select bracket...</option>
-                  {brackets.length === 0 ? (
-                    <option value="" disabled>
-                      No brackets found for this event. Create one first.
-                    </option>
-                  ) : (
-                    brackets.map((bracket) => (
-                      <option key={bracket.id} value={bracket.id}>
-                        {bracket.name} ({bracket.bracket_size}-team)
-                      </option>
-                    ))
+                  <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>
+                    {eventScopedBracketSource
+                      ? 'Event-wide bracket games'
+                      : 'Legacy bracket-scoped template'}
+                  </div>
+                  <div
+                    style={{
+                      color: 'var(--secondary-color)',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    {eventScopedBracketSource
+                      ? `Reads bracket games across event ${bracketSourceEventId ?? eventId}.`
+                      : 'Older templates can still keep a legacy bracketId in JSON.'}
+                  </div>
+                  {legacyBracketId != null && (
+                    <div
+                      style={{
+                        marginTop: '0.75rem',
+                        fontSize: '0.9rem',
+                        color: 'var(--secondary-color)',
+                      }}
+                    >
+                      Legacy bracket metadata:{' '}
+                      <strong>
+                        {legacyBracket
+                          ? `${legacyBracket.name} (${legacyBracket.bracket_size}-team)`
+                          : `Bracket #${legacyBracketId}`}
+                      </strong>
+                    </div>
                   )}
-                </select>
+                </div>
                 <small>
-                  This score sheet will read and write results for the selected
-                  bracket.
+                  Saving will preserve any legacy `bracketId` still present in
+                  the JSON, but new templates no longer require one.
                 </small>
               </div>
             )}
