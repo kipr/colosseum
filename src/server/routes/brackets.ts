@@ -87,6 +87,78 @@ router.get('/event/:eventId', async (req: Request, res: Response) => {
   }
 });
 
+// GET /brackets/event/:eventId/games - List bracket games across an event (public)
+router.get('/event/:eventId/games', async (req: Request, res: Response) => {
+  try {
+    const eventIdNum = parseInt(req.params.eventId, 10);
+    if (Number.isNaN(eventIdNum)) {
+      return res.status(400).json({ error: 'Invalid event ID' });
+    }
+
+    if (await isEventArchived(eventIdNum)) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const db = await getDatabase();
+    const { eligible } = req.query;
+    const onlyScoreable = eligible === 'scoreable';
+    const whereClauses = ['b.event_id = ?'];
+    const params: Array<string | number> = [eventIdNum, eventIdNum];
+
+    if (onlyScoreable) {
+      whereClauses.push('bg.team1_id IS NOT NULL');
+      whereClauses.push('bg.team2_id IS NOT NULL');
+      whereClauses.push("bg.status <> 'completed'");
+    }
+
+    const games = await db.all(
+      `SELECT
+         bg.id AS bracket_game_id,
+         bg.id,
+         bg.bracket_id,
+         b.name AS bracket_name,
+         bg.game_number,
+         bg.round_name,
+         bg.bracket_side,
+         bg.status,
+         bg.winner_id,
+         gq.queue_position,
+         bg.team1_id,
+         t1.team_number AS team1_number,
+         t1.team_name AS team1_name,
+         t1.display_name AS team1_display,
+         bg.team2_id,
+         t2.team_number AS team2_number,
+         t2.team_name AS team2_name,
+         t2.display_name AS team2_display,
+         w.team_number AS winner_number,
+         w.team_name AS winner_name,
+         w.display_name AS winner_display
+       FROM bracket_games bg
+       JOIN brackets b ON bg.bracket_id = b.id
+       LEFT JOIN game_queue gq
+         ON gq.event_id = ?
+        AND gq.bracket_game_id = bg.id
+        AND gq.queue_type = 'bracket'
+       LEFT JOIN teams t1 ON bg.team1_id = t1.id
+       LEFT JOIN teams t2 ON bg.team2_id = t2.id
+       LEFT JOIN teams w ON bg.winner_id = w.id
+       WHERE ${whereClauses.join(' AND ')}
+       ORDER BY
+         CASE WHEN gq.queue_position IS NULL THEN 1 ELSE 0 END ASC,
+         gq.queue_position ASC,
+         b.name ASC,
+         bg.game_number ASC`,
+      params,
+    );
+
+    res.json(games);
+  } catch (error) {
+    console.error('Error fetching event bracket games:', error);
+    res.status(500).json({ error: 'Failed to fetch bracket games' });
+  }
+});
+
 // GET /brackets/templates - Get bracket templates (public)
 // Must be registered before /:id to avoid "templates" being matched as bracket id
 router.get('/templates', async (req: Request, res: Response) => {

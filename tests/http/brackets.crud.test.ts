@@ -17,6 +17,7 @@ import {
   seedTeam,
   seedBracket,
   seedBracketGame,
+  seedQueueItem,
 } from './helpers/seed';
 import bracketsRoutes from '../../src/server/routes/brackets';
 
@@ -521,6 +522,119 @@ describe('Brackets CRUD & Game Management', () => {
   // ==========================================================================
   // GET /brackets/:id/games
   // ==========================================================================
+
+  describe('GET /brackets/event/:eventId/games', () => {
+    it('returns event-wide games with bracket metadata and queue-first ordering', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracketA = await seedBracket(testDb.db, {
+        event_id: event.id,
+        name: 'Alpha',
+      });
+      const bracketB = await seedBracket(testDb.db, {
+        event_id: event.id,
+        name: 'Beta',
+      });
+      const alpha1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const alpha2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+      const beta1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 201,
+      });
+      const beta2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 202,
+      });
+
+      const queuedGame = await seedBracketGame(testDb.db, {
+        bracket_id: bracketB.id,
+        game_number: 2,
+        team1_id: beta1.id,
+        team2_id: beta2.id,
+        status: 'ready',
+      });
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: queuedGame.id,
+        status: 'queued',
+      });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracketA.id,
+        game_number: 1,
+        team1_id: alpha1.id,
+        team2_id: alpha2.id,
+        status: 'ready',
+      });
+
+      const res = await http.get(`${baseUrl}/brackets/event/${event.id}/games`);
+      expect(res.status).toBe(200);
+
+      const games = res.json as Array<{
+        bracket_game_id: number;
+        bracket_id: number;
+        bracket_name: string;
+        game_number: number;
+        queue_position: number | null;
+      }>;
+      expect(games).toHaveLength(2);
+      expect(games[0].bracket_game_id).toBe(queuedGame.id);
+      expect(games[0].bracket_name).toBe('Beta');
+      expect(games[0].queue_position).toBe(1);
+      expect(games[1].bracket_name).toBe('Alpha');
+      expect(games[1].game_number).toBe(1);
+      expect(games[1].bracket_id).toBe(bracketA.id);
+    });
+
+    it('filters to scoreable games when eligible=scoreable', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'ready',
+      });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 2,
+        team1_id: team1.id,
+        team2_id: null,
+        status: 'pending',
+      });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 3,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'completed',
+      });
+
+      const res = await http.get(
+        `${baseUrl}/brackets/event/${event.id}/games?eligible=scoreable`,
+      );
+      expect(res.status).toBe(200);
+
+      const games = res.json as Array<{ game_number: number }>;
+      expect(games.map((game) => game.game_number)).toEqual([1]);
+    });
+  });
 
   describe('GET /brackets/:id/games', () => {
     it('returns games with team info', async () => {
