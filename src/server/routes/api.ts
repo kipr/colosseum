@@ -190,8 +190,8 @@ router.post(
           ip_address: req.ip ?? null,
         });
 
-        // Remove from active queue as soon as the score is submitted.
-        // If the submission is later rejected, scores.ts will restore it.
+        // Mark queue as scored (pending submission) as soon as the score is submitted.
+        // On accept, the queue row is removed; reject/revert restores to queued.
         if (scoreType === 'seeding' && resolvedTeamId) {
           const roundNumber =
             scoreData.round?.value ?? scoreData.round_number?.value;

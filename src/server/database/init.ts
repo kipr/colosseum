@@ -2,6 +2,79 @@ import { getDatabase, Database } from './connection';
 import fs from 'fs';
 import path from 'path';
 
+/**
+ * SQLite: rebuild `game_queue` when an older schema used legacy status values.
+ * Must run before triggers/indexes that assume the v2 CHECK (see MIGRATION block below).
+ */
+async function migrateGameQueueStatusV2SQLite(db: Database): Promise<void> {
+  const row = await db.get<{ sql: string | null }>(
+    `SELECT sql FROM sqlite_master WHERE type='table' AND name='game_queue'`,
+  );
+  if (!row?.sql?.includes('skipped')) {
+    return;
+  }
+
+  await db.exec(`PRAGMA foreign_keys=OFF`);
+  try {
+    await db.transaction(async (tx) => {
+      await tx.exec(`DROP TABLE IF EXISTS game_queue_new`);
+      await tx.exec(`
+        CREATE TABLE game_queue_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
+          seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+          seeding_round INTEGER,
+          queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+          queue_position INTEGER NOT NULL,
+          status TEXT DEFAULT 'queued'
+            CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
+          called_at DATETIME,
+          table_number INTEGER,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          CHECK (
+            (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
+            OR
+            (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL)
+          )
+        )
+      `);
+      await tx.exec(`
+        INSERT INTO game_queue_new (
+          id, event_id, bracket_game_id, seeding_team_id, seeding_round,
+          queue_type, queue_position, status, called_at, table_number, created_at, updated_at
+        )
+        SELECT
+          id, event_id, bracket_game_id, seeding_team_id, seeding_round,
+          queue_type, queue_position,
+          CASE status
+            WHEN 'in_progress' THEN 'on_table'
+            WHEN 'completed' THEN 'scored'
+            WHEN 'skipped' THEN 'queued'
+            ELSE status
+          END,
+          called_at, table_number, created_at, updated_at
+        FROM game_queue
+      `);
+      await tx.exec(`DROP TABLE game_queue`);
+      await tx.exec(`ALTER TABLE game_queue_new RENAME TO game_queue`);
+    });
+  } finally {
+    await db.exec(`PRAGMA foreign_keys=ON`);
+  }
+
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_event ON game_queue(event_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_position ON game_queue(event_id, queue_position)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
+  );
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 const usePostgres = isProduction || !!process.env.DATABASE_URL;
 
@@ -464,7 +537,7 @@ export async function initializePostgres(db: Database): Promise<void> {
       queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
+        CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
       called_at TIMESTAMP,
       table_number INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -494,6 +567,58 @@ export async function initializePostgres(db: Database): Promise<void> {
     `);
   } catch {
     // FK might already exist
+  }
+
+  // ============================================================================
+  // MIGRATION: game_queue.status enum v2 (Postgres)
+  // Maps legacy values, then replaces CHECK constraint with queued/called/arrived/on_table/scored.
+  // ============================================================================
+  try {
+    await db.exec(`
+      UPDATE game_queue SET status = 'on_table' WHERE status = 'in_progress';
+      UPDATE game_queue SET status = 'scored' WHERE status = 'completed';
+      UPDATE game_queue SET status = 'queued' WHERE status = 'skipped';
+    `);
+    await db.exec(`
+      DO $$
+      DECLARE
+        r RECORD;
+      BEGIN
+        FOR r IN (
+          SELECT c.conname
+          FROM pg_constraint c
+          JOIN pg_class t ON c.conrelid = t.oid
+          WHERE t.relname = 'game_queue'
+            AND c.contype = 'c'
+            AND pg_get_constraintdef(c.oid) LIKE '%status%'
+            AND (
+              pg_get_constraintdef(c.oid) LIKE '%in_progress%'
+              OR pg_get_constraintdef(c.oid) LIKE '%skipped%'
+              OR pg_get_constraintdef(c.oid) LIKE '%completed%'
+            )
+        ) LOOP
+          EXECUTE format('ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS %I', r.conname);
+        END LOOP;
+      END $$;
+    `);
+    await db.exec(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint c
+          JOIN pg_class t ON c.conrelid = t.oid
+          WHERE t.relname = 'game_queue'
+            AND c.contype = 'c'
+            AND pg_get_constraintdef(c.oid) LIKE '%arrived%'
+        ) THEN
+          ALTER TABLE game_queue ADD CONSTRAINT game_queue_status_v2_check
+            CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored'));
+        END IF;
+      END $$;
+    `);
+  } catch (e) {
+    console.warn('game_queue status v2 migration (Postgres):', e);
   }
 
   // ============================================================================
@@ -1283,7 +1408,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'in_progress', 'completed', 'skipped')),
+        CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
       called_at DATETIME,
       table_number INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1295,6 +1420,16 @@ export async function initializeSQLite(db: Database): Promise<void> {
       )
     )
   `);
+
+  // ============================================================================
+  // MIGRATION: game_queue.status enum v2 (SQLite)
+  // Rebuild table when legacy CHECK listed skipped/in_progress/completed.
+  // ============================================================================
+  try {
+    await migrateGameQueueStatusV2SQLite(db);
+  } catch (e) {
+    console.warn('game_queue status v2 migration (SQLite):', e);
+  }
 
   // ============================================================================
   // BRACKET TEMPLATES (For generating bracket structures)

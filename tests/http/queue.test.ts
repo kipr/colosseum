@@ -145,7 +145,7 @@ describe('Queue Routes', () => {
         queue_position: 3,
         seeding_team_id: team.id,
         seeding_round: 3,
-        status: 'completed',
+        status: 'scored',
       });
 
       const res = await http.get(
@@ -178,11 +178,11 @@ describe('Queue Routes', () => {
         queue_position: 2,
         seeding_team_id: team.id,
         seeding_round: 2,
-        status: 'in_progress',
+        status: 'on_table',
       });
 
       const res = await http.get(
-        `${baseUrl}/queue/event/${event.id}?status=queued|in_progress`,
+        `${baseUrl}/queue/event/${event.id}?status=queued|on_table`,
       );
 
       expect(res.status).toBe(200);
@@ -262,7 +262,7 @@ describe('Queue Routes', () => {
       expect(items[0].bracket_name).toBe('Main Bracket');
     });
 
-    it('with sync=1 and queue_type=seeding populates team×round items and sets completed when seeding_scores exist', async () => {
+    it('with sync=1 and queue_type=seeding populates team×round items and removes queue row when seeding_scores exist', async () => {
       const event = await seedEvent(testDb.db, { seeding_rounds: 2 });
       const team1 = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -288,16 +288,16 @@ describe('Queue Routes', () => {
         seeding_round: number;
         status: string;
       }[];
-      expect(items.length).toBe(4);
-      const completed = items.find(
+      expect(items.length).toBe(3);
+      const done = items.find(
         (i) => i.seeding_team_id === team1.id && i.seeding_round === 1,
       );
-      expect(completed?.status).toBe('completed');
+      expect(done).toBeUndefined();
       const queued = items.filter((i) => i.status === 'queued');
       expect(queued.length).toBe(3);
     });
 
-    it('with sync=1 and queue_type=seeding marks item completed when score submission is accepted', async () => {
+    it('with sync=1 and queue_type=seeding removes item when score submission is accepted', async () => {
       const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -326,10 +326,7 @@ describe('Queue Routes', () => {
         seeding_round: number;
         status: string;
       }[];
-      expect(items.length).toBe(1);
-      expect(items[0].seeding_team_id).toBe(team.id);
-      expect(items[0].seeding_round).toBe(1);
-      expect(items[0].status).toBe('completed');
+      expect(items.length).toBe(0);
     });
 
     it('with sync=1 and queue_type=seeding keeps item queued when score submission is pending (reverted)', async () => {
@@ -400,7 +397,7 @@ describe('Queue Routes', () => {
       expect(items.every((i) => i.status === 'queued')).toBe(true);
     });
 
-    it('with sync=1 and queue_type=bracket marks item completed when score submission is accepted', async () => {
+    it('with sync=1 and queue_type=bracket removes item when score submission is accepted', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -439,9 +436,7 @@ describe('Queue Routes', () => {
         bracket_game_id: number;
         status: string;
       }[];
-      expect(items.length).toBe(1);
-      expect(items[0].bracket_game_id).toBe(game.id);
-      expect(items[0].status).toBe('completed');
+      expect(items.length).toBe(0);
     });
 
     it('with sync=1 and queue_type=bracket keeps item queued when score submission is pending (reverted)', async () => {
@@ -1121,11 +1116,11 @@ describe('Queue Routes', () => {
       });
 
       const res = await http.patch(`${baseUrl}/queue/${item.id}`, {
-        status: 'in_progress',
+        status: 'on_table',
       });
 
       expect(res.status).toBe(200);
-      expect((res.json as { status: string }).status).toBe('in_progress');
+      expect((res.json as { status: string }).status).toBe('on_table');
     });
 
     it('updates table_number successfully', async () => {

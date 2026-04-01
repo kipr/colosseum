@@ -356,7 +356,7 @@ test.describe('Seeding Queue E2E', () => {
       { timeout: 10_000 },
     );
 
-    // Click "All" status filter to see all items including completed
+    // Click "All" status filter to see all items including scored
     await page
       .getByRole('button', { name: 'All', exact: true })
       .click();
@@ -453,9 +453,9 @@ test.describe('Seeding Queue E2E', () => {
     await context.close();
   });
 
-  /* ── 5. Queue item is completed after acceptance ────────────── */
+  /* ── 5. Queue item is removed after acceptance ────────────── */
 
-  test('queue item shows completed status after score is accepted', async ({
+  test('queue item is removed after score is accepted', async ({
     browser,
   }) => {
     const context = await browser.newContext();
@@ -470,22 +470,16 @@ test.describe('Seeding Queue E2E', () => {
       { timeout: 10_000 },
     );
 
-    // Show all statuses (including completed)
+    // Show all statuses
     await page
       .getByRole('button', { name: 'All', exact: true })
       .click();
 
-    // Wait for the queue to reload with completed items
-    await expect(
-      page.locator('.queue-status-badge', { hasText: 'Completed' }).first(),
-    ).toBeVisible({ timeout: 10_000 });
-
-    // Find the row for Team A Round 1 and check it is completed
-    const teamARows = page.locator('tr', { hasText: TEAM_A_NAME });
-    const round1Row = teamARows.filter({ hasText: 'Round 1' });
-    await expect(
-      round1Row.locator('.queue-status-badge'),
-    ).toHaveText('Completed', { timeout: 5_000 });
+    // Accepted scores remove the match from the queue (no row for Team A Round 1)
+    const round1Row = page
+      .locator('tr', { hasText: TEAM_A_NAME })
+      .filter({ hasText: 'Round 1' });
+    await expect(round1Row).toHaveCount(0, { timeout: 10_000 });
 
     await context.close();
   });

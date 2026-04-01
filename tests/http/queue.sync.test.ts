@@ -18,6 +18,8 @@ import {
   seedBracketGame,
   seedQueueItem,
   seedSeedingScore,
+  seedScoresheetTemplate,
+  seedScoreSubmission,
 } from './helpers/seed';
 import queueRoutes from '../../src/server/routes/queue';
 
@@ -62,7 +64,7 @@ describe('Queue Routes – sync edge cases', () => {
         queue_position: 1,
         seeding_team_id: team.id,
         seeding_round: 1,
-        status: 'completed',
+        status: 'scored',
       });
 
       // Remove the score
@@ -81,6 +83,55 @@ describe('Queue Routes – sync edge cases', () => {
     });
   });
 
+  describe('seeding sync – pending submission keeps scored row when seeding_scores exist', () => {
+    it('does not delete queue row while a pending submission exists for that team/round', async () => {
+      const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedSeedingScore(testDb.db, {
+        team_id: team.id,
+        round_number: 1,
+        score: 100,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: JSON.stringify({
+          team_id: { value: team.id },
+          round: { value: 1 },
+          grand_total: { value: 77 },
+        }),
+        event_id: event.id,
+        score_type: 'seeding',
+        status: 'pending',
+      });
+      await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'seeding',
+        queue_position: 1,
+        seeding_team_id: team.id,
+        seeding_round: 1,
+        status: 'scored',
+      });
+
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=seeding&sync=1`,
+      );
+      expect(res.status).toBe(200);
+      const items = res.json as {
+        seeding_team_id: number;
+        seeding_round: number;
+        status: string;
+      }[];
+      expect(items.length).toBe(1);
+      expect(items[0].seeding_team_id).toBe(team.id);
+      expect(items[0].seeding_round).toBe(1);
+      expect(items[0].status).toBe('scored');
+    });
+  });
+
   describe('seeding sync – no event found', () => {
     it('returns empty when event does not exist', async () => {
       const res = await http.get(
@@ -92,7 +143,7 @@ describe('Queue Routes – sync edge cases', () => {
   });
 
   describe('bracket sync – completed game status', () => {
-    it('marks bracket queue item completed when bracket game is completed', async () => {
+    it('removes bracket queue item when bracket game is completed', async () => {
       const event = await seedEvent(testDb.db);
       const team1 = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -120,15 +171,14 @@ describe('Queue Routes – sync edge cases', () => {
         status: 'queued',
       });
 
-      // Sync should mark it completed
+      // Sync should remove the row (accepted / completed games leave the queue)
       const res = await http.get(
         `${baseUrl}/queue/event/${event.id}?queue_type=bracket&sync=1`,
       );
       expect(res.status).toBe(200);
       const items = res.json as { bracket_game_id: number; status: string }[];
       const item = items.find((i) => i.bracket_game_id === game.id);
-      expect(item).toBeDefined();
-      expect(item!.status).toBe('completed');
+      expect(item).toBeUndefined();
     });
 
     it('re-queues bracket item when game status reverts to ready', async () => {
@@ -150,13 +200,13 @@ describe('Queue Routes – sync edge cases', () => {
         status: 'ready',
       });
 
-      // Pre-seed a completed bracket queue item
+      // Pre-seed a stale scored row while game is eligible again
       await seedQueueItem(testDb.db, {
         event_id: event.id,
         queue_type: 'bracket',
         queue_position: 1,
         bracket_game_id: game.id,
-        status: 'completed',
+        status: 'scored',
       });
 
       // Sync should reset it to queued since game is ready and eligible
