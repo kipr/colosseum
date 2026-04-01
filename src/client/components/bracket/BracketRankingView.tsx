@@ -170,6 +170,15 @@ export default function BracketRankingView({
     <div className="card bracket-section">
       <div className="bracket-section-header">
         <h4>Rankings ({rankedCount} placed)</h4>
+        <p
+          style={{
+            margin: '0.35rem 0 0',
+            color: 'var(--secondary-color)',
+            fontSize: '0.9rem',
+          }}
+        >
+          Overall is the sum of doc score, raw seeding, and weighted DE.
+        </p>
       </div>
 
       <table className="ranking-table">
@@ -179,7 +188,7 @@ export default function BracketRankingView({
               className="ranking-sortable"
               onClick={() => handleSort('place')}
             >
-              Place{getSortIndicator('place')}
+              DE place{getSortIndicator('place')}
             </th>
             <th
               className="ranking-sortable"
@@ -197,7 +206,7 @@ export default function BracketRankingView({
               className="ranking-sortable"
               onClick={() => handleSort('raw_score')}
             >
-              Raw Score{getSortIndicator('raw_score')}
+              Raw DE Score{getSortIndicator('raw_score')}
             </th>
             <th
               className="ranking-sortable"
@@ -219,9 +228,10 @@ export default function BracketRankingView({
             </th>
             <th
               className="ranking-sortable"
+              title="Sum of doc score, raw seeding, and weighted DE"
               onClick={() => handleSort('total')}
             >
-              Total{getSortIndicator('total')}
+              Overall{getSortIndicator('total')}
             </th>
           </tr>
         </thead>
