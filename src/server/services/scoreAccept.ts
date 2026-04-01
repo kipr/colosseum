@@ -4,13 +4,16 @@ import { toAuditJson } from '../utils/auditJson';
 import { resolveBracketByes } from './bracketByeResolver';
 import { recalculateSeedingRankings } from './seedingRankings';
 
-/** Mark seeding queue item completed on accept, or queued on revert. Inserts if missing. */
+/**
+ * Pending score submission: set queue to `scored`. Revert/reject: `queued`.
+ * Accept path removes the row via deleteSeedingQueueItemForAcceptedScore.
+ */
 export async function updateSeedingQueueItem(
   db: Database,
   eventId: number,
   teamId: number,
   roundNumber: number,
-  completed: boolean,
+  pendingSubmission: boolean,
 ): Promise<void> {
   const existing = await db.get<{ id: number }>(
     `SELECT id FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ? AND queue_type = 'seeding'`,
@@ -19,7 +22,7 @@ export async function updateSeedingQueueItem(
   if (existing) {
     await db.run(
       `UPDATE game_queue SET status = ?, called_at = NULL, table_number = NULL WHERE id = ?`,
-      [completed ? 'completed' : 'queued', existing.id],
+      [pendingSubmission ? 'scored' : 'queued', existing.id],
     );
   } else {
     const maxPos = await db.get<{ max_pos: number | null }>(
@@ -30,28 +33,49 @@ export async function updateSeedingQueueItem(
     await db.run(
       `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
        VALUES (?, ?, ?, 'seeding', ?, ?)`,
-      [eventId, teamId, roundNumber, pos, completed ? 'completed' : 'queued'],
+      [
+        eventId,
+        teamId,
+        roundNumber,
+        pos,
+        pendingSubmission ? 'scored' : 'queued',
+      ],
     );
   }
 }
 
-/** Mark bracket queue item completed on accept, or queued on revert. Inserts if missing.
- *  On revert (completed=false), removes the queue item when the game no longer has both teams. */
+/** Remove seeding queue row after a score is accepted (no longer in queue). */
+export async function deleteSeedingQueueItemForAcceptedScore(
+  db: Database,
+  eventId: number,
+  teamId: number,
+  roundNumber: number,
+): Promise<void> {
+  await db.run(
+    `DELETE FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ? AND queue_type = 'seeding'`,
+    [eventId, teamId, roundNumber],
+  );
+}
+
+/**
+ * Pending score submission: set queue to `scored`. Revert/reject: `queued` or delete.
+ * Accept path removes the row via deleteBracketQueueItemForAcceptedScore.
+ */
 export async function updateBracketQueueItem(
   db: Database,
   eventId: number,
   bracketGameId: number,
-  completed: boolean,
+  pendingSubmission: boolean,
 ): Promise<void> {
   const existing = await db.get<{ id: number }>(
     `SELECT id FROM game_queue WHERE event_id = ? AND bracket_game_id = ? AND queue_type = 'bracket'`,
     [eventId, bracketGameId],
   );
 
-  if (completed) {
+  if (pendingSubmission) {
     if (existing) {
       await db.run(
-        `UPDATE game_queue SET status = 'completed', called_at = NULL, table_number = NULL WHERE id = ?`,
+        `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
         [existing.id],
       );
     } else {
@@ -62,7 +86,7 @@ export async function updateBracketQueueItem(
       const pos = (maxPos?.max_pos ?? 0) + 1;
       await db.run(
         `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-         VALUES (?, ?, 'bracket', ?, 'completed')`,
+         VALUES (?, ?, 'bracket', ?, 'scored')`,
         [eventId, bracketGameId, pos],
       );
     }
@@ -99,6 +123,18 @@ export async function updateBracketQueueItem(
       [eventId, bracketGameId, pos],
     );
   }
+}
+
+/** Remove bracket queue row after a score is accepted. */
+export async function deleteBracketQueueItemForAcceptedScore(
+  db: Database,
+  eventId: number,
+  bracketGameId: number,
+): Promise<void> {
+  await db.run(
+    `DELETE FROM game_queue WHERE event_id = ? AND bracket_game_id = ? AND queue_type = 'bracket'`,
+    [eventId, bracketGameId],
+  );
 }
 
 export interface AcceptEventScoreParams {
@@ -240,7 +276,12 @@ export async function acceptEventScore(
       ip_address: ipAddress,
     });
 
-    await updateSeedingQueueItem(db, score.event_id, teamId, roundNumber, true);
+    await deleteSeedingQueueItemForAcceptedScore(
+      db,
+      score.event_id,
+      teamId,
+      roundNumber,
+    );
     await recalculateSeedingRankings(score.event_id);
 
     return {
@@ -423,7 +464,11 @@ export async function acceptEventScore(
       ip_address: ipAddress,
     });
 
-    await updateBracketQueueItem(db, score.event_id, bracketGameId, true);
+    await deleteBracketQueueItemForAcceptedScore(
+      db,
+      score.event_id,
+      bracketGameId,
+    );
 
     return {
       ok: true,

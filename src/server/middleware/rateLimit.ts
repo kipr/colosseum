@@ -113,12 +113,13 @@ export const chatReadLimiter = rateLimit({
 });
 
 /**
- * Queue sync requests: 10 req / 1 min per IP (expensive DB sync).
+ * Queue sync requests: 60 req / 1 min per IP (expensive DB sync).
  * Only applied when the request includes sync=1|true; plain reads skip it.
+ * Kept below chat polling limits but high enough for admin UI (filters, tabs, scoresheet).
  */
 export const queueSyncLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 10,
+  limit: 60,
   standardHeaders: 'draft-6',
   legacyHeaders: false,
   store: queueSyncStore,

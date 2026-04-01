@@ -3,6 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import type { Database } from '../database/connection';
+import { isValidQueueStatus } from '../constants/queueStatus';
 
 const router = express.Router();
 
@@ -63,6 +64,30 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
     submittedRounds.map((s) => `${s.team_id}:${s.round_number}`),
   );
 
+  const pendingSeedingRaw = await db.all<{ score_data: string }>(
+    `SELECT score_data FROM score_submissions
+     WHERE event_id = ?
+       AND score_type = 'seeding'
+       AND status = 'pending'`,
+    [eventId],
+  );
+  const pendingSeedingSet = new Set<string>();
+  for (const row of pendingSeedingRaw) {
+    try {
+      const data =
+        typeof row.score_data === 'string'
+          ? JSON.parse(row.score_data)
+          : row.score_data;
+      const teamId = data?.team_id?.value;
+      const roundNumber = data?.round?.value ?? data?.round_number?.value;
+      if (teamId != null && roundNumber != null) {
+        pendingSeedingSet.add(`${Number(teamId)}:${Number(roundNumber)}`);
+      }
+    } catch {
+      // skip
+    }
+  }
+
   const existingSeeding = await db.all<{
     id: number;
     seeding_team_id: number;
@@ -103,22 +128,34 @@ async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
 
       if (existing) {
         if (combo.scored) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'completed' WHERE id = ?",
-            [existing.id],
-          );
-        } else if (existing.status === 'completed') {
+          if (pendingSeedingSet.has(key)) {
+            await tx.run(
+              `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
+              [existing.id],
+            );
+          } else {
+            await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+          }
+        } else if (
+          existing.status === 'scored' &&
+          !pendingSeedingSet.has(key)
+        ) {
           await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
           );
         }
-      } else {
-        const status = combo.scored ? 'completed' : 'queued';
+      } else if (!combo.scored) {
         await tx.run(
           `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-           VALUES (?, ?, ?, 'seeding', ?, ?)`,
-          [eventId, combo.team_id, combo.round, nextPos++, status],
+           VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+          [eventId, combo.team_id, combo.round, nextPos++],
+        );
+      } else if (pendingSeedingSet.has(key)) {
+        await tx.run(
+          `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
+           VALUES (?, ?, ?, 'seeding', ?, 'scored')`,
+          [eventId, combo.team_id, combo.round, nextPos++],
         );
       }
     }
@@ -159,6 +196,19 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
     submittedBracketGames.map((row) => row.bracket_game_id),
   );
 
+  const pendingBracketGames = await db.all<{ bracket_game_id: number }>(
+    `SELECT DISTINCT bracket_game_id
+     FROM score_submissions
+     WHERE event_id = ?
+       AND score_type = 'bracket'
+       AND status = 'pending'
+       AND bracket_game_id IS NOT NULL`,
+    [eventId],
+  );
+  const pendingBracketSet = new Set(
+    pendingBracketGames.map((row) => row.bracket_game_id),
+  );
+
   const existingBracket = await db.all<{
     id: number;
     bracket_game_id: number;
@@ -190,11 +240,19 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
 
       if (existing) {
         if (isCompleted) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'completed' WHERE id = ?",
-            [existing.id],
-          );
-        } else if (existing.status === 'completed' && isEligible) {
+          if (pendingBracketSet.has(game.id)) {
+            await tx.run(
+              `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
+              [existing.id],
+            );
+          } else {
+            await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+          }
+        } else if (
+          isEligible &&
+          existing.status === 'scored' &&
+          !pendingBracketSet.has(game.id)
+        ) {
           await tx.run(
             "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
             [existing.id],
@@ -206,12 +264,11 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
         ) {
           await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
         }
-      } else if (isEligible || isCompleted) {
-        const status = isCompleted ? 'completed' : 'queued';
+      } else if (isEligible && !isCompleted) {
         await tx.run(
           `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-           VALUES (?, ?, 'bracket', ?, ?)`,
-          [eventId, game.id, nextPos++, status],
+           VALUES (?, ?, 'bracket', ?, 'queued')`,
+          [eventId, game.id, nextPos++],
         );
       }
     }
@@ -619,6 +676,11 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const statusEntry = updates.find(([key]) => key === 'status');
+    if (statusEntry && !isValidQueueStatus(statusEntry[1])) {
+      return res.status(400).json({ error: 'Invalid status value' });
     }
 
     const setClause = updates.map(([key]) => `${key} = ?`).join(', ');

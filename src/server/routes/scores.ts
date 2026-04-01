@@ -7,6 +7,8 @@ import { resolveBracketByes } from '../services/bracketByeResolver';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import {
   acceptEventScore,
+  deleteBracketQueueItemForAcceptedScore,
+  deleteSeedingQueueItemForAcceptedScore,
   updateSeedingQueueItem,
   updateBracketQueueItem,
 } from '../services/scoreAccept';
@@ -408,12 +410,11 @@ router.post(
           new_value: toAuditJson(updatedScore),
           ip_address: ipAddress,
         });
-        await updateSeedingQueueItem(
+        await deleteSeedingQueueItemForAcceptedScore(
           db,
           eventIdNum,
           op.teamId,
           op.roundNumber,
-          true,
         );
         accepted.push({ id: op.id, scoreType: 'seeding' });
       }
@@ -458,7 +459,11 @@ router.post(
           new_value: toAuditJson(updatedGame),
           ip_address: ipAddress,
         });
-        await updateBracketQueueItem(db, eventIdNum, op.bracketGameId, true);
+        await deleteBracketQueueItemForAcceptedScore(
+          db,
+          eventIdNum,
+          op.bracketGameId,
+        );
         accepted.push({ id: op.id, scoreType: 'bracket' });
 
         const bracketId = (op.game as { bracket_id: number }).bracket_id;

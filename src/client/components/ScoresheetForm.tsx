@@ -146,7 +146,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const loadQueue = async () => {
     if (!schema.eventId) return;
     try {
-      const statuses = ['queued', 'called', 'in_progress'].join(',');
+      const statuses = [
+        'queued',
+        'called',
+        'arrived',
+        'on_table',
+        'scored',
+      ].join(',');
       const url = `/queue/event/${schema.eventId}?queue_type=seeding&status=${statuses}&sync=1`;
       const response = await fetch(url);
       if (!response.ok) return;

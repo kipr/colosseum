@@ -482,7 +482,7 @@ describe('Event-Scoped Scores Routes', () => {
       expect(updatedScore.reviewed_at).toBeTruthy();
     });
 
-    it('accepts seeding score and marks matching queue item completed', async () => {
+    it('accepts seeding score and removes matching queue item', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -522,8 +522,7 @@ describe('Event-Scoped Scores Routes', () => {
         'SELECT * FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ?',
         [event.id, team.id, 1],
       );
-      expect(queueItem).toBeDefined();
-      expect(queueItem.status).toBe('completed');
+      expect(queueItem).toBeUndefined();
     });
 
     it('recalculates seeding rankings when a seeding score is accepted', async () => {
@@ -666,8 +665,7 @@ describe('Event-Scoped Scores Routes', () => {
         'SELECT * FROM game_queue WHERE event_id = ? AND bracket_game_id = ?',
         [event.id, game.id],
       );
-      expect(queueItem).toBeDefined();
-      expect(queueItem.status).toBe('completed');
+      expect(queueItem).toBeUndefined();
     });
 
     it('returns 409 conflict when seeding score already exists', async () => {
@@ -1211,8 +1209,7 @@ describe('Event-Scoped Scores Routes', () => {
         'SELECT * FROM game_queue WHERE event_id = ? AND bracket_game_id = ?',
         [event.id, game.id],
       );
-      expect(queueItem).toBeDefined();
-      expect(queueItem.status).toBe('completed');
+      expect(queueItem).toBeUndefined();
     });
   });
 
@@ -1254,7 +1251,7 @@ describe('Event-Scoped Scores Routes', () => {
         queue_position: 1,
         seeding_team_id: team.id,
         seeding_round: 1,
-        status: 'completed',
+        status: 'scored',
       });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
@@ -1307,7 +1304,7 @@ describe('Event-Scoped Scores Routes', () => {
         queue_type: 'bracket',
         queue_position: 1,
         bracket_game_id: game.id,
-        status: 'completed',
+        status: 'scored',
       });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
@@ -1467,7 +1464,7 @@ describe('Event-Scoped Scores Routes', () => {
         queue_position: 1,
         seeding_team_id: team.id,
         seeding_round: 1,
-        status: 'completed',
+        status: 'scored',
       });
       const config = await seedSpreadsheetConfig(testDb.db, {
         user_id: adminUser.id,
@@ -1674,7 +1671,7 @@ describe('Event-Scoped Scores Routes', () => {
         queue_type: 'bracket',
         queue_position: 1,
         bracket_game_id: game.id,
-        status: 'completed',
+        status: 'scored',
       });
       const config = await seedSpreadsheetConfig(testDb.db, {
         user_id: adminUser.id,

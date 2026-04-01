@@ -63,12 +63,16 @@ interface Team {
   display_name: string | null;
 }
 
-type QueueStatus =
-  | 'queued'
-  | 'called'
-  | 'in_progress'
-  | 'completed'
-  | 'skipped';
+type QueueStatus = 'queued' | 'called' | 'arrived' | 'on_table' | 'scored';
+
+const STATUS_ORDER: QueueStatus[] = [
+  'queued',
+  'called',
+  'arrived',
+  'on_table',
+  'scored',
+];
+
 type QueueType = 'seeding' | 'bracket';
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';
@@ -84,16 +88,28 @@ function getTypeClass(type: QueueType): string {
 }
 
 function getStatusClass(status: QueueStatus): string {
-  return `queue-status-${status.replace('_', '-')}`;
+  return `queue-status-${status.replace(/_/g, '-')}`;
+}
+
+/** Row background tint (queued = default table background). */
+function getRowStatusClass(status: QueueStatus): string {
+  return `queue-row--${status.replace(/_/g, '-')}`;
 }
 
 const STATUS_LABELS: Record<QueueStatus, string> = {
-  queued: 'Pending',
+  queued: 'Queued',
   called: 'Called',
-  in_progress: 'In Progress',
-  completed: 'Completed',
-  skipped: 'Skipped',
+  arrived: 'Arrived',
+  on_table: 'On table',
+  scored: 'Scored',
 };
+
+/** Next status in the queue flow, or null if already at the terminal state. */
+function getNextQueueStatus(current: QueueStatus): QueueStatus | null {
+  const idx = STATUS_ORDER.indexOf(current);
+  if (idx < 0 || idx >= STATUS_ORDER.length - 1) return null;
+  return STATUS_ORDER[idx + 1]!;
+}
 
 export default function QueueTab() {
   const { selectedEvent } = useEvent();
@@ -105,7 +121,9 @@ export default function QueueTab() {
   const [filterStatuses, setFilterStatuses] = useState<QueueStatus[]>([
     'queued',
     'called',
-    'in_progress',
+    'arrived',
+    'on_table',
+    'scored',
   ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
   const [sortField, setSortField] = useState<SortField>('gameNumber');
@@ -465,16 +483,26 @@ export default function QueueTab() {
     }
   };
 
-  // Handle call toggle (between queued and called)
-  const handleCallToggle = async (item: QueueItem) => {
-    const newStatus: QueueStatus =
-      item.status === 'called' ? 'queued' : 'called';
+  /** Move one step forward or backward in queue flow (queued → called → … → scored). */
+  const handleFlowStep = async (
+    item: QueueItem,
+    direction: 'next' | 'prev',
+  ) => {
+    const idx = STATUS_ORDER.indexOf(item.status);
+    if (idx < 0) return;
+    const delta = direction === 'next' ? 1 : -1;
+    const nextIdx = idx + delta;
+    if (nextIdx < 0 || nextIdx >= STATUS_ORDER.length) return;
+    const targetStatus = STATUS_ORDER[nextIdx]!;
 
     try {
-      let response;
+      let response: Response;
 
-      if (newStatus === 'called') {
-        // Use the special call endpoint to record called_at
+      if (
+        direction === 'next' &&
+        item.status === 'queued' &&
+        targetStatus === 'called'
+      ) {
         response = await fetch(`/queue/${item.id}/call`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -486,7 +514,7 @@ export default function QueueTab() {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ status: newStatus }),
+          body: JSON.stringify({ status: targetStatus }),
         });
       }
 
@@ -501,13 +529,13 @@ export default function QueueTab() {
           q.id === item.id
             ? {
                 ...q,
-                status: updatedItem.status ?? newStatus,
+                status: (updatedItem.status as QueueStatus) ?? targetStatus,
                 called_at:
-                  newStatus === 'queued'
+                  targetStatus === 'queued'
                     ? null
                     : (updatedItem.called_at ?? q.called_at),
                 table_number:
-                  newStatus === 'queued'
+                  targetStatus === 'queued'
                     ? null
                     : (updatedItem.table_number ?? q.table_number),
               }
@@ -583,7 +611,7 @@ export default function QueueTab() {
     const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
     if (filterStatuses.length === allStatuses.length) {
       // If all are selected, revert to default set
-      setFilterStatuses(['queued', 'called', 'in_progress']);
+      setFilterStatuses(['queued', 'called', 'arrived', 'on_table']);
     } else {
       setFilterStatuses(allStatuses);
     }
@@ -804,8 +832,12 @@ export default function QueueTab() {
             <tbody>
               {sortedQueue.map((item) => {
                 const index = queue.findIndex((q) => q.id === item.id);
+                const nextStatus = getNextQueueStatus(item.status);
                 return (
-                  <tr key={item.id}>
+                  <tr
+                    key={item.id}
+                    className={`queue-row ${getRowStatusClass(item.status)}`}
+                  >
                     <td className="queue-position">{item.queue_position}</td>
                     <td>{renderTeamNumber(item)}</td>
                     <td>{renderItemDetails(item)}</td>
@@ -828,15 +860,28 @@ export default function QueueTab() {
                     </td>
                     <td>
                       <div className="queue-actions">
-                        {(item.status === 'queued' ||
-                          item.status === 'called') && (
-                          <button
-                            className={`btn ${item.status === 'queued' ? 'btn-success' : 'btn-secondary'}`}
-                            onClick={() => handleCallToggle(item)}
-                          >
-                            {item.status === 'queued' ? 'Call' : 'Uncall'}
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          disabled={STATUS_ORDER.indexOf(item.status) <= 0}
+                          onClick={() => handleFlowStep(item, 'prev')}
+                          title="Previous step"
+                        >
+                          Back
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-success"
+                          disabled={nextStatus === null}
+                          onClick={() => handleFlowStep(item, 'next')}
+                          title={
+                            nextStatus
+                              ? `Advance to ${STATUS_LABELS[nextStatus]}`
+                              : 'Next step'
+                          }
+                        >
+                          {nextStatus ? `${STATUS_LABELS[nextStatus]}` : 'End'}
+                        </button>
                       </div>
                     </td>
                     <td>

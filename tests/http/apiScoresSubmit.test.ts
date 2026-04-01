@@ -423,7 +423,7 @@ describe('API Score Submit Routes', () => {
           [event.id, team.id, 1],
         );
         expect(queueItem).toBeDefined();
-        expect(queueItem.status).toBe('completed');
+        expect(queueItem.status).toBe('scored');
       });
 
       it('creates DB-backed bracket score submission with bracket_game_id', async () => {
@@ -553,7 +553,7 @@ describe('API Score Submit Routes', () => {
           [event.id, game.id],
         );
         expect(queueItem).toBeDefined();
-        expect(queueItem.status).toBe('completed');
+        expect(queueItem.status).toBe('scored');
       });
 
       it('returns 400 when bracket_game_id missing for DB-backed bracket submission', async () => {
