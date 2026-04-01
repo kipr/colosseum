@@ -891,7 +891,7 @@ export async function initializePostgres(db: Database): Promise<void> {
       status TEXT DEFAULT 'queued'
         CHECK (status IN (${GAME_QUEUE_STATUS_SQL})),
       called_at TIMESTAMP,
-      table_number INTEGER,
+      table_number INTEGER, -- TODO: remove once admin queue no longer stores table assignment in the DB
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       CHECK (
@@ -1712,7 +1712,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       status TEXT DEFAULT 'queued'
         CHECK (status IN (${GAME_QUEUE_STATUS_SQL})),
       called_at DATETIME,
-      table_number INTEGER,
+      table_number INTEGER, -- TODO: remove once admin queue no longer stores table assignment in the DB
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       CHECK (

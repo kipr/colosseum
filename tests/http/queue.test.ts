@@ -1216,6 +1216,34 @@ describe('Queue Routes', () => {
       expect(result.called_at).not.toBeNull();
     });
 
+    it('preserves seeding team identity fields after calling', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+        team_name: 'Queue Team',
+      });
+      const item = await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'seeding',
+        queue_position: 1,
+        seeding_team_id: team.id,
+        seeding_round: 1,
+      });
+
+      const res = await http.patch(`${baseUrl}/queue/${item.id}/call`, {});
+
+      expect(res.status).toBe(200);
+      const result = res.json as {
+        status: string;
+        seeding_team_id: number;
+        called_at: string | null;
+      };
+      expect(result.status).toBe('called');
+      expect(result.seeding_team_id).toBe(team.id);
+      expect(result.called_at).not.toBeNull();
+    });
+
     it('optionally updates table_number', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {

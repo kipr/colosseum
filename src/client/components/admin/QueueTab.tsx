@@ -495,7 +495,9 @@ export default function QueueTab() {
 
   const updateQueueItem = (updatedItem: QueueItem) => {
     setQueue((prev) =>
-      prev.map((item) => (item.id === updatedItem.id ? updatedItem : item)),
+      prev.map((item) =>
+        item.id === updatedItem.id ? { ...item, ...updatedItem } : item,
+      ),
     );
   };
 
@@ -504,19 +506,20 @@ export default function QueueTab() {
     nextStatus: QueueStatus,
   ) => {
     try {
-      const payload: Record<string, number | QueueStatus> = {
-        status: nextStatus,
-      };
-      if (nextStatus === 'at_table' && item.table_number == null) {
-        payload.table_number = item.queue_position;
-      }
-
-      const response = await fetch(`/queue/${item.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
+      const response =
+        nextStatus === 'called'
+          ? await fetch(`/queue/${item.id}/call`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({}),
+            })
+          : await fetch(`/queue/${item.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({ status: nextStatus }),
+            });
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -571,15 +574,6 @@ export default function QueueTab() {
         </span>
       </div>
     );
-  };
-
-  const renderTableNumber = (item: QueueItem) => {
-    if (item.status !== 'at_table' && item.status !== 'score_submitted') {
-      return '—';
-    }
-    return item.table_number != null
-      ? `Table ${item.table_number}`
-      : 'Assigned';
   };
 
   // Handle status toggle
@@ -816,7 +810,6 @@ export default function QueueTab() {
                 </th>
                 <th style={{ width: '80px' }}>Type</th>
                 <th style={{ width: '120px' }}>Called At</th>
-                <th style={{ width: '110px' }}>Table</th>
                 <th style={{ width: '100px' }}>Status</th>
                 <th style={{ width: '250px' }}>Actions</th>
                 <th style={{ width: '60px' }}>Order</th>
@@ -839,9 +832,6 @@ export default function QueueTab() {
                     </td>
                     <td className="queue-called-at">
                       {formatCalledAt(item.called_at)}
-                    </td>
-                    <td className="queue-called-at">
-                      {renderTableNumber(item)}
                     </td>
                     <td>
                       <span
