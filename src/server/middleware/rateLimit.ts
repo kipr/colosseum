@@ -123,6 +123,9 @@ export const queueSyncLimiter = rateLimit({
   legacyHeaders: false,
   store: queueSyncStore,
   skip: (req: Request) => {
+    if (req.isAuthenticated?.()) {
+      return true;
+    }
     const sync = req.query.sync;
     return sync !== '1' && sync !== 'true';
   },

@@ -23,6 +23,7 @@ import {
 import apiRoutes from '../../src/server/routes/api';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
 import chatRoutes from '../../src/server/routes/chat';
+import queueRoutes from '../../src/server/routes/queue';
 import { resetAllRateLimiters } from '../../src/server/middleware/rateLimit';
 
 interface ErrorBody {
@@ -278,6 +279,39 @@ describe('Rate Limiting', () => {
           limiter: 'scoreSubmit',
         }),
       );
+    });
+  });
+
+  // ==========================================================================
+  // GET /queue/event/:eventId?sync=1  –  queueSyncLimiter
+  // ==========================================================================
+  describe('queueSyncLimiter – GET /queue/event/:eventId', () => {
+    let eventId: number;
+
+    beforeEach(async () => {
+      testDb = await createTestDb();
+      __setTestDatabaseAdapter(testDb.db);
+      resetAllRateLimiters();
+
+      const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
+      eventId = event.id;
+      await seedTeam(testDb.db, {
+        event_id: eventId,
+        team_number: 101,
+        team_name: 'Queue Team',
+      });
+
+      const app = createTestApp({ user: { id: 1, is_admin: true } });
+      app.use('/queue', queueRoutes);
+      server = await startServer(app);
+      baseUrl = server.baseUrl;
+    });
+
+    it('skips the sync limiter for authenticated admin requests', async () => {
+      for (let i = 0; i < 12; i++) {
+        const res = await http.get(`${baseUrl}/queue/event/${eventId}?sync=1`);
+        expect(res.status).toBe(200);
+      }
     });
   });
 });
