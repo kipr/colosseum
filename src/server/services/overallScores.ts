@@ -61,10 +61,12 @@ export async function computeOverallScores(
     [eventId],
   );
 
+  /** Sum weighted DE contribution across all brackets (team may appear in multiple brackets). */
   const deMap = new Map<number, number>();
   for (const entry of bracketEntries) {
     if (entry.team_id != null && entry.weighted_bracket_raw_score != null) {
-      deMap.set(entry.team_id, entry.weighted_bracket_raw_score);
+      const prev = deMap.get(entry.team_id) ?? 0;
+      deMap.set(entry.team_id, prev + entry.weighted_bracket_raw_score);
     }
   }
 

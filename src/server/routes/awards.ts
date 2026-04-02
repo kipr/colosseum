@@ -3,6 +3,11 @@ import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import { areFinalScoresReleased } from '../utils/eventVisibility';
+import {
+  computeAutomaticAwards,
+  applyAutomaticAwardsAsEventAwards,
+  AUTO_AWARD_NAME_PREFIX,
+} from '../services/automaticAwards';
 
 const router = express.Router();
 
@@ -187,6 +192,32 @@ router.get(
     } catch (error) {
       console.error('Error fetching event awards:', error);
       res.status(500).json({ error: 'Failed to fetch event awards' });
+    }
+  },
+);
+
+// POST /awards/event/:eventId/automatic — Replace Auto:* event awards with computed placements (admin)
+router.post(
+  '/event/:eventId/automatic',
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      const db = await getDatabase();
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        eventId,
+      ]);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const result = await applyAutomaticAwardsAsEventAwards(
+        Number.parseInt(String(eventId), 10),
+      );
+      res.json(result);
+    } catch (error) {
+      console.error('Error applying automatic event awards:', error);
+      res.status(500).json({ error: 'Failed to apply automatic awards' });
     }
   },
 );
@@ -448,9 +479,9 @@ router.get(
       const awards = await db.all(
         `SELECT id, name, description, sort_order
          FROM event_awards
-         WHERE event_id = ?
+         WHERE event_id = ? AND name NOT LIKE ?
          ORDER BY sort_order ASC, id ASC`,
-        [eventId],
+        [eventId, `${AUTO_AWARD_NAME_PREFIX}%`],
       );
 
       const recipients = await db.all(
@@ -458,10 +489,10 @@ router.get(
          FROM event_award_recipients ear
          JOIN teams t ON ear.team_id = t.id
          WHERE ear.event_award_id IN (
-           SELECT id FROM event_awards WHERE event_id = ?
+           SELECT id FROM event_awards WHERE event_id = ? AND name NOT LIKE ?
          )
          ORDER BY t.team_number ASC`,
-        [eventId],
+        [eventId, `${AUTO_AWARD_NAME_PREFIX}%`],
       );
 
       const recipientsByAward = new Map<
@@ -485,14 +516,16 @@ router.get(
         });
       }
 
-      const result = awards.map((a: Record<string, unknown>) => ({
+      const manual = awards.map((a: Record<string, unknown>) => ({
         name: a.name,
         description: a.description,
         sort_order: a.sort_order,
         recipients: recipientsByAward.get(a.id as number) ?? [],
       }));
 
-      res.json(result);
+      const automatic = await computeAutomaticAwards(Number(eventId));
+
+      res.json({ manual, automatic });
     } catch (error) {
       console.error('Error fetching public awards:', error);
       res.status(500).json({ error: 'Failed to fetch awards' });

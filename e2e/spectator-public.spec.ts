@@ -515,9 +515,13 @@ test.describe('Spectator Public Views & Release Gating', () => {
       page.locator('.spectator-tab-btn.active', { hasText: 'Awards' }),
     ).toBeVisible();
 
-    await expect(page.getByText('Champion Award')).toBeVisible({
+    await expect(page.getByText('Double elimination')).toBeVisible({
       timeout: 10_000,
     });
+    await expect(page.getByText('Per-bracket overall')).toBeVisible();
+    await expect(page.getByText('Event overall')).toBeVisible();
+    await expect(page.getByText('Other awards')).toBeVisible();
+    await expect(page.getByText('Champion Award')).toBeVisible();
     await expect(page.getByText('Best overall team')).toBeVisible();
     await expect(page.getByText(`#${TEAM_A.number}`)).toBeVisible();
     await expect(page.getByText(TEAM_A.name)).toBeVisible();
