@@ -72,6 +72,7 @@ export default function Navbar() {
   const isAdmin = location.pathname.startsWith('/admin');
   const isJudge = location.pathname === '/judge';
   const isHome = location.pathname === '/';
+  const isSpectator = location.pathname.startsWith('/spectator');
 
   const handleLogin = () => {
     window.location.href = '/auth/google';
@@ -82,12 +83,21 @@ export default function Navbar() {
       <nav className="navbar">
         <div className="nav-container">
           <div className="nav-brand">
-            <Link to="/" className="brand-link">
-              <h1>
-                🏛️ Colosseum
-                {isAdmin ? ' Admin' : isJudge ? ' - Judge' : ''}
-              </h1>
-            </Link>
+            {isSpectator ? (
+              <span className="brand-link brand-link--spectator">
+                <h1>
+                  🏛️ Colosseum
+                  {isAdmin ? ' Admin' : isJudge ? ' - Judge' : ''}
+                </h1>
+              </span>
+            ) : (
+              <Link to="/" className="brand-link">
+                <h1>
+                  🏛️ Colosseum
+                  {isAdmin ? ' Admin' : isJudge ? ' - Judge' : ''}
+                </h1>
+              </Link>
+            )}
           </div>
 
           {isAdmin && <AdminEventSelector />}

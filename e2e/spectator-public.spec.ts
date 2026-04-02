@@ -251,11 +251,12 @@ test.describe('Spectator Public Views & Release Gating', () => {
     db.prepare(
       'DELETE FROM documentation_sub_scores WHERE documentation_score_id IN (SELECT id FROM documentation_scores WHERE event_id IN (?, ?))',
     ).run(activeEventId, releasedEventId);
+    db.prepare('DELETE FROM documentation_scores WHERE event_id IN (?, ?)').run(
+      activeEventId,
+      releasedEventId,
+    );
     db.prepare(
-      'DELETE FROM documentation_scores WHERE event_id IN (?, ?)',
-    ).run(activeEventId, releasedEventId);
-    db.prepare(
-      "DELETE FROM event_documentation_categories WHERE event_id IN (?, ?)",
+      'DELETE FROM event_documentation_categories WHERE event_id IN (?, ?)',
     ).run(activeEventId, releasedEventId);
     db.prepare(
       "DELETE FROM documentation_categories WHERE name = 'E2E Doc Cat'",
@@ -297,9 +298,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
   }) => {
     await page.goto('/spectator');
 
-    await expect(
-      page.locator('.spectator-events-header h2'),
-    ).toHaveText('Spectator');
+    await expect(page.locator('.spectator-events-header h2')).toHaveText(
+      'Spectator',
+    );
     await expect(
       page.getByText('Select an event to view live scores and results.'),
     ).toBeVisible();
@@ -313,6 +314,14 @@ test.describe('Spectator Public Views & Release Gating', () => {
       hasText: RELEASED_EVENT_NAME,
     });
     await expect(releasedCard).toBeVisible();
+  });
+
+  test('navbar Colosseum title does not navigate away from spectator listing', async ({
+    page,
+  }) => {
+    await page.goto('/spectator');
+    await page.locator('.nav-brand h1').click();
+    await expect(page).toHaveURL(/\/spectator$/);
   });
 
   test('active event card does NOT show "Final results available" badge', async ({
@@ -374,6 +383,16 @@ test.describe('Spectator Public Views & Release Gating', () => {
     ).toBeVisible();
   });
 
+  test('navbar Colosseum title does not navigate away from spectator event view', async ({
+    page,
+  }) => {
+    await page.goto(`/spectator/events/${activeEventId}?view=seeding`);
+    await page.locator('.nav-brand h1').click();
+    await expect(page).toHaveURL(
+      new RegExp(`/spectator/events/${activeEventId}`),
+    );
+  });
+
   /* ── 2. Seeding and Bracket tabs always visible ─────────────────── */
 
   test('active event shows Seeding and Bracket tabs', async ({ page }) => {
@@ -393,9 +412,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
   test('active event seeding tab shows team scores', async ({ page }) => {
     await page.goto(`/spectator/events/${activeEventId}?view=seeding`);
 
-    await expect(
-      page.getByText(TEAM_A.name).first(),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(TEAM_A.name).first()).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByText(TEAM_B.name).first()).toBeVisible();
   });
 
@@ -449,9 +468,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
   }) => {
     await page.goto(`/spectator/events/${releasedEventId}?view=seeding`);
 
-    await expect(
-      page.getByText(TEAM_A.name).first(),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText(TEAM_A.name).first()).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByText(TEAM_B.name).first()).toBeVisible();
   });
 
@@ -475,9 +494,7 @@ test.describe('Spectator Public Views & Release Gating', () => {
   /* ── 7. Documentation tab (release-gated) ────────────────────────── */
 
   test('released event documentation tab shows scores', async ({ page }) => {
-    await page.goto(
-      `/spectator/events/${releasedEventId}?view=documentation`,
-    );
+    await page.goto(`/spectator/events/${releasedEventId}?view=documentation`);
 
     await expect(
       page.locator('.spectator-tab-btn.active', { hasText: 'Documentation' }),
@@ -502,9 +519,7 @@ test.describe('Spectator Public Views & Release Gating', () => {
       timeout: 10_000,
     });
     await expect(page.getByText('Best overall team')).toBeVisible();
-    await expect(
-      page.getByText(`#${TEAM_A.number}`),
-    ).toBeVisible();
+    await expect(page.getByText(`#${TEAM_A.number}`)).toBeVisible();
     await expect(page.getByText(TEAM_A.name)).toBeVisible();
   });
 
@@ -522,9 +537,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
     ).toBeVisible();
 
     // Rankings view should render (BracketRankingView component)
-    await expect(
-      page.locator('.bracket-ranking-table, .card'),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.bracket-ranking-table, .card')).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   /* ── 10. Overall tab (release-gated) ─────────────────────────────── */
@@ -537,9 +552,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
     ).toBeVisible();
 
     // Overall scores display should render with team data
-    await expect(
-      page.getByText('Overall Scores'),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText('Overall Scores')).toBeVisible({
+      timeout: 10_000,
+    });
   });
 
   /* ── 11. Tab navigation between seeding and released tabs ────────── */
@@ -553,9 +568,7 @@ test.describe('Spectator Public Views & Release Gating', () => {
     ).toBeVisible();
 
     // Navigate to Awards
-    await page
-      .locator('.spectator-tab-btn', { hasText: 'Awards' })
-      .click();
+    await page.locator('.spectator-tab-btn', { hasText: 'Awards' }).click();
     await expect(
       page.locator('.spectator-tab-btn.active', { hasText: 'Awards' }),
     ).toBeVisible();
@@ -572,17 +585,13 @@ test.describe('Spectator Public Views & Release Gating', () => {
     ).toBeVisible();
 
     // Navigate to Overall
-    await page
-      .locator('.spectator-tab-btn', { hasText: /^Overall$/ })
-      .click();
+    await page.locator('.spectator-tab-btn', { hasText: /^Overall$/ }).click();
     await expect(
       page.locator('.spectator-tab-btn.active', { hasText: /^Overall$/ }),
     ).toBeVisible();
 
     // Navigate back to Seeding
-    await page
-      .locator('.spectator-tab-btn', { hasText: 'Seeding' })
-      .click();
+    await page.locator('.spectator-tab-btn', { hasText: 'Seeding' }).click();
     await expect(
       page.locator('.spectator-tab-btn.active', { hasText: 'Seeding' }),
     ).toBeVisible();
@@ -596,9 +605,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
     await page.locator('.spectator-back-btn').click();
     await page.waitForURL(/\/spectator$/);
 
-    await expect(
-      page.locator('.spectator-events-header h2'),
-    ).toHaveText('Spectator');
+    await expect(page.locator('.spectator-events-header h2')).toHaveText(
+      'Spectator',
+    );
   });
 
   /* ── 13. Verify release gating at API level ──────────────────────── */
@@ -673,9 +682,11 @@ test.describe('Spectator Public Views & Release Gating', () => {
       const db2 = new SQLite(DB_PATH);
       db2.pragma('journal_mode = WAL');
       db2.pragma('busy_timeout = 5000');
-      db2.prepare(
-        'UPDATE events SET spectator_results_released = 1 WHERE id = ?',
-      ).run(releasedEventId);
+      db2
+        .prepare(
+          'UPDATE events SET spectator_results_released = 1 WHERE id = ?',
+        )
+        .run(releasedEventId);
       db2.close();
     }
   });
