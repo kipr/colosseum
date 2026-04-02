@@ -31,6 +31,15 @@
   opacity: 0.9;
 }
 
+.brand-link--spectator {
+  cursor: default;
+  pointer-events: none;
+}
+
+.brand-link--spectator:hover {
+  opacity: 1;
+}
+
 .nav-brand h1 {
   font-size: 1.5rem;
   font-weight: 700;
