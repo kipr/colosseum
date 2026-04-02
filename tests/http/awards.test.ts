@@ -16,9 +16,11 @@ import {
   seedEvent,
   seedUser,
   seedTeam,
+  seedBracket,
   seedAwardTemplate,
   seedEventAward,
   seedEventAwardRecipient,
+  seedDocumentationScore,
 } from './helpers/seed';
 import awardsRoutes from '../../src/server/routes/awards';
 import eventsRoutes from '../../src/server/routes/events';
@@ -391,21 +393,21 @@ describe('Awards API', () => {
         team_id: team.id,
       });
 
-      const res = await http.get<
-        {
+      const res = await http.get<{
+        manual: {
           name: string;
           description: string;
           recipients: { team_number: number; team_name: string }[];
-        }[]
-      >(`${baseUrl}/awards/event/${event.id}/public`);
+        }[];
+      }>(`${baseUrl}/awards/event/${event.id}/public`);
 
       expect(res.status).toBe(200);
-      expect(res.json).toHaveLength(1);
-      expect(res.json[0].name).toBe('Champion');
-      expect(res.json[0].description).toBe('First place overall');
-      expect(res.json[0].recipients).toHaveLength(1);
-      expect(res.json[0].recipients[0].team_number).toBe(7);
-      expect(res.json[0].recipients[0].team_name).toBe('Winners');
+      expect(res.json.manual).toHaveLength(1);
+      expect(res.json.manual[0].name).toBe('Champion');
+      expect(res.json.manual[0].description).toBe('First place overall');
+      expect(res.json.manual[0].recipients).toHaveLength(1);
+      expect(res.json.manual[0].recipients[0].team_number).toBe(7);
+      expect(res.json.manual[0].recipients[0].team_name).toBe('Winners');
     });
 
     it('does not expose internal IDs in public response', async () => {
@@ -415,11 +417,11 @@ describe('Awards API', () => {
         name: 'No IDs',
       });
 
-      const res = await http.get<Record<string, unknown>[]>(
-        `${baseUrl}/awards/event/${event.id}/public`,
-      );
+      const res = await http.get<{
+        manual: Record<string, unknown>[];
+      }>(`${baseUrl}/awards/event/${event.id}/public`);
       expect(res.status).toBe(200);
-      const first = res.json[0];
+      const first = res.json.manual[0];
       expect(first).not.toHaveProperty('id');
       expect(first).not.toHaveProperty('event_id');
       expect(first).not.toHaveProperty('template_award_id');
@@ -428,13 +430,222 @@ describe('Awards API', () => {
       void award;
     });
 
-    it('returns empty array for released event with no awards', async () => {
+    it('returns empty manual list for released event with no manual awards', async () => {
       const event = await createReleasedEvent();
-      const res = await http.get<unknown[]>(
-        `${baseUrl}/awards/event/${event.id}/public`,
-      );
+      const res = await http.get<{
+        manual: unknown[];
+        automatic: {
+          de: unknown[];
+          perBracketOverall: unknown[];
+          eventOverall: unknown;
+        };
+      }>(`${baseUrl}/awards/event/${event.id}/public`);
       expect(res.status).toBe(200);
-      expect(res.json).toEqual([]);
+      expect(res.json.manual).toEqual([]);
+      expect(res.json.automatic.de).toEqual([]);
+      expect(res.json.automatic.perBracketOverall).toEqual([]);
+      expect(res.json.automatic.eventOverall).toBeNull();
+    });
+
+    it('includes automatic DE, per-bracket overall, and event overall when data is complete', async () => {
+      const event = await createReleasedEvent();
+      const bracket = await seedBracket(testDb.db, {
+        event_id: event.id,
+        name: 'Main Bracket',
+        status: 'completed',
+      });
+      const t1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+        team_name: 'First',
+      });
+      const t2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+        team_name: 'Second',
+      });
+      const t3 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 3,
+        team_name: 'Third',
+      });
+
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        [t1.id],
+      );
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5)`,
+        [t2.id],
+      );
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1)`,
+        [t3.id],
+      );
+
+      await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: t1.id,
+        overall_score: 3,
+      });
+      await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: t2.id,
+        overall_score: 2,
+      });
+      await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: t3.id,
+        overall_score: 1,
+      });
+
+      await testDb.db.run(
+        `INSERT INTO bracket_entries (
+          bracket_id, team_id, seed_position, is_bye,
+          final_rank, bracket_raw_score, weighted_bracket_raw_score
+        ) VALUES
+          (?, ?, 1, 0, 1, 1, 100),
+          (?, ?, 2, 0, 2, 0.5, 50),
+          (?, ?, 3, 0, 3, 0.33, 10)`,
+        [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
+      );
+
+      const res = await http.get<{
+        manual: unknown[];
+        automatic: {
+          de: { bracket_name: string; placements: { place: number }[] }[];
+          perBracketOverall: {
+            bracket_name: string;
+            placements: { place: number; recipients: { team_number: number }[] }[];
+          }[];
+          eventOverall: {
+            placements: { place: number; recipients: { team_number: number }[] }[];
+          } | null;
+        };
+      }>(`${baseUrl}/awards/event/${event.id}/public`);
+
+      expect(res.status).toBe(200);
+      expect(res.json.manual).toEqual([]);
+
+      expect(res.json.automatic.de).toHaveLength(1);
+      expect(res.json.automatic.de[0].bracket_name).toBe('Main Bracket');
+      expect(res.json.automatic.de[0].placements.map((p) => p.place)).toEqual([
+        1, 2, 3,
+      ]);
+
+      expect(res.json.automatic.perBracketOverall).toHaveLength(1);
+      expect(res.json.automatic.perBracketOverall[0].placements[0].recipients[0]
+        .team_number).toBe(1);
+      expect(res.json.automatic.perBracketOverall[0].placements[1].recipients[0]
+        .team_number).toBe(2);
+      expect(res.json.automatic.perBracketOverall[0].placements[2].recipients[0]
+        .team_number).toBe(3);
+
+      expect(res.json.automatic.eventOverall).not.toBeNull();
+      expect(
+        res.json.automatic.eventOverall!.placements[0].recipients[0]
+          .team_number,
+      ).toBe(1);
+      expect(
+        res.json.automatic.eventOverall!.placements[1].recipients[0]
+          .team_number,
+      ).toBe(2);
+      expect(
+        res.json.automatic.eventOverall!.placements[2].recipients[0]
+          .team_number,
+      ).toBe(3);
+    });
+  });
+
+  describe('POST /awards/event/:eventId/automatic', () => {
+    async function createReleasedEventForApply() {
+      const event = await seedEvent(testDb.db, {
+        name: 'Released Apply',
+        status: 'complete',
+      });
+      await testDb.db.run(
+        `UPDATE events SET spectator_results_released = 1 WHERE id = ?`,
+        [event.id],
+      );
+      return event;
+    }
+
+    it('creates Auto: event award rows from computed results', async () => {
+      const event = await createReleasedEventForApply();
+      const bracket = await seedBracket(testDb.db, {
+        event_id: event.id,
+        name: 'Main Bracket',
+        status: 'completed',
+      });
+      const t1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+        team_name: 'First',
+      });
+      const t2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+        team_name: 'Second',
+      });
+      const t3 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 3,
+        team_name: 'Third',
+      });
+
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        [t1.id],
+      );
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5)`,
+        [t2.id],
+      );
+      await testDb.db.run(
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1)`,
+        [t3.id],
+      );
+
+      await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: t1.id,
+        overall_score: 3,
+      });
+      await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: t2.id,
+        overall_score: 2,
+      });
+      await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: t3.id,
+        overall_score: 1,
+      });
+
+      await testDb.db.run(
+        `INSERT INTO bracket_entries (
+          bracket_id, team_id, seed_position, is_bye,
+          final_rank, bracket_raw_score, weighted_bracket_raw_score
+        ) VALUES
+          (?, ?, 1, 0, 1, 1, 100),
+          (?, ?, 2, 0, 2, 0.5, 50),
+          (?, ?, 3, 0, 3, 0.33, 10)`,
+        [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
+      );
+
+      const applyRes = await http.post<{
+        created: number;
+        removed: number;
+      }>(`${baseUrl}/awards/event/${event.id}/automatic`);
+
+      expect(applyRes.status).toBe(200);
+      expect(applyRes.json.created).toBeGreaterThan(0);
+
+      const listRes = await http.get<{ name: string }[]>(
+        `${baseUrl}/awards/event/${event.id}`,
+      );
+      expect(listRes.status).toBe(200);
+      expect(listRes.json.some((a) => a.name.startsWith('Auto: '))).toBe(true);
     });
   });
 });

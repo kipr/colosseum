@@ -64,6 +64,7 @@ export default function AwardsTab() {
     mode: 'manual' as 'manual' | 'template',
   });
   const [savingAward, setSavingAward] = useState(false);
+  const [applyingAutomatic, setApplyingAutomatic] = useState(false);
 
   // Recipient controls
   const [addingRecipientForAwardId, setAddingRecipientForAwardId] = useState<
@@ -281,6 +282,47 @@ export default function AwardsTab() {
     }
   };
 
+  const handleApplyAutomaticAwards = async () => {
+    if (!selectedEventId) return;
+    setApplyingAutomatic(true);
+    try {
+      const res = await fetch(`/awards/event/${selectedEventId}/automatic`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = (await res.json()) as {
+        created?: number;
+        removed?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(data.error ?? 'Failed to apply automatic awards');
+      }
+      const created = data.created ?? 0;
+      const removed = data.removed ?? 0;
+      if (created === 0) {
+        toast.success(
+          removed > 0
+            ? `Cleared ${removed} previous automatic award(s). No placements could be computed from current data.`
+            : 'No automatic placements could be computed from current data.',
+        );
+      } else {
+        toast.success(
+          removed > 0
+            ? `Added ${created} automatic award(s). Replaced ${removed} previous automatic award(s).`
+            : `Added ${created} automatic award(s).`,
+        );
+      }
+      await fetchEventAwards();
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to apply automatic awards',
+      );
+    } finally {
+      setApplyingAutomatic(false);
+    }
+  };
+
   const handleDeleteAward = async (a: EventAward) => {
     const ok = await confirm({
       title: 'Delete Award',
@@ -434,9 +476,41 @@ export default function AwardsTab() {
           <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
             Awards for this event. Published alongside final scores.
           </p>
-          <button className="btn btn-primary" onClick={handleCreateAward}>
-            + Add Award
-          </button>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              alignItems: 'center',
+              marginBottom: '0.5rem',
+            }}
+          >
+            <button className="btn btn-primary" onClick={handleCreateAward}>
+              + Add Award
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={applyingAutomatic}
+              onClick={handleApplyAutomaticAwards}
+            >
+              {applyingAutomatic
+                ? 'Applying…'
+                : 'Add automatic awards (from results)'}
+            </button>
+          </div>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              fontSize: '0.9rem',
+              marginBottom: '1rem',
+            }}
+          >
+            Automatic awards use the same rules as the spectator view (DE
+            placement, per-bracket overall, event overall). They are stored as
+            event awards whose names start with &quot;Auto:&quot;; clicking the
+            button replaces previous automatic awards with a fresh calculation.
+          </p>
 
           {eventAwards.length === 0 ? (
             <p

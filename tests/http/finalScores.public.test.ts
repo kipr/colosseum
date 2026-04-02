@@ -342,13 +342,13 @@ describe('Public Final Scores API', () => {
         team_id: team.id,
       });
 
-      const res = await http.get<
-        { name: string; recipients: { team_number: number }[] }[]
-      >(`${baseUrl}/awards/event/${event.id}/public`);
+      const res = await http.get<{
+        manual: { name: string; recipients: { team_number: number }[] }[];
+      }>(`${baseUrl}/awards/event/${event.id}/public`);
       expect(res.status).toBe(200);
-      expect(res.json).toHaveLength(1);
-      expect(res.json[0].name).toBe('Best Bot');
-      expect(res.json[0].recipients).toHaveLength(1);
+      expect(res.json.manual).toHaveLength(1);
+      expect(res.json.manual[0].name).toBe('Best Bot');
+      expect(res.json.manual[0].recipients).toHaveLength(1);
     });
   });
 

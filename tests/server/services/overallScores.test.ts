@@ -100,4 +100,31 @@ describe('computeOverallScores', () => {
 
     expect(rows[0].total).toBeGreaterThanOrEqual(rows[1].total);
   });
+
+  it('sums weighted_bracket_raw_score when the same team appears in multiple brackets', async () => {
+    const t1 = await createTeam(1);
+    await testDb.db.run(
+      `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+      [eventId, t1, 0.1],
+    );
+    await testDb.db.run(
+      `INSERT INTO seeding_rankings (team_id, raw_seed_score) VALUES (?, ?)`,
+      [t1, 0.2],
+    );
+    const b1 = await createBracket(1);
+    const b2 = await createBracket(1);
+    await testDb.db.run(
+      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, weighted_bracket_raw_score) VALUES (?, ?, ?, ?, ?)`,
+      [b1, t1, 1, 0, 0.5],
+    );
+    await testDb.db.run(
+      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, weighted_bracket_raw_score) VALUES (?, ?, ?, ?, ?)`,
+      [b2, t1, 1, 0, 0.3],
+    );
+
+    const rows = await computeOverallScores(eventId);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].weighted_de_score).toBeCloseTo(0.8, 4);
+    expect(rows[0].total).toBeCloseTo(1.1, 4);
+  });
 });

@@ -38,6 +38,10 @@ import {
   bracketSideToParam,
 } from '../utils/routes';
 import '../components/bracket/BracketDisplay.css';
+import SpectatorAutomaticAwards, {
+  hasAutomaticAwardsContent,
+  type AutomaticAwardsPublic,
+} from '../components/spectator/SpectatorAutomaticAwards';
 import './Spectator.css';
 
 interface PublicEvent {
@@ -97,16 +101,19 @@ export default function Spectator() {
   >(null);
 
   // Awards state (lazy-loaded)
-  interface PublicAward {
+  interface PublicManualAward {
     name: string;
     description: string | null;
     sort_order: number;
     recipients: {
       team_number: number;
       team_name: string;
+      display_name?: string | null;
     }[];
   }
-  const [publicAwards, setPublicAwards] = useState<PublicAward[]>([]);
+  const [manualAwards, setManualAwards] = useState<PublicManualAward[]>([]);
+  const [automaticAwards, setAutomaticAwards] =
+    useState<AutomaticAwardsPublic | null>(null);
   const [awardsLoading, setAwardsLoading] = useState(false);
   const [awardsLoaded, setAwardsLoaded] = useState(false);
 
@@ -203,7 +210,8 @@ export default function Spectator() {
     setOverallLoaded(false);
     setOverallRows([]);
     setAwardsLoaded(false);
-    setPublicAwards([]);
+    setManualAwards([]);
+    setAutomaticAwards(null);
     setBracketRankings(null);
     setBracketRankingsLoadedForId(null);
   }, [selectedEventId]);
@@ -316,7 +324,12 @@ export default function Spectator() {
     fetch(`/awards/event/${selectedEventId}/public`)
       .then(async (res) => {
         if (!res.ok) throw new Error('Failed to fetch');
-        setPublicAwards(await res.json());
+        const data: {
+          manual: PublicManualAward[];
+          automatic: AutomaticAwardsPublic;
+        } = await res.json();
+        setManualAwards(data.manual ?? []);
+        setAutomaticAwards(data.automatic ?? null);
         setAwardsLoaded(true);
       })
       .catch((err) => console.error('Error loading awards:', err))
@@ -588,7 +601,8 @@ export default function Spectator() {
               <div>
                 {awardsLoading ? (
                   <p>Loading awards...</p>
-                ) : publicAwards.length === 0 ? (
+                ) : manualAwards.length === 0 &&
+                  !hasAutomaticAwardsContent(automaticAwards) ? (
                   <div className="card">
                     <p style={{ color: 'var(--secondary-color)' }}>
                       No awards have been published for this event.
@@ -597,59 +611,84 @@ export default function Spectator() {
                 ) : (
                   <div className="card">
                     <h3 style={{ marginBottom: '1rem' }}>Awards</h3>
-                    {publicAwards.map((award, idx) => (
+                    {automaticAwards &&
+                      hasAutomaticAwardsContent(automaticAwards) && (
+                        <SpectatorAutomaticAwards automatic={automaticAwards} />
+                      )}
+                    {manualAwards.length > 0 && (
                       <div
-                        key={idx}
                         style={{
-                          marginBottom:
-                            idx < publicAwards.length - 1 ? '1.25rem' : 0,
-                          paddingBottom:
-                            idx < publicAwards.length - 1 ? '1.25rem' : 0,
-                          borderBottom:
-                            idx < publicAwards.length - 1
-                              ? '1px solid var(--border-color)'
-                              : 'none',
+                          marginTop: hasAutomaticAwardsContent(automaticAwards)
+                            ? '1.5rem'
+                            : 0,
                         }}
                       >
-                        <strong style={{ fontSize: '1.05rem' }}>
-                          {award.name}
-                        </strong>
-                        {award.description && (
-                          <p
+                        {hasAutomaticAwardsContent(automaticAwards) && (
+                          <h4
                             style={{
-                              color: 'var(--secondary-color)',
-                              margin: '0.25rem 0 0.5rem',
+                              margin: '0 0 0.75rem',
+                              fontSize: '1.05rem',
                             }}
                           >
-                            {award.description}
-                          </p>
+                            Other awards
+                          </h4>
                         )}
-                        {award.recipients.length > 0 ? (
-                          <ul
+                        {manualAwards.map((award, idx) => (
+                          <div
+                            key={idx}
                             style={{
-                              margin: '0.5rem 0 0',
-                              paddingLeft: '1.25rem',
+                              marginBottom:
+                                idx < manualAwards.length - 1 ? '1.25rem' : 0,
+                              paddingBottom:
+                                idx < manualAwards.length - 1 ? '1.25rem' : 0,
+                              borderBottom:
+                                idx < manualAwards.length - 1
+                                  ? '1px solid var(--border-color)'
+                                  : 'none',
                             }}
                           >
-                            {award.recipients.map((r, ri) => (
-                              <li key={ri}>
-                                <strong>#{r.team_number}</strong> {r.team_name}
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p
-                            style={{
-                              color: 'var(--secondary-color)',
-                              margin: '0.5rem 0 0',
-                              fontStyle: 'italic',
-                            }}
-                          >
-                            No recipients
-                          </p>
-                        )}
+                            <strong style={{ fontSize: '1.05rem' }}>
+                              {award.name}
+                            </strong>
+                            {award.description && (
+                              <p
+                                style={{
+                                  color: 'var(--secondary-color)',
+                                  margin: '0.25rem 0 0.5rem',
+                                }}
+                              >
+                                {award.description}
+                              </p>
+                            )}
+                            {award.recipients.length > 0 ? (
+                              <ul
+                                style={{
+                                  margin: '0.5rem 0 0',
+                                  paddingLeft: '1.25rem',
+                                }}
+                              >
+                                {award.recipients.map((r, ri) => (
+                                  <li key={ri}>
+                                    <strong>#{r.team_number}</strong>{' '}
+                                    {r.team_name}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p
+                                style={{
+                                  color: 'var(--secondary-color)',
+                                  margin: '0.5rem 0 0',
+                                  fontStyle: 'italic',
+                                }}
+                              >
+                                No recipients
+                              </p>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
                 )}
               </div>
