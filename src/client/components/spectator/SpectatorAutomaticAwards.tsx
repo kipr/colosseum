@@ -43,9 +43,22 @@ function placeLabel(place: 1 | 2 | 3): string {
   return '3rd';
 }
 
+/** Avoid "#113 #113 113 Name" when the list row already shows the team number in bold. */
+function stripRedundantLeadingTeamNumber(
+  teamNumber: number,
+  label: string,
+): string {
+  const trimmed = label.trim();
+  if (!trimmed) return trimmed;
+  const withoutDup = trimmed
+    .replace(new RegExp(`^#?\\s*${teamNumber}\\s+`), '')
+    .trim();
+  return withoutDup || trimmed;
+}
+
 function formatTeamLine(t: PublicAwardTeam): string {
-  const name = t.display_name?.trim() ? t.display_name : t.team_name;
-  return `#${t.team_number} ${name}`;
+  const raw = t.display_name?.trim() ? t.display_name : t.team_name;
+  return stripRedundantLeadingTeamNumber(t.team_number, raw);
 }
 
 function MedalTable({ placements }: { placements: MedalPlacement[] }) {
