@@ -320,7 +320,10 @@ test.describe('Spectator Public Views & Release Gating', () => {
     page,
   }) => {
     await page.goto('/spectator');
-    await page.locator('.nav-brand h1').click();
+
+    // Spectator mode renders the brand as static text instead of a home link
+    await expect(page.locator('.nav-brand .brand-link--spectator')).toBeVisible();
+    await expect(page.locator('.nav-brand a.brand-link')).toHaveCount(0);
     await expect(page).toHaveURL(/\/spectator$/);
   });
 
@@ -387,7 +390,10 @@ test.describe('Spectator Public Views & Release Gating', () => {
     page,
   }) => {
     await page.goto(`/spectator/events/${activeEventId}?view=seeding`);
-    await page.locator('.nav-brand h1').click();
+
+    // Spectator event pages also render the brand as static text
+    await expect(page.locator('.nav-brand .brand-link--spectator')).toBeVisible();
+    await expect(page.locator('.nav-brand a.brand-link')).toHaveCount(0);
     await expect(page).toHaveURL(
       new RegExp(`/spectator/events/${activeEventId}`),
     );
@@ -521,10 +527,15 @@ test.describe('Spectator Public Views & Release Gating', () => {
     await expect(page.getByText('Per-bracket overall')).toBeVisible();
     await expect(page.getByText('Event overall')).toBeVisible();
     await expect(page.getByText('Other awards')).toBeVisible();
-    await expect(page.getByText('Champion Award')).toBeVisible();
-    await expect(page.getByText('Best overall team')).toBeVisible();
-    await expect(page.getByText(`#${TEAM_A.number}`)).toBeVisible();
-    await expect(page.getByText(TEAM_A.name)).toBeVisible();
+    const championAward = page
+      .locator('div')
+      .filter({ hasText: 'Champion Award' })
+      .filter({ hasText: 'Best overall team' })
+      .filter({ hasText: TEAM_A.name })
+      .first();
+    await expect(championAward).toBeVisible();
+    await expect(championAward.getByText(`#${TEAM_A.number}`).first()).toBeVisible();
+    await expect(championAward.getByText(TEAM_A.name).first()).toBeVisible();
   });
 
   /* ── 9. Bracket Rankings tab (release-gated) ─────────────────────── */
