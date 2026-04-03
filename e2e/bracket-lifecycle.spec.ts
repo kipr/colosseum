@@ -483,20 +483,25 @@ test.describe('Bracket Lifecycle E2E', () => {
       timeout: 15_000,
     });
 
+    // Filter to bracket rows now that scoring renders bracket and seeding in separate tables
+    const scoreTypeFilter = page.locator('select.field-input').nth(1);
+    await scoreTypeFilter.selectOption('bracket');
+
     // Wait for scores to load
     await expect(page.locator('table')).toBeVisible({ timeout: 10_000 });
 
-    // Find the bracket score row with "Pending" badge
+    // Find the pending bracket score row in the filtered bracket table
     const pendingRow = page
-      .locator('tr')
-      .filter({ has: page.locator('.badge-purple') })
-      .filter({ has: page.locator('.badge-warning') })
+      .locator('table tbody tr')
+      .filter({ hasText: 'Pending' })
       .first();
 
     await expect(pendingRow).toBeVisible({ timeout: 10_000 });
 
-    // Context should show bracket name and game number
-    await expect(pendingRow).toContainText(BRACKET_NAME);
+    // Current scoring rows show matchup/game/score details rather than bracket name
+    await expect(pendingRow).toContainText(/Game \d+/);
+    await expect(pendingRow).toContainText('75');
+    await expect(pendingRow).toContainText('50');
 
     // Click Accept
     await pendingRow.getByRole('button', { name: 'Accept' }).click();

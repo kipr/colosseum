@@ -395,17 +395,21 @@ test.describe('Seeding Queue E2E', () => {
       timeout: 10_000,
     });
 
+    // Filter to seeding rows now that scoring renders separate table shapes by type
+    const scoreTypeFilter = page.locator('select.field-input').nth(1);
+    await scoreTypeFilter.selectOption('seeding');
+
     // Wait for scores to load
     await expect(page.locator('table tbody tr').first()).toBeVisible({
       timeout: 10_000,
     });
 
-    // Verify team number and score type
+    // Verify the pending seeding submission details
     const firstRow = page.locator('table tbody tr').first();
-    await expect(firstRow.getByText('Seeding')).toBeVisible();
     await expect(
       firstRow.getByText(String(TEAM_A_NUMBER)).first(),
     ).toBeVisible();
+    await expect(firstRow.getByText(TEAM_A_NAME)).toBeVisible();
 
     // Verify "Pending" badge
     await expect(firstRow.getByText('Pending')).toBeVisible();
