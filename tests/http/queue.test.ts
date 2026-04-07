@@ -1123,6 +1123,31 @@ describe('Queue Routes', () => {
       expect((res.json as { status: string }).status).toBe('on_table');
     });
 
+    it('advances a called queue item to arrived', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const item = await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'seeding',
+        queue_position: 1,
+        seeding_team_id: team.id,
+        seeding_round: 1,
+      });
+
+      const calledRes = await http.patch(`${baseUrl}/queue/${item.id}/call`, {});
+      expect(calledRes.status).toBe(200);
+
+      const arrivedRes = await http.patch(`${baseUrl}/queue/${item.id}`, {
+        status: 'arrived',
+      });
+
+      expect(arrivedRes.status).toBe(200);
+      expect((arrivedRes.json as { status: string }).status).toBe('arrived');
+    });
+
     it('updates table_number successfully', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {

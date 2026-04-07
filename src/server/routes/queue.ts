@@ -702,7 +702,10 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Error updating queue item:', error);
     const errMsg = (error as Error).message || '';
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (
+      errMsg.includes('CHECK constraint failed') ||
+      errMsg.includes('violates check constraint')
+    ) {
       return res.status(400).json({ error: 'Invalid status value' });
     }
     res.status(500).json({ error: 'Failed to update queue item' });
