@@ -75,6 +75,45 @@ async function migrateGameQueueStatusV2SQLite(db: Database): Promise<void> {
   );
 }
 
+/**
+ * PostgreSQL: replace any legacy `game_queue.status` CHECK before rewriting
+ * old values so existing production rows can be migrated atomically.
+ */
+async function migrateGameQueueStatusV2Postgres(db: Database): Promise<void> {
+  await db.exec(`
+    DO $$
+    DECLARE
+      r RECORD;
+    BEGIN
+      FOR r IN (
+        SELECT c.conname
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE t.relname = 'game_queue'
+          AND c.contype = 'c'
+          AND pg_get_constraintdef(c.oid) ILIKE '%status%'
+      ) LOOP
+        EXECUTE format(
+          'ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS %I',
+          r.conname
+        );
+      END LOOP;
+
+      UPDATE game_queue
+      SET status = CASE status
+        WHEN 'in_progress' THEN 'on_table'
+        WHEN 'completed' THEN 'scored'
+        WHEN 'skipped' THEN 'queued'
+        ELSE status
+      END
+      WHERE status IN ('in_progress', 'completed', 'skipped');
+
+      ALTER TABLE game_queue ADD CONSTRAINT game_queue_status_check
+        CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored'));
+    END $$;
+  `);
+}
+
 const isProduction = process.env.NODE_ENV === 'production';
 const usePostgres = isProduction || !!process.env.DATABASE_URL;
 
@@ -574,49 +613,7 @@ export async function initializePostgres(db: Database): Promise<void> {
   // Maps legacy values, then replaces CHECK constraint with queued/called/arrived/on_table/scored.
   // ============================================================================
   try {
-    await db.exec(`
-      UPDATE game_queue SET status = 'on_table' WHERE status = 'in_progress';
-      UPDATE game_queue SET status = 'scored' WHERE status = 'completed';
-      UPDATE game_queue SET status = 'queued' WHERE status = 'skipped';
-    `);
-    await db.exec(`
-      DO $$
-      DECLARE
-        r RECORD;
-      BEGIN
-        FOR r IN (
-          SELECT c.conname
-          FROM pg_constraint c
-          JOIN pg_class t ON c.conrelid = t.oid
-          WHERE t.relname = 'game_queue'
-            AND c.contype = 'c'
-            AND pg_get_constraintdef(c.oid) LIKE '%status%'
-            AND (
-              pg_get_constraintdef(c.oid) LIKE '%in_progress%'
-              OR pg_get_constraintdef(c.oid) LIKE '%skipped%'
-              OR pg_get_constraintdef(c.oid) LIKE '%completed%'
-            )
-        ) LOOP
-          EXECUTE format('ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS %I', r.conname);
-        END LOOP;
-      END $$;
-    `);
-    await db.exec(`
-      DO $$
-      BEGIN
-        IF NOT EXISTS (
-          SELECT 1
-          FROM pg_constraint c
-          JOIN pg_class t ON c.conrelid = t.oid
-          WHERE t.relname = 'game_queue'
-            AND c.contype = 'c'
-            AND pg_get_constraintdef(c.oid) LIKE '%arrived%'
-        ) THEN
-          ALTER TABLE game_queue ADD CONSTRAINT game_queue_status_v2_check
-            CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored'));
-        END IF;
-      END $$;
-    `);
+    await migrateGameQueueStatusV2Postgres(db);
   } catch (e) {
     console.warn('game_queue status v2 migration (Postgres):', e);
   }

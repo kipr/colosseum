@@ -154,4 +154,24 @@ describe('initializePostgres parity with SQLite', () => {
       expect(allSql).toMatch(/documentation_scores_updated_at/i);
     });
   });
+
+  describe('game_queue status v2 migration', () => {
+    it('drops status check constraints before remapping legacy queue statuses', () => {
+      const dropIndex = allSql.indexOf(
+        'ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS',
+      );
+      const updateIndex = allSql.indexOf(
+        "UPDATE game_queue\n      SET status = CASE status",
+      );
+
+      expect(dropIndex).toBeGreaterThan(-1);
+      expect(updateIndex).toBeGreaterThan(dropIndex);
+    });
+
+    it('recreates the canonical status check with arrived support', () => {
+      expect(allSql).toMatch(
+        /ADD CONSTRAINT game_queue_status_check[\s\S]*CHECK \(status IN \('queued', 'called', 'arrived', 'on_table', 'scored'\)\)/i,
+      );
+    });
+  });
 });
