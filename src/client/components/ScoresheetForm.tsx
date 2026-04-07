@@ -4,6 +4,7 @@ import {
   BracketGameOption,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
+  getScoresheetNumberInputMode,
   getBracketGameOptionValue,
   getBracketSourceEventId,
   isEventScopedBracketSource,
@@ -1011,6 +1012,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           <input
             type="number"
             className="score-input"
+            inputMode={getScoresheetNumberInputMode(field)}
             min={field.min ?? 0}
             max={field.max}
             step={field.step || 1}

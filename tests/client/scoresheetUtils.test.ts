@@ -4,6 +4,7 @@ import {
   buildEventScopedBracketSource,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
+  getScoresheetNumberInputMode,
   getBracketGameOptionValue,
   isEventScopedBracketSource,
 } from '../../src/client/components/scoresheetUtils';
@@ -117,5 +118,17 @@ describe('scoresheetUtils', () => {
     expect(findBracketGameBySelection(games, '4', false)?.bracketGameId).toBe(
       400,
     );
+  });
+
+  it('uses numeric input mode for whole-number scoresheet fields', () => {
+    expect(getScoresheetNumberInputMode({})).toBe('numeric');
+    expect(getScoresheetNumberInputMode({ step: 1 })).toBe('numeric');
+    expect(getScoresheetNumberInputMode({ step: '2' })).toBe('numeric');
+  });
+
+  it('uses decimal input mode for fractional scoresheet fields', () => {
+    expect(getScoresheetNumberInputMode({ step: 0.5 })).toBe('decimal');
+    expect(getScoresheetNumberInputMode({ step: '0.25' })).toBe('decimal');
+    expect(getScoresheetNumberInputMode({ step: 'any' })).toBe('decimal');
   });
 });

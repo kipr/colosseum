@@ -264,3 +264,26 @@ export function findBracketGameBySelection(
 
   return games.find((game) => game.gameNumber === numericValue);
 }
+
+export function getScoresheetNumberInputMode(field: {
+  step?: number | string;
+}): 'numeric' | 'decimal' {
+  const rawStep = field.step;
+
+  if (rawStep === undefined || rawStep === null || rawStep === '') {
+    return 'numeric';
+  }
+
+  if (rawStep === 'any') {
+    return 'decimal';
+  }
+
+  const numericStep =
+    typeof rawStep === 'number' ? rawStep : Number.parseFloat(rawStep);
+
+  if (!Number.isFinite(numericStep)) {
+    return 'numeric';
+  }
+
+  return Number.isInteger(numericStep) ? 'numeric' : 'decimal';
+}
