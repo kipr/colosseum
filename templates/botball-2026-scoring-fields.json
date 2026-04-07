@@ -539,6 +539,14 @@
     "isTotal": true
   },
   {
+    "id": "side_a_team_initials",
+    "label": "Team Initials",
+    "column": "left",
+    "type": "text",
+    "required": true,
+    "placeholder": "Initials of team representative"
+  },
+  {
     "id": "section_header_side_b",
     "label": "SIDE B",
     "type": "section_header",
@@ -1076,5 +1084,13 @@
     "type": "calculated",
     "formula": "side_b_ls_subtotal + side_b_us_subtotal + side_b_wf_subtotal + side_b_ild_subtotal + side_b_ds_subtotal + side_b_pb_subtotal + side_b_uw_subtotal + side_b_eld_subtotal",
     "isTotal": true
+  },
+  {
+    "id": "side_b_team_initials",
+    "label": "Team Initials",
+    "column": "right",
+    "type": "text",
+    "required": true,
+    "placeholder": "Initials of team representative"
   }
 ]
