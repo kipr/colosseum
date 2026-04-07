@@ -208,6 +208,17 @@ test.describe('Scoresheet Field Rendering', () => {
     await expect(form.locator('.score-button-group')).toHaveCount(1);
     await expect(form.locator('input[type="checkbox"]')).toHaveCount(1);
 
+    await expect(
+      form
+        .locator('.score-field', { hasText: 'Technical Score' })
+        .locator('input[type="number"]'),
+    ).toHaveAttribute('inputmode', 'decimal');
+    await expect(
+      form
+        .locator('.score-field', { hasText: 'Creativity Score' })
+        .locator('input[type="number"]'),
+    ).toHaveAttribute('inputmode', 'numeric');
+
     // Submit button
     await expect(
       page.getByRole('button', { name: 'Submit Score' }),
