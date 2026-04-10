@@ -18,7 +18,8 @@
     "coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "lint": "npx eslint src",
-    "pretty": "npx prettier src/ --check"
+    "pretty": "npx prettier src/ --check",
+    "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs"
   },
   "keywords": [],
   "author": "",
