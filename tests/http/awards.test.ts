@@ -447,7 +447,7 @@ describe('Awards API', () => {
       expect(res.json.automatic.eventOverall).toBeNull();
     });
 
-    it('includes automatic DE, per-bracket overall, and event overall when data is complete', async () => {
+    it('includes automatic DE and event overall, but skips per-bracket overall for single-bracket events', async () => {
       const event = await createReleasedEvent();
       const bracket = await seedBracket(testDb.db, {
         event_id: event.id,
@@ -533,13 +533,7 @@ describe('Awards API', () => {
         1, 2, 3,
       ]);
 
-      expect(res.json.automatic.perBracketOverall).toHaveLength(1);
-      expect(res.json.automatic.perBracketOverall[0].placements[0].recipients[0]
-        .team_number).toBe(1);
-      expect(res.json.automatic.perBracketOverall[0].placements[1].recipients[0]
-        .team_number).toBe(2);
-      expect(res.json.automatic.perBracketOverall[0].placements[2].recipients[0]
-        .team_number).toBe(3);
+      expect(res.json.automatic.perBracketOverall).toEqual([]);
 
       expect(res.json.automatic.eventOverall).not.toBeNull();
       expect(
