@@ -4,7 +4,10 @@ import { getDatabase } from '../database/connection';
 import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
-import { calculateBracketRankings } from '../services/bracketRankings';
+import {
+  calculateBracketRankings,
+  calculateBracketRankingsIfReady,
+} from '../services/bracketRankings';
 import {
   isEventArchived,
   areFinalScoresReleased,
@@ -202,6 +205,8 @@ router.get('/:id', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Bracket not found' });
     }
 
+    await calculateBracketRankingsIfReady(Number(id));
+
     // Explicit column list omits final_rank and bracket_raw_score to prevent leaking ranking data
     const entries = await db.all(
       `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
@@ -259,6 +264,8 @@ router.get('/:id/rankings/public', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Not found' });
     }
 
+    await calculateBracketRankingsIfReady(Number(id));
+
     const entries = await db.all(
       `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.is_bye,
                 be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
@@ -302,6 +309,8 @@ router.get(
       if (!bracket) {
         return res.status(404).json({ error: 'Bracket not found' });
       }
+
+      await calculateBracketRankingsIfReady(Number(id));
 
       const entries = await db.all(
         `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,

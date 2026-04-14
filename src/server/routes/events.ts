@@ -7,6 +7,7 @@ import {
   areFinalScoresReleased,
 } from '../utils/eventVisibility';
 import { computeOverallScores } from '../services/overallScores';
+import { calculateEventBracketRankingsIfReady } from '../services/bracketRankings';
 
 const PUBLIC_EVENT_FIELDS =
   'id, name, status, event_date, location, seeding_rounds, spectator_results_released';
@@ -112,7 +113,9 @@ router.get(
       if (!event) {
         return res.status(404).json({ error: 'Event not found' });
       }
-      const rows = await computeOverallScores(parseInt(id, 10));
+      const eventId = parseInt(id, 10);
+      await calculateEventBracketRankingsIfReady(eventId);
+      const rows = await computeOverallScores(eventId);
       res.json(rows);
     } catch (error) {
       console.error('Error fetching overall scores:', error);
@@ -131,7 +134,9 @@ router.get(
       if (!(await areFinalScoresReleased(id))) {
         return res.status(404).json({ error: 'Not found' });
       }
-      const rows = await computeOverallScores(parseInt(id, 10));
+      const eventId = parseInt(id, 10);
+      await calculateEventBracketRankingsIfReady(eventId);
+      const rows = await computeOverallScores(eventId);
       res.json(rows);
     } catch (error) {
       console.error('Error fetching public overall scores:', error);
