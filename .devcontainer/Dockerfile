@@ -14,7 +14,12 @@ WORKDIR /workspaces/colosseum
 
 RUN npx playwright install-deps
 
+RUN npm i -g @openai/codex
+
 # Use the non-root node user for dev
 USER node
+
+RUN wget -qO- https://astral.sh/uv/install.sh | sh \
+  && /home/node/.local/bin/uv tool install -p 3.13 serena-agent@latest --prerelease=allow
 
 RUN npx playwright install
