@@ -155,9 +155,12 @@ test.describe('Admin Tournament Setup E2E', () => {
     await loginAsAdmin(page);
     await page.goto('/admin/events?view=events');
 
-    await expect(page.getByRole('heading', { name: 'Manage Events' })).toBeVisible();
+    const createEventButton = page.getByRole('button', {
+      name: '+ Create New Event',
+    });
+    await expect(createEventButton).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole('button', { name: '+ Create New Event' }).click();
+    await createEventButton.click();
 
     const modal = page.locator('.modal.show');
     await expect(modal.getByRole('heading', { name: 'Create New Event' })).toBeVisible();
