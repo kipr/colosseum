@@ -130,29 +130,6 @@
   --sticky-rank-width: 7.25rem;
   --sticky-team-number-width: 4.25rem;
   --sticky-team-name-width: 9rem;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  display: block;
-  position: relative;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable both-edges;
-  isolation: isolate;
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  background: var(--card-bg);
-  contain: layout inline-size;
-}
-
-.seeding-table-spectator {
-  display: inline-table;
-  width: max-content;
-  min-width: max-content;
-  max-width: none;
-  margin-top: 0;
 }
 
 .seeding-table-spectator .seed-rank-col,
@@ -609,17 +586,5 @@
 
   .seeding-table-spectator .header-label-short {
     display: inline;
-  }
-
-  .seeding-table-responsive-spectator {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-width: 0 !important;
-  }
-
-  .seeding-table-spectator {
-    min-width: max-content !important;
-    width: max-content !important;
-    max-width: none !important;
   }
 }

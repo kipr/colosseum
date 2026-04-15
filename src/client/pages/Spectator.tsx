@@ -44,6 +44,7 @@ import SpectatorAutomaticAwards, {
 } from '../components/spectator/SpectatorAutomaticAwards';
 import './SpectatorShared.css';
 import './Spectator.css';
+import './SpectatorTableLayout.css';
 
 interface PublicEvent {
   id: number;

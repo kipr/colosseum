@@ -137,29 +137,6 @@
 .documentation-section-spectator .doc-scores-table-wrapper-spectator {
   --doc-sticky-team-number-width: 4.5rem;
   --doc-sticky-team-name-width: 10rem;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  display: block;
-  position: relative;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable both-edges;
-  isolation: isolate;
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  background: var(--card-bg);
-  contain: layout inline-size;
-}
-
-.documentation-section-spectator .doc-calculator-table-spectator {
-  display: inline-table;
-  width: max-content;
-  min-width: max-content;
-  max-width: none;
-  margin-top: 0;
 }
 
 .documentation-section-spectator .doc-calculator-table-spectator .sticky-col {
@@ -286,11 +263,6 @@
     min-width: 0;
   }
 
-  .documentation-section-spectator .doc-calculator-table-spectator {
-    width: max-content;
-    min-width: max-content !important;
-  }
-
   .documentation-section-spectator .doc-calculator-table-spectator th,
   .documentation-section-spectator .doc-calculator-table-spectator td {
     padding: 0.325rem 0.45rem;
@@ -376,29 +348,6 @@
 .overall-section-spectator .overall-scores-table-wrapper-spectator {
   --overall-sticky-team-number-width: 4.25rem;
   --overall-sticky-team-name-width: 8.75rem;
-  width: 100%;
-  max-width: 100%;
-  min-width: 0;
-  display: block;
-  position: relative;
-  overflow-x: auto;
-  overflow-y: hidden;
-  overscroll-behavior-x: contain;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-gutter: stable both-edges;
-  isolation: isolate;
-  border: 1px solid var(--border-color);
-  border-radius: 0.75rem;
-  background: var(--card-bg);
-  contain: layout inline-size;
-}
-
-.overall-section-spectator .overall-scores-table-spectator {
-  display: inline-table;
-  width: max-content;
-  min-width: max-content;
-  max-width: none;
-  margin-top: 0;
 }
 
 .overall-section-spectator .overall-scores-table-spectator .sticky-col {
@@ -524,11 +473,6 @@
   .overall-section-spectator .overall-scores-table-spectator th,
   .overall-section-spectator .overall-scores-table-spectator td {
     min-width: 0;
-  }
-
-  .overall-section-spectator .overall-scores-table-spectator {
-    width: max-content;
-    min-width: max-content !important;
   }
 
   .overall-section-spectator .overall-scores-table-spectator th,
