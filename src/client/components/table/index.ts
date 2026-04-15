@@ -9,3 +9,7 @@ export type {
   SortDirection,
 } from './types';
 export { compareLocaleString, compareNullableNumber } from './sortUtils';
+export {
+  UnifiedTableScrollAffordanceProvider,
+  useUnifiedTableScrollAffordance,
+} from './UnifiedTableScrollAffordanceContext';

@@ -45,6 +45,7 @@ import SpectatorAutomaticAwards, {
 import './SpectatorShared.css';
 import './Spectator.css';
 import './SpectatorTableLayout.css';
+import { UnifiedTableScrollAffordanceProvider } from '../components/table';
 
 interface PublicEvent {
   id: number;
@@ -444,6 +445,7 @@ export default function Spectator() {
     <div className="app">
       <Navbar />
       <main className="spectator-container spectator-shell-container">
+        <UnifiedTableScrollAffordanceProvider>
         <div className="spectator-header">
           <h2>{selectedEvent ? selectedEvent.name : 'Spectator'}</h2>
           <p>View live seeding scores and bracket results.</p>
@@ -709,6 +711,7 @@ export default function Spectator() {
             )}
           </>
         )}
+        </UnifiedTableScrollAffordanceProvider>
       </main>
     </div>
   );

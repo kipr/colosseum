@@ -203,20 +203,17 @@ export default function OverallScoresDisplay({
           No scores available yet.
         </p>
       ) : (
-        <div
-          className={`doc-scores-table-wrapper${isSpectator ? ' overall-scores-table-wrapper-spectator' : ''}`}
-        >
-          <UnifiedTable
-            columns={columns}
-            rows={sortedRows}
-            getRowKey={(row) => row.team_id}
-            activeSortId={sortField}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            headerLabelVariant="doc"
-            tableClassName={`doc-calculator-table${isSpectator ? ' overall-scores-table-spectator' : ''}`}
-          />
-        </div>
+        <UnifiedTable
+          columns={columns}
+          rows={sortedRows}
+          getRowKey={(row) => row.team_id}
+          activeSortId={sortField}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+          headerLabelVariant="doc"
+          wrapperClassName={`doc-scores-table-wrapper${isSpectator ? ' overall-scores-table-wrapper-spectator' : ''}`}
+          tableClassName={`doc-calculator-table${isSpectator ? ' overall-scores-table-spectator' : ''}`}
+        />
       )}
     </div>
   );

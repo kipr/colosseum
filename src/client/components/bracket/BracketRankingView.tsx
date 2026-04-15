@@ -307,21 +307,18 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         </div>
       </div>
 
-      <div
-        className={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
-      >
-        <UnifiedTable
-          columns={columns}
-          rows={sortedEntries}
-          getRowKey={(entry) => entry.id}
-          activeSortId={sortField}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-          headerLabelVariant="seeding"
-          rowClassName={(entry) => getRankRowClass(entry.final_rank)}
-          tableClassName={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}
-        />
-      </div>
+      <UnifiedTable
+        columns={columns}
+        rows={sortedEntries}
+        getRowKey={(entry) => entry.id}
+        activeSortId={sortField}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+        headerLabelVariant="seeding"
+        rowClassName={(entry) => getRankRowClass(entry.final_rank)}
+        wrapperClassName={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
+        tableClassName={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}
+      />
     </div>
   );
 }

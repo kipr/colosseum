@@ -279,20 +279,17 @@ export default function SeedingScoresTable({
           </p>
         </div>
       </div>
-      <div
-        className={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
-      >
-        <UnifiedTable
-          columns={columns}
-          rows={sortedTeamRowData}
-          getRowKey={(row) => row.team.id}
-          activeSortId={sortField}
-          sortDirection={sortDirection}
-          onSort={handleSort}
-          headerLabelVariant="seeding"
-          tableClassName={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}
-        />
-      </div>
+      <UnifiedTable
+        columns={columns}
+        rows={sortedTeamRowData}
+        getRowKey={(row) => row.team.id}
+        activeSortId={sortField}
+        sortDirection={sortDirection}
+        onSort={handleSort}
+        headerLabelVariant="seeding"
+        wrapperClassName={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
+        tableClassName={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}
+      />
     </div>
   );
 }

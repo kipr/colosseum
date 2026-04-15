@@ -1,10 +1,17 @@
-import React, { useCallback } from 'react';
+import React, {
+  useCallback,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type {
   UnifiedColumnDef,
   UnifiedDataColumn,
   UnifiedHeaderLabelVariant,
   UnifiedTableProps,
 } from './types';
+import { useUnifiedTableScrollAffordance } from './UnifiedTableScrollAffordanceContext';
 import './UnifiedTable.css';
 
 function headerLabelSpans(
@@ -91,6 +98,61 @@ export default function UnifiedTable<TRow>({
   highlightActiveColumn = true,
   tbodyExtra,
 }: UnifiedTableProps<TRow>) {
+  const scrollAffordance = useUnifiedTableScrollAffordance();
+  const scrollRegionRef = useRef<HTMLDivElement>(null);
+  const hintId = useId();
+  const [overflowing, setOverflowing] = useState(false);
+  const [showRightFade, setShowRightFade] = useState(false);
+  const [hintDismissed, setHintDismissed] = useState(false);
+
+  const updateScrollMetrics = useCallback(() => {
+    const el = scrollRegionRef.current;
+    if (!el) return;
+    const { scrollWidth, clientWidth, scrollLeft } = el;
+    const epsilon = 2;
+    const ov = scrollWidth > clientWidth + epsilon;
+    setOverflowing(ov);
+    setShowRightFade(
+      ov && scrollLeft + clientWidth < scrollWidth - epsilon,
+    );
+  }, []);
+
+  const handleScrollRegionScroll = useCallback(() => {
+    const el = scrollRegionRef.current;
+    if (!el) return;
+    const { scrollWidth, clientWidth, scrollLeft } = el;
+    const epsilon = 2;
+    const ov = scrollWidth > clientWidth + epsilon;
+    setOverflowing(ov);
+    setShowRightFade(
+      ov && scrollLeft + clientWidth < scrollWidth - epsilon,
+    );
+    if (ov) {
+      setHintDismissed(true);
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (!scrollAffordance) return;
+    updateScrollMetrics();
+  }, [
+    scrollAffordance,
+    updateScrollMetrics,
+    rows.length,
+    columns.length,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!scrollAffordance) return;
+    const el = scrollRegionRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => {
+      updateScrollMetrics();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [scrollAffordance, updateScrollMetrics]);
+
   const handleSortClick = useCallback(
     (sortId: string) => {
       onSort?.(sortId);
@@ -229,9 +291,44 @@ export default function UnifiedTable<TRow>({
     </table>
   );
 
-  if (wrapperClassName) {
-    return <div className={wrapperClassName}>{table}</div>;
+  if (!scrollAffordance) {
+    if (wrapperClassName) {
+      return <div className={wrapperClassName}>{table}</div>;
+    }
+    return table;
   }
 
-  return table;
+  const regionClassName = ['unified-table-scroll-region', wrapperClassName]
+    .filter(Boolean)
+    .join(' ');
+
+  const showHint = overflowing && !hintDismissed;
+
+  return (
+    <div className="unified-table-scroll-shell">
+      {showHint ? (
+        <p className="unified-table-scroll-hint" id={hintId}>
+          Swipe sideways to see more columns.
+        </p>
+      ) : null}
+      <div className="unified-table-scroll-viewport">
+        <div
+          ref={scrollRegionRef}
+          className={regionClassName}
+          onScroll={handleScrollRegionScroll}
+          aria-describedby={showHint ? hintId : undefined}
+        >
+          {table}
+        </div>
+        <div
+          className={
+            showRightFade
+              ? 'unified-table-scroll-fade unified-table-scroll-fade-right unified-table-scroll-fade-visible'
+              : 'unified-table-scroll-fade unified-table-scroll-fade-right'
+          }
+          aria-hidden
+        />
+      </div>
+    </div>
+  );
 }

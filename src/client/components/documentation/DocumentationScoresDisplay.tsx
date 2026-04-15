@@ -250,20 +250,17 @@ export default function DocumentationScoresDisplay({
           No documentation scores recorded yet.
         </p>
       ) : (
-        <div
-          className={`doc-scores-table-wrapper${isSpectator ? ' doc-scores-table-wrapper-spectator' : ''}`}
-        >
-          <UnifiedTable
-            columns={columns}
-            rows={sortedScores}
-            getRowKey={(s) => s.team_id}
-            activeSortId={sortField}
-            sortDirection={sortDirection}
-            onSort={handleSort}
-            headerLabelVariant="doc"
-            tableClassName={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}
-          />
-        </div>
+        <UnifiedTable
+          columns={columns}
+          rows={sortedScores}
+          getRowKey={(s) => s.team_id}
+          activeSortId={sortField}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+          headerLabelVariant="doc"
+          wrapperClassName={`doc-scores-table-wrapper${isSpectator ? ' doc-scores-table-wrapper-spectator' : ''}`}
+          tableClassName={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}
+        />
       )}
     </div>
   );
