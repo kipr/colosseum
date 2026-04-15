@@ -204,6 +204,14 @@
   max-width: var(--doc-sticky-team-name-width);
 }
 
+.documentation-section-spectator .doc-team-name-text {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .documentation-section-spectator .doc-team-name-col,
 .documentation-section-spectator .doc-team-name-cell {
   box-shadow: 1px 0 0 var(--border-color);
@@ -268,8 +276,8 @@
 
 @media (max-width: 768px) {
   .documentation-section-spectator .doc-scores-table-wrapper-spectator {
-    --doc-sticky-team-number-width: 4rem;
-    --doc-sticky-team-name-width: 8.25rem;
+    --doc-sticky-team-number-width: 3.5rem;
+    --doc-sticky-team-name-width: 7rem;
   }
 
   .documentation-section-spectator .doc-calculator-table-spectator,
@@ -285,8 +293,12 @@
 
   .documentation-section-spectator .doc-calculator-table-spectator th,
   .documentation-section-spectator .doc-calculator-table-spectator td {
-    padding: 0.45rem 0.5rem;
-    font-size: 0.8125rem;
+    padding: 0.325rem 0.45rem;
+    font-size: 0.8rem;
+  }
+
+  .documentation-section-spectator .doc-calculator-table-spectator th {
+    font-size: 0.75rem;
   }
 
   .documentation-section-spectator .doc-header-label-full {
@@ -302,8 +314,7 @@
   }
 
   .documentation-section-spectator .doc-team-name-cell {
-    white-space: normal;
-    overflow-wrap: anywhere;
+    overflow: hidden;
   }
 
   .documentation-section-spectator .doc-overall-cell strong {
@@ -432,6 +443,14 @@
   max-width: var(--overall-sticky-team-name-width);
 }
 
+.overall-section-spectator .overall-team-name-text {
+  display: block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .overall-section-spectator .overall-team-name-col,
 .overall-section-spectator .overall-team-name-cell {
   box-shadow: 1px 0 0 var(--border-color);
@@ -497,8 +516,8 @@
 
 @media (max-width: 768px) {
   .overall-section-spectator .overall-scores-table-wrapper-spectator {
-    --overall-sticky-team-number-width: 3.6rem;
-    --overall-sticky-team-name-width: 7.25rem;
+    --overall-sticky-team-number-width: 3.5rem;
+    --overall-sticky-team-name-width: 7rem;
   }
 
   .overall-section-spectator .overall-scores-table-spectator,
@@ -514,8 +533,12 @@
 
   .overall-section-spectator .overall-scores-table-spectator th,
   .overall-section-spectator .overall-scores-table-spectator td {
-    padding: 0.35rem 0.4rem;
-    font-size: 0.78rem;
+    padding: 0.325rem 0.45rem;
+    font-size: 0.8rem;
+  }
+
+  .overall-section-spectator .overall-scores-table-spectator th {
+    font-size: 0.75rem;
   }
 
   .overall-section-spectator .doc-header-label-full {
@@ -544,8 +567,7 @@
   }
 
   .overall-section-spectator .overall-team-name-cell {
-    white-space: normal;
-    overflow-wrap: anywhere;
+    overflow: hidden;
   }
 
   .overall-section-spectator .overall-total-cell strong {

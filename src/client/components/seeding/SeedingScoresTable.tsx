@@ -350,7 +350,10 @@ export default function SeedingScoresTable({
                   return (
                     <td
                       key={round}
-                      className={getCellClassName(roundField(round), 'score-cell')}
+                      className={getCellClassName(
+                        roundField(round),
+                        'score-cell',
+                      )}
                     >
                       {scoreRecord?.score ?? '—'}
                     </td>

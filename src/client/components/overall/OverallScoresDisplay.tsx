@@ -158,7 +158,7 @@ export default function OverallScoresDisplay({
                   )}
                   onClick={() => handleSort('team_number')}
                 >
-                  {renderHeaderLabel('Team #', 'Team', 'team_number')}
+                  {renderHeaderLabel('Team #', '#', 'team_number')}
                 </th>
                 <th
                   className={getHeaderClassName(
@@ -227,7 +227,12 @@ export default function OverallScoresDisplay({
                         : '',
                     )}
                   >
-                    {row.team_name}
+                    <span
+                      className="overall-team-name-text"
+                      title={row.team_name || undefined}
+                    >
+                      {row.team_name}
+                    </span>
                   </td>
                   <td
                     className={getCellClassName(

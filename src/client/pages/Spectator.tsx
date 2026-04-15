@@ -42,6 +42,7 @@ import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
   type AutomaticAwardsPublic,
 } from '../components/spectator/SpectatorAutomaticAwards';
+import './SpectatorShared.css';
 import './Spectator.css';
 
 interface PublicEvent {
@@ -441,7 +442,7 @@ export default function Spectator() {
   return (
     <div className="app">
       <Navbar />
-      <main className="spectator-container">
+      <main className="spectator-container spectator-shell-container">
         <div className="spectator-header">
           <h2>{selectedEvent ? selectedEvent.name : 'Spectator'}</h2>
           <p>View live seeding scores and bracket results.</p>
@@ -451,7 +452,7 @@ export default function Spectator() {
           <p>Loading events...</p>
         ) : events.length === 0 ? (
           <div className="card">
-            <p style={{ color: 'var(--secondary-color)' }}>
+            <p className="spectator-muted-message">
               No events are currently available.
             </p>
           </div>
@@ -465,7 +466,7 @@ export default function Spectator() {
                 ← All Events
               </button>
               {selectedEvent && (
-                <div className="spectator-event-meta">
+                <div className="spectator-event-meta spectator-status-cluster">
                   <span
                     className={`event-status-badge ${getEventStatusClass(selectedEvent.status)}`}
                   >
@@ -544,7 +545,7 @@ export default function Spectator() {
               <div>
                 {brackets.length === 0 ? (
                   <div className="card">
-                    <p style={{ color: 'var(--secondary-color)' }}>
+                    <p className="spectator-muted-message">
                       No brackets available for this event.
                     </p>
                   </div>
@@ -608,32 +609,23 @@ export default function Spectator() {
                 ) : manualAwards.length === 0 &&
                   !hasAutomaticAwardsContent(automaticAwards) ? (
                   <div className="card">
-                    <p style={{ color: 'var(--secondary-color)' }}>
+                    <p className="spectator-muted-message">
                       No awards have been published for this event.
                     </p>
                   </div>
                 ) : (
                   <div className="card">
-                    <h3 style={{ marginBottom: '1rem' }}>Awards</h3>
+                    <h3 className="spectator-awards-title">Awards</h3>
                     {automaticAwards &&
                       hasAutomaticAwardsContent(automaticAwards) && (
                         <SpectatorAutomaticAwards automatic={automaticAwards} />
                       )}
                     {manualAwards.length > 0 && (
                       <div
-                        style={{
-                          marginTop: hasAutomaticAwardsContent(automaticAwards)
-                            ? '1.5rem'
-                            : 0,
-                        }}
+                        className={`spectator-manual-awards${hasAutomaticAwardsContent(automaticAwards) ? ' spectator-manual-awards-with-automatic' : ''}`}
                       >
                         {hasAutomaticAwardsContent(automaticAwards) && (
-                          <h4
-                            style={{
-                              margin: '0 0 0.75rem',
-                              fontSize: '1.05rem',
-                            }}
-                          >
+                          <h4 className="spectator-awards-subtitle">
                             Other awards
                           </h4>
                         )}
@@ -641,16 +633,7 @@ export default function Spectator() {
                           <div
                             key={idx}
                             className="spectator-manual-award"
-                            style={{
-                              marginBottom:
-                                idx < manualAwards.length - 1 ? '1.25rem' : 0,
-                              paddingBottom:
-                                idx < manualAwards.length - 1 ? '1.25rem' : 0,
-                              borderBottom:
-                                idx < manualAwards.length - 1
-                                  ? '1px solid var(--border-color)'
-                                  : 'none',
-                            }}
+                            data-has-divider={idx < manualAwards.length - 1}
                           >
                             <strong className="spectator-manual-award-title">
                               {award.name}
@@ -675,13 +658,7 @@ export default function Spectator() {
                                 ))}
                               </ul>
                             ) : (
-                              <p
-                                style={{
-                                  color: 'var(--secondary-color)',
-                                  margin: '0.5rem 0 0',
-                                  fontStyle: 'italic',
-                                }}
-                              >
+                              <p className="spectator-manual-award-empty">
                                 No recipients
                               </p>
                             )}
@@ -698,7 +675,7 @@ export default function Spectator() {
               <div className="spectator-bracket-rankings-view">
                 {brackets.length === 0 ? (
                   <div className="card">
-                    <p style={{ color: 'var(--secondary-color)' }}>
+                    <p className="spectator-muted-message">
                       No brackets available for this event.
                     </p>
                   </div>

@@ -46,7 +46,11 @@
 }
 
 .active-sort-col {
-  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--card-bg));
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 14%,
+    var(--card-bg)
+  );
 }
 
 .header-label-short {
@@ -223,7 +227,11 @@
 .seeding-table-spectator .sticky-col.active-sort-col,
 .seeding-table-spectator tbody tr:nth-child(even) .sticky-col.active-sort-col,
 .seeding-table-spectator tbody tr:hover .sticky-col.active-sort-col {
-  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--card-bg));
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 14%,
+    var(--card-bg)
+  );
 }
 
 /* Summary */
@@ -245,7 +253,11 @@
 }
 
 [data-theme='dark'] .active-sort-col {
-  background-color: color-mix(in srgb, var(--primary-color) 20%, var(--card-bg));
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 20%,
+    var(--card-bg)
+  );
 }
 
 [data-theme='dark'] .seeding-table-spectator tbody tr:nth-child(even) {
@@ -253,7 +265,11 @@
 }
 
 [data-theme='dark'] .seeding-table-spectator tbody tr:hover {
-  background-color: color-mix(in srgb, var(--primary-color) 16%, var(--card-bg));
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 16%,
+    var(--card-bg)
+  );
 }
 
 [data-theme='dark'] .seeding-table-spectator th.sticky-col,
@@ -261,12 +277,20 @@
   background-color: var(--card-bg);
 }
 
-[data-theme='dark'] .seeding-table-spectator tbody tr:nth-child(even) .sticky-col {
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr:nth-child(even)
+  .sticky-col {
   background-color: color-mix(in srgb, var(--border-color) 34%, var(--card-bg));
 }
 
 [data-theme='dark'] .seeding-table-spectator tbody tr:hover .sticky-col {
-  background-color: color-mix(in srgb, var(--primary-color) 16%, var(--card-bg));
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 16%,
+    var(--card-bg)
+  );
 }
 
 [data-theme='dark'] .seeding-table-spectator .sticky-col.active-sort-col,
@@ -275,8 +299,16 @@
   tbody
   tr:nth-child(even)
   .sticky-col.active-sort-col,
-[data-theme='dark'] .seeding-table-spectator tbody tr:hover .sticky-col.active-sort-col {
-  background-color: color-mix(in srgb, var(--primary-color) 20%, var(--card-bg));
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr:hover
+  .sticky-col.active-sort-col {
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 20%,
+    var(--card-bg)
+  );
 }
 
 /* Responsive */

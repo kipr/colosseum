@@ -185,7 +185,7 @@ export default function DocumentationScoresDisplay({
                   )}
                   onClick={() => handleSort('team_number')}
                 >
-                  {renderHeaderLabel('Team #', 'Team', 'team_number')}
+                  {renderHeaderLabel('Team #', '#', 'team_number')}
                 </th>
                 <th
                   className={getHeaderClassName(
@@ -252,7 +252,12 @@ export default function DocumentationScoresDisplay({
                         : '',
                     )}
                   >
-                    {score.team_name}
+                    <span
+                      className="doc-team-name-text"
+                      title={score.team_name || undefined}
+                    >
+                      {score.team_name}
+                    </span>
                   </td>
                   {sortedCategories.map((cat, idx) => {
                     const val = subScoreMap.get(`${score.team_id}-${cat.id}`);

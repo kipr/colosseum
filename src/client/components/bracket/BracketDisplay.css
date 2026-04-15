@@ -671,8 +671,8 @@
   }
 
   .bracket-ranking-table-responsive-spectator {
-    --sticky-place-width: 3.75rem;
-    --sticky-team-number-width: 2.5rem;
+    --sticky-place-width: 3.5rem;
+    --sticky-team-number-width: 3.5rem;
     --sticky-team-name-width: 7rem;
     width: 100% !important;
     max-width: 100% !important;

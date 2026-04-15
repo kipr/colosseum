@@ -1,7 +1,4 @@
 .spectator-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1.5rem;
   width: 100%;
   min-width: 0;
 }
@@ -116,32 +113,6 @@
 .spectator-bracket-selector select:focus {
   outline: none;
   border-color: var(--primary-color);
-}
-
-/* Event status badges (shared with Admin.css) */
-.spectator-event-meta .event-status-badge {
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.spectator-event-meta .event-status-active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.spectator-event-meta .event-status-setup {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.spectator-event-meta .event-status-complete {
-  background: #dbeafe;
-  color: #1e40af;
 }
 
 .spectator-awards-medal-table {
@@ -271,32 +242,42 @@
   font-size: 1.05rem;
 }
 
+.spectator-awards-title {
+  margin: 0 0 1rem;
+}
+
+.spectator-awards-subtitle {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.spectator-manual-awards {
+  margin-top: 0;
+}
+
+.spectator-manual-awards-with-automatic {
+  margin-top: 1.5rem;
+}
+
+.spectator-manual-award[data-has-divider='true'] {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
 .spectator-manual-award-description {
   color: var(--secondary-color);
   margin: 0.25rem 0 0.5rem;
 }
 
-[data-theme='dark'] .spectator-event-meta .event-status-active {
-  background: #14532d;
-  color: #86efac;
-}
-
-[data-theme='dark'] .spectator-event-meta .event-status-setup {
-  background: #78350f;
-  color: #fde68a;
-}
-
-[data-theme='dark'] .spectator-event-meta .event-status-complete {
-  background: #1e3a8a;
-  color: #93c5fd;
+.spectator-manual-award-empty {
+  color: var(--secondary-color);
+  margin: 0.5rem 0 0;
+  font-style: italic;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .spectator-container {
-    padding: 1rem;
-  }
-
   .spectator-tabs {
     gap: 0.25rem;
   }
@@ -320,10 +301,6 @@
 }
 
 @media (max-width: 480px) {
-  .spectator-container {
-    padding: 0.75rem;
-  }
-
   .spectator-tab-btn {
     padding: 0.45rem 0.75rem;
     font-size: 0.8rem;
@@ -343,5 +320,10 @@
 
   .spectator-manual-award-description {
     margin-bottom: 0.4rem;
+  }
+
+  .spectator-awards-subtitle,
+  .spectator-manual-award-title {
+    font-size: 1rem;
   }
 }

@@ -1,0 +1,63 @@
+.spectator-shell-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.spectator-status-cluster .event-status-badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.spectator-status-cluster .event-status-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.spectator-status-cluster .event-status-setup {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.spectator-status-cluster .event-status-complete {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.spectator-muted-message {
+  color: var(--secondary-color);
+}
+
+[data-theme='dark'] .spectator-status-cluster .event-status-active {
+  background: #14532d;
+  color: #86efac;
+}
+
+[data-theme='dark'] .spectator-status-cluster .event-status-setup {
+  background: #78350f;
+  color: #fde68a;
+}
+
+[data-theme='dark'] .spectator-status-cluster .event-status-complete {
+  background: #1e3a8a;
+  color: #93c5fd;
+}
+
+@media (max-width: 768px) {
+  .spectator-shell-container {
+    padding: 1rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .spectator-shell-container {
+    padding: 0.75rem;
+  }
+}
