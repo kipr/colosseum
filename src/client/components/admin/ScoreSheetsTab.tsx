@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import ScoreSheetEditorModal from './ScoreSheetEditorModal';
 import ScoreSheetPreviewModal from './ScoreSheetPreviewModal';
 import FieldTemplateModal from './FieldTemplateModal';
@@ -164,6 +166,121 @@ export default function ScoreSheetsTab() {
     loadFieldTemplates();
   };
 
+  const fieldTemplateColumns: UnifiedColumnDef<FieldTemplate>[] = [
+    {
+      kind: 'data',
+      id: 'name',
+      header: { full: 'Name' },
+      renderCell: (t) => t.name,
+    },
+    {
+      kind: 'data',
+      id: 'description',
+      header: { full: 'Description' },
+      renderCell: (t) =>
+        t.description || (
+          <em style={{ color: 'var(--secondary-color)' }}>No description</em>
+        ),
+    },
+    {
+      kind: 'data',
+      id: 'created',
+      header: { full: 'Created' },
+      renderCell: (t) => formatDate(t.created_at),
+    },
+    {
+      kind: 'data',
+      id: 'actions',
+      header: { full: 'Actions' },
+      renderCell: (t) => (
+        <>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEditTemplate(t.id)}
+          >
+            Edit
+          </button>
+          <button
+            className="btn btn-danger"
+            onClick={() => handleDeleteTemplate(t.id)}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Delete
+          </button>
+        </>
+      ),
+    },
+  ];
+
+  const scoreSheetColumns: UnifiedColumnDef<ScoreSheet>[] = [
+    {
+      kind: 'data',
+      id: 'name',
+      header: { full: 'Name' },
+      renderCell: (s) => s.name,
+    },
+    {
+      kind: 'data',
+      id: 'description',
+      header: { full: 'Description' },
+      renderCell: (s) =>
+        s.description || (
+          <em style={{ color: 'var(--secondary-color)' }}>No description</em>
+        ),
+    },
+    {
+      kind: 'data',
+      id: 'access',
+      header: { full: 'Access Code' },
+      renderCell: (s) => (
+        <code
+          style={{
+            background: 'var(--bg-color)',
+            padding: '0.25rem 0.5rem',
+            borderRadius: '0.25rem',
+          }}
+        >
+          {s.access_code || 'N/A'}
+        </code>
+      ),
+    },
+    {
+      kind: 'data',
+      id: 'created',
+      header: { full: 'Created' },
+      renderCell: (s) => formatDate(s.created_at),
+    },
+    {
+      kind: 'data',
+      id: 'actions',
+      header: { full: 'Actions' },
+      renderCell: (s) => (
+        <>
+          <button
+            className="btn btn-primary"
+            onClick={() => handlePreview(s.id)}
+          >
+            Preview
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEdit(s.id)}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Edit
+          </button>
+          <button
+            className="btn btn-danger"
+            onClick={() => handleDeleteScoreSheet(s.id)}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Delete
+          </button>
+        </>
+      ),
+    },
+  ];
+
   return (
     <div>
       <h2>Score Sheets</h2>
@@ -187,46 +304,12 @@ export default function ScoreSheetsTab() {
               No field templates created yet.
             </p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Description</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fieldTemplates.map((template) => (
-                  <tr key={template.id}>
-                    <td>{template.name}</td>
-                    <td>
-                      {template.description || (
-                        <em style={{ color: 'var(--secondary-color)' }}>
-                          No description
-                        </em>
-                      )}
-                    </td>
-                    <td>{formatDate(template.created_at)}</td>
-                    <td>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleEditTemplate(template.id)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDeleteTemplate(template.id)}
-                        style={{ marginLeft: '0.5rem' }}
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <UnifiedTable
+              columns={fieldTemplateColumns}
+              rows={fieldTemplates}
+              getRowKey={(t) => t.id}
+              headerLabelVariant="none"
+            />
           )}
         </div>
       </div>
@@ -245,65 +328,12 @@ export default function ScoreSheetsTab() {
               {scoreSheets.length === 0 ? (
                 <p>No score sheets for this event yet.</p>
               ) : (
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Name</th>
-                      <th>Description</th>
-                      <th>Access Code</th>
-                      <th>Created</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scoreSheets.map((sheet) => (
-                      <tr key={sheet.id}>
-                        <td>{sheet.name}</td>
-                        <td>
-                          {sheet.description || (
-                            <em style={{ color: 'var(--secondary-color)' }}>
-                              No description
-                            </em>
-                          )}
-                        </td>
-                        <td>
-                          <code
-                            style={{
-                              background: 'var(--bg-color)',
-                              padding: '0.25rem 0.5rem',
-                              borderRadius: '0.25rem',
-                            }}
-                          >
-                            {sheet.access_code || 'N/A'}
-                          </code>
-                        </td>
-                        <td>{formatDate(sheet.created_at)}</td>
-                        <td>
-                          <button
-                            className="btn btn-primary"
-                            onClick={() => handlePreview(sheet.id)}
-                          >
-                            Preview
-                          </button>
-                          <button
-                            className="btn btn-secondary"
-                            onClick={() => handleEdit(sheet.id)}
-                            style={{ marginLeft: '0.5rem' }}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            className="btn btn-danger"
-                            onClick={() => handleDeleteScoreSheet(sheet.id)}
-                            style={{ marginLeft: '0.5rem' }}
-                          >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                <UnifiedTable
+                  columns={scoreSheetColumns}
+                  rows={scoreSheets}
+                  getRowKey={(s) => s.id}
+                  headerLabelVariant="none"
+                />
               )}
             </div>
           </>

@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import TemplateEditorModal from './TemplateEditorModal';
 import TemplatePreviewModal from './TemplatePreviewModal';
 import { formatDate } from '../../utils/dateUtils';
@@ -58,6 +60,77 @@ export default function TemplatesTab() {
     loadTemplates();
   };
 
+  const templateColumns: UnifiedColumnDef<Template>[] = [
+    {
+      kind: 'data',
+      id: 'name',
+      header: { full: 'Name' },
+      renderCell: (t) => t.name,
+    },
+    {
+      kind: 'data',
+      id: 'description',
+      header: { full: 'Description' },
+      renderCell: (t) =>
+        t.description || (
+          <em style={{ color: 'var(--secondary-color)' }}>No description</em>
+        ),
+    },
+    {
+      kind: 'data',
+      id: 'spreadsheet',
+      header: { full: 'Spreadsheet' },
+      renderCell: (t) =>
+        t.spreadsheet_name || (
+          <em style={{ color: 'var(--secondary-color)' }}>Not assigned</em>
+        ),
+    },
+    {
+      kind: 'data',
+      id: 'access',
+      header: { full: 'Access Code' },
+      renderCell: (t) => (
+        <code
+          style={{
+            background: 'var(--bg-color)',
+            padding: '0.25rem 0.5rem',
+            borderRadius: '0.25rem',
+          }}
+        >
+          {t.access_code || 'N/A'}
+        </code>
+      ),
+    },
+    {
+      kind: 'data',
+      id: 'created',
+      header: { full: 'Created' },
+      renderCell: (t) => formatDate(t.created_at),
+    },
+    {
+      kind: 'data',
+      id: 'actions',
+      header: { full: 'Actions' },
+      renderCell: (t) => (
+        <>
+          <button
+            className="btn btn-primary"
+            onClick={() => handlePreview(t.id)}
+          >
+            Preview
+          </button>
+          <button
+            className="btn btn-secondary"
+            style={{ marginLeft: '0.5rem' }}
+            onClick={() => handleEdit(t.id)}
+          >
+            Edit
+          </button>
+        </>
+      ),
+    },
+  ];
+
   return (
     <div>
       <h2>Score Sheet Templates</h2>
@@ -70,65 +143,12 @@ export default function TemplatesTab() {
           {templates.length === 0 ? (
             <p>No templates created yet.</p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Description</th>
-                  <th>Spreadsheet</th>
-                  <th>Access Code</th>
-                  <th>Created</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {templates.map((template) => (
-                  <tr key={template.id}>
-                    <td>{template.name}</td>
-                    <td>
-                      {template.description || (
-                        <em style={{ color: 'var(--secondary-color)' }}>
-                          No description
-                        </em>
-                      )}
-                    </td>
-                    <td>
-                      {template.spreadsheet_name || (
-                        <em style={{ color: 'var(--secondary-color)' }}>
-                          Not assigned
-                        </em>
-                      )}
-                    </td>
-                    <td>
-                      <code
-                        style={{
-                          background: 'var(--bg-color)',
-                          padding: '0.25rem 0.5rem',
-                          borderRadius: '0.25rem',
-                        }}
-                      >
-                        {template.access_code || 'N/A'}
-                      </code>
-                    </td>
-                    <td>{formatDate(template.created_at)}</td>
-                    <td>
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => handlePreview(template.id)}
-                      >
-                        Preview
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleEdit(template.id)}
-                      >
-                        Edit
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <UnifiedTable
+              columns={templateColumns}
+              rows={templates}
+              getRowKey={(t) => t.id}
+              headerLabelVariant="none"
+            />
           )}
         </div>
       </div>

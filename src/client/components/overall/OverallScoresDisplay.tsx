@@ -1,4 +1,6 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
 
 export interface OverallRow {
@@ -23,6 +25,7 @@ type SortField =
   | 'raw_seed_score'
   | 'weighted_de_score'
   | 'total';
+
 type SortDirection = 'asc' | 'desc';
 
 function formatScore(val: number): string {
@@ -80,51 +83,110 @@ export default function OverallScoresDisplay({
   }, [rows, sortDirection, sortField]);
 
   const handleSort = useCallback(
-    (field: SortField) => {
-      if (sortField === field) {
+    (field: string) => {
+      const f = field as SortField;
+      if (sortField === f) {
         setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
         return;
       }
 
-      setSortField(field);
-      setSortDirection(field === 'total' ? 'desc' : 'asc');
+      setSortField(f);
+      setSortDirection(f === 'total' ? 'desc' : 'asc');
     },
     [sortField],
   );
 
-  const getSortIndicator = (field: SortField) =>
-    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+  const stickyNum = isSpectator
+    ? 'sticky-col sticky-col-team-number overall-team-number-col'
+    : '';
+  const stickyName = isSpectator
+    ? 'sticky-col sticky-col-team-name overall-team-name-col'
+    : '';
+  const stickyNumCell = isSpectator
+    ? 'sticky-col sticky-col-team-number overall-team-number-cell'
+    : '';
+  const stickyNameCell = isSpectator
+    ? 'sticky-col sticky-col-team-name overall-team-name-cell'
+    : '';
 
-  const isActiveSortField = (field: SortField) => sortField === field;
-
-  const getHeaderClassName = (field: SortField, ...classNames: string[]) =>
-    [
-      ...classNames,
-      'doc-sortable',
-      isActiveSortField(field) ? 'active-sort-col' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
-
-  const getCellClassName = (field: SortField, ...classNames: string[]) =>
-    [...classNames, isActiveSortField(field) ? 'active-sort-col' : '']
-      .filter(Boolean)
-      .join(' ');
-
-  const renderHeaderLabel = (
-    fullLabel: string,
-    shortLabel?: string,
-    field?: SortField,
-  ) => (
-    <>
-      <span className="doc-header-label-full">{fullLabel}</span>
-      {shortLabel ? (
-        <span className="doc-header-label-short" aria-hidden="true">
-          {shortLabel}
-        </span>
-      ) : null}
-      {field ? getSortIndicator(field) : null}
-    </>
+  const columns: UnifiedColumnDef<OverallRow>[] = useMemo(
+    () => [
+      {
+        kind: 'data',
+        id: 'team_number',
+        sortable: true,
+        header: { full: 'Team #', short: '#' },
+        headerClassName: ['doc-sortable', stickyNum].filter(Boolean).join(' '),
+        cellClassName: stickyNumCell,
+        sortAriaLabel: 'Sort by team number',
+        renderCell: (row) => row.team_number,
+      },
+      {
+        kind: 'data',
+        id: 'team_name',
+        sortable: true,
+        header: { full: 'Team Name', short: 'Name' },
+        headerClassName: ['doc-sortable', stickyName].filter(Boolean).join(' '),
+        cellClassName: stickyNameCell,
+        sortAriaLabel: 'Sort by team name',
+        renderCell: (row) => (
+          <span
+            className="overall-team-name-text"
+            title={row.team_name || undefined}
+          >
+            {row.team_name}
+          </span>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'doc_score',
+        sortable: true,
+        header: { full: 'Doc Score', short: 'Doc' },
+        headerClassName: 'overall-doc-col doc-sortable',
+        cellClassName: 'overall-doc-cell',
+        sortAriaLabel: 'Sort by doc score',
+        renderCell: (row) => formatScore(row.doc_score),
+      },
+      { kind: 'separator', id: 'sep-plus-1', symbol: '+' },
+      {
+        kind: 'data',
+        id: 'raw_seed_score',
+        sortable: true,
+        header: { full: 'Raw Seeding', short: 'Seed' },
+        headerClassName: 'overall-raw-seed-col doc-sortable',
+        cellClassName: 'overall-raw-seed-cell',
+        sortAriaLabel: 'Sort by raw seed score',
+        renderCell: (row) => formatScore(row.raw_seed_score),
+      },
+      { kind: 'separator', id: 'sep-plus-2', symbol: '+' },
+      {
+        kind: 'data',
+        id: 'weighted_de_score',
+        sortable: true,
+        header: { full: 'Weighted DE', short: 'DE' },
+        headerClassName: 'overall-weighted-de-col doc-sortable',
+        cellClassName: 'overall-weighted-de-cell',
+        sortAriaLabel: 'Sort by weighted DE',
+        renderCell: (row) => formatScore(row.weighted_de_score),
+      },
+      { kind: 'separator', id: 'sep-eq', symbol: '=' },
+      {
+        kind: 'data',
+        id: 'total',
+        sortable: true,
+        header: { full: 'Total', short: 'Total' },
+        headerClassName: 'overall-total-col doc-sortable',
+        cellClassName: 'overall-total-cell',
+        sortAriaLabel: 'Sort by total',
+        renderCell: (row) => (
+          <strong style={{ color: 'var(--primary-color)' }}>
+            {formatScore(row.total)}
+          </strong>
+        ),
+      },
+    ],
+    [stickyName, stickyNameCell, stickyNum, stickyNumCell],
   );
 
   return (
@@ -144,134 +206,16 @@ export default function OverallScoresDisplay({
         <div
           className={`doc-scores-table-wrapper${isSpectator ? ' overall-scores-table-wrapper-spectator' : ''}`}
         >
-          <table
-            className={`doc-calculator-table${isSpectator ? ' overall-scores-table-spectator' : ''}`}
-          >
-            <thead>
-              <tr>
-                <th
-                  className={getHeaderClassName(
-                    'team_number',
-                    isSpectator
-                      ? 'sticky-col sticky-col-team-number overall-team-number-col'
-                      : '',
-                  )}
-                  onClick={() => handleSort('team_number')}
-                >
-                  {renderHeaderLabel('Team #', '#', 'team_number')}
-                </th>
-                <th
-                  className={getHeaderClassName(
-                    'team_name',
-                    isSpectator
-                      ? 'sticky-col sticky-col-team-name overall-team-name-col'
-                      : '',
-                  )}
-                  onClick={() => handleSort('team_name')}
-                >
-                  {renderHeaderLabel('Team Name', 'Name', 'team_name')}
-                </th>
-                <th
-                  className={getHeaderClassName('doc_score', 'overall-doc-col')}
-                  onClick={() => handleSort('doc_score')}
-                >
-                  {renderHeaderLabel('Doc Score', 'Doc', 'doc_score')}
-                </th>
-                <th className="doc-op">+</th>
-                <th
-                  className={getHeaderClassName(
-                    'raw_seed_score',
-                    'overall-raw-seed-col',
-                  )}
-                  onClick={() => handleSort('raw_seed_score')}
-                >
-                  {renderHeaderLabel('Raw Seeding', 'Seed', 'raw_seed_score')}
-                </th>
-                <th className="doc-op">+</th>
-                <th
-                  className={getHeaderClassName(
-                    'weighted_de_score',
-                    'overall-weighted-de-col',
-                  )}
-                  onClick={() => handleSort('weighted_de_score')}
-                >
-                  {renderHeaderLabel('Weighted DE', 'DE', 'weighted_de_score')}
-                </th>
-                <th className="doc-op">=</th>
-                <th
-                  className={getHeaderClassName('total', 'overall-total-col')}
-                  onClick={() => handleSort('total')}
-                >
-                  {renderHeaderLabel('Total', 'Total', 'total')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedRows.map((row) => (
-                <tr key={row.team_id}>
-                  <td
-                    className={getCellClassName(
-                      'team_number',
-                      isSpectator
-                        ? 'sticky-col sticky-col-team-number overall-team-number-cell'
-                        : '',
-                    )}
-                  >
-                    {row.team_number}
-                  </td>
-                  <td
-                    className={getCellClassName(
-                      'team_name',
-                      isSpectator
-                        ? 'sticky-col sticky-col-team-name overall-team-name-cell'
-                        : '',
-                    )}
-                  >
-                    <span
-                      className="overall-team-name-text"
-                      title={row.team_name || undefined}
-                    >
-                      {row.team_name}
-                    </span>
-                  </td>
-                  <td
-                    className={getCellClassName(
-                      'doc_score',
-                      'overall-doc-cell',
-                    )}
-                  >
-                    {formatScore(row.doc_score)}
-                  </td>
-                  <td className="doc-op">+</td>
-                  <td
-                    className={getCellClassName(
-                      'raw_seed_score',
-                      'overall-raw-seed-cell',
-                    )}
-                  >
-                    {formatScore(row.raw_seed_score)}
-                  </td>
-                  <td className="doc-op">+</td>
-                  <td
-                    className={getCellClassName(
-                      'weighted_de_score',
-                      'overall-weighted-de-cell',
-                    )}
-                  >
-                    {formatScore(row.weighted_de_score)}
-                  </td>
-                  <td className="doc-op">=</td>
-                  <td
-                    className={getCellClassName('total', 'overall-total-cell')}
-                  >
-                    <strong style={{ color: 'var(--primary-color)' }}>
-                      {formatScore(row.total)}
-                    </strong>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <UnifiedTable
+            columns={columns}
+            rows={sortedRows}
+            getRowKey={(row) => row.team_id}
+            activeSortId={sortField}
+            sortDirection={sortDirection}
+            onSort={handleSort}
+            headerLabelVariant="doc"
+            tableClassName={`doc-calculator-table${isSpectator ? ' overall-scores-table-spectator' : ''}`}
+          />
         </div>
       )}
     </div>

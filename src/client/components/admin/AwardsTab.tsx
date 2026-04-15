@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -411,6 +413,47 @@ export default function AwardsTab() {
 
   // ── Render ──
 
+  const templateTableColumns: UnifiedColumnDef<AwardTemplate>[] = [
+    {
+      kind: 'data',
+      id: 'name',
+      header: { full: 'Name' },
+      renderCell: (t) => t.name,
+    },
+    {
+      kind: 'data',
+      id: 'description',
+      header: { full: 'Description' },
+      renderCell: (t) => (
+        <span style={{ color: 'var(--secondary-color)' }}>
+          {t.description || '—'}
+        </span>
+      ),
+    },
+    {
+      kind: 'data',
+      id: 'actions',
+      header: { full: 'Actions' },
+      renderCell: (t) => (
+        <>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEditTemplate(t)}
+          >
+            Edit
+          </button>
+          <button
+            className="btn btn-danger"
+            style={{ marginLeft: '0.5rem' }}
+            onClick={() => handleDeleteTemplate(t)}
+          >
+            Delete
+          </button>
+        </>
+      ),
+    },
+  ];
+
   return (
     <div className="awards-tab">
       {loading && <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>}
@@ -426,40 +469,14 @@ export default function AwardsTab() {
           + New Template
         </button>
         {templates.length > 0 && (
-          <table style={{ marginTop: '1rem' }}>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Description</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {templates.map((t) => (
-                <tr key={t.id}>
-                  <td>{t.name}</td>
-                  <td style={{ color: 'var(--secondary-color)' }}>
-                    {t.description || '—'}
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => handleEditTemplate(t)}
-                    >
-                      Edit
-                    </button>
-                    <button
-                      className="btn btn-danger"
-                      style={{ marginLeft: '0.5rem' }}
-                      onClick={() => handleDeleteTemplate(t)}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div style={{ marginTop: '1rem' }}>
+            <UnifiedTable
+              columns={templateTableColumns}
+              rows={templates}
+              getRowKey={(t) => t.id}
+              headerLabelVariant="none"
+            />
+          </div>
         )}
       </div>
 

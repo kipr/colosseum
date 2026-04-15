@@ -1,4 +1,6 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
 
 export interface DocCategoryDisplay {
@@ -38,6 +40,7 @@ type SortField =
   | 'team_name'
   | 'overall_score'
   | `cat_${number}`;
+
 type SortDirection = 'asc' | 'desc';
 
 export default function DocumentationScoresDisplay({
@@ -95,51 +98,130 @@ export default function DocumentationScoresDisplay({
   }, [scores, subScoreMap, sortField, sortDirection]);
 
   const handleSort = useCallback(
-    (field: SortField) => {
-      if (sortField === field) {
+    (field: string) => {
+      const f = field as SortField;
+      if (sortField === f) {
         setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
       } else {
-        setSortField(field);
+        setSortField(f);
         setSortDirection('asc');
       }
     },
     [sortField],
   );
 
-  const getSortIndicator = (field: SortField) =>
-    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+  const stickyNum = isSpectator
+    ? 'sticky-col sticky-col-team-number doc-team-number-col'
+    : '';
+  const stickyName = isSpectator
+    ? 'sticky-col sticky-col-team-name doc-team-name-col'
+    : '';
+  const stickyNumCell = isSpectator
+    ? 'sticky-col sticky-col-team-number doc-team-number-cell'
+    : '';
+  const stickyNameCell = isSpectator
+    ? 'sticky-col sticky-col-team-name doc-team-name-cell'
+    : '';
 
-  const isActiveSortField = (field: SortField) => sortField === field;
+  const columns: UnifiedColumnDef<DocScoreDisplay>[] = useMemo(() => {
+    const base: UnifiedColumnDef<DocScoreDisplay>[] = [
+      {
+        kind: 'data',
+        id: 'team_number',
+        sortable: true,
+        header: { full: 'Team #', short: '#' },
+        headerClassName: ['doc-sortable', stickyNum].filter(Boolean).join(' '),
+        cellClassName: stickyNumCell,
+        sortAriaLabel: 'Sort by team number',
+        renderCell: (score) => score.team_number,
+      },
+      {
+        kind: 'data',
+        id: 'team_name',
+        sortable: true,
+        header: { full: 'Team Name', short: 'Name' },
+        headerClassName: ['doc-sortable', stickyName].filter(Boolean).join(' '),
+        cellClassName: stickyNameCell,
+        sortAriaLabel: 'Sort by team name',
+        renderCell: (score) => (
+          <span
+            className="doc-team-name-text"
+            title={score.team_name || undefined}
+          >
+            {score.team_name}
+          </span>
+        ),
+      },
+    ];
 
-  const getHeaderClassName = (field: SortField, ...classNames: string[]) =>
-    [
-      ...classNames,
-      'doc-sortable',
-      isActiveSortField(field) ? 'active-sort-col' : '',
-    ]
-      .filter(Boolean)
-      .join(' ');
+    sortedCategories.forEach((cat, idx) => {
+      const sf = `cat_${cat.id}` as SortField;
+      base.push({
+        kind: 'data',
+        id: sf,
+        sortId: sf,
+        sortable: true,
+        header: {
+          full: `${cat.name} (×${cat.weight})`,
+          short: `C${cat.ordinal}`,
+        },
+        headerClassName: 'doc-category-col doc-sortable',
+        cellClassName: 'doc-category-cell',
+        title: `Max: ${cat.max_score}`,
+        sortAriaLabel: `Sort by ${cat.name}`,
+        renderCell: (score) => {
+          const val = subScoreMap.get(`${score.team_id}-${cat.id}`);
+          return val != null ? (
+            <span>
+              {val}/{cat.max_score}
+            </span>
+          ) : (
+            <em style={{ color: 'var(--secondary-color)' }}>—</em>
+          );
+        },
+      });
+      if (idx < sortedCategories.length - 1) {
+        base.push({
+          kind: 'separator',
+          id: `sep-plus-${cat.id}`,
+          symbol: '+',
+        });
+      }
+    });
 
-  const getCellClassName = (field: SortField, ...classNames: string[]) =>
-    [...classNames, isActiveSortField(field) ? 'active-sort-col' : '']
-      .filter(Boolean)
-      .join(' ');
+    base.push({
+      kind: 'separator',
+      id: 'sep-eq',
+      symbol: '=',
+    });
 
-  const renderHeaderLabel = (
-    fullLabel: string,
-    shortLabel?: string,
-    field?: SortField,
-  ) => (
-    <>
-      <span className="doc-header-label-full">{fullLabel}</span>
-      {shortLabel ? (
-        <span className="doc-header-label-short" aria-hidden="true">
-          {shortLabel}
-        </span>
-      ) : null}
-      {field ? getSortIndicator(field) : null}
-    </>
-  );
+    base.push({
+      kind: 'data',
+      id: 'overall_score',
+      sortable: true,
+      header: { full: 'Overall Score', short: 'Total' },
+      headerClassName: 'doc-overall-col doc-sortable',
+      cellClassName: 'doc-overall-cell',
+      sortAriaLabel: 'Sort by overall score',
+      renderCell: (score) =>
+        score.overall_score != null ? (
+          <strong style={{ color: 'var(--primary-color)' }}>
+            {score.overall_score.toFixed(3)}
+          </strong>
+        ) : (
+          <em style={{ color: 'var(--secondary-color)' }}>—</em>
+        ),
+    });
+
+    return base;
+  }, [
+    sortedCategories,
+    stickyName,
+    stickyNameCell,
+    stickyNum,
+    stickyNumCell,
+    subScoreMap,
+  ]);
 
   if (categories.length === 0) {
     return (
@@ -171,139 +253,16 @@ export default function DocumentationScoresDisplay({
         <div
           className={`doc-scores-table-wrapper${isSpectator ? ' doc-scores-table-wrapper-spectator' : ''}`}
         >
-          <table
-            className={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}
-          >
-            <thead>
-              <tr>
-                <th
-                  className={getHeaderClassName(
-                    'team_number',
-                    isSpectator
-                      ? 'sticky-col sticky-col-team-number doc-team-number-col'
-                      : '',
-                  )}
-                  onClick={() => handleSort('team_number')}
-                >
-                  {renderHeaderLabel('Team #', '#', 'team_number')}
-                </th>
-                <th
-                  className={getHeaderClassName(
-                    'team_name',
-                    isSpectator
-                      ? 'sticky-col sticky-col-team-name doc-team-name-col'
-                      : '',
-                  )}
-                  onClick={() => handleSort('team_name')}
-                >
-                  {renderHeaderLabel('Team Name', 'Name', 'team_name')}
-                </th>
-                {sortedCategories.map((cat, idx) => (
-                  <React.Fragment key={cat.id}>
-                    <th
-                      className={getHeaderClassName(
-                        `cat_${cat.id}` as SortField,
-                        'doc-category-col',
-                      )}
-                      title={`Max: ${cat.max_score}`}
-                      onClick={() => handleSort(`cat_${cat.id}` as SortField)}
-                    >
-                      {renderHeaderLabel(
-                        `${cat.name} (×${cat.weight})`,
-                        `C${cat.ordinal}`,
-                        `cat_${cat.id}` as SortField,
-                      )}
-                    </th>
-                    {idx < sortedCategories.length - 1 && (
-                      <th className="doc-op">+</th>
-                    )}
-                  </React.Fragment>
-                ))}
-                <th className="doc-op">=</th>
-                <th
-                  className={getHeaderClassName(
-                    'overall_score',
-                    'doc-overall-col',
-                  )}
-                  onClick={() => handleSort('overall_score')}
-                >
-                  {renderHeaderLabel('Overall Score', 'Total', 'overall_score')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedScores.map((score) => (
-                <tr key={score.team_id}>
-                  <td
-                    className={getCellClassName(
-                      'team_number',
-                      isSpectator
-                        ? 'sticky-col sticky-col-team-number doc-team-number-cell'
-                        : '',
-                    )}
-                  >
-                    {score.team_number}
-                  </td>
-                  <td
-                    className={getCellClassName(
-                      'team_name',
-                      isSpectator
-                        ? 'sticky-col sticky-col-team-name doc-team-name-cell'
-                        : '',
-                    )}
-                  >
-                    <span
-                      className="doc-team-name-text"
-                      title={score.team_name || undefined}
-                    >
-                      {score.team_name}
-                    </span>
-                  </td>
-                  {sortedCategories.map((cat, idx) => {
-                    const val = subScoreMap.get(`${score.team_id}-${cat.id}`);
-                    return (
-                      <React.Fragment key={cat.id}>
-                        <td
-                          className={getCellClassName(
-                            `cat_${cat.id}` as SortField,
-                            'doc-category-cell',
-                          )}
-                        >
-                          {val != null ? (
-                            <span>
-                              {val}/{cat.max_score}
-                            </span>
-                          ) : (
-                            <em style={{ color: 'var(--secondary-color)' }}>
-                              —
-                            </em>
-                          )}
-                        </td>
-                        {idx < sortedCategories.length - 1 && (
-                          <td className="doc-op">+</td>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                  <td className="doc-op">=</td>
-                  <td
-                    className={getCellClassName(
-                      'overall_score',
-                      'doc-overall-cell',
-                    )}
-                  >
-                    {score.overall_score != null ? (
-                      <strong style={{ color: 'var(--primary-color)' }}>
-                        {score.overall_score.toFixed(3)}
-                      </strong>
-                    ) : (
-                      <em style={{ color: 'var(--secondary-color)' }}>—</em>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <UnifiedTable
+            columns={columns}
+            rows={sortedScores}
+            getRowKey={(s) => s.team_id}
+            activeSortId={sortField}
+            sortDirection={sortDirection}
+            onSort={handleSort}
+            headerLabelVariant="doc"
+            tableClassName={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}
+          />
         </div>
       )}
     </div>

@@ -254,7 +254,8 @@ th {
   color: var(--text-color);
 }
 
-tr:hover {
+/* Default row hover for tables in cards; feature tables override in their own CSS */
+.card table tbody tr:hover {
   background-color: var(--table-hover-bg);
 }
 

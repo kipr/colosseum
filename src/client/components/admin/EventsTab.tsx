@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -310,6 +312,120 @@ export default function EventsTab() {
   // Filter out the selected event from the table list
   const otherEvents = filteredEvents.filter((e) => e.id !== selectedEvent?.id);
 
+  const otherEventsColumns: UnifiedColumnDef<Event>[] = [
+    {
+      kind: 'data',
+      id: 'name',
+      header: { full: 'Name' },
+      renderCell: (event) => (
+        <>
+          <strong>{event.name}</strong>
+          {event.description && (
+            <div
+              style={{
+                fontSize: '0.85rem',
+                color: 'var(--secondary-color)',
+                marginTop: '0.25rem',
+              }}
+            >
+              {event.description}
+            </div>
+          )}
+        </>
+      ),
+    },
+    {
+      kind: 'data',
+      id: 'date',
+      header: { full: 'Date' },
+      renderCell: (event) =>
+        event.event_date ? (
+          formatEventDate(event.event_date)
+        ) : (
+          <em style={{ color: 'var(--secondary-color)' }}>Not set</em>
+        ),
+    },
+    {
+      kind: 'data',
+      id: 'location',
+      header: { full: 'Location' },
+      renderCell: (event) =>
+        event.location || (
+          <em style={{ color: 'var(--secondary-color)' }}>Not set</em>
+        ),
+    },
+    {
+      kind: 'data',
+      id: 'status',
+      header: { full: 'Status' },
+      renderCell: (event) => (
+        <span
+          className={`event-status-badge ${getEventStatusClass(event.status)}`}
+        >
+          {getEventStatusLabel(event.status)}
+        </span>
+      ),
+    },
+    {
+      kind: 'data',
+      id: 'seeding',
+      header: { full: 'Seeding Rounds' },
+      renderCell: (event) => event.seeding_rounds,
+    },
+    {
+      kind: 'data',
+      id: 'created',
+      header: { full: 'Created' },
+      renderCell: (event) => formatDate(event.created_at),
+    },
+    {
+      kind: 'data',
+      id: 'actions',
+      header: { full: 'Actions' },
+      renderCell: (event) => (
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          <button
+            className="btn btn-primary"
+            onClick={() => selectEventById(event.id)}
+            title="Select this event to work on"
+          >
+            Select
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEdit(event)}
+            title="Edit event details"
+          >
+            Edit
+          </button>
+          <button
+            className="btn btn-danger"
+            onClick={() => handleDelete(event)}
+            title="Delete this event"
+          >
+            Delete
+          </button>
+          {getStatusActions(event).map((action) => (
+            <button
+              key={action.status}
+              className={`btn ${action.className}`}
+              onClick={() => handleStatusChange(event, action.status)}
+              title={`Change status to ${action.status}`}
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       {/* Current Event - Prominent display */}
@@ -537,107 +653,12 @@ export default function EventsTab() {
                 : `No other ${filterStatus} events found.`}
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Date</th>
-                <th>Location</th>
-                <th>Status</th>
-                <th>Seeding Rounds</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {otherEvents.map((event) => (
-                <tr key={event.id}>
-                  <td>
-                    <strong>{event.name}</strong>
-                    {event.description && (
-                      <div
-                        style={{
-                          fontSize: '0.85rem',
-                          color: 'var(--secondary-color)',
-                          marginTop: '0.25rem',
-                        }}
-                      >
-                        {event.description}
-                      </div>
-                    )}
-                  </td>
-                  <td>
-                    {event.event_date ? (
-                      formatEventDate(event.event_date)
-                    ) : (
-                      <em style={{ color: 'var(--secondary-color)' }}>
-                        Not set
-                      </em>
-                    )}
-                  </td>
-                  <td>
-                    {event.location || (
-                      <em style={{ color: 'var(--secondary-color)' }}>
-                        Not set
-                      </em>
-                    )}
-                  </td>
-                  <td>
-                    <span
-                      className={`event-status-badge ${getEventStatusClass(event.status)}`}
-                    >
-                      {getEventStatusLabel(event.status)}
-                    </span>
-                  </td>
-                  <td>{event.seeding_rounds}</td>
-                  <td>{formatDate(event.created_at)}</td>
-                  <td>
-                    <div
-                      style={{
-                        display: 'flex',
-                        gap: '0.5rem',
-                        flexWrap: 'wrap',
-                      }}
-                    >
-                      <button
-                        className="btn btn-primary"
-                        onClick={() => selectEventById(event.id)}
-                        title="Select this event to work on"
-                      >
-                        Select
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleEdit(event)}
-                        title="Edit event details"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDelete(event)}
-                        title="Delete this event"
-                      >
-                        Delete
-                      </button>
-                      {getStatusActions(event).map((action) => (
-                        <button
-                          key={action.status}
-                          className={`btn ${action.className}`}
-                          onClick={() =>
-                            handleStatusChange(event, action.status)
-                          }
-                          title={`Change status to ${action.status}`}
-                        >
-                          {action.label}
-                        </button>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <UnifiedTable
+            columns={otherEventsColumns}
+            rows={otherEvents}
+            getRowKey={(e) => e.id}
+            headerLabelVariant="none"
+          />
         )}
       </div>
 

@@ -1,4 +1,6 @@
 import React from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import '../bracket/BracketDisplay.css';
 import '../../pages/Spectator.css';
 
@@ -62,37 +64,48 @@ function formatTeamLine(t: PublicAwardTeam): string {
   return stripRedundantLeadingTeamNumber(t.team_number, raw);
 }
 
+const medalColumns: UnifiedColumnDef<MedalPlacement>[] = [
+  {
+    kind: 'data',
+    id: 'place',
+    header: { full: 'Place' },
+    headerClassName: 'ranking-place spectator-awards-place',
+    cellClassName: 'ranking-place spectator-awards-place',
+    renderCell: (p) => <strong>{placeLabel(p.place)}</strong>,
+  },
+  {
+    kind: 'data',
+    id: 'recipients',
+    header: { full: 'Recipients' },
+    cellClassName: 'spectator-awards-recipients-cell',
+    renderCell: (p) => (
+      <ul className="spectator-awards-recipients">
+        {p.recipients.map((r, i) => (
+          <li
+            key={`${r.team_number}-${i}`}
+            className="spectator-awards-recipient"
+          >
+            <strong>#{r.team_number}</strong>{' '}
+            <span className="spectator-awards-recipient-name">
+              {formatTeamLine(r)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    ),
+  },
+];
+
 function MedalTable({ placements }: { placements: MedalPlacement[] }) {
   return (
-    <table className="ranking-table spectator-awards-medal-table">
-      <tbody>
-        {placements.map((p) => (
-          <tr
-            key={`${p.place}-${p.medal}`}
-            className={`ranking-row-${p.medal}`}
-          >
-            <td className="ranking-place spectator-awards-place">
-              <strong>{placeLabel(p.place)}</strong>
-            </td>
-            <td className="spectator-awards-recipients-cell">
-              <ul className="spectator-awards-recipients">
-                {p.recipients.map((r, i) => (
-                  <li
-                    key={`${r.team_number}-${i}`}
-                    className="spectator-awards-recipient"
-                  >
-                    <strong>#{r.team_number}</strong>{' '}
-                    <span className="spectator-awards-recipient-name">
-                      {formatTeamLine(r)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <UnifiedTable
+      showHeader={false}
+      columns={medalColumns}
+      rows={placements}
+      getRowKey={(p) => `${p.place}-${p.medal}`}
+      rowClassName={(p) => `ranking-row-${p.medal}`}
+      tableClassName="ranking-table spectator-awards-medal-table"
+    />
   );
 }
 
