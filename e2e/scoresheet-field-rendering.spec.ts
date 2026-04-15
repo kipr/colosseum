@@ -280,11 +280,17 @@ test.describe('Scoresheet Field Rendering', () => {
     await expect(creativityInput).toHaveAttribute('max', '100');
     await expect(creativityInput).toHaveAttribute('step', '1');
     await expect(creativityInput).not.toHaveAttribute('required', '');
+    await expect(creativityInput).toHaveAttribute('placeholder', '0');
+    await expect(creativityInput).toHaveValue('');
 
     // Interaction
     await techInput.fill('');
     await techInput.fill('25.5');
     await expect(techInput).toHaveValue('25.5');
+
+    await creativityInput.click();
+    await creativityInput.pressSequentially('5');
+    await expect(creativityInput).toHaveValue('5');
 
     await creativityInput.fill('');
     await creativityInput.fill('88');

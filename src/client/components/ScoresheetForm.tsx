@@ -54,6 +54,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const [formData, setFormData] =
     useState<Record<string, any>>(getInitialFormData);
+  const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>(
+    {},
+  );
   const [dynamicData, setDynamicData] = useState<Record<string, any[]>>({});
   const [bracketGames, setBracketGames] = useState<BracketGameOption[]>([]);
   const [teamsData, setTeamsData] = useState<any[]>([]); // Teams lookup for head-to-head
@@ -108,6 +111,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       )
     ) {
       setFormData(getInitialFormData());
+      setTouchedFields({});
       setCalculatedValues({});
       showNotification('Form has been reset', 'success');
     }
@@ -515,6 +519,57 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     setFormData((prev) => ({ ...prev, ...updates }));
   };
 
+  const getFieldStartingValue = (field: any) => {
+    if (field.defaultValue !== undefined) {
+      return field.defaultValue;
+    }
+
+    return field.startValue;
+  };
+
+  const shouldShowNumberPlaceholder = (field: any, value: any) => {
+    const startingValue = getFieldStartingValue(field);
+
+    return (
+      !touchedFields[field.id] &&
+      (value === '' ||
+        value === undefined ||
+        value === null ||
+        value === 0 ||
+        value === '0') &&
+      (startingValue === undefined ||
+        startingValue === null ||
+        startingValue === '' ||
+        startingValue === 0 ||
+        startingValue === '0')
+    );
+  };
+
+  const getDisplayedNumberValue = (field: any, value: any) => {
+    if (shouldShowNumberPlaceholder(field, value)) {
+      return '';
+    }
+
+    return value ?? '';
+  };
+
+  const getNumberPlaceholder = (field: any, value: any) => {
+    if (!shouldShowNumberPlaceholder(field, value)) {
+      return field.placeholder || '';
+    }
+
+    const startingValue = getFieldStartingValue(field);
+    if (
+      startingValue !== undefined &&
+      startingValue !== null &&
+      String(startingValue) !== ''
+    ) {
+      return String(startingValue);
+    }
+
+    return field.placeholder || '0';
+  };
+
   const calculateAllFormulas = () => {
     const calculated: Record<string, number> = {};
 
@@ -622,14 +677,17 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       if (field.type === 'calculated') {
         value = calculatedValues[field.id] || 0;
       } else {
-        value =
-          formData[field.id] !== undefined
-            ? formData[field.id]
-            : field.type === 'number'
-              ? 0
+        const rawValue = formData[field.id];
+        if (field.type === 'number') {
+          value = rawValue !== undefined && rawValue !== '' ? rawValue : 0;
+        } else {
+          value =
+            rawValue !== undefined
+              ? rawValue
               : field.type === 'checkbox'
                 ? false
                 : '';
+        }
       }
 
       scoreData[field.id] = {
@@ -909,12 +967,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       );
     }
 
-    const value =
-      formData[field.id] !== undefined
-        ? formData[field.id]
-        : field.type === 'number'
-          ? 0
-          : '';
+    const value = formData[field.id] !== undefined ? formData[field.id] : '';
 
     const isCompact =
       field.type === 'number' ||
@@ -1014,7 +1067,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             min={field.min ?? 0}
             max={field.max}
             step={field.step || 1}
-            value={value}
+            value={getDisplayedNumberValue(field, value)}
+            placeholder={getNumberPlaceholder(field, value)}
             onChange={(e) => {
               let newValue = e.target.value;
               if (newValue === '' || !isNaN(Number(newValue))) {
@@ -1034,6 +1088,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
                 ) {
                   newValue = String(field.min);
                 }
+                setTouchedFields((prev) => ({
+                  ...prev,
+                  [field.id]: newValue !== '',
+                }));
                 handleInputChange(field.id, newValue);
               }
             }}
