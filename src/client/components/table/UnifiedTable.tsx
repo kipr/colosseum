@@ -112,9 +112,7 @@ export default function UnifiedTable<TRow>({
     const epsilon = 2;
     const ov = scrollWidth > clientWidth + epsilon;
     setOverflowing(ov);
-    setShowRightFade(
-      ov && scrollLeft + clientWidth < scrollWidth - epsilon,
-    );
+    setShowRightFade(ov && scrollLeft + clientWidth < scrollWidth - epsilon);
   }, []);
 
   const handleScrollRegionScroll = useCallback(() => {
@@ -124,9 +122,7 @@ export default function UnifiedTable<TRow>({
     const epsilon = 2;
     const ov = scrollWidth > clientWidth + epsilon;
     setOverflowing(ov);
-    setShowRightFade(
-      ov && scrollLeft + clientWidth < scrollWidth - epsilon,
-    );
+    setShowRightFade(ov && scrollLeft + clientWidth < scrollWidth - epsilon);
     if (ov) {
       setHintDismissed(true);
     }
@@ -135,12 +131,7 @@ export default function UnifiedTable<TRow>({
   useLayoutEffect(() => {
     if (!scrollAffordance) return;
     updateScrollMetrics();
-  }, [
-    scrollAffordance,
-    updateScrollMetrics,
-    rows.length,
-    columns.length,
-  ]);
+  }, [scrollAffordance, updateScrollMetrics, rows.length, columns.length]);
 
   useLayoutEffect(() => {
     if (!scrollAffordance) return;
