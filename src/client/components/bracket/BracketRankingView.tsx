@@ -8,7 +8,7 @@ import React, {
 import { BracketEntryWithRank } from '../../types/brackets';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
-import './BracketDisplay.css';
+import '../seeding/SeedingTables.css';
 
 interface BracketRankingViewProps {
   bracketId: number;
@@ -139,7 +139,7 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
     [sortField],
   );
 
-  const stickyPlace = isSpectator ? 'sticky-col sticky-col-place' : '';
+  const stickyRank = isSpectator ? 'sticky-col sticky-col-rank' : '';
   const stickyNum = isSpectator ? 'sticky-col sticky-col-team-number' : '';
   const stickyName = isSpectator ? 'sticky-col sticky-col-team-name' : '';
 
@@ -150,10 +150,10 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'place',
         sortable: true,
         header: { full: 'DE Place', short: 'Place' },
-        headerClassName: ['ranking-place-col', 'ranking-sortable', stickyPlace]
+        headerClassName: ['seed-rank-col', 'sortable', stickyRank]
           .filter(Boolean)
           .join(' '),
-        cellClassName: ['ranking-place', stickyPlace].filter(Boolean).join(' '),
+        cellClassName: ['rank-cell', stickyRank].filter(Boolean).join(' '),
         title: 'DE Place',
         sortAriaLabel: 'Sort by DE place',
         renderCell: (entry) =>
@@ -168,14 +168,10 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'team_number',
         sortable: true,
         header: { full: 'Team #', short: '#' },
-        headerClassName: [
-          'ranking-team-number-col',
-          'ranking-sortable',
-          stickyNum,
-        ]
+        headerClassName: ['team-number-col', 'sortable', stickyNum]
           .filter(Boolean)
           .join(' '),
-        cellClassName: ['ranking-team-number-cell', stickyNum]
+        cellClassName: ['team-number-cell', stickyNum]
           .filter(Boolean)
           .join(' '),
         title: 'Team Number',
@@ -187,16 +183,10 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'team_name',
         sortable: true,
         header: { full: 'Team Name', short: 'Name' },
-        headerClassName: [
-          'ranking-team-name-col',
-          'ranking-sortable',
-          stickyName,
-        ]
+        headerClassName: ['team-name-col', 'sortable', stickyName]
           .filter(Boolean)
           .join(' '),
-        cellClassName: ['ranking-team-name-cell', stickyName]
-          .filter(Boolean)
-          .join(' '),
+        cellClassName: ['team-name-cell', stickyName].filter(Boolean).join(' '),
         title: 'Team Name',
         sortAriaLabel: 'Sort by team name',
         renderCell: (entry) => (
@@ -213,8 +203,9 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'raw_score',
         sortable: true,
         header: { full: 'Raw DE Score', short: 'Raw DE' },
-        headerClassName: 'ranking-raw-score-col ranking-sortable',
-        cellClassName: 'ranking-raw-score-cell',
+        headerClassName:
+          'bracket-ranking-raw-de-col ranking-metric-col sortable',
+        cellClassName: 'bracket-ranking-raw-de-cell ranking-metric-cell',
         title: 'Raw DE Score',
         sortAriaLabel: 'Sort by raw DE score',
         renderCell: (entry) =>
@@ -227,8 +218,8 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'doc_score',
         sortable: true,
         header: { full: 'Doc Score', short: 'Doc' },
-        headerClassName: 'ranking-doc-score-col ranking-sortable',
-        cellClassName: 'ranking-doc-score-cell',
+        headerClassName: 'ranking-metric-col sortable',
+        cellClassName: 'ranking-metric-cell',
         title: 'Doc Score',
         sortAriaLabel: 'Sort by doc score',
         renderCell: (entry) => formatScore(entry.doc_score),
@@ -238,8 +229,8 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'raw_seeding',
         sortable: true,
         header: { full: 'Raw Seeding', short: 'Seed' },
-        headerClassName: 'ranking-raw-seeding-col ranking-sortable',
-        cellClassName: 'ranking-raw-seeding-cell',
+        headerClassName: 'ranking-metric-col sortable',
+        cellClassName: 'ranking-metric-cell',
         title: 'Raw Seeding',
         sortAriaLabel: 'Sort by raw seeding',
         renderCell: (entry) => formatScore(entry.raw_seed_score),
@@ -249,8 +240,8 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'weighted_de',
         sortable: true,
         header: { full: 'DE', short: 'DE' },
-        headerClassName: 'ranking-weighted-de-col ranking-sortable',
-        cellClassName: 'ranking-weighted-de-cell',
+        headerClassName: 'ranking-metric-col sortable',
+        cellClassName: 'ranking-metric-cell',
         title: `Weighted DE (w=${weight})`,
         sortAriaLabel: 'Sort by weighted DE',
         renderCell: (entry) =>
@@ -263,8 +254,8 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         id: 'total',
         sortable: true,
         header: { full: 'Overall', short: 'Total' },
-        headerClassName: 'ranking-total-col ranking-sortable',
-        cellClassName: 'ranking-total-cell',
+        headerClassName: 'ranking-metric-col sortable',
+        cellClassName: 'ranking-metric-cell',
         title: 'Sum of doc score, raw seeding, and weighted DE',
         sortAriaLabel: 'Sort by overall score',
         renderCell: (entry) => (
@@ -274,13 +265,13 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         ),
       },
     ],
-    [stickyName, stickyNum, stickyPlace, weight],
+    [stickyName, stickyNum, stickyRank, weight],
   );
 
   if (loading) {
     return (
       <div
-        className={`card bracket-section${isSpectator ? ' bracket-section-spectator' : ''}`}
+        className={`card seeding-section${isSpectator ? ' seeding-section-spectator' : ''}`}
       >
         <p>Loading rankings...</p>
       </div>
@@ -290,10 +281,10 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
   if (realEntries.length === 0) {
     return (
       <div
-        className={`card bracket-section${isSpectator ? ' bracket-section-spectator' : ''}`}
+        className={`card seeding-section${isSpectator ? ' seeding-section-spectator' : ''}`}
       >
-        <div className="bracket-section-header">
-          <h4>Rankings</h4>
+        <div className="seeding-section-header">
+          <h3>Rankings</h3>
         </div>
         <p style={{ color: 'var(--secondary-color)' }}>
           No rankings available. Rankings are calculated as bracket games are
@@ -305,19 +296,19 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
 
   return (
     <div
-      className={`card bracket-section${isSpectator ? ' bracket-section-spectator' : ''}`}
+      className={`card seeding-section${isSpectator ? ' seeding-section-spectator' : ''}`}
     >
-      <div className="bracket-section-header">
+      <div className="seeding-section-header">
         <div>
-          <h4>Rankings ({rankedCount} placed)</h4>
-          <p className="bracket-section-description">
+          <h3>Rankings ({rankedCount} placed)</h3>
+          <p className="seeding-section-description">
             Overall is the sum of doc score, raw seeding, and weighted DE.
           </p>
         </div>
       </div>
 
       <div
-        className={`bracket-ranking-table-responsive${isSpectator ? ' bracket-ranking-table-responsive-spectator' : ''}`}
+        className={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
       >
         <UnifiedTable
           columns={columns}
@@ -326,10 +317,9 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
           activeSortId={sortField}
           sortDirection={sortDirection}
           onSort={handleSort}
-          headerLabelVariant="ranking"
-          activeSortClassName="ranking-active-sort-col"
+          headerLabelVariant="seeding"
           rowClassName={(entry) => getRankRowClass(entry.final_rank)}
-          tableClassName={`ranking-table${isSpectator ? ' ranking-table-spectator' : ''}`}
+          tableClassName={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}
         />
       </div>
     </div>

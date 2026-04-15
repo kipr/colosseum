@@ -322,7 +322,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
     await page.goto('/spectator');
 
     // Spectator mode renders the brand as static text instead of a home link
-    await expect(page.locator('.nav-brand .brand-link--spectator')).toBeVisible();
+    await expect(
+      page.locator('.nav-brand .brand-link--spectator'),
+    ).toBeVisible();
     await expect(page.locator('.nav-brand a.brand-link')).toHaveCount(0);
     await expect(page).toHaveURL(/\/spectator$/);
   });
@@ -392,7 +394,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
     await page.goto(`/spectator/events/${activeEventId}?view=seeding`);
 
     // Spectator event pages also render the brand as static text
-    await expect(page.locator('.nav-brand .brand-link--spectator')).toBeVisible();
+    await expect(
+      page.locator('.nav-brand .brand-link--spectator'),
+    ).toBeVisible();
     await expect(page.locator('.nav-brand a.brand-link')).toHaveCount(0);
     await expect(page).toHaveURL(
       new RegExp(`/spectator/events/${activeEventId}`),
@@ -534,7 +538,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
       .filter({ hasText: TEAM_A.name })
       .first();
     await expect(championAward).toBeVisible();
-    await expect(championAward.getByText(`#${TEAM_A.number}`).first()).toBeVisible();
+    await expect(
+      championAward.getByText(`#${TEAM_A.number}`).first(),
+    ).toBeVisible();
     await expect(championAward.getByText(TEAM_A.name).first()).toBeVisible();
   });
 
@@ -551,8 +557,8 @@ test.describe('Spectator Public Views & Release Gating', () => {
       }),
     ).toBeVisible();
 
-    // Rankings view should render (BracketRankingView component)
-    await expect(page.locator('.bracket-ranking-table, .card')).toBeVisible({
+    // Rankings view should render (BracketRankingView → seeding-unified-table)
+    await expect(page.locator('.seeding-unified-table, .card')).toBeVisible({
       timeout: 10_000,
     });
   });

@@ -1,0 +1,21 @@
+/**
+ * Sortable header button: full cell hit target, inherits typography.
+ * Used inside `<th>` for accessible sorting (works with feature table CSS).
+ */
+.unified-table-sort-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.unified-table-sort-btn:hover {
+  opacity: 0.92;
+}

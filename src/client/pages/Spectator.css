@@ -162,9 +162,9 @@
   overflow-x: clip;
 }
 
-.spectator-bracket-rankings-view .bracket-section,
-.spectator-bracket-rankings-view .bracket-section-spectator,
-.spectator-bracket-rankings-view .bracket-ranking-table-responsive-spectator {
+.spectator-bracket-rankings-view .seeding-section,
+.spectator-bracket-rankings-view .seeding-section-spectator,
+.spectator-bracket-rankings-view .seeding-table-responsive-spectator {
   min-width: 0;
   max-width: 100%;
 }

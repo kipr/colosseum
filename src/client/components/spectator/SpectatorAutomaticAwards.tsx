@@ -1,7 +1,7 @@
 import React from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
-import '../bracket/BracketDisplay.css';
+import '../seeding/SeedingTables.css';
 import '../../pages/Spectator.css';
 
 export type MedalKind = 'gold' | 'silver' | 'bronze';
@@ -69,8 +69,8 @@ const medalColumns: UnifiedColumnDef<MedalPlacement>[] = [
     kind: 'data',
     id: 'place',
     header: { full: 'Place' },
-    headerClassName: 'ranking-place spectator-awards-place',
-    cellClassName: 'ranking-place spectator-awards-place',
+    headerClassName: 'rank-cell spectator-awards-place',
+    cellClassName: 'rank-cell spectator-awards-place',
     renderCell: (p) => <strong>{placeLabel(p.place)}</strong>,
   },
   {
@@ -104,7 +104,7 @@ function MedalTable({ placements }: { placements: MedalPlacement[] }) {
       rows={placements}
       getRowKey={(p) => `${p.place}-${p.medal}`}
       rowClassName={(p) => `ranking-row-${p.medal}`}
-      tableClassName="ranking-table spectator-awards-medal-table"
+      tableClassName="seeding-table spectator-awards-medal-table"
     />
   );
 }

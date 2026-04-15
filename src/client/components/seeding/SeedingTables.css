@@ -234,6 +234,104 @@
   );
 }
 
+/* Medal / top-3 row emphasis (bracket DE rankings + spectator awards tables) */
+.seeding-table tbody tr.ranking-row-gold td {
+  background: rgba(234, 179, 8, 0.08);
+}
+
+.seeding-table tbody tr.ranking-row-silver td {
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.seeding-table tbody tr.ranking-row-bronze td {
+  background: rgba(180, 120, 60, 0.08);
+}
+
+.seeding-table .ranking-row-gold .rank-cell strong {
+  color: #b8860b;
+}
+
+.seeding-table .ranking-row-silver .rank-cell strong {
+  color: #64748b;
+}
+
+.seeding-table .ranking-row-bronze .rank-cell strong {
+  color: #92400e;
+}
+
+.seeding-table-spectator .ranking-row-gold .sticky-col {
+  background-color: color-mix(in srgb, #eab308 8%, var(--card-bg));
+}
+
+.seeding-table-spectator .ranking-row-silver .sticky-col {
+  background-color: color-mix(in srgb, #94a3b8 10%, var(--card-bg));
+}
+
+.seeding-table-spectator .ranking-row-bronze .sticky-col {
+  background-color: color-mix(in srgb, #b4783c 8%, var(--card-bg));
+}
+
+.seeding-table-spectator tbody tr.ranking-row-gold:nth-child(even) .sticky-col,
+.seeding-table-spectator tbody tr.ranking-row-gold:hover .sticky-col {
+  background-color: color-mix(in srgb, #eab308 8%, var(--card-bg));
+}
+
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-silver:nth-child(even)
+  .sticky-col,
+.seeding-table-spectator tbody tr.ranking-row-silver:hover .sticky-col {
+  background-color: color-mix(in srgb, #94a3b8 10%, var(--card-bg));
+}
+
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze:nth-child(even)
+  .sticky-col,
+.seeding-table-spectator tbody tr.ranking-row-bronze:hover .sticky-col {
+  background-color: color-mix(in srgb, #b4783c 8%, var(--card-bg));
+}
+
+.seeding-table-spectator tbody tr.ranking-row-gold .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-gold:nth-child(even)
+  .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-gold:hover
+  .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-silver
+  .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-silver:nth-child(even)
+  .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-silver:hover
+  .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze
+  .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze:nth-child(even)
+  .sticky-col.active-sort-col,
+.seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze:hover
+  .sticky-col.active-sort-col {
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 14%,
+    var(--card-bg)
+  );
+}
+
 /* Summary */
 .seeding-summary {
   margin-top: 0.5rem;
@@ -303,6 +401,121 @@
   .seeding-table-spectator
   tbody
   tr:hover
+  .sticky-col.active-sort-col {
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 20%,
+    var(--card-bg)
+  );
+}
+
+[data-theme='dark'] .seeding-table tbody tr.ranking-row-gold td {
+  background: color-mix(in srgb, #eab308 14%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table tbody tr.ranking-row-silver td {
+  background: color-mix(in srgb, #94a3b8 16%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table tbody tr.ranking-row-bronze td {
+  background: color-mix(in srgb, #b4783c 14%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator .ranking-row-gold .sticky-col {
+  background-color: color-mix(in srgb, #eab308 14%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator .ranking-row-silver .sticky-col {
+  background-color: color-mix(in srgb, #94a3b8 16%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator .ranking-row-bronze .sticky-col {
+  background-color: color-mix(in srgb, #b4783c 14%, var(--card-bg));
+}
+
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-gold:nth-child(even)
+  .sticky-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-gold:hover
+  .sticky-col {
+  background-color: color-mix(in srgb, #eab308 14%, var(--card-bg));
+}
+
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-silver:nth-child(even)
+  .sticky-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-silver:hover
+  .sticky-col {
+  background-color: color-mix(in srgb, #94a3b8 16%, var(--card-bg));
+}
+
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze:nth-child(even)
+  .sticky-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze:hover
+  .sticky-col {
+  background-color: color-mix(in srgb, #b4783c 14%, var(--card-bg));
+}
+
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-gold
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-gold:nth-child(even)
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-gold:hover
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-silver
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-silver:nth-child(even)
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-silver:hover
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze:nth-child(even)
+  .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr.ranking-row-bronze:hover
   .sticky-col.active-sort-col {
   background-color: color-mix(
     in srgb,
@@ -382,6 +595,11 @@
 
   .seeding-table-spectator .raw-seed-col,
   .seeding-table-spectator .raw-seed-cell {
+    display: none;
+  }
+
+  .seeding-table-spectator .bracket-ranking-raw-de-col,
+  .seeding-table-spectator .bracket-ranking-raw-de-cell {
     display: none;
   }
 
