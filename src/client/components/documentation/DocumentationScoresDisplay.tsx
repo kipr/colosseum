@@ -30,6 +30,7 @@ export interface DocScoreDisplay {
 interface DocumentationScoresDisplayProps {
   categories: DocCategoryDisplay[];
   scores: DocScoreDisplay[];
+  variant?: 'default' | 'spectator';
 }
 
 type SortField =
@@ -42,7 +43,9 @@ type SortDirection = 'asc' | 'desc';
 export default function DocumentationScoresDisplay({
   categories,
   scores,
+  variant = 'default',
 }: DocumentationScoresDisplayProps) {
+  const isSpectator = variant === 'spectator';
   const sortedCategories = [...categories].sort(
     (a, b) => a.ordinal - b.ordinal,
   );
@@ -106,9 +109,43 @@ export default function DocumentationScoresDisplay({
   const getSortIndicator = (field: SortField) =>
     sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
 
+  const isActiveSortField = (field: SortField) => sortField === field;
+
+  const getHeaderClassName = (field: SortField, ...classNames: string[]) =>
+    [
+      ...classNames,
+      'doc-sortable',
+      isActiveSortField(field) ? 'active-sort-col' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+  const getCellClassName = (field: SortField, ...classNames: string[]) =>
+    [...classNames, isActiveSortField(field) ? 'active-sort-col' : '']
+      .filter(Boolean)
+      .join(' ');
+
+  const renderHeaderLabel = (
+    fullLabel: string,
+    shortLabel?: string,
+    field?: SortField,
+  ) => (
+    <>
+      <span className="doc-header-label-full">{fullLabel}</span>
+      {shortLabel ? (
+        <span className="doc-header-label-short" aria-hidden="true">
+          {shortLabel}
+        </span>
+      ) : null}
+      {field ? getSortIndicator(field) : null}
+    </>
+  );
+
   if (categories.length === 0) {
     return (
-      <div className="card documentation-section">
+      <div
+        className={`card documentation-section${isSpectator ? ' documentation-section-spectator' : ''}`}
+      >
         <h3>Documentation Scores</h3>
         <p style={{ color: 'var(--secondary-color)' }}>
           No documentation categories configured.
@@ -118,7 +155,9 @@ export default function DocumentationScoresDisplay({
   }
 
   return (
-    <div className="card documentation-section">
+    <div
+      className={`card documentation-section${isSpectator ? ' documentation-section-spectator' : ''}`}
+    >
       <h3>Documentation Scores</h3>
       <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
         Combined score per team: sum of (score / max) &times; weight per
@@ -129,31 +168,51 @@ export default function DocumentationScoresDisplay({
           No documentation scores recorded yet.
         </p>
       ) : (
-        <div className="doc-scores-table-wrapper">
-          <table className="doc-calculator-table">
+        <div
+          className={`doc-scores-table-wrapper${isSpectator ? ' doc-scores-table-wrapper-spectator' : ''}`}
+        >
+          <table
+            className={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}
+          >
             <thead>
               <tr>
                 <th
-                  className="doc-sortable"
+                  className={getHeaderClassName(
+                    'team_number',
+                    isSpectator
+                      ? 'sticky-col sticky-col-team-number doc-team-number-col'
+                      : '',
+                  )}
                   onClick={() => handleSort('team_number')}
                 >
-                  Team #{getSortIndicator('team_number')}
+                  {renderHeaderLabel('Team #', 'Team', 'team_number')}
                 </th>
                 <th
-                  className="doc-sortable"
+                  className={getHeaderClassName(
+                    'team_name',
+                    isSpectator
+                      ? 'sticky-col sticky-col-team-name doc-team-name-col'
+                      : '',
+                  )}
                   onClick={() => handleSort('team_name')}
                 >
-                  Team Name{getSortIndicator('team_name')}
+                  {renderHeaderLabel('Team Name', 'Name', 'team_name')}
                 </th>
                 {sortedCategories.map((cat, idx) => (
                   <React.Fragment key={cat.id}>
                     <th
-                      className="doc-sortable"
+                      className={getHeaderClassName(
+                        `cat_${cat.id}` as SortField,
+                        'doc-category-col',
+                      )}
                       title={`Max: ${cat.max_score}`}
                       onClick={() => handleSort(`cat_${cat.id}` as SortField)}
                     >
-                      {cat.name} (&times;{cat.weight})
-                      {getSortIndicator(`cat_${cat.id}` as SortField)}
+                      {renderHeaderLabel(
+                        `${cat.name} (×${cat.weight})`,
+                        `C${cat.ordinal}`,
+                        `cat_${cat.id}` as SortField,
+                      )}
                     </th>
                     {idx < sortedCategories.length - 1 && (
                       <th className="doc-op">+</th>
@@ -162,23 +221,49 @@ export default function DocumentationScoresDisplay({
                 ))}
                 <th className="doc-op">=</th>
                 <th
-                  className="doc-sortable"
+                  className={getHeaderClassName(
+                    'overall_score',
+                    'doc-overall-col',
+                  )}
                   onClick={() => handleSort('overall_score')}
                 >
-                  Overall Score{getSortIndicator('overall_score')}
+                  {renderHeaderLabel('Overall Score', 'Total', 'overall_score')}
                 </th>
               </tr>
             </thead>
             <tbody>
               {sortedScores.map((score) => (
                 <tr key={score.team_id}>
-                  <td>{score.team_number}</td>
-                  <td>{score.team_name}</td>
+                  <td
+                    className={getCellClassName(
+                      'team_number',
+                      isSpectator
+                        ? 'sticky-col sticky-col-team-number doc-team-number-cell'
+                        : '',
+                    )}
+                  >
+                    {score.team_number}
+                  </td>
+                  <td
+                    className={getCellClassName(
+                      'team_name',
+                      isSpectator
+                        ? 'sticky-col sticky-col-team-name doc-team-name-cell'
+                        : '',
+                    )}
+                  >
+                    {score.team_name}
+                  </td>
                   {sortedCategories.map((cat, idx) => {
                     const val = subScoreMap.get(`${score.team_id}-${cat.id}`);
                     return (
                       <React.Fragment key={cat.id}>
-                        <td>
+                        <td
+                          className={getCellClassName(
+                            `cat_${cat.id}` as SortField,
+                            'doc-category-cell',
+                          )}
+                        >
                           {val != null ? (
                             <span>
                               {val}/{cat.max_score}
@@ -196,7 +281,12 @@ export default function DocumentationScoresDisplay({
                     );
                   })}
                   <td className="doc-op">=</td>
-                  <td>
+                  <td
+                    className={getCellClassName(
+                      'overall_score',
+                      'doc-overall-cell',
+                    )}
+                  >
                     {score.overall_score != null ? (
                       <strong style={{ color: 'var(--primary-color)' }}>
                         {score.overall_score.toFixed(3)}

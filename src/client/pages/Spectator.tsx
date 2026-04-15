@@ -590,10 +590,13 @@ export default function Spectator() {
                 {docLoading ? (
                   <p>Loading documentation scores...</p>
                 ) : (
-                  <DocumentationScoresDisplay
-                    categories={docCategories}
-                    scores={docScores}
-                  />
+                  <div className="spectator-documentation-view">
+                    <DocumentationScoresDisplay
+                      categories={docCategories}
+                      scores={docScores}
+                      variant="spectator"
+                    />
+                  </div>
                 )}
               </div>
             )}
