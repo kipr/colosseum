@@ -2,6 +2,8 @@
   max-width: 1200px;
   margin: 0 auto;
   padding: 1.5rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .spectator-header {
@@ -145,6 +147,20 @@
 .spectator-awards-medal-table {
   min-width: 0;
   width: 100%;
+}
+
+.spectator-seeding-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.spectator-seeding-view .seeding-section,
+.spectator-seeding-view .seeding-section-spectator,
+.spectator-seeding-view .seeding-table-responsive-spectator {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .spectator-awards-medal-table .spectator-awards-place {

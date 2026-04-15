@@ -525,7 +525,7 @@ export default function Spectator() {
             </div>
 
             {activeTab === 'seeding' && (
-              <div>
+              <div className="spectator-seeding-view">
                 {seedingLoading ? (
                   <p>Loading seeding data...</p>
                 ) : (
@@ -534,6 +534,7 @@ export default function Spectator() {
                     scores={scores}
                     rankings={rankings}
                     effectiveRounds={effectiveRounds}
+                    variant="spectator"
                   />
                 )}
               </div>

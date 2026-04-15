@@ -2,6 +2,8 @@
 
 .seeding-section {
   margin-bottom: 1.5rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .seeding-section-header {
@@ -13,6 +15,11 @@
   flex-wrap: wrap;
 }
 
+.seeding-section-header > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .seeding-section-header h3 {
   margin-bottom: 0.25rem;
   font-size: 1.1rem;
@@ -22,6 +29,7 @@
   margin: 0;
   font-size: 0.875rem;
   color: var(--secondary-color);
+  max-width: 100%;
 }
 
 /* Sortable headers */
@@ -35,6 +43,14 @@
 
 .sortable:hover {
   background-color: var(--bg-color);
+}
+
+.active-sort-col {
+  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--card-bg));
+}
+
+.header-label-short {
+  display: none;
 }
 
 /* Responsive table container */
@@ -59,6 +75,11 @@
   font-weight: 600;
   background-color: var(--bg-color);
   white-space: nowrap;
+}
+
+.team-name-text {
+  display: inline-block;
+  min-width: 0;
 }
 
 .seeding-table tbody tr:hover {
@@ -95,6 +116,116 @@
   min-width: 88px;
 }
 
+.seeding-section-spectator {
+  overflow: hidden;
+  max-width: 100%;
+  contain: inline-size;
+}
+
+.seeding-table-responsive-spectator {
+  --sticky-rank-width: 7.25rem;
+  --sticky-team-number-width: 4.25rem;
+  --sticky-team-name-width: 9rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable both-edges;
+  isolation: isolate;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  background: var(--card-bg);
+  contain: layout inline-size;
+}
+
+.seeding-table-spectator {
+  display: inline-table;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  margin-top: 0;
+}
+
+.seeding-table-spectator .seed-rank-col,
+.seeding-table-spectator .rank-cell {
+  min-width: var(--sticky-rank-width);
+  width: var(--sticky-rank-width);
+  max-width: var(--sticky-rank-width);
+}
+
+.seeding-table-spectator .team-number-col,
+.seeding-table-spectator .team-number-cell {
+  min-width: var(--sticky-team-number-width);
+  width: var(--sticky-team-number-width);
+  max-width: var(--sticky-team-number-width);
+  text-align: center;
+}
+
+.seeding-table-spectator .team-name-col,
+.seeding-table-spectator .team-name-cell {
+  min-width: var(--sticky-team-name-width);
+  width: var(--sticky-team-name-width);
+  max-width: var(--sticky-team-name-width);
+}
+
+.seeding-table-spectator tbody tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--border-color) 18%, var(--card-bg));
+}
+
+.seeding-table-spectator tbody tr:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
+}
+
+.seeding-table-spectator .sticky-col {
+  position: sticky;
+  z-index: 2;
+}
+
+.seeding-table-spectator .sticky-col-rank {
+  left: 0;
+}
+
+.seeding-table-spectator .sticky-col-team-number {
+  left: var(--sticky-rank-width);
+}
+
+.seeding-table-spectator .sticky-col-team-name {
+  left: calc(var(--sticky-rank-width) + var(--sticky-team-number-width));
+}
+
+.seeding-table-spectator th.sticky-col {
+  z-index: 4;
+}
+
+.seeding-table-spectator th.sticky-col,
+.seeding-table-spectator td.sticky-col {
+  background-color: var(--card-bg);
+  background-clip: padding-box;
+}
+
+.seeding-table-spectator .sticky-col-team-name {
+  box-shadow: 1px 0 0 var(--border-color);
+}
+
+.seeding-table-spectator tbody tr:nth-child(even) .sticky-col {
+  background-color: color-mix(in srgb, var(--border-color) 18%, var(--card-bg));
+}
+
+.seeding-table-spectator tbody tr:hover .sticky-col {
+  background-color: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
+}
+
+.seeding-table-spectator .sticky-col.active-sort-col,
+.seeding-table-spectator tbody tr:nth-child(even) .sticky-col.active-sort-col,
+.seeding-table-spectator tbody tr:hover .sticky-col.active-sort-col {
+  background-color: color-mix(in srgb, var(--primary-color) 14%, var(--card-bg));
+}
+
 /* Summary */
 .seeding-summary {
   margin-top: 0.5rem;
@@ -113,6 +244,41 @@
   background-color: var(--bg-color);
 }
 
+[data-theme='dark'] .active-sort-col {
+  background-color: color-mix(in srgb, var(--primary-color) 20%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator tbody tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--border-color) 34%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator tbody tr:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 16%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator th.sticky-col,
+[data-theme='dark'] .seeding-table-spectator td.sticky-col {
+  background-color: var(--card-bg);
+}
+
+[data-theme='dark'] .seeding-table-spectator tbody tr:nth-child(even) .sticky-col {
+  background-color: color-mix(in srgb, var(--border-color) 34%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator tbody tr:hover .sticky-col {
+  background-color: color-mix(in srgb, var(--primary-color) 16%, var(--card-bg));
+}
+
+[data-theme='dark'] .seeding-table-spectator .sticky-col.active-sort-col,
+[data-theme='dark']
+  .seeding-table-spectator
+  tbody
+  tr:nth-child(even)
+  .sticky-col.active-sort-col,
+[data-theme='dark'] .seeding-table-spectator tbody tr:hover .sticky-col.active-sort-col {
+  background-color: color-mix(in srgb, var(--primary-color) 20%, var(--card-bg));
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .seeding-table th,
@@ -124,5 +290,86 @@
   .score-col,
   .avg-col {
     min-width: 60px;
+  }
+
+  .seeding-table-spectator th,
+  .seeding-table-spectator td {
+    padding: 0.325rem 0.45rem;
+  }
+
+  .seeding-table-spectator th {
+    font-size: 0.75rem;
+  }
+
+  .seeding-table-spectator .team-name-col,
+  .seeding-table-spectator .team-name-cell {
+    min-width: var(--sticky-team-name-width);
+    max-width: var(--sticky-team-name-width);
+  }
+
+  .seeding-table-spectator .team-name-text {
+    display: block;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .seeding-table-spectator .score-col,
+  .seeding-table-spectator .score-cell,
+  .seeding-table-spectator .avg-col,
+  .seeding-table-spectator .avg-cell,
+  .seeding-table-spectator .ranking-metric-col,
+  .seeding-table-spectator .ranking-metric-cell,
+  .seeding-table-spectator .team-number-col,
+  .seeding-table-spectator .team-number-cell,
+  .seeding-table-spectator .seed-rank-col,
+  .seeding-table-spectator .rank-cell {
+    font-size: 0.8rem;
+  }
+
+  .seeding-table-spectator .score-col,
+  .seeding-table-spectator .avg-col,
+  .seeding-table-spectator .ranking-metric-col,
+  .seeding-table-spectator .ranking-metric-cell {
+    min-width: 3.5rem;
+  }
+
+  .seeding-table-spectator .seed-rank-col,
+  .seeding-table-spectator .rank-cell {
+    min-width: var(--sticky-rank-width);
+    width: var(--sticky-rank-width);
+    max-width: var(--sticky-rank-width);
+  }
+
+  .seeding-table-responsive-spectator {
+    --sticky-rank-width: 3.25rem;
+    --sticky-team-number-width: 3.5rem;
+    --sticky-team-name-width: 7rem;
+  }
+
+  .seeding-table-spectator .raw-seed-col,
+  .seeding-table-spectator .raw-seed-cell {
+    display: none;
+  }
+
+  .seeding-table-spectator .header-label-full {
+    display: none;
+  }
+
+  .seeding-table-spectator .header-label-short {
+    display: inline;
+  }
+
+  .seeding-table-responsive-spectator {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .seeding-table-spectator {
+    min-width: max-content !important;
+    width: max-content !important;
+    max-width: none !important;
   }
 }

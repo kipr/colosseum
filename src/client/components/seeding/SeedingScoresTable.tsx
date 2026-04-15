@@ -68,6 +68,7 @@ export function buildTeamRowData(
 /** Sort field: meta keys or `round:${n}` for round score columns */
 type SortField = string;
 type SortDirection = 'asc' | 'desc';
+type SeedingTableVariant = 'default' | 'spectator';
 
 function roundField(round: number): string {
   return `round:${round}`;
@@ -97,14 +98,19 @@ function compareNullableNumber(
 interface SeedingScoresTableProps {
   teamRowData: TeamRowData[];
   effectiveRounds: number;
+  variant?: SeedingTableVariant;
 }
 
 export default function SeedingScoresTable({
   teamRowData,
   effectiveRounds,
+  variant = 'default',
 }: SeedingScoresTableProps) {
-  const [sortField, setSortField] = useState<SortField>('team_number');
+  const [sortField, setSortField] = useState<SortField>(
+    variant === 'spectator' ? 'seed_rank' : 'team_number',
+  );
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const isSpectator = variant === 'spectator';
 
   const sortedTeamRowData = useMemo(() => {
     return [...teamRowData].sort((a, b) => {
@@ -169,8 +175,42 @@ export default function SeedingScoresTable({
     return sortDirection === 'asc' ? ' ▲' : ' ▼';
   };
 
+  const isActiveSortField = (field: SortField) => sortField === field;
+
+  const getHeaderClassName = (field: SortField, ...classNames: string[]) =>
+    [
+      ...classNames,
+      'sortable',
+      isActiveSortField(field) ? 'active-sort-col' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+
+  const getCellClassName = (field: SortField, ...classNames: string[]) =>
+    [...classNames, isActiveSortField(field) ? 'active-sort-col' : '']
+      .filter(Boolean)
+      .join(' ');
+
+  const renderHeaderLabel = (
+    fullLabel: string,
+    shortLabel?: string,
+    sortFieldName?: SortField,
+  ) => (
+    <>
+      <span className="header-label-full">{fullLabel}</span>
+      {shortLabel ? (
+        <span className="header-label-short" aria-hidden="true">
+          {shortLabel}
+        </span>
+      ) : null}
+      {sortFieldName ? getSortIndicator(sortFieldName) : null}
+    </>
+  );
+
   return (
-    <div className="card seeding-section">
+    <div
+      className={`card seeding-section${isSpectator ? ' seeding-section-spectator' : ''}`}
+    >
       <div className="seeding-section-header">
         <div>
           <h3>Seeding scores and rankings</h3>
@@ -181,24 +221,52 @@ export default function SeedingScoresTable({
           </p>
         </div>
       </div>
-      <div className="table-responsive">
-        <table className="seeding-table seeding-unified-table">
+      <div
+        className={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
+      >
+        <table
+          className={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}
+        >
           <thead>
             <tr>
               <th
-                className="sortable seed-rank-col"
+                className={getHeaderClassName(
+                  'seed_rank',
+                  'seed-rank-col',
+                  'sticky-col',
+                  'sticky-col-rank',
+                )}
                 onClick={() => handleSort('seed_rank')}
+                title="Seed Rank"
+                aria-label="Sort by seed rank"
               >
-                Seed Rank{getSortIndicator('seed_rank')}
+                {renderHeaderLabel('Seed Rank', 'Rank', 'seed_rank')}
               </th>
               <th
-                className="sortable"
+                className={getHeaderClassName(
+                  'team_number',
+                  'team-number-col',
+                  'sticky-col',
+                  'sticky-col-team-number',
+                )}
                 onClick={() => handleSort('team_number')}
+                title="Team Number"
+                aria-label="Sort by team number"
               >
-                Team #{getSortIndicator('team_number')}
+                {renderHeaderLabel('Team #', '#', 'team_number')}
               </th>
-              <th className="sortable" onClick={() => handleSort('team_name')}>
-                Team Name{getSortIndicator('team_name')}
+              <th
+                className={getHeaderClassName(
+                  'team_name',
+                  'team-name-col',
+                  'sticky-col',
+                  'sticky-col-team-name',
+                )}
+                onClick={() => handleSort('team_name')}
+                title="Team Name"
+                aria-label="Sort by team name"
+              >
+                {renderHeaderLabel('Team Name', 'Name', 'team_name')}
               </th>
               {Array.from({ length: effectiveRounds }, (_, i) => {
                 const round = i + 1;
@@ -206,50 +274,101 @@ export default function SeedingScoresTable({
                 return (
                   <th
                     key={round}
-                    className="sortable score-col"
+                    className={getHeaderClassName(rf, 'score-col')}
                     onClick={() => handleSort(rf)}
+                    title={`Round ${round}`}
+                    aria-label={`Sort by round ${round} score`}
                   >
-                    Round {round}
-                    {getSortIndicator(rf)}
+                    {renderHeaderLabel(`Round ${round}`, `R${round}`, rf)}
                   </th>
                 );
               })}
               <th
-                className="sortable avg-col ranking-metric-col"
+                className={getHeaderClassName(
+                  'seed_average',
+                  'avg-col',
+                  'ranking-metric-col',
+                )}
                 onClick={() => handleSort('seed_average')}
+                title="Seed Average"
+                aria-label="Sort by seed average"
               >
-                Seed Avg{getSortIndicator('seed_average')}
+                {renderHeaderLabel('Seed Avg', 'Avg', 'seed_average')}
               </th>
               <th
-                className="sortable ranking-metric-col"
+                className={getHeaderClassName(
+                  'raw_seed_score',
+                  'ranking-metric-col',
+                  'raw-seed-col',
+                )}
                 onClick={() => handleSort('raw_seed_score')}
+                title="Raw Seed Score"
+                aria-label="Sort by raw seed score"
               >
-                Raw Seed Score{getSortIndicator('raw_seed_score')}
+                {renderHeaderLabel('Raw Seed Score', 'Raw', 'raw_seed_score')}
               </th>
             </tr>
           </thead>
           <tbody>
             {sortedTeamRowData.map((row) => (
               <tr key={row.team.id}>
-                <td className="rank-cell">{row.ranking?.seed_rank ?? '—'}</td>
-                <td>{row.team.team_number}</td>
-                <td>{row.team.team_name}</td>
+                <td
+                  className={getCellClassName(
+                    'seed_rank',
+                    'rank-cell',
+                    'sticky-col',
+                    'sticky-col-rank',
+                  )}
+                >
+                  {row.ranking?.seed_rank ?? '—'}
+                </td>
+                <td
+                  className={getCellClassName(
+                    'team_number',
+                    'team-number-cell',
+                    'sticky-col',
+                    'sticky-col-team-number',
+                  )}
+                >
+                  {row.team.team_number}
+                </td>
+                <td
+                  className={getCellClassName(
+                    'team_name',
+                    'team-name-cell',
+                    'sticky-col',
+                    'sticky-col-team-name',
+                  )}
+                >
+                  <span className="team-name-text" title={row.team.team_name}>
+                    {row.team.team_name}
+                  </span>
+                </td>
                 {Array.from({ length: effectiveRounds }, (_, i) => {
                   const round = i + 1;
                   const scoreRecord = row.scores.get(round) || null;
                   return (
-                    <td key={round} className="score-cell">
+                    <td
+                      key={round}
+                      className={getCellClassName(roundField(round), 'score-cell')}
+                    >
                       {scoreRecord?.score ?? '—'}
                     </td>
                   );
                 })}
-                <td className="avg-cell">
+                <td className={getCellClassName('seed_average', 'avg-cell')}>
                   {row.ranking?.seed_average !== null &&
                   row.ranking?.seed_average !== undefined
                     ? row.ranking.seed_average.toFixed(2)
                     : '—'}
                 </td>
-                <td className="ranking-metric-cell">
+                <td
+                  className={getCellClassName(
+                    'raw_seed_score',
+                    'ranking-metric-cell',
+                    'raw-seed-cell',
+                  )}
+                >
                   {row.ranking?.raw_seed_score !== null &&
                   row.ranking?.raw_seed_score !== undefined
                     ? row.ranking.raw_seed_score.toFixed(4)
