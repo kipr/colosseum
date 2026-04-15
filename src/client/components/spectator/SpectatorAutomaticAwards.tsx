@@ -1,5 +1,6 @@
 import React from 'react';
 import '../bracket/BracketDisplay.css';
+import '../../pages/Spectator.css';
 
 export type MedalKind = 'gold' | 'silver' | 'bronze';
 
@@ -70,19 +71,20 @@ function MedalTable({ placements }: { placements: MedalPlacement[] }) {
             key={`${p.place}-${p.medal}`}
             className={`ranking-row-${p.medal}`}
           >
-            <td className="ranking-place">
+            <td className="ranking-place spectator-awards-place">
               <strong>{placeLabel(p.place)}</strong>
             </td>
-            <td>
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: '1.25rem',
-                }}
-              >
+            <td className="spectator-awards-recipients-cell">
+              <ul className="spectator-awards-recipients">
                 {p.recipients.map((r, i) => (
-                  <li key={`${r.team_number}-${i}`}>
-                    <strong>#{r.team_number}</strong> {formatTeamLine(r)}
+                  <li
+                    key={`${r.team_number}-${i}`}
+                    className="spectator-awards-recipient"
+                  >
+                    <strong>#{r.team_number}</strong>{' '}
+                    <span className="spectator-awards-recipient-name">
+                      {formatTeamLine(r)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -115,6 +117,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
       {automatic.de.length > 0 && (
         <section style={{ marginBottom: '1.5rem' }}>
           <h4
+            className="spectator-awards-section-title"
             style={{
               margin: '0 0 0.75rem',
               fontSize: '1.05rem',
@@ -123,6 +126,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
             Double elimination
           </h4>
           <p
+            className="spectator-awards-section-description"
             style={{
               color: 'var(--secondary-color)',
               fontSize: '0.9rem',
@@ -134,7 +138,10 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
           </p>
           {automatic.de.map((b) => (
             <div key={b.bracket_id} style={{ marginBottom: '1.25rem' }}>
-              <h5 style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}>
+              <h5
+                className="spectator-awards-bracket-title"
+                style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}
+              >
                 {b.bracket_name}
               </h5>
               <MedalTable placements={b.placements} />
@@ -146,6 +153,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
       {automatic.perBracketOverall.length > 0 && (
         <section style={{ marginBottom: '1.5rem' }}>
           <h4
+            className="spectator-awards-section-title"
             style={{
               margin: '0 0 0.75rem',
               fontSize: '1.05rem',
@@ -154,6 +162,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
             Per-bracket overall
           </h4>
           <p
+            className="spectator-awards-section-description"
             style={{
               color: 'var(--secondary-color)',
               fontSize: '0.9rem',
@@ -165,7 +174,10 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
           </p>
           {automatic.perBracketOverall.map((b) => (
             <div key={b.bracket_id} style={{ marginBottom: '1.25rem' }}>
-              <h5 style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}>
+              <h5
+                className="spectator-awards-bracket-title"
+                style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}
+              >
                 {b.bracket_name}
               </h5>
               <MedalTable placements={b.placements} />
@@ -178,6 +190,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
         automatic.eventOverall.placements.length > 0 && (
           <section style={{ marginBottom: '1.5rem' }}>
             <h4
+              className="spectator-awards-section-title"
               style={{
                 margin: '0 0 0.75rem',
                 fontSize: '1.05rem',
@@ -186,6 +199,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
               Event overall
             </h4>
             <p
+              className="spectator-awards-section-description"
               style={{
                 color: 'var(--secondary-color)',
                 fontSize: '0.9rem',

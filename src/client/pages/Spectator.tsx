@@ -636,6 +636,7 @@ export default function Spectator() {
                         {manualAwards.map((award, idx) => (
                           <div
                             key={idx}
+                            className="spectator-manual-award"
                             style={{
                               marginBottom:
                                 idx < manualAwards.length - 1 ? '1.25rem' : 0,
@@ -647,30 +648,25 @@ export default function Spectator() {
                                   : 'none',
                             }}
                           >
-                            <strong style={{ fontSize: '1.05rem' }}>
+                            <strong className="spectator-manual-award-title">
                               {award.name}
                             </strong>
                             {award.description && (
-                              <p
-                                style={{
-                                  color: 'var(--secondary-color)',
-                                  margin: '0.25rem 0 0.5rem',
-                                }}
-                              >
+                              <p className="spectator-manual-award-description">
                                 {award.description}
                               </p>
                             )}
                             {award.recipients.length > 0 ? (
-                              <ul
-                                style={{
-                                  margin: '0.5rem 0 0',
-                                  paddingLeft: '1.25rem',
-                                }}
-                              >
+                              <ul className="spectator-manual-award-recipients">
                                 {award.recipients.map((r, ri) => (
-                                  <li key={ri}>
+                                  <li
+                                    key={ri}
+                                    className="spectator-manual-award-recipient"
+                                  >
                                     <strong>#{r.team_number}</strong>{' '}
-                                    {r.team_name}
+                                    <span className="spectator-manual-award-recipient-name">
+                                      {r.team_name}
+                                    </span>
                                   </li>
                                 ))}
                               </ul>
