@@ -557,8 +557,7 @@ test.describe('Spectator Public Views & Release Gating', () => {
       }),
     ).toBeVisible();
 
-    // Rankings view should render (BracketRankingView → seeding-unified-table)
-    await expect(page.locator('.seeding-unified-table, .card')).toBeVisible({
+    await expect(page.locator('.seeding-unified-table')).toBeVisible({
       timeout: 10_000,
     });
   });
