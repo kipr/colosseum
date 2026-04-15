@@ -353,3 +353,233 @@
   td.sticky-col {
   background-color: var(--card-bg);
 }
+
+.overall-section-spectator {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+  contain: inline-size;
+}
+
+.overall-section-spectator .overall-scores-table-wrapper-spectator {
+  --overall-sticky-team-number-width: 4.25rem;
+  --overall-sticky-team-name-width: 8.75rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable both-edges;
+  isolation: isolate;
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+  background: var(--card-bg);
+  contain: layout inline-size;
+}
+
+.overall-section-spectator .overall-scores-table-spectator {
+  display: inline-table;
+  width: max-content;
+  min-width: max-content;
+  max-width: none;
+  margin-top: 0;
+}
+
+.overall-section-spectator .overall-scores-table-spectator .sticky-col {
+  position: sticky;
+  z-index: 2;
+}
+
+.overall-section-spectator
+  .overall-scores-table-spectator
+  .sticky-col-team-number {
+  left: 0;
+}
+
+.overall-section-spectator
+  .overall-scores-table-spectator
+  .sticky-col-team-name {
+  left: var(--overall-sticky-team-number-width);
+}
+
+.overall-section-spectator .overall-scores-table-spectator th.sticky-col {
+  z-index: 4;
+}
+
+.overall-section-spectator .overall-scores-table-spectator th.sticky-col,
+.overall-section-spectator .overall-scores-table-spectator td.sticky-col {
+  background-color: var(--card-bg);
+  background-clip: padding-box;
+}
+
+.overall-section-spectator .overall-team-number-col,
+.overall-section-spectator .overall-team-number-cell {
+  min-width: var(--overall-sticky-team-number-width);
+  width: var(--overall-sticky-team-number-width);
+  max-width: var(--overall-sticky-team-number-width);
+  text-align: center;
+}
+
+.overall-section-spectator .overall-team-name-col,
+.overall-section-spectator .overall-team-name-cell {
+  min-width: var(--overall-sticky-team-name-width);
+  width: var(--overall-sticky-team-name-width);
+  max-width: var(--overall-sticky-team-name-width);
+}
+
+.overall-section-spectator .overall-team-name-col,
+.overall-section-spectator .overall-team-name-cell {
+  box-shadow: 1px 0 0 var(--border-color);
+}
+
+.overall-section-spectator .overall-doc-col,
+.overall-section-spectator .overall-doc-cell,
+.overall-section-spectator .overall-raw-seed-col,
+.overall-section-spectator .overall-raw-seed-cell,
+.overall-section-spectator .overall-weighted-de-col,
+.overall-section-spectator .overall-weighted-de-cell,
+.overall-section-spectator .overall-total-col,
+.overall-section-spectator .overall-total-cell {
+  white-space: nowrap;
+}
+
+.overall-section-spectator
+  .overall-scores-table-spectator
+  tbody
+  tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--border-color) 18%, var(--card-bg));
+}
+
+.overall-section-spectator .overall-scores-table-spectator tbody tr:hover {
+  background-color: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
+}
+
+.overall-section-spectator
+  .overall-scores-table-spectator
+  tbody
+  tr:nth-child(even)
+  .sticky-col {
+  background-color: color-mix(in srgb, var(--border-color) 18%, var(--card-bg));
+}
+
+.overall-section-spectator
+  .overall-scores-table-spectator
+  tbody
+  tr:hover
+  .sticky-col {
+  background-color: color-mix(in srgb, var(--primary-color) 8%, var(--card-bg));
+}
+
+.overall-section-spectator
+  .overall-scores-table-spectator
+  .sticky-col.active-sort-col,
+.overall-section-spectator
+  .overall-scores-table-spectator
+  tbody
+  tr:nth-child(even)
+  .sticky-col.active-sort-col,
+.overall-section-spectator
+  .overall-scores-table-spectator
+  tbody
+  tr:hover
+  .sticky-col.active-sort-col {
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 14%,
+    var(--card-bg)
+  );
+}
+
+@media (max-width: 768px) {
+  .overall-section-spectator .overall-scores-table-wrapper-spectator {
+    --overall-sticky-team-number-width: 3.6rem;
+    --overall-sticky-team-name-width: 7.25rem;
+  }
+
+  .overall-section-spectator .overall-scores-table-spectator,
+  .overall-section-spectator .overall-scores-table-spectator th,
+  .overall-section-spectator .overall-scores-table-spectator td {
+    min-width: 0;
+  }
+
+  .overall-section-spectator .overall-scores-table-spectator {
+    width: max-content;
+    min-width: max-content !important;
+  }
+
+  .overall-section-spectator .overall-scores-table-spectator th,
+  .overall-section-spectator .overall-scores-table-spectator td {
+    padding: 0.35rem 0.4rem;
+    font-size: 0.78rem;
+  }
+
+  .overall-section-spectator .doc-header-label-full {
+    display: none;
+  }
+
+  .overall-section-spectator .doc-header-label-short {
+    display: inline;
+  }
+
+  .overall-section-spectator .doc-op,
+  .overall-section-spectator .overall-mobile-hidden-col,
+  .overall-section-spectator .overall-mobile-hidden-cell {
+    display: none;
+  }
+
+  .overall-section-spectator .overall-doc-col,
+  .overall-section-spectator .overall-doc-cell,
+  .overall-section-spectator .overall-raw-seed-col,
+  .overall-section-spectator .overall-raw-seed-cell,
+  .overall-section-spectator .overall-weighted-de-col,
+  .overall-section-spectator .overall-weighted-de-cell,
+  .overall-section-spectator .overall-total-col,
+  .overall-section-spectator .overall-total-cell {
+    min-width: 5.5rem;
+  }
+
+  .overall-section-spectator .overall-team-name-cell {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .overall-section-spectator .overall-total-cell strong {
+    font-size: 0.85rem;
+  }
+}
+
+[data-theme='dark']
+  .overall-section-spectator
+  .overall-scores-table-spectator
+  tbody
+  tr:nth-child(even) {
+  background-color: color-mix(in srgb, var(--border-color) 34%, var(--card-bg));
+}
+
+[data-theme='dark']
+  .overall-section-spectator
+  .overall-scores-table-spectator
+  tbody
+  tr:hover {
+  background-color: color-mix(
+    in srgb,
+    var(--primary-color) 16%,
+    var(--card-bg)
+  );
+}
+
+[data-theme='dark']
+  .overall-section-spectator
+  .overall-scores-table-spectator
+  th.sticky-col,
+[data-theme='dark']
+  .overall-section-spectator
+  .overall-scores-table-spectator
+  td.sticky-col {
+  background-color: var(--card-bg);
+}

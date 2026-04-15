@@ -717,11 +717,14 @@ export default function Spectator() {
             )}
 
             {activeTab === 'overall' && finalScoresAvailable && (
-              <div>
+              <div className="spectator-overall-view">
                 {overallLoading ? (
                   <p>Loading overall scores...</p>
                 ) : (
-                  <OverallScoresDisplay rows={overallRows} />
+                  <OverallScoresDisplay
+                    rows={overallRows}
+                    variant="spectator"
+                  />
                 )}
               </div>
             )}

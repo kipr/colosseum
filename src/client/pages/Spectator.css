@@ -177,6 +177,20 @@
   max-width: 100%;
 }
 
+.spectator-overall-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.spectator-overall-view .documentation-section,
+.spectator-overall-view .overall-section-spectator,
+.spectator-overall-view .overall-scores-table-wrapper-spectator {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .spectator-awards-medal-table .spectator-awards-place {
   width: 3.25rem;
   min-width: 3.25rem;
