@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useMemo,
+} from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
@@ -18,6 +24,8 @@ import {
 } from '../../types/brackets';
 import BracketListTable from '../bracket/BracketListTable';
 import BracketDetailView from '../bracket/BracketDetailView';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import '../Modal.css';
 import './BracketsTab.css';
 
@@ -58,6 +66,14 @@ interface AssignedTeam {
   team_name: string;
   bracket_id: number;
   bracket_name: string;
+}
+
+interface BracketCreateMatrixRow {
+  team: CreateModalTeam;
+  scoreMap: Map<number, number | null>;
+  ranking: CreateModalRanking | undefined;
+  assigned: AssignedTeam | undefined;
+  hasOverlap: boolean;
 }
 
 function nextPowerOfTwo(n: number): number {
@@ -658,6 +674,135 @@ export default function BracketsTab() {
     );
   };
 
+  const bracketCreateMatrixRows = useMemo((): BracketCreateMatrixRow[] => {
+    return [...createTeams]
+      .sort((a, b) => {
+        const rankA = createRankings.find((r) => r.team_id === a.id)?.seed_rank;
+        const rankB = createRankings.find((r) => r.team_id === b.id)?.seed_rank;
+        if (rankA == null && rankB == null)
+          return a.team_number - b.team_number;
+        if (rankA == null) return 1;
+        if (rankB == null) return -1;
+        return rankA - rankB;
+      })
+      .map((team) => {
+        const scoreMap = new Map<number, number | null>();
+        for (const s of createScores) {
+          if (s.team_id === team.id) scoreMap.set(s.round_number, s.score);
+        }
+        const ranking = createRankings.find((r) => r.team_id === team.id);
+        const assigned = createAssigned.find((a) => a.team_id === team.id);
+        const isSelected = selectedTeamIds.has(team.id);
+        const hasOverlap = isSelected && !!assigned;
+        return { team, scoreMap, ranking, assigned, hasOverlap };
+      });
+  }, [
+    createTeams,
+    createScores,
+    createRankings,
+    createAssigned,
+    selectedTeamIds,
+  ]);
+
+  const bracketCreateMatrixColumns =
+    useMemo((): UnifiedColumnDef<BracketCreateMatrixRow>[] => {
+      const rounds = selectedEvent?.seeding_rounds ?? 3;
+      const cols: UnifiedColumnDef<BracketCreateMatrixRow>[] = [
+        {
+          kind: 'data',
+          id: 'select',
+          header: { full: 'Select' },
+          headerStyle: { width: 40 },
+          renderCell: (r) => (
+            <input
+              type="checkbox"
+              checked={selectedTeamIds.has(r.team.id)}
+              onChange={(e) => {
+                setSelectedTeamIds((prev) => {
+                  const next = new Set(prev);
+                  if (e.target.checked) {
+                    next.add(r.team.id);
+                  } else {
+                    next.delete(r.team.id);
+                  }
+                  return next;
+                });
+              }}
+              disabled={!!r.assigned}
+              title={
+                r.assigned
+                  ? `${r.team.team_name} is already in ${r.assigned.bracket_name}`
+                  : undefined
+              }
+            />
+          ),
+        },
+        {
+          kind: 'data',
+          id: 'team_number',
+          header: { full: 'Team #' },
+          renderCell: (r) => r.team.team_number,
+        },
+        {
+          kind: 'data',
+          id: 'team_name',
+          header: { full: 'Team Name' },
+          renderCell: (r) => r.team.team_name,
+        },
+      ];
+      for (let i = 0; i < rounds; i++) {
+        cols.push({
+          kind: 'data',
+          id: `r${i + 1}`,
+          header: { full: `R${i + 1}` },
+          renderCell: (r) => r.scoreMap.get(i + 1) ?? '—',
+        });
+      }
+      cols.push(
+        {
+          kind: 'data',
+          id: 'seed_avg',
+          header: { full: 'Seed Avg' },
+          renderCell: (r) =>
+            r.ranking?.seed_average != null
+              ? r.ranking.seed_average.toFixed(2)
+              : '—',
+        },
+        {
+          kind: 'data',
+          id: 'rank',
+          header: { full: 'Rank' },
+          renderCell: (r) => r.ranking?.seed_rank ?? '—',
+        },
+        {
+          kind: 'data',
+          id: 'raw',
+          header: { full: 'Raw' },
+          renderCell: (r) =>
+            r.ranking?.raw_seed_score != null
+              ? r.ranking.raw_seed_score.toFixed(4)
+              : '—',
+        },
+        {
+          kind: 'data',
+          id: 'assigned',
+          header: { full: 'Assigned' },
+          renderCell: (r) =>
+            r.assigned ? (
+              <span
+                className="bracket-create-assigned"
+                title={`In ${r.assigned.bracket_name}`}
+              >
+                {r.assigned.bracket_name}
+              </span>
+            ) : (
+              '—'
+            ),
+        },
+      );
+      return cols;
+    }, [selectedEvent?.seeding_rounds, selectedTeamIds]);
+
   return (
     <div className="brackets-tab">
       {/* Brackets List */}
@@ -816,126 +961,16 @@ export default function BracketsTab() {
                       className="table-responsive"
                       style={{ maxHeight: '300px', overflow: 'auto' }}
                     >
-                      <table className="bracket-create-teams-table">
-                        <thead>
-                          <tr>
-                            <th style={{ width: '40px' }}>Select</th>
-                            <th>Team #</th>
-                            <th>Team Name</th>
-                            {Array.from(
-                              {
-                                length: selectedEvent?.seeding_rounds ?? 3,
-                              },
-                              (_, i) => (
-                                <th key={i}>R{i + 1}</th>
-                              ),
-                            )}
-                            <th>Seed Avg</th>
-                            <th>Rank</th>
-                            <th>Raw</th>
-                            <th>Assigned</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...createTeams]
-                            .sort((a, b) => {
-                              const rankA = createRankings.find(
-                                (r) => r.team_id === a.id,
-                              )?.seed_rank;
-                              const rankB = createRankings.find(
-                                (r) => r.team_id === b.id,
-                              )?.seed_rank;
-                              if (rankA == null && rankB == null)
-                                return a.team_number - b.team_number;
-                              if (rankA == null) return 1;
-                              if (rankB == null) return -1;
-                              return rankA - rankB;
-                            })
-                            .map((team) => {
-                              const scoreMap = new Map<number, number | null>();
-                              for (const s of createScores) {
-                                if (s.team_id === team.id)
-                                  scoreMap.set(s.round_number, s.score);
-                              }
-                              const ranking = createRankings.find(
-                                (r) => r.team_id === team.id,
-                              );
-                              const assigned = createAssigned.find(
-                                (a) => a.team_id === team.id,
-                              );
-                              const isSelected = selectedTeamIds.has(team.id);
-                              const hasOverlap = isSelected && !!assigned;
-                              return (
-                                <tr
-                                  key={team.id}
-                                  className={
-                                    hasOverlap ? 'bracket-create-overlap' : ''
-                                  }
-                                >
-                                  <td>
-                                    <input
-                                      type="checkbox"
-                                      checked={isSelected}
-                                      onChange={(e) => {
-                                        setSelectedTeamIds((prev) => {
-                                          const next = new Set(prev);
-                                          if (e.target.checked) {
-                                            next.add(team.id);
-                                          } else {
-                                            next.delete(team.id);
-                                          }
-                                          return next;
-                                        });
-                                      }}
-                                      disabled={!!assigned}
-                                      title={
-                                        assigned
-                                          ? `${team.team_name} is already in ${assigned.bracket_name}`
-                                          : undefined
-                                      }
-                                    />
-                                  </td>
-                                  <td>{team.team_number}</td>
-                                  <td>{team.team_name}</td>
-                                  {Array.from(
-                                    {
-                                      length:
-                                        selectedEvent?.seeding_rounds ?? 3,
-                                    },
-                                    (_, i) => (
-                                      <td key={i}>
-                                        {scoreMap.get(i + 1) ?? '—'}
-                                      </td>
-                                    ),
-                                  )}
-                                  <td>
-                                    {ranking?.seed_average != null
-                                      ? ranking.seed_average.toFixed(2)
-                                      : '—'}
-                                  </td>
-                                  <td>{ranking?.seed_rank ?? '—'}</td>
-                                  <td>
-                                    {ranking?.raw_seed_score != null
-                                      ? ranking.raw_seed_score.toFixed(4)
-                                      : '—'}
-                                  </td>
-                                  <td>
-                                    {assigned ? (
-                                      <span
-                                        className="bracket-create-assigned"
-                                        title={`In ${assigned.bracket_name}`}
-                                      >
-                                        {assigned.bracket_name}
-                                      </span>
-                                    ) : (
-                                      '—'
-                                    )}
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
+                      <UnifiedTable
+                        columns={bracketCreateMatrixColumns}
+                        rows={bracketCreateMatrixRows}
+                        getRowKey={(r) => r.team.id}
+                        rowClassName={(r) =>
+                          r.hasOverlap ? 'bracket-create-overlap' : ''
+                        }
+                        tableClassName="bracket-create-teams-table"
+                        headerLabelVariant="none"
+                      />
                     </div>
                   </div>
 

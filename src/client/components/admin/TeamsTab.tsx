@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { UnifiedTable } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -292,11 +293,6 @@ export default function TeamsTab() {
       setSortField(field);
       setSortDirection('asc');
     }
-  };
-
-  const getSortIndicator = (field: SortField) => {
-    if (sortField !== field) return null;
-    return sortDirection === 'asc' ? ' ▲' : ' ▼';
   };
 
   // Modal handlers
@@ -658,80 +654,93 @@ export default function TeamsTab() {
               : 'No teams match your search/filter criteria.'}
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th
-                  className="sortable"
-                  onClick={() => handleSort('team_number')}
-                >
-                  Team #{getSortIndicator('team_number')}
-                </th>
-                <th
-                  className="sortable"
-                  onClick={() => handleSort('team_name')}
-                >
-                  Team Name{getSortIndicator('team_name')}
-                </th>
-                <th className="sortable" onClick={() => handleSort('status')}>
-                  Status{getSortIndicator('status')}
-                </th>
-                <th
-                  className="sortable"
-                  onClick={() => handleSort('checked_in_at')}
-                >
-                  Checked In{getSortIndicator('checked_in_at')}
-                </th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredAndSortedTeams.map((team) => (
-                <tr key={team.id}>
-                  <td>{team.team_number}</td>
-                  <td>{team.team_name}</td>
-                  <td>
-                    <span
-                      className={`team-status-badge ${getStatusClass(team.status)}`}
+          <UnifiedTable
+            columns={[
+              {
+                kind: 'data',
+                id: 'team_number',
+                sortable: true,
+                header: { full: 'Team #' },
+                headerClassName: 'sortable',
+                sortAriaLabel: 'Sort by team number',
+                renderCell: (team) => team.team_number,
+              },
+              {
+                kind: 'data',
+                id: 'team_name',
+                sortable: true,
+                header: { full: 'Team Name' },
+                headerClassName: 'sortable',
+                sortAriaLabel: 'Sort by team name',
+                renderCell: (team) => team.team_name,
+              },
+              {
+                kind: 'data',
+                id: 'status',
+                sortable: true,
+                header: { full: 'Status' },
+                headerClassName: 'sortable',
+                sortAriaLabel: 'Sort by status',
+                renderCell: (team) => (
+                  <span
+                    className={`team-status-badge ${getStatusClass(team.status)}`}
+                  >
+                    {STATUS_LABELS[team.status]}
+                  </span>
+                ),
+              },
+              {
+                kind: 'data',
+                id: 'checked_in_at',
+                sortable: true,
+                header: { full: 'Checked In' },
+                headerClassName: 'sortable',
+                sortAriaLabel: 'Sort by checked in time',
+                renderCell: (team) =>
+                  team.checked_in_at ? (
+                    formatDateTime(team.checked_in_at)
+                  ) : (
+                    <em style={{ color: 'var(--secondary-color)' }}>—</em>
+                  ),
+              },
+              {
+                kind: 'data',
+                id: 'actions',
+                header: { full: 'Actions' },
+                renderCell: (team) => (
+                  <div className="team-actions">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => handleEdit(team)}
                     >
-                      {STATUS_LABELS[team.status]}
-                    </span>
-                  </td>
-                  <td>
-                    {team.checked_in_at ? (
-                      formatDateTime(team.checked_in_at)
-                    ) : (
-                      <em style={{ color: 'var(--secondary-color)' }}>—</em>
+                      Edit
+                    </button>
+                    {team.status !== 'checked_in' && (
+                      <button
+                        className="btn btn-success"
+                        onClick={() => handleCheckIn(team)}
+                      >
+                        Check In
+                      </button>
                     )}
-                  </td>
-                  <td>
-                    <div className="team-actions">
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleEdit(team)}
-                      >
-                        Edit
-                      </button>
-                      {team.status !== 'checked_in' && (
-                        <button
-                          className="btn btn-success"
-                          onClick={() => handleCheckIn(team)}
-                        >
-                          Check In
-                        </button>
-                      )}
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDelete(team)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                    <button
+                      className="btn btn-danger"
+                      onClick={() => handleDelete(team)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                ),
+              },
+            ]}
+            rows={filteredAndSortedTeams}
+            getRowKey={(team) => team.id}
+            activeSortId={sortField}
+            sortDirection={sortDirection}
+            onSort={(id) => handleSort(id as SortField)}
+            headerLabelVariant="none"
+            sortableHeaderClassName=""
+          />
         )}
         <div className="teams-summary">
           {filteredAndSortedTeams.length} team
@@ -915,38 +924,55 @@ export default function TeamsTab() {
             {bulkParsed.length > 0 && (
               <div className="bulk-preview">
                 <h4>Preview ({bulkParsed.length} teams to import)</h4>
-                <div className="bulk-preview-table">
-                  <table>
-                    <thead>
+                <UnifiedTable<ParsedTeam>
+                  columns={[
+                    {
+                      kind: 'data',
+                      id: 'num',
+                      header: { full: '#' },
+                      renderCell: (t) => t.team_number,
+                    },
+                    {
+                      kind: 'data',
+                      id: 'name',
+                      header: { full: 'Team Name' },
+                      renderCell: (t) => t.team_name,
+                    },
+                    {
+                      kind: 'data',
+                      id: 'display',
+                      header: { full: 'Display Name' },
+                      renderCell: (t) => t.display_name || '—',
+                    },
+                    {
+                      kind: 'data',
+                      id: 'status',
+                      header: { full: 'Status' },
+                      renderCell: (t) => t.status || 'registered',
+                    },
+                  ]}
+                  rows={bulkParsed.slice(0, 10)}
+                  getRowKey={(t) =>
+                    `${t.team_number}-${t.team_name}-${t.display_name ?? ''}`
+                  }
+                  headerLabelVariant="none"
+                  wrapperClassName="bulk-preview-table"
+                  tbodyExtra={
+                    bulkParsed.length > 10 ? (
                       <tr>
-                        <th>#</th>
-                        <th>Team Name</th>
-                        <th>Display Name</th>
-                        <th>Status</th>
+                        <td
+                          colSpan={4}
+                          style={{
+                            textAlign: 'center',
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          ...and {bulkParsed.length - 10} more
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {bulkParsed.slice(0, 10).map((team, idx) => (
-                        <tr key={idx}>
-                          <td>{team.team_number}</td>
-                          <td>{team.team_name}</td>
-                          <td>{team.display_name || '—'}</td>
-                          <td>{team.status || 'registered'}</td>
-                        </tr>
-                      ))}
-                      {bulkParsed.length > 10 && (
-                        <tr>
-                          <td
-                            colSpan={4}
-                            style={{ textAlign: 'center', fontStyle: 'italic' }}
-                          >
-                            ...and {bulkParsed.length - 10} more
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                    ) : null
+                  }
+                />
               </div>
             )}
 

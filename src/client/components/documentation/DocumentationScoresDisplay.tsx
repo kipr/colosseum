@@ -1,4 +1,6 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
 
 export interface DocCategoryDisplay {
@@ -30,6 +32,7 @@ export interface DocScoreDisplay {
 interface DocumentationScoresDisplayProps {
   categories: DocCategoryDisplay[];
   scores: DocScoreDisplay[];
+  variant?: 'default' | 'spectator';
 }
 
 type SortField =
@@ -37,12 +40,15 @@ type SortField =
   | 'team_name'
   | 'overall_score'
   | `cat_${number}`;
+
 type SortDirection = 'asc' | 'desc';
 
 export default function DocumentationScoresDisplay({
   categories,
   scores,
+  variant = 'default',
 }: DocumentationScoresDisplayProps) {
+  const isSpectator = variant === 'spectator';
   const sortedCategories = [...categories].sort(
     (a, b) => a.ordinal - b.ordinal,
   );
@@ -92,23 +98,136 @@ export default function DocumentationScoresDisplay({
   }, [scores, subScoreMap, sortField, sortDirection]);
 
   const handleSort = useCallback(
-    (field: SortField) => {
-      if (sortField === field) {
+    (field: string) => {
+      const f = field as SortField;
+      if (sortField === f) {
         setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
       } else {
-        setSortField(field);
+        setSortField(f);
         setSortDirection('asc');
       }
     },
     [sortField],
   );
 
-  const getSortIndicator = (field: SortField) =>
-    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
+  const stickyNum = isSpectator
+    ? 'sticky-col sticky-col-team-number doc-team-number-col'
+    : '';
+  const stickyName = isSpectator
+    ? 'sticky-col sticky-col-team-name doc-team-name-col'
+    : '';
+  const stickyNumCell = isSpectator
+    ? 'sticky-col sticky-col-team-number doc-team-number-cell'
+    : '';
+  const stickyNameCell = isSpectator
+    ? 'sticky-col sticky-col-team-name doc-team-name-cell'
+    : '';
+
+  const columns: UnifiedColumnDef<DocScoreDisplay>[] = useMemo(() => {
+    const base: UnifiedColumnDef<DocScoreDisplay>[] = [
+      {
+        kind: 'data',
+        id: 'team_number',
+        sortable: true,
+        header: { full: 'Team #', short: '#' },
+        headerClassName: ['doc-sortable', stickyNum].filter(Boolean).join(' '),
+        cellClassName: stickyNumCell,
+        sortAriaLabel: 'Sort by team number',
+        renderCell: (score) => score.team_number,
+      },
+      {
+        kind: 'data',
+        id: 'team_name',
+        sortable: true,
+        header: { full: 'Team Name', short: 'Name' },
+        headerClassName: ['doc-sortable', stickyName].filter(Boolean).join(' '),
+        cellClassName: stickyNameCell,
+        sortAriaLabel: 'Sort by team name',
+        renderCell: (score) => (
+          <span
+            className="doc-team-name-text"
+            title={score.team_name || undefined}
+          >
+            {score.team_name}
+          </span>
+        ),
+      },
+    ];
+
+    sortedCategories.forEach((cat, idx) => {
+      const sf = `cat_${cat.id}` as SortField;
+      base.push({
+        kind: 'data',
+        id: sf,
+        sortId: sf,
+        sortable: true,
+        header: {
+          full: `${cat.name} (×${cat.weight})`,
+          short: `C${cat.ordinal}`,
+        },
+        headerClassName: 'doc-category-col doc-sortable',
+        cellClassName: 'doc-category-cell',
+        title: `Max: ${cat.max_score}`,
+        sortAriaLabel: `Sort by ${cat.name}`,
+        renderCell: (score) => {
+          const val = subScoreMap.get(`${score.team_id}-${cat.id}`);
+          return val != null ? (
+            <span>
+              {val}/{cat.max_score}
+            </span>
+          ) : (
+            <em style={{ color: 'var(--secondary-color)' }}>—</em>
+          );
+        },
+      });
+      if (idx < sortedCategories.length - 1) {
+        base.push({
+          kind: 'separator',
+          id: `sep-plus-${cat.id}`,
+          symbol: '+',
+        });
+      }
+    });
+
+    base.push({
+      kind: 'separator',
+      id: 'sep-eq',
+      symbol: '=',
+    });
+
+    base.push({
+      kind: 'data',
+      id: 'overall_score',
+      sortable: true,
+      header: { full: 'Overall Score', short: 'Total' },
+      headerClassName: 'doc-overall-col doc-sortable',
+      cellClassName: 'doc-overall-cell',
+      sortAriaLabel: 'Sort by overall score',
+      renderCell: (score) =>
+        score.overall_score != null ? (
+          <strong style={{ color: 'var(--primary-color)' }}>
+            {score.overall_score.toFixed(3)}
+          </strong>
+        ) : (
+          <em style={{ color: 'var(--secondary-color)' }}>—</em>
+        ),
+    });
+
+    return base;
+  }, [
+    sortedCategories,
+    stickyName,
+    stickyNameCell,
+    stickyNum,
+    stickyNumCell,
+    subScoreMap,
+  ]);
 
   if (categories.length === 0) {
     return (
-      <div className="card documentation-section">
+      <div
+        className={`card documentation-section${isSpectator ? ' documentation-section-spectator' : ''}`}
+      >
         <h3>Documentation Scores</h3>
         <p style={{ color: 'var(--secondary-color)' }}>
           No documentation categories configured.
@@ -118,7 +237,9 @@ export default function DocumentationScoresDisplay({
   }
 
   return (
-    <div className="card documentation-section">
+    <div
+      className={`card documentation-section${isSpectator ? ' documentation-section-spectator' : ''}`}
+    >
       <h3>Documentation Scores</h3>
       <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
         Combined score per team: sum of (score / max) &times; weight per
@@ -129,87 +250,17 @@ export default function DocumentationScoresDisplay({
           No documentation scores recorded yet.
         </p>
       ) : (
-        <div className="doc-scores-table-wrapper">
-          <table className="doc-calculator-table">
-            <thead>
-              <tr>
-                <th
-                  className="doc-sortable"
-                  onClick={() => handleSort('team_number')}
-                >
-                  Team #{getSortIndicator('team_number')}
-                </th>
-                <th
-                  className="doc-sortable"
-                  onClick={() => handleSort('team_name')}
-                >
-                  Team Name{getSortIndicator('team_name')}
-                </th>
-                {sortedCategories.map((cat, idx) => (
-                  <React.Fragment key={cat.id}>
-                    <th
-                      className="doc-sortable"
-                      title={`Max: ${cat.max_score}`}
-                      onClick={() => handleSort(`cat_${cat.id}` as SortField)}
-                    >
-                      {cat.name} (&times;{cat.weight})
-                      {getSortIndicator(`cat_${cat.id}` as SortField)}
-                    </th>
-                    {idx < sortedCategories.length - 1 && (
-                      <th className="doc-op">+</th>
-                    )}
-                  </React.Fragment>
-                ))}
-                <th className="doc-op">=</th>
-                <th
-                  className="doc-sortable"
-                  onClick={() => handleSort('overall_score')}
-                >
-                  Overall Score{getSortIndicator('overall_score')}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedScores.map((score) => (
-                <tr key={score.team_id}>
-                  <td>{score.team_number}</td>
-                  <td>{score.team_name}</td>
-                  {sortedCategories.map((cat, idx) => {
-                    const val = subScoreMap.get(`${score.team_id}-${cat.id}`);
-                    return (
-                      <React.Fragment key={cat.id}>
-                        <td>
-                          {val != null ? (
-                            <span>
-                              {val}/{cat.max_score}
-                            </span>
-                          ) : (
-                            <em style={{ color: 'var(--secondary-color)' }}>
-                              —
-                            </em>
-                          )}
-                        </td>
-                        {idx < sortedCategories.length - 1 && (
-                          <td className="doc-op">+</td>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                  <td className="doc-op">=</td>
-                  <td>
-                    {score.overall_score != null ? (
-                      <strong style={{ color: 'var(--primary-color)' }}>
-                        {score.overall_score.toFixed(3)}
-                      </strong>
-                    ) : (
-                      <em style={{ color: 'var(--secondary-color)' }}>—</em>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <UnifiedTable
+          columns={columns}
+          rows={sortedScores}
+          getRowKey={(s) => s.team_id}
+          activeSortId={sortField}
+          sortDirection={sortDirection}
+          onSort={handleSort}
+          headerLabelVariant="doc"
+          wrapperClassName={`doc-scores-table-wrapper${isSpectator ? ' doc-scores-table-wrapper-spectator' : ''}`}
+          tableClassName={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}
+        />
       )}
     </div>
   );

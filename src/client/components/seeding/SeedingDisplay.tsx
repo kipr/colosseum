@@ -11,6 +11,7 @@ interface SeedingDisplayProps {
   scores: SeedingScore[];
   rankings: SeedingRanking[];
   effectiveRounds: number;
+  variant?: 'default' | 'spectator';
 }
 
 export default function SeedingDisplay({
@@ -18,6 +19,7 @@ export default function SeedingDisplay({
   scores,
   rankings,
   effectiveRounds,
+  variant = 'default',
 }: SeedingDisplayProps) {
   const teamRowData = buildTeamRowData(
     teams,
@@ -41,6 +43,7 @@ export default function SeedingDisplay({
       <SeedingScoresTable
         teamRowData={teamRowData}
         effectiveRounds={effectiveRounds}
+        variant={variant}
       />
 
       <div className="seeding-summary">

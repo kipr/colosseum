@@ -1,5 +1,8 @@
 import React from 'react';
-import '../bracket/BracketDisplay.css';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
+import '../seeding/SeedingTables.css';
+import '../../pages/Spectator.css';
 
 export type MedalKind = 'gold' | 'silver' | 'bronze';
 
@@ -61,36 +64,48 @@ function formatTeamLine(t: PublicAwardTeam): string {
   return stripRedundantLeadingTeamNumber(t.team_number, raw);
 }
 
+const medalColumns: UnifiedColumnDef<MedalPlacement>[] = [
+  {
+    kind: 'data',
+    id: 'place',
+    header: { full: 'Place' },
+    headerClassName: 'rank-cell spectator-awards-place',
+    cellClassName: 'rank-cell spectator-awards-place',
+    renderCell: (p) => <strong>{placeLabel(p.place)}</strong>,
+  },
+  {
+    kind: 'data',
+    id: 'recipients',
+    header: { full: 'Recipients' },
+    cellClassName: 'spectator-awards-recipients-cell',
+    renderCell: (p) => (
+      <ul className="spectator-awards-recipients">
+        {p.recipients.map((r, i) => (
+          <li
+            key={`${r.team_number}-${i}`}
+            className="spectator-awards-recipient"
+          >
+            <strong>#{r.team_number}</strong>{' '}
+            <span className="spectator-awards-recipient-name">
+              {formatTeamLine(r)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    ),
+  },
+];
+
 function MedalTable({ placements }: { placements: MedalPlacement[] }) {
   return (
-    <table className="ranking-table spectator-awards-medal-table">
-      <tbody>
-        {placements.map((p) => (
-          <tr
-            key={`${p.place}-${p.medal}`}
-            className={`ranking-row-${p.medal}`}
-          >
-            <td className="ranking-place">
-              <strong>{placeLabel(p.place)}</strong>
-            </td>
-            <td>
-              <ul
-                style={{
-                  margin: 0,
-                  paddingLeft: '1.25rem',
-                }}
-              >
-                {p.recipients.map((r, i) => (
-                  <li key={`${r.team_number}-${i}`}>
-                    <strong>#{r.team_number}</strong> {formatTeamLine(r)}
-                  </li>
-                ))}
-              </ul>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <UnifiedTable
+      showHeader={false}
+      columns={medalColumns}
+      rows={placements}
+      getRowKey={(p) => `${p.place}-${p.medal}`}
+      rowClassName={(p) => `ranking-row-${p.medal}`}
+      tableClassName="seeding-table spectator-awards-medal-table"
+    />
   );
 }
 
@@ -115,6 +130,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
       {automatic.de.length > 0 && (
         <section style={{ marginBottom: '1.5rem' }}>
           <h4
+            className="spectator-awards-section-title"
             style={{
               margin: '0 0 0.75rem',
               fontSize: '1.05rem',
@@ -123,6 +139,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
             Double elimination
           </h4>
           <p
+            className="spectator-awards-section-description"
             style={{
               color: 'var(--secondary-color)',
               fontSize: '0.9rem',
@@ -134,7 +151,10 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
           </p>
           {automatic.de.map((b) => (
             <div key={b.bracket_id} style={{ marginBottom: '1.25rem' }}>
-              <h5 style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}>
+              <h5
+                className="spectator-awards-bracket-title"
+                style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}
+              >
                 {b.bracket_name}
               </h5>
               <MedalTable placements={b.placements} />
@@ -146,6 +166,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
       {automatic.perBracketOverall.length > 0 && (
         <section style={{ marginBottom: '1.5rem' }}>
           <h4
+            className="spectator-awards-section-title"
             style={{
               margin: '0 0 0.75rem',
               fontSize: '1.05rem',
@@ -154,6 +175,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
             Per-bracket overall
           </h4>
           <p
+            className="spectator-awards-section-description"
             style={{
               color: 'var(--secondary-color)',
               fontSize: '0.9rem',
@@ -165,7 +187,10 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
           </p>
           {automatic.perBracketOverall.map((b) => (
             <div key={b.bracket_id} style={{ marginBottom: '1.25rem' }}>
-              <h5 style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}>
+              <h5
+                className="spectator-awards-bracket-title"
+                style={{ margin: '0 0 0.5rem', fontSize: '1rem' }}
+              >
                 {b.bracket_name}
               </h5>
               <MedalTable placements={b.placements} />
@@ -178,6 +203,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
         automatic.eventOverall.placements.length > 0 && (
           <section style={{ marginBottom: '1.5rem' }}>
             <h4
+              className="spectator-awards-section-title"
               style={{
                 margin: '0 0 0.75rem',
                 fontSize: '1.05rem',
@@ -186,6 +212,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
               Event overall
             </h4>
             <p
+              className="spectator-awards-section-description"
               style={{
                 color: 'var(--secondary-color)',
                 fontSize: '0.9rem',

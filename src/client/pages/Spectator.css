@@ -1,7 +1,6 @@
 .spectator-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 1.5rem;
+  width: 100%;
+  min-width: 0;
 }
 
 .spectator-header {
@@ -54,33 +53,36 @@
 /* Tabs */
 .spectator-tabs {
   display: flex;
-  gap: 0;
+  flex-wrap: wrap;
+  gap: 0.375rem;
   border-bottom: 2px solid var(--border-color);
   margin-bottom: 1.5rem;
+  padding-bottom: 0.375rem;
 }
 
 .spectator-tab-btn {
-  padding: 0.75rem 1.5rem;
+  flex: 0 0 auto;
+  padding: 0.65rem 1.1rem;
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -2px;
+  border-radius: 0.5rem;
   font-size: 0.95rem;
   font-weight: 500;
   cursor: pointer;
   color: var(--secondary-color);
   transition:
     color 0.2s,
-    border-color 0.2s;
+    background-color 0.2s;
 }
 
 .spectator-tab-btn:hover {
   color: var(--text-color);
+  background: color-mix(in srgb, var(--border-color) 60%, transparent);
 }
 
 .spectator-tab-btn.active {
   color: var(--primary-color);
-  border-bottom-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 12%, transparent);
 }
 
 /* Bracket selector */
@@ -113,70 +115,215 @@
   border-color: var(--primary-color);
 }
 
-/* Event status badges (shared with Admin.css) */
-.spectator-event-meta .event-status-badge {
-  display: inline-block;
-  padding: 0.125rem 0.5rem;
-  border-radius: 9999px;
-  font-size: 0.65rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+.spectator-awards-medal-table {
+  min-width: 0;
+  width: 100%;
 }
 
-.spectator-event-meta .event-status-active {
-  background: #dcfce7;
-  color: #166534;
+.spectator-seeding-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
 }
 
-.spectator-event-meta .event-status-setup {
-  background: #fef3c7;
-  color: #92400e;
+.spectator-seeding-view .seeding-section,
+.spectator-seeding-view .seeding-section-spectator,
+.spectator-seeding-view .seeding-table-responsive-spectator {
+  min-width: 0;
+  max-width: 100%;
 }
 
-.spectator-event-meta .event-status-complete {
-  background: #dbeafe;
-  color: #1e40af;
+.spectator-documentation-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
 }
 
-[data-theme='dark'] .spectator-event-meta .event-status-active {
-  background: #14532d;
-  color: #86efac;
+.spectator-documentation-view .documentation-section,
+.spectator-documentation-view .documentation-section-spectator,
+.spectator-documentation-view .doc-scores-table-wrapper-spectator {
+  min-width: 0;
+  max-width: 100%;
 }
 
-[data-theme='dark'] .spectator-event-meta .event-status-setup {
-  background: #78350f;
-  color: #fde68a;
+.spectator-overall-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
 }
 
-[data-theme='dark'] .spectator-event-meta .event-status-complete {
-  background: #1e3a8a;
-  color: #93c5fd;
+.spectator-bracket-rankings-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.spectator-bracket-rankings-view .seeding-section,
+.spectator-bracket-rankings-view .seeding-section-spectator,
+.spectator-bracket-rankings-view .seeding-table-responsive-spectator {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.spectator-overall-view .documentation-section,
+.spectator-overall-view .overall-section-spectator,
+.spectator-overall-view .overall-scores-table-wrapper-spectator {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.spectator-awards-medal-table .spectator-awards-place {
+  width: 3.25rem;
+  min-width: 3.25rem;
+  white-space: nowrap;
+  padding-right: 0.5rem;
+}
+
+.spectator-awards-medal-table .spectator-awards-recipients-cell {
+  min-width: 0;
+}
+
+.spectator-awards-recipients,
+.spectator-manual-award-recipients {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.spectator-awards-recipients {
+  margin-top: 0;
+}
+
+.spectator-awards-recipient,
+.spectator-manual-award-recipient {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.spectator-awards-recipient {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.spectator-awards-recipient + .spectator-awards-recipient,
+.spectator-manual-award-recipient + .spectator-manual-award-recipient {
+  margin-top: 0.35rem;
+}
+
+.spectator-awards-recipient-name,
+.spectator-manual-award-recipient-name,
+.spectator-manual-award-description {
+  overflow-wrap: anywhere;
+}
+
+.spectator-awards-section-title,
+.spectator-awards-section-description,
+.spectator-awards-bracket-title,
+.spectator-manual-award-title,
+.spectator-manual-award-description,
+.spectator-manual-award-recipient-name {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.spectator-awards-recipient-name {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.spectator-manual-award-title {
+  display: block;
+  font-size: 1.05rem;
+}
+
+.spectator-awards-title {
+  margin: 0 0 1rem;
+}
+
+.spectator-awards-subtitle {
+  margin: 0 0 0.75rem;
+  font-size: 1.05rem;
+}
+
+.spectator-manual-awards {
+  margin-top: 0;
+}
+
+.spectator-manual-awards-with-automatic {
+  margin-top: 1.5rem;
+}
+
+.spectator-manual-award[data-has-divider='true'] {
+  margin-bottom: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.spectator-manual-award-description {
+  color: var(--secondary-color);
+  margin: 0.25rem 0 0.5rem;
+}
+
+.spectator-manual-award-empty {
+  color: var(--secondary-color);
+  margin: 0.5rem 0 0;
+  font-style: italic;
 }
 
 /* Responsive */
 @media (max-width: 768px) {
-  .spectator-container {
-    padding: 1rem;
-  }
-
   .spectator-tabs {
-    gap: 0;
+    gap: 0.25rem;
   }
 
   .spectator-tab-btn {
-    padding: 0.5rem 1rem;
+    padding: 0.5rem 0.875rem;
     font-size: 0.85rem;
+  }
+
+  .spectator-awards-medal-table .spectator-awards-place {
+    width: 3rem;
+    min-width: 3rem;
+    padding-left: 0.625rem;
+    padding-right: 0.375rem;
+  }
+
+  .spectator-awards-medal-table td {
+    padding-top: 0.55rem;
+    padding-bottom: 0.55rem;
   }
 }
 
 @media (max-width: 480px) {
-  .spectator-container {
-    padding: 0.75rem;
+  .spectator-tab-btn {
+    padding: 0.45rem 0.75rem;
+    font-size: 0.8rem;
   }
 
-  .spectator-tab-btn {
-    padding: 0.5rem 0.75rem;
-    font-size: 0.8rem;
+  .spectator-awards-medal-table .spectator-awards-place {
+    font-size: 0.9rem;
+    width: 2.75rem;
+    min-width: 2.75rem;
+    padding-left: 0.5rem;
+    padding-right: 0.25rem;
+  }
+
+  .spectator-awards-medal-table td {
+    padding: 0.5rem;
+  }
+
+  .spectator-manual-award-description {
+    margin-bottom: 0.4rem;
+  }
+
+  .spectator-awards-subtitle,
+  .spectator-manual-award-title {
+    font-size: 1rem;
   }
 }

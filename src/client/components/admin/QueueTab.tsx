@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { UnifiedTable } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -686,9 +687,6 @@ export default function QueueTab() {
     setSortDirection('asc');
   };
 
-  const getSortIndicator = (field: SortField): string =>
-    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
-
   // No event selected
   if (!selectedEventId) {
     return (
@@ -792,123 +790,149 @@ export default function QueueTab() {
               : 'No queue items match the current filters.'}
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th style={{ width: '50px' }}>
-                  <button
-                    type="button"
-                    className="queue-sort-button"
-                    onClick={() => handleSort('gameNumber')}
+          <UnifiedTable
+            columns={[
+              {
+                kind: 'data',
+                id: 'gameNumber',
+                sortId: 'gameNumber',
+                sortable: true,
+                header: { full: '#' },
+                headerStyle: { width: '50px' },
+                sortAriaLabel: 'Sort by queue order',
+                renderCell: (item) => item.queue_position,
+                cellClassName: 'queue-position',
+              },
+              {
+                kind: 'data',
+                id: 'teamNumber',
+                sortId: 'teamNumber',
+                sortable: true,
+                header: { full: 'Team #' },
+                headerStyle: { width: '120px' },
+                sortAriaLabel: 'Sort by team number',
+                renderCell: (item) => renderTeamNumber(item),
+              },
+              {
+                kind: 'data',
+                id: 'teamName',
+                sortId: 'teamName',
+                sortable: true,
+                header: { full: 'Team Name' },
+                sortAriaLabel: 'Sort by team name',
+                renderCell: (item) => renderItemDetails(item),
+              },
+              {
+                kind: 'data',
+                id: 'type',
+                header: { full: 'Type' },
+                headerStyle: { width: '80px' },
+                renderCell: (item) => (
+                  <span
+                    className={`queue-type-badge ${getTypeClass(item.queue_type)}`}
                   >
-                    #{getSortIndicator('gameNumber')}
-                  </button>
-                </th>
-                <th style={{ width: '120px' }}>
-                  <button
-                    type="button"
-                    className="queue-sort-button"
-                    onClick={() => handleSort('teamNumber')}
+                    {item.queue_type}
+                  </span>
+                ),
+              },
+              {
+                kind: 'data',
+                id: 'calledAt',
+                header: { full: 'Called At' },
+                headerStyle: { width: '120px' },
+                cellClassName: 'queue-called-at',
+                renderCell: (item) => formatCalledAt(item.called_at),
+              },
+              {
+                kind: 'data',
+                id: 'status',
+                header: { full: 'Status' },
+                headerStyle: { width: '100px' },
+                renderCell: (item) => (
+                  <span
+                    className={`queue-status-badge ${getStatusClass(item.status)}`}
                   >
-                    Team #{getSortIndicator('teamNumber')}
-                  </button>
-                </th>
-                <th>
-                  <button
-                    type="button"
-                    className="queue-sort-button"
-                    onClick={() => handleSort('teamName')}
-                  >
-                    Team Name{getSortIndicator('teamName')}
-                  </button>
-                </th>
-                <th style={{ width: '80px' }}>Type</th>
-                <th style={{ width: '120px' }}>Called At</th>
-                <th style={{ width: '100px' }}>Status</th>
-                <th style={{ width: '200px' }}>Actions</th>
-                <th style={{ width: '60px' }}>Order</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedQueue.map((item) => {
-                const index = queue.findIndex((q) => q.id === item.id);
-                const nextStatus = getNextQueueStatus(item.status);
-                return (
-                  <tr
-                    key={item.id}
-                    className={`queue-row ${getRowStatusClass(item.status)}`}
-                  >
-                    <td className="queue-position">{item.queue_position}</td>
-                    <td>{renderTeamNumber(item)}</td>
-                    <td>{renderItemDetails(item)}</td>
-                    <td>
-                      <span
-                        className={`queue-type-badge ${getTypeClass(item.queue_type)}`}
+                    {STATUS_LABELS[item.status]}
+                  </span>
+                ),
+              },
+              {
+                kind: 'data',
+                id: 'actions',
+                header: { full: 'Actions' },
+                headerStyle: { width: '200px' },
+                renderCell: (item) => {
+                  const nextStatus = getNextQueueStatus(item.status);
+                  return (
+                    <div className="queue-actions">
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={STATUS_ORDER.indexOf(item.status) <= 0}
+                        onClick={() => handleFlowStep(item, 'prev')}
+                        title="Previous step"
                       >
-                        {item.queue_type}
-                      </span>
-                    </td>
-                    <td className="queue-called-at">
-                      {formatCalledAt(item.called_at)}
-                    </td>
-                    <td>
-                      <span
-                        className={`queue-status-badge ${getStatusClass(item.status)}`}
+                        Back
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-success"
+                        disabled={nextStatus === null}
+                        onClick={() => handleFlowStep(item, 'next')}
+                        title={
+                          nextStatus
+                            ? `Advance to ${STATUS_LABELS[nextStatus]}`
+                            : 'Next step'
+                        }
                       >
-                        {STATUS_LABELS[item.status]}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="queue-actions">
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          disabled={STATUS_ORDER.indexOf(item.status) <= 0}
-                          onClick={() => handleFlowStep(item, 'prev')}
-                          title="Previous step"
-                        >
-                          Back
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-success"
-                          disabled={nextStatus === null}
-                          onClick={() => handleFlowStep(item, 'next')}
-                          title={
-                            nextStatus
-                              ? `Advance to ${STATUS_LABELS[nextStatus]}`
-                              : 'Next step'
-                          }
-                        >
-                          {nextStatus ? `${STATUS_LABELS[nextStatus]}` : 'End'}
-                        </button>
-                      </div>
-                    </td>
-                    <td>
-                      <div className="reorder-buttons">
-                        <button
-                          className="btn btn-secondary reorder-btn"
-                          onClick={() => handleMove(index, 'up')}
-                          disabled={index === 0}
-                          title="Move up"
-                        >
-                          ▲
-                        </button>
-                        <button
-                          className="btn btn-secondary reorder-btn"
-                          onClick={() => handleMove(index, 'down')}
-                          disabled={index === queue.length - 1}
-                          title="Move down"
-                        >
-                          ▼
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        {nextStatus ? `${STATUS_LABELS[nextStatus]}` : 'End'}
+                      </button>
+                    </div>
+                  );
+                },
+              },
+              {
+                kind: 'data',
+                id: 'order',
+                header: { full: 'Order' },
+                headerStyle: { width: '60px' },
+                renderCell: (item) => {
+                  const index = queue.findIndex((q) => q.id === item.id);
+                  return (
+                    <div className="reorder-buttons">
+                      <button
+                        className="btn btn-secondary reorder-btn"
+                        onClick={() => handleMove(index, 'up')}
+                        disabled={index === 0}
+                        title="Move up"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        className="btn btn-secondary reorder-btn"
+                        onClick={() => handleMove(index, 'down')}
+                        disabled={index === queue.length - 1}
+                        title="Move down"
+                      >
+                        ▼
+                      </button>
+                    </div>
+                  );
+                },
+              },
+            ]}
+            rows={sortedQueue}
+            getRowKey={(item) => item.id}
+            activeSortId={sortField}
+            sortDirection={sortDirection}
+            onSort={(id) => handleSort(id as SortField)}
+            headerLabelVariant="none"
+            sortButtonClassName="queue-sort-button unified-table-sort-btn"
+            rowClassName={(item) =>
+              `queue-row ${getRowStatusClass(item.status)}`
+            }
+            highlightActiveColumn={false}
+          />
         )}
         <div className="queue-summary">
           {queue.length} item{queue.length !== 1 ? 's' : ''} in queue

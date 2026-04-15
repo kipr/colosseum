@@ -1,5 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import { useSearchParams } from 'react-router-dom';
 import ScoreViewModal from './ScoreViewModal';
 import { useConfirm } from '../ConfirmModal';
@@ -501,125 +503,201 @@ export default function ScoringTab() {
     [scores],
   );
 
-  const renderSeedingTable = (rows: ScoreSubmission[], showType: boolean) => (
-    <table>
-      <thead>
-        <tr>
-          {showType && <th>Type</th>}
-          <th>Team</th>
-          <th>Round</th>
-          <th>Total</th>
-          <th>Submitted</th>
-          <th>Status</th>
-          <th>Reviewed</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((score) => {
-          const { teamNum, teamName, roundLabel, total } =
-            getSeedingRowDisplay(score);
+  const buildSeedingColumns = (
+    showType: boolean,
+  ): UnifiedColumnDef<ScoreSubmission>[] => {
+    const cols: UnifiedColumnDef<ScoreSubmission>[] = [];
+    if (showType) {
+      cols.push({
+        kind: 'data',
+        id: 'type',
+        header: { full: 'Type' },
+        renderCell: () => <span className="badge badge-info">Seeding</span>,
+      });
+    }
+    cols.push(
+      {
+        kind: 'data',
+        id: 'team',
+        header: { full: 'Team' },
+        renderCell: (score) => {
+          const { teamNum, teamName } = getSeedingRowDisplay(score);
           return (
-            <tr key={score.id}>
-              {showType && (
-                <td>
-                  <span className="badge badge-info">Seeding</span>
-                </td>
+            <>
+              <div>
+                <strong>{teamNum}</strong>
+              </div>
+              {teamName && (
+                <small style={{ color: 'var(--text-secondary)' }}>
+                  {teamName}
+                </small>
               )}
-              <td>
-                <div>
-                  <strong>{teamNum}</strong>
-                </div>
-                {teamName && (
-                  <small style={{ color: 'var(--text-secondary)' }}>
-                    {teamName}
-                  </small>
-                )}
-              </td>
-              <td>{roundLabel}</td>
-              <td>
-                <strong style={{ color: 'var(--primary-color)' }}>
-                  {total}
-                </strong>
-              </td>
-              <td>{formatDateTime(score.created_at)}</td>
-              <td>{getStatusBadge(score)}</td>
-              <td>
-                {score.reviewer_name || '-'}
-                {score.reviewed_at && (
-                  <>
-                    <br />
-                    <small>{formatDateTime(score.reviewed_at)}</small>
-                  </>
-                )}
-              </td>
-              <td>{renderEventActions(score)}</td>
-            </tr>
+            </>
           );
-        })}
-      </tbody>
-    </table>
+        },
+      },
+      {
+        kind: 'data',
+        id: 'round',
+        header: { full: 'Round' },
+        renderCell: (score) => getSeedingRowDisplay(score).roundLabel,
+      },
+      {
+        kind: 'data',
+        id: 'total',
+        header: { full: 'Total' },
+        renderCell: (score) => (
+          <strong style={{ color: 'var(--primary-color)' }}>
+            {getSeedingRowDisplay(score).total}
+          </strong>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'submitted',
+        header: { full: 'Submitted' },
+        renderCell: (score) => formatDateTime(score.created_at),
+      },
+      {
+        kind: 'data',
+        id: 'status',
+        header: { full: 'Status' },
+        renderCell: (score) => getStatusBadge(score),
+      },
+      {
+        kind: 'data',
+        id: 'reviewed',
+        header: { full: 'Reviewed' },
+        renderCell: (score) => (
+          <>
+            {score.reviewer_name || '-'}
+            {score.reviewed_at && (
+              <>
+                <br />
+                <small>{formatDateTime(score.reviewed_at)}</small>
+              </>
+            )}
+          </>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'actions',
+        header: { full: 'Actions' },
+        renderCell: (score) => renderEventActions(score),
+      },
+    );
+    return cols;
+  };
+
+  const buildBracketColumns = (
+    showType: boolean,
+  ): UnifiedColumnDef<ScoreSubmission>[] => {
+    const cols: UnifiedColumnDef<ScoreSubmission>[] = [];
+    if (showType) {
+      cols.push({
+        kind: 'data',
+        id: 'type',
+        header: { full: 'Type' },
+        renderCell: () => <span className="badge badge-purple">Bracket</span>,
+      });
+    }
+    cols.push(
+      {
+        kind: 'data',
+        id: 'matchup',
+        header: { full: 'Matchup' },
+        renderCell: (score) => {
+          const { team1Label, team2Label } = getBracketRowDisplay(score);
+          return (
+            <div className="bracket-matchup-cell">
+              <span>{team1Label}</span>
+              <span className="bracket-vs">vs</span>
+              <span>{team2Label}</span>
+            </div>
+          );
+        },
+      },
+      {
+        kind: 'data',
+        id: 'game',
+        header: { full: 'Game' },
+        renderCell: (score) => getBracketRowDisplay(score).gameLabel,
+      },
+      {
+        kind: 'data',
+        id: 'score',
+        header: { full: 'Score' },
+        renderCell: (score) => (
+          <strong style={{ color: 'var(--primary-color)' }}>
+            {getBracketRowDisplay(score).scoreLabel}
+          </strong>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'winner',
+        header: { full: 'Winner' },
+        renderCell: (score) => (
+          <span className="bracket-winner-cell">
+            {getBracketRowDisplay(score).winnerLabel}
+          </span>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'submitted',
+        header: { full: 'Submitted' },
+        renderCell: (score) => formatDateTime(score.created_at),
+      },
+      {
+        kind: 'data',
+        id: 'status',
+        header: { full: 'Status' },
+        renderCell: (score) => getStatusBadge(score),
+      },
+      {
+        kind: 'data',
+        id: 'reviewed',
+        header: { full: 'Reviewed' },
+        renderCell: (score) => (
+          <>
+            {score.reviewer_name || '-'}
+            {score.reviewed_at && (
+              <>
+                <br />
+                <small>{formatDateTime(score.reviewed_at)}</small>
+              </>
+            )}
+          </>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'actions',
+        header: { full: 'Actions' },
+        renderCell: (score) => renderEventActions(score),
+      },
+    );
+    return cols;
+  };
+
+  const renderSeedingTable = (rows: ScoreSubmission[], showType: boolean) => (
+    <UnifiedTable
+      columns={buildSeedingColumns(showType)}
+      rows={rows}
+      getRowKey={(s) => s.id}
+      headerLabelVariant="none"
+    />
   );
 
   const renderBracketTable = (rows: ScoreSubmission[], showType: boolean) => (
-    <table>
-      <thead>
-        <tr>
-          {showType && <th>Type</th>}
-          <th>Matchup</th>
-          <th>Game</th>
-          <th>Score</th>
-          <th>Winner</th>
-          <th>Submitted</th>
-          <th>Status</th>
-          <th>Reviewed</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((score) => {
-          const { team1Label, team2Label, gameLabel, scoreLabel, winnerLabel } =
-            getBracketRowDisplay(score);
-          return (
-            <tr key={score.id}>
-              {showType && (
-                <td>
-                  <span className="badge badge-purple">Bracket</span>
-                </td>
-              )}
-              <td>
-                <div className="bracket-matchup-cell">
-                  <span>{team1Label}</span>
-                  <span className="bracket-vs">vs</span>
-                  <span>{team2Label}</span>
-                </div>
-              </td>
-              <td>{gameLabel}</td>
-              <td>
-                <strong style={{ color: 'var(--primary-color)' }}>
-                  {scoreLabel}
-                </strong>
-              </td>
-              <td>
-                <span className="bracket-winner-cell">{winnerLabel}</span>
-              </td>
-              <td>{formatDateTime(score.created_at)}</td>
-              <td>{getStatusBadge(score)}</td>
-              <td>
-                {score.reviewer_name || '-'}
-                {score.reviewed_at && (
-                  <>
-                    <br />
-                    <small>{formatDateTime(score.reviewed_at)}</small>
-                  </>
-                )}
-              </td>
-              <td>{renderEventActions(score)}</td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <UnifiedTable
+      columns={buildBracketColumns(showType)}
+      rows={rows}
+      getRowKey={(s) => s.id}
+      headerLabelVariant="none"
+    />
   );
 
   const renderEventTables = () => {

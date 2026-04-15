@@ -1,5 +1,7 @@
 import React from 'react';
-import { BracketDetail } from '../../types/brackets';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
+import { BracketDetail, BracketGame } from '../../types/brackets';
 import { GAME_STATUS_LABELS } from '../../types/brackets';
 import { getBracketWinner, getGameStatusClass } from './bracketUtils';
 import './BracketDisplay.css';
@@ -19,6 +21,69 @@ function renderTeamDisplay(
     </span>
   );
 }
+
+const bracketGameColumns: UnifiedColumnDef<BracketGame>[] = [
+  {
+    kind: 'data',
+    id: 'game',
+    header: { full: 'Game' },
+    renderCell: (game) => <strong>Game {game.game_number}</strong>,
+  },
+  {
+    kind: 'data',
+    id: 'round',
+    header: { full: 'Round' },
+    renderCell: (game) => game.round_name || '—',
+  },
+  {
+    kind: 'data',
+    id: 'team1',
+    header: { full: 'Team 1' },
+    renderCell: (game) =>
+      renderTeamDisplay(
+        game.team1_id,
+        game.team1_number,
+        game.team1_name,
+        game.team1_display,
+      ),
+  },
+  {
+    kind: 'data',
+    id: 'team2',
+    header: { full: 'Team 2' },
+    renderCell: (game) =>
+      renderTeamDisplay(
+        game.team2_id,
+        game.team2_number,
+        game.team2_name,
+        game.team2_display,
+      ),
+  },
+  {
+    kind: 'data',
+    id: 'status',
+    header: { full: 'Status' },
+    renderCell: (game) => (
+      <span className={`game-status-badge ${getGameStatusClass(game.status)}`}>
+        {GAME_STATUS_LABELS[game.status]}
+      </span>
+    ),
+  },
+  {
+    kind: 'data',
+    id: 'winner',
+    header: { full: 'Winner' },
+    renderCell: (game) =>
+      game.winner_id
+        ? renderTeamDisplay(
+            game.winner_id,
+            game.winner_number,
+            game.winner_name,
+            game.winner_display,
+          )
+        : '—',
+  },
+];
 
 interface BracketManagementViewProps {
   bracketDetail: BracketDetail;
@@ -112,61 +177,13 @@ export default function BracketManagementView({
                         ? 'Redemption Bracket'
                         : 'Finals'}
                   </h5>
-                  <table className="games-table">
-                    <thead>
-                      <tr>
-                        <th>Game</th>
-                        <th>Round</th>
-                        <th>Team 1</th>
-                        <th>Team 2</th>
-                        <th>Status</th>
-                        <th>Winner</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {sideGames.map((game) => (
-                        <tr key={game.id}>
-                          <td>
-                            <strong>Game {game.game_number}</strong>
-                          </td>
-                          <td>{game.round_name || '—'}</td>
-                          <td>
-                            {renderTeamDisplay(
-                              game.team1_id,
-                              game.team1_number,
-                              game.team1_name,
-                              game.team1_display,
-                            )}
-                          </td>
-                          <td>
-                            {renderTeamDisplay(
-                              game.team2_id,
-                              game.team2_number,
-                              game.team2_name,
-                              game.team2_display,
-                            )}
-                          </td>
-                          <td>
-                            <span
-                              className={`game-status-badge ${getGameStatusClass(game.status)}`}
-                            >
-                              {GAME_STATUS_LABELS[game.status]}
-                            </span>
-                          </td>
-                          <td>
-                            {game.winner_id
-                              ? renderTeamDisplay(
-                                  game.winner_id,
-                                  game.winner_number,
-                                  game.winner_name,
-                                  game.winner_display,
-                                )
-                              : '—'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <UnifiedTable
+                    columns={bracketGameColumns}
+                    rows={sideGames}
+                    getRowKey={(g) => g.id}
+                    headerLabelVariant="none"
+                    tableClassName="games-table"
+                  />
                 </div>
               );
             })}

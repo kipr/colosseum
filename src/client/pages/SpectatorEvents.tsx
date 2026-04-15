@@ -7,6 +7,7 @@ import {
   getEventStatusLabel,
 } from '../utils/eventStatus';
 import { spectatorEventPath } from '../utils/routes';
+import './SpectatorShared.css';
 import './SpectatorEvents.css';
 
 interface PublicEvent {
@@ -46,7 +47,7 @@ export default function SpectatorEvents() {
   return (
     <div className="app">
       <Navbar />
-      <main className="spectator-events-container">
+      <main className="spectator-events-container spectator-shell-container">
         <div className="spectator-events-header">
           <h2>Spectator</h2>
           <p>Select an event to view live scores and results.</p>
@@ -56,7 +57,7 @@ export default function SpectatorEvents() {
           <p>Loading events...</p>
         ) : events.length === 0 ? (
           <div className="card">
-            <p style={{ color: 'var(--secondary-color)' }}>
+            <p className="spectator-muted-message">
               No events are currently available.
             </p>
           </div>
@@ -76,7 +77,7 @@ export default function SpectatorEvents() {
                   }
                 }}
               >
-                <div className="spectator-event-card-header">
+                <div className="spectator-event-card-header spectator-status-cluster">
                   <span
                     className={`event-status-badge ${getEventStatusClass(event.status)}`}
                   >

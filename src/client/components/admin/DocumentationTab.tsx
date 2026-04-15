@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { UnifiedTable } from '../table';
+import type { SortDirection, UnifiedColumnDef } from '../table/types';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -203,7 +205,6 @@ export default function DocumentationTab() {
     | 'team_name'
     | 'overall_score'
     | `cat_${number}`;
-  type SortDirection = 'asc' | 'desc';
 
   const [sortField, setSortField] = useState<SortField>('team_number');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
@@ -254,9 +255,6 @@ export default function DocumentationTab() {
     },
     [sortField],
   );
-
-  const getSortIndicator = (field: SortField) =>
-    sortField === field ? (sortDirection === 'asc' ? ' ▲' : ' ▼') : '';
 
   if (!selectedEventId) {
     return (
@@ -531,6 +529,162 @@ export default function DocumentationTab() {
     }
   };
 
+  type DocScoreRow = { team: Team; doc: DocScore | undefined };
+
+  const categoryColumns: UnifiedColumnDef<DocCategory>[] = [
+    {
+      kind: 'data',
+      id: 'ordinal',
+      header: { full: 'Ordinal' },
+      renderCell: (cat) => cat.ordinal,
+    },
+    {
+      kind: 'data',
+      id: 'name',
+      header: { full: 'Name' },
+      renderCell: (cat) => cat.name,
+    },
+    {
+      kind: 'data',
+      id: 'weight',
+      header: { full: 'Weight' },
+      renderCell: (cat) => cat.weight,
+    },
+    {
+      kind: 'data',
+      id: 'max_score',
+      header: { full: 'Max Score' },
+      renderCell: (cat) => cat.max_score,
+    },
+    {
+      kind: 'data',
+      id: 'actions',
+      header: { full: 'Actions' },
+      renderCell: (cat) => (
+        <>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEditCategory(cat)}
+          >
+            Edit
+          </button>
+          <button
+            className="btn btn-danger"
+            onClick={() => handleDeleteCategory(cat)}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            Remove
+          </button>
+        </>
+      ),
+    },
+  ];
+
+  const documentationScoreColumns: UnifiedColumnDef<DocScoreRow>[] = (() => {
+    const cols: UnifiedColumnDef<DocScoreRow>[] = [
+      {
+        kind: 'data',
+        id: 'team_number',
+        sortable: true,
+        sortId: 'team_number',
+        header: { full: 'Team #' },
+        renderCell: ({ team }) => team.team_number,
+      },
+      {
+        kind: 'data',
+        id: 'team_name',
+        sortable: true,
+        sortId: 'team_name',
+        header: { full: 'Team Name' },
+        renderCell: ({ team }) => team.team_name,
+      },
+    ];
+
+    sortedCategories.forEach((cat, idx) => {
+      cols.push({
+        kind: 'data',
+        id: `cat_${cat.id}`,
+        sortable: true,
+        sortId: `cat_${cat.id}`,
+        title: `Max: ${cat.max_score}`,
+        header: { full: `${cat.name} (×${cat.weight})` },
+        renderCell: ({ team, doc }) => (
+          <span className="doc-score-cell">
+            <input
+              type="number"
+              className="field-input doc-score-input"
+              min={0}
+              max={cat.max_score}
+              step={0.1}
+              placeholder="—"
+              value={getCellValue(team.id, cat.id, doc)}
+              onChange={(e) =>
+                handleCellChange(team.id, cat.id, e.target.value)
+              }
+              onBlur={() => handleCellBlur(team)}
+              disabled={savingTeamId === team.id}
+              title={`0–${cat.max_score}`}
+            />
+            <span className="doc-fraction">
+              /{cat.max_score} ×{cat.weight}
+            </span>
+          </span>
+        ),
+      });
+      if (idx < sortedCategories.length - 1) {
+        cols.push({
+          kind: 'separator',
+          id: `plus-${cat.id}`,
+          symbol: '+',
+          headerClassName: 'doc-op',
+          cellClassName: 'doc-op',
+        });
+      }
+    });
+
+    cols.push(
+      {
+        kind: 'separator',
+        id: 'equals',
+        symbol: '=',
+        headerClassName: 'doc-op',
+        cellClassName: 'doc-op',
+      },
+      {
+        kind: 'data',
+        id: 'overall_score',
+        sortable: true,
+        sortId: 'overall_score',
+        header: { full: 'Overall Score' },
+        renderCell: ({ doc }) =>
+          doc?.overall_score != null ? (
+            <strong style={{ color: 'var(--primary-color)' }}>
+              {doc.overall_score.toFixed(3)}
+            </strong>
+          ) : (
+            <em style={{ color: 'var(--secondary-color)' }}>—</em>
+          ),
+      },
+      {
+        kind: 'data',
+        id: 'actions',
+        sortable: false,
+        header: { full: 'Actions' },
+        renderCell: ({ team, doc }) =>
+          doc ? (
+            <button
+              className="btn btn-danger"
+              onClick={() => handleClearScore(team)}
+            >
+              Clear
+            </button>
+          ) : null,
+      },
+    );
+
+    return cols;
+  })();
+
   const bulkPreviewCategories = selectedBulkCategory
     ? [selectedBulkCategory]
     : sortedCategories;
@@ -643,42 +797,12 @@ export default function DocumentationTab() {
               No categories yet. Add categories to start scoring.
             </p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>Ordinal</th>
-                  <th>Name</th>
-                  <th>Weight</th>
-                  <th>Max Score</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {categories.map((cat) => (
-                  <tr key={cat.id}>
-                    <td>{cat.ordinal}</td>
-                    <td>{cat.name}</td>
-                    <td>{cat.weight}</td>
-                    <td>{cat.max_score}</td>
-                    <td>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleEditCategory(cat)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDeleteCategory(cat)}
-                        style={{ marginLeft: '0.5rem' }}
-                      >
-                        Remove
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <UnifiedTable
+              columns={categoryColumns}
+              rows={categories}
+              getRowKey={(cat) => cat.id}
+              headerLabelVariant="none"
+            />
           )}
         </div>
       </div>
@@ -709,110 +833,19 @@ export default function DocumentationTab() {
             Add categories above before entering scores.
           </p>
         ) : (
-          <div className="doc-scores-table-wrapper">
-            <table className="doc-calculator-table">
-              <thead>
-                <tr>
-                  <th
-                    className="doc-sortable"
-                    onClick={() => handleSort('team_number')}
-                  >
-                    Team #{getSortIndicator('team_number')}
-                  </th>
-                  <th
-                    className="doc-sortable"
-                    onClick={() => handleSort('team_name')}
-                  >
-                    Team Name{getSortIndicator('team_name')}
-                  </th>
-                  {sortedCategories.map((cat, idx) => (
-                    <React.Fragment key={cat.id}>
-                      <th
-                        className="doc-sortable"
-                        title={`Max: ${cat.max_score}`}
-                        onClick={() => handleSort(`cat_${cat.id}` as SortField)}
-                      >
-                        {cat.name} (×{cat.weight})
-                        {getSortIndicator(`cat_${cat.id}` as SortField)}
-                      </th>
-                      {idx < sortedCategories.length - 1 && (
-                        <th className="doc-op">+</th>
-                      )}
-                    </React.Fragment>
-                  ))}
-                  <th className="doc-op">=</th>
-                  <th
-                    className="doc-sortable"
-                    onClick={() => handleSort('overall_score')}
-                  >
-                    Overall Score{getSortIndicator('overall_score')}
-                  </th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {mergedTeams.map(({ team, doc }) => (
-                  <tr key={team.id}>
-                    <td>{team.team_number}</td>
-                    <td>{team.team_name}</td>
-                    {sortedCategories.map((cat, idx) => (
-                      <React.Fragment key={cat.id}>
-                        <td>
-                          <span className="doc-score-cell">
-                            <input
-                              type="number"
-                              className="field-input doc-score-input"
-                              min={0}
-                              max={cat.max_score}
-                              step={0.1}
-                              placeholder="—"
-                              value={getCellValue(team.id, cat.id, doc)}
-                              onChange={(e) =>
-                                handleCellChange(
-                                  team.id,
-                                  cat.id,
-                                  e.target.value,
-                                )
-                              }
-                              onBlur={() => handleCellBlur(team)}
-                              disabled={savingTeamId === team.id}
-                              title={`0–${cat.max_score}`}
-                            />
-                            <span className="doc-fraction">
-                              /{cat.max_score} ×{cat.weight}
-                            </span>
-                          </span>
-                        </td>
-                        {idx < sortedCategories.length - 1 && (
-                          <td className="doc-op">+</td>
-                        )}
-                      </React.Fragment>
-                    ))}
-                    <td className="doc-op">=</td>
-                    <td>
-                      {doc?.overall_score != null ? (
-                        <strong style={{ color: 'var(--primary-color)' }}>
-                          {doc.overall_score.toFixed(3)}
-                        </strong>
-                      ) : (
-                        <em style={{ color: 'var(--secondary-color)' }}>—</em>
-                      )}
-                    </td>
-                    <td>
-                      {doc && (
-                        <button
-                          className="btn btn-danger"
-                          onClick={() => handleClearScore(team)}
-                        >
-                          Clear
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UnifiedTable<DocScoreRow>
+            columns={documentationScoreColumns}
+            rows={mergedTeams}
+            getRowKey={({ team }) => team.id}
+            tableClassName="doc-calculator-table"
+            wrapperClassName="doc-scores-table-wrapper"
+            activeSortId={sortField}
+            sortDirection={sortDirection}
+            onSort={(sortId) => handleSort(sortId as SortField)}
+            sortableHeaderClassName="doc-sortable"
+            activeSortClassName="active-sort-col"
+            headerLabelVariant="none"
+          />
         )}
       </div>
 
@@ -1105,41 +1138,46 @@ export default function DocumentationTab() {
             {bulkParsed.length > 0 && (
               <div className="bulk-preview" style={{ marginBottom: '1rem' }}>
                 <h4>Preview ({bulkParsed.length} rows)</h4>
-                <div className="bulk-preview-table">
-                  <table>
-                    <thead>
+                <UnifiedTable
+                  columns={[
+                    {
+                      kind: 'data',
+                      id: 'team_number',
+                      header: { full: 'Team #' },
+                      renderCell: (row) => row.team_number,
+                    },
+                    ...bulkPreviewCategories.map((c, idx) => ({
+                      kind: 'data' as const,
+                      id: `score-${c.id}`,
+                      header: { full: c.name },
+                      renderCell: (row: {
+                        team_number: number;
+                        scores: number[];
+                      }) => row.scores[idx],
+                    })),
+                  ]}
+                  rows={bulkParsed.slice(0, 10)}
+                  getRowKey={(row) =>
+                    `${row.team_number}-${row.scores.join(',')}`
+                  }
+                  headerLabelVariant="none"
+                  wrapperClassName="bulk-preview-table"
+                  tbodyExtra={
+                    bulkParsed.length > 10 ? (
                       <tr>
-                        <th>Team #</th>
-                        {bulkPreviewCategories.map((c) => (
-                          <th key={c.id}>{c.name}</th>
-                        ))}
+                        <td
+                          colSpan={1 + bulkPreviewCategories.length}
+                          style={{
+                            textAlign: 'center',
+                            fontStyle: 'italic',
+                          }}
+                        >
+                          ...and {bulkParsed.length - 10} more
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {bulkParsed.slice(0, 10).map((row, idx) => (
-                        <tr key={idx}>
-                          <td>{row.team_number}</td>
-                          {row.scores.map((s, i) => (
-                            <td key={i}>{s}</td>
-                          ))}
-                        </tr>
-                      ))}
-                      {bulkParsed.length > 10 && (
-                        <tr>
-                          <td
-                            colSpan={1 + bulkPreviewCategories.length}
-                            style={{
-                              textAlign: 'center',
-                              fontStyle: 'italic',
-                            }}
-                          >
-                            ...and {bulkParsed.length - 10} more
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                    ) : null
+                  }
+                />
               </div>
             )}
             {bulkParseErrors.length > 0 && (

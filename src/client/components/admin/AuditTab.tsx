@@ -5,6 +5,8 @@ import React, {
   useRef,
   useMemo,
 } from 'react';
+import { UnifiedTable } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import { useSearchParams } from 'react-router-dom';
 import * as Diff from 'diff';
 import { useEvent } from '../../contexts/EventContext';
@@ -216,6 +218,142 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
     }
   };
 
+  const auditLogColumns: UnifiedColumnDef<AuditLogEntry>[] = [
+    {
+      kind: 'data',
+      id: 'timestamp',
+      header: { full: 'Timestamp' },
+      renderCell: (entry) => formatDateTime(entry.created_at),
+    },
+    {
+      kind: 'data',
+      id: 'action',
+      header: { full: 'Action' },
+      renderCell: (entry) => entry.action,
+    },
+    {
+      kind: 'data',
+      id: 'entity_type',
+      header: { full: 'Entity Type' },
+      renderCell: (entry) => entry.entity_type,
+    },
+    {
+      kind: 'data',
+      id: 'entity_id',
+      header: { full: 'Entity ID' },
+      renderCell: (entry) => entry.entity_id ?? '-',
+    },
+    {
+      kind: 'data',
+      id: 'user',
+      header: { full: 'User' },
+      renderCell: (entry) => formatUserDisplay(entry),
+    },
+    {
+      kind: 'data',
+      id: 'old_value',
+      header: { full: 'Old Value' },
+      cellClassName: 'audit-value-cell',
+      renderCell: (entry) => (
+        <>
+          <span className="audit-value-text">
+            {summarizeValue(entry.old_value)}
+          </span>
+          {entry.old_value != null && entry.old_value !== '' && (
+            <button
+              type="button"
+              className="btn-link audit-view-btn"
+              onClick={() =>
+                setJsonModal({
+                  label: 'Old Value',
+                  value: entry.old_value ?? '',
+                })
+              }
+            >
+              View
+            </button>
+          )}
+        </>
+      ),
+    },
+    {
+      kind: 'data',
+      id: 'new_value',
+      header: { full: 'New Value' },
+      cellClassName: 'audit-value-cell',
+      renderCell: (entry) => (
+        <>
+          <span className="audit-value-text">
+            {summarizeValue(entry.new_value)}
+          </span>
+          {entry.new_value != null && entry.new_value !== '' && (
+            <button
+              type="button"
+              className="btn-link audit-view-btn"
+              onClick={() =>
+                setJsonModal({
+                  label: 'New Value',
+                  value: entry.new_value ?? '',
+                })
+              }
+            >
+              View
+            </button>
+          )}
+        </>
+      ),
+    },
+    {
+      kind: 'data',
+      id: 'row_actions',
+      header: { full: 'Actions' },
+      renderCell: (entry) => (
+        <>
+          {(entry.old_value != null && entry.old_value !== '') ||
+          (entry.new_value != null && entry.new_value !== '') ? (
+            <button
+              type="button"
+              className="btn-link audit-action-btn"
+              onClick={() =>
+                setDiffModal({
+                  oldValue: entry.old_value,
+                  newValue: entry.new_value,
+                })
+              }
+            >
+              Diff
+            </button>
+          ) : null}
+          {entry.entity_type && entry.entity_id != null && (
+            <>
+              <button
+                type="button"
+                className="btn-link audit-action-btn"
+                onClick={() =>
+                  setHistoryModal({
+                    entityType: entry.entity_type,
+                    entityId: entry.entity_id!,
+                  })
+                }
+              >
+                History
+              </button>
+              <button
+                type="button"
+                className="btn-link audit-action-btn"
+                onClick={() =>
+                  handleJumpToTab(entry.entity_type, entry.entity_id!)
+                }
+              >
+                Go to tab
+              </button>
+            </>
+          )}
+        </>
+      ),
+    },
+  ];
+
   if (!selectedEventId) {
     return (
       <div className="audit-tab">
@@ -264,116 +402,15 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
           </p>
         ) : (
           <>
-            <div className="audit-table-wrapper">
-              <table className="audit-table">
-                <thead>
-                  <tr>
-                    <th>Timestamp</th>
-                    <th>Action</th>
-                    <th>Entity Type</th>
-                    <th>Entity ID</th>
-                    <th>User</th>
-                    <th>Old Value</th>
-                    <th>New Value</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {logs.map((entry) => (
-                    <tr key={entry.id}>
-                      <td>{formatDateTime(entry.created_at)}</td>
-                      <td>{entry.action}</td>
-                      <td>{entry.entity_type}</td>
-                      <td>{entry.entity_id ?? '-'}</td>
-                      <td>{formatUserDisplay(entry)}</td>
-                      <td className="audit-value-cell">
-                        <span className="audit-value-text">
-                          {summarizeValue(entry.old_value)}
-                        </span>
-                        {entry.old_value != null && entry.old_value !== '' && (
-                          <button
-                            type="button"
-                            className="btn-link audit-view-btn"
-                            onClick={() =>
-                              setJsonModal({
-                                label: 'Old Value',
-                                value: entry.old_value ?? '',
-                              })
-                            }
-                          >
-                            View
-                          </button>
-                        )}
-                      </td>
-                      <td className="audit-value-cell">
-                        <span className="audit-value-text">
-                          {summarizeValue(entry.new_value)}
-                        </span>
-                        {entry.new_value != null && entry.new_value !== '' && (
-                          <button
-                            type="button"
-                            className="btn-link audit-view-btn"
-                            onClick={() =>
-                              setJsonModal({
-                                label: 'New Value',
-                                value: entry.new_value ?? '',
-                              })
-                            }
-                          >
-                            View
-                          </button>
-                        )}
-                      </td>
-                      <td>
-                        {(entry.old_value != null && entry.old_value !== '') ||
-                        (entry.new_value != null && entry.new_value !== '') ? (
-                          <button
-                            type="button"
-                            className="btn-link audit-action-btn"
-                            onClick={() =>
-                              setDiffModal({
-                                oldValue: entry.old_value,
-                                newValue: entry.new_value,
-                              })
-                            }
-                          >
-                            Diff
-                          </button>
-                        ) : null}
-                        {entry.entity_type && entry.entity_id != null && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn-link audit-action-btn"
-                              onClick={() =>
-                                setHistoryModal({
-                                  entityType: entry.entity_type,
-                                  entityId: entry.entity_id!,
-                                })
-                              }
-                            >
-                              History
-                            </button>
-                            <button
-                              type="button"
-                              className="btn-link audit-action-btn"
-                              onClick={() =>
-                                handleJumpToTab(
-                                  entry.entity_type,
-                                  entry.entity_id!,
-                                )
-                              }
-                            >
-                              Go to tab
-                            </button>
-                          </>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <UnifiedTable
+              wrapperClassName="audit-table-wrapper"
+              columns={auditLogColumns}
+              rows={logs}
+              getRowKey={(entry) => entry.id}
+              headerLabelVariant="none"
+              tableClassName="audit-table"
+              highlightActiveColumn={false}
+            />
             {hasMore && (
               <div className="audit-load-more">
                 <button
@@ -578,6 +615,38 @@ function EntityHistoryModal({
     };
   }, [entityType, entityId]);
 
+  const historyColumns: UnifiedColumnDef<AuditLogEntry>[] = [
+    {
+      kind: 'data',
+      id: 'timestamp',
+      header: { full: 'Timestamp' },
+      renderCell: (entry) => formatDateTime(entry.created_at),
+    },
+    {
+      kind: 'data',
+      id: 'action',
+      header: { full: 'Action' },
+      renderCell: (entry) => entry.action,
+    },
+    {
+      kind: 'data',
+      id: 'user',
+      header: { full: 'User' },
+      renderCell: (entry) => formatUserDisplay(entry),
+    },
+    {
+      kind: 'data',
+      id: 'summary',
+      header: { full: 'Summary' },
+      cellClassName: 'audit-value-cell',
+      renderCell: (entry) => (
+        <span className="audit-value-text">
+          {summarizeValue(entry.old_value)} → {summarizeValue(entry.new_value)}
+        </span>
+      ),
+    },
+  ];
+
   return (
     <div className="modal show" onClick={onClose}>
       <div
@@ -597,33 +666,15 @@ function EntityHistoryModal({
             No history found for this entity.
           </p>
         ) : (
-          <div className="audit-table-wrapper">
-            <table className="audit-table">
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Action</th>
-                  <th>User</th>
-                  <th>Summary</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((entry) => (
-                  <tr key={entry.id}>
-                    <td>{formatDateTime(entry.created_at)}</td>
-                    <td>{entry.action}</td>
-                    <td>{formatUserDisplay(entry)}</td>
-                    <td className="audit-value-cell">
-                      <span className="audit-value-text">
-                        {summarizeValue(entry.old_value)} →{' '}
-                        {summarizeValue(entry.new_value)}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <UnifiedTable
+            wrapperClassName="audit-table-wrapper"
+            columns={historyColumns}
+            rows={logs}
+            getRowKey={(entry) => entry.id}
+            headerLabelVariant="none"
+            tableClassName="audit-table"
+            highlightActiveColumn={false}
+          />
         )}
       </div>
     </div>

@@ -1,0 +1,74 @@
+/**
+ * Sortable header button: full cell hit target, inherits typography.
+ * Used inside `<th>` for accessible sorting (works with feature table CSS).
+ */
+.unified-table-sort-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-weight: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.unified-table-sort-btn:hover {
+  opacity: 0.92;
+}
+
+/* Spectator horizontal scroll: hint (mobile) + right-edge fade when content overflows */
+.unified-table-scroll-shell {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Fade is a sibling of the scroll region (not inside it) so it stays on the viewport’s right edge */
+.unified-table-scroll-viewport {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.unified-table-scroll-region {
+  position: relative;
+}
+
+.unified-table-scroll-hint {
+  display: none;
+  margin: 0 0 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: var(--secondary-color);
+}
+
+@media (max-width: 768px) {
+  .unified-table-scroll-hint {
+    display: block;
+  }
+}
+
+.unified-table-scroll-fade {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 2rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  /* Uses --text-color so light theme gets a dark edge cue and dark theme a light edge cue */
+  background: linear-gradient(
+    to right,
+    transparent,
+    color-mix(in srgb, var(--text-color) 15%, transparent)
+  );
+}
+
+.unified-table-scroll-fade-visible {
+  opacity: 1;
+}

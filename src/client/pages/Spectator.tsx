@@ -42,7 +42,10 @@ import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
   type AutomaticAwardsPublic,
 } from '../components/spectator/SpectatorAutomaticAwards';
+import './SpectatorShared.css';
 import './Spectator.css';
+import './SpectatorTableLayout.css';
+import { UnifiedTableScrollAffordanceProvider } from '../components/table';
 
 interface PublicEvent {
   id: number;
@@ -441,292 +444,279 @@ export default function Spectator() {
   return (
     <div className="app">
       <Navbar />
-      <main className="spectator-container">
-        <div className="spectator-header">
-          <h2>{selectedEvent ? selectedEvent.name : 'Spectator'}</h2>
-          <p>View live seeding scores and bracket results.</p>
-        </div>
-
-        {eventsLoading ? (
-          <p>Loading events...</p>
-        ) : events.length === 0 ? (
-          <div className="card">
-            <p style={{ color: 'var(--secondary-color)' }}>
-              No events are currently available.
-            </p>
+      <main className="spectator-container spectator-shell-container">
+        <UnifiedTableScrollAffordanceProvider>
+          <div className="spectator-header">
+            <h2>{selectedEvent ? selectedEvent.name : 'Spectator'}</h2>
+            <p>View live seeding scores and bracket results.</p>
           </div>
-        ) : (
-          <>
-            <div className="spectator-event-info">
-              <button
-                className="spectator-back-btn"
-                onClick={() => navigate('/spectator')}
-              >
-                ← All Events
-              </button>
-              {selectedEvent && (
-                <div className="spectator-event-meta">
-                  <span
-                    className={`event-status-badge ${getEventStatusClass(selectedEvent.status)}`}
-                  >
-                    {getEventStatusLabel(selectedEvent.status)}
-                  </span>
-                  {selectedEvent.event_date && (
-                    <span>{formatEventDate(selectedEvent.event_date)}</span>
-                  )}
-                  {selectedEvent.location && (
-                    <span>{selectedEvent.location}</span>
+
+          {eventsLoading ? (
+            <p>Loading events...</p>
+          ) : events.length === 0 ? (
+            <div className="card">
+              <p className="spectator-muted-message">
+                No events are currently available.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="spectator-event-info">
+                <button
+                  className="spectator-back-btn"
+                  onClick={() => navigate('/spectator')}
+                >
+                  ← All Events
+                </button>
+                {selectedEvent && (
+                  <div className="spectator-event-meta spectator-status-cluster">
+                    <span
+                      className={`event-status-badge ${getEventStatusClass(selectedEvent.status)}`}
+                    >
+                      {getEventStatusLabel(selectedEvent.status)}
+                    </span>
+                    {selectedEvent.event_date && (
+                      <span>{formatEventDate(selectedEvent.event_date)}</span>
+                    )}
+                    {selectedEvent.location && (
+                      <span>{selectedEvent.location}</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="spectator-tabs">
+                <button
+                  className={`spectator-tab-btn ${activeTab === 'seeding' ? 'active' : ''}`}
+                  onClick={() => navigateToTab('seeding')}
+                >
+                  Seeding
+                </button>
+                <button
+                  className={`spectator-tab-btn ${activeTab === 'bracket' ? 'active' : ''}`}
+                  onClick={() => navigateToTab('bracket')}
+                >
+                  Bracket
+                </button>
+                {finalScoresAvailable && (
+                  <>
+                    <button
+                      className={`spectator-tab-btn ${activeTab === 'documentation' ? 'active' : ''}`}
+                      onClick={() => navigateToTab('documentation')}
+                    >
+                      Documentation
+                    </button>
+                    <button
+                      className={`spectator-tab-btn ${activeTab === 'awards' ? 'active' : ''}`}
+                      onClick={() => navigateToTab('awards')}
+                    >
+                      Awards
+                    </button>
+                    <button
+                      className={`spectator-tab-btn ${activeTab === 'bracketRankings' ? 'active' : ''}`}
+                      onClick={() => navigateToTab('bracketRankings')}
+                    >
+                      Bracket Rankings
+                    </button>
+                    <button
+                      className={`spectator-tab-btn ${activeTab === 'overall' ? 'active' : ''}`}
+                      onClick={() => navigateToTab('overall')}
+                    >
+                      Overall
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {activeTab === 'seeding' && (
+                <div className="spectator-seeding-view">
+                  {seedingLoading ? (
+                    <p>Loading seeding data...</p>
+                  ) : (
+                    <SeedingDisplay
+                      teams={teams}
+                      scores={scores}
+                      rankings={rankings}
+                      effectiveRounds={effectiveRounds}
+                      variant="spectator"
+                    />
                   )}
                 </div>
               )}
-            </div>
 
-            <div className="spectator-tabs">
-              <button
-                className={`spectator-tab-btn ${activeTab === 'seeding' ? 'active' : ''}`}
-                onClick={() => navigateToTab('seeding')}
-              >
-                Seeding
-              </button>
-              <button
-                className={`spectator-tab-btn ${activeTab === 'bracket' ? 'active' : ''}`}
-                onClick={() => navigateToTab('bracket')}
-              >
-                Bracket
-              </button>
-              {finalScoresAvailable && (
-                <>
-                  <button
-                    className={`spectator-tab-btn ${activeTab === 'documentation' ? 'active' : ''}`}
-                    onClick={() => navigateToTab('documentation')}
-                  >
-                    Documentation
-                  </button>
-                  <button
-                    className={`spectator-tab-btn ${activeTab === 'awards' ? 'active' : ''}`}
-                    onClick={() => navigateToTab('awards')}
-                  >
-                    Awards
-                  </button>
-                  <button
-                    className={`spectator-tab-btn ${activeTab === 'bracketRankings' ? 'active' : ''}`}
-                    onClick={() => navigateToTab('bracketRankings')}
-                  >
-                    Bracket Rankings
-                  </button>
-                  <button
-                    className={`spectator-tab-btn ${activeTab === 'overall' ? 'active' : ''}`}
-                    onClick={() => navigateToTab('overall')}
-                  >
-                    Overall
-                  </button>
-                </>
-              )}
-            </div>
+              {activeTab === 'bracket' && (
+                <div>
+                  {brackets.length === 0 ? (
+                    <div className="card">
+                      <p className="spectator-muted-message">
+                        No brackets available for this event.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {bracketSelector('spectator')}
 
-            {activeTab === 'seeding' && (
-              <div>
-                {seedingLoading ? (
-                  <p>Loading seeding data...</p>
-                ) : (
-                  <SeedingDisplay
-                    teams={teams}
-                    scores={scores}
-                    rankings={rankings}
-                    effectiveRounds={effectiveRounds}
-                  />
-                )}
-              </div>
-            )}
-
-            {activeTab === 'bracket' && (
-              <div>
-                {brackets.length === 0 ? (
-                  <div className="card">
-                    <p style={{ color: 'var(--secondary-color)' }}>
-                      No brackets available for this event.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {bracketSelector('spectator')}
-
-                    {bracketLoading ? (
-                      <p>Loading bracket...</p>
-                    ) : (
-                      <div className="card bracket-section">
-                        {winner && (
-                          <div className="bracket-winner-banner bracket-winner-bracket-view">
-                            <span className="bracket-winner-trophy" aria-hidden>
-                              🏆
-                            </span>
-                            <span className="bracket-winner-label">
-                              Champion
-                            </span>
-                            <span className="bracket-winner-team">
-                              <strong>{winner.team_number}</strong>{' '}
-                              {winner.team_name ||
-                                winner.team_display ||
-                                `Team ${winner.team_id}`}
-                            </span>
-                          </div>
-                        )}
-                        <BracketLikeView
-                          games={bracketGames}
-                          side={bracketSide}
-                          onSideChange={handleSideChange}
-                          emptyMessage="No bracket games available yet."
-                        />
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'documentation' && finalScoresAvailable && (
-              <div>
-                {docLoading ? (
-                  <p>Loading documentation scores...</p>
-                ) : (
-                  <DocumentationScoresDisplay
-                    categories={docCategories}
-                    scores={docScores}
-                  />
-                )}
-              </div>
-            )}
-
-            {activeTab === 'awards' && finalScoresAvailable && (
-              <div>
-                {awardsLoading ? (
-                  <p>Loading awards...</p>
-                ) : manualAwards.length === 0 &&
-                  !hasAutomaticAwardsContent(automaticAwards) ? (
-                  <div className="card">
-                    <p style={{ color: 'var(--secondary-color)' }}>
-                      No awards have been published for this event.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="card">
-                    <h3 style={{ marginBottom: '1rem' }}>Awards</h3>
-                    {automaticAwards &&
-                      hasAutomaticAwardsContent(automaticAwards) && (
-                        <SpectatorAutomaticAwards automatic={automaticAwards} />
+                      {bracketLoading ? (
+                        <p>Loading bracket...</p>
+                      ) : (
+                        <div className="card bracket-section">
+                          {winner && (
+                            <div className="bracket-winner-banner bracket-winner-bracket-view">
+                              <span
+                                className="bracket-winner-trophy"
+                                aria-hidden
+                              >
+                                🏆
+                              </span>
+                              <span className="bracket-winner-label">
+                                Champion
+                              </span>
+                              <span className="bracket-winner-team">
+                                <strong>{winner.team_number}</strong>{' '}
+                                {winner.team_name ||
+                                  winner.team_display ||
+                                  `Team ${winner.team_id}`}
+                              </span>
+                            </div>
+                          )}
+                          <BracketLikeView
+                            games={bracketGames}
+                            side={bracketSide}
+                            onSideChange={handleSideChange}
+                            emptyMessage="No bracket games available yet."
+                          />
+                        </div>
                       )}
-                    {manualAwards.length > 0 && (
-                      <div
-                        style={{
-                          marginTop: hasAutomaticAwardsContent(automaticAwards)
-                            ? '1.5rem'
-                            : 0,
-                        }}
-                      >
-                        {hasAutomaticAwardsContent(automaticAwards) && (
-                          <h4
-                            style={{
-                              margin: '0 0 0.75rem',
-                              fontSize: '1.05rem',
-                            }}
-                          >
-                            Other awards
-                          </h4>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'documentation' && finalScoresAvailable && (
+                <div>
+                  {docLoading ? (
+                    <p>Loading documentation scores...</p>
+                  ) : (
+                    <div className="spectator-documentation-view">
+                      <DocumentationScoresDisplay
+                        categories={docCategories}
+                        scores={docScores}
+                        variant="spectator"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'awards' && finalScoresAvailable && (
+                <div>
+                  {awardsLoading ? (
+                    <p>Loading awards...</p>
+                  ) : manualAwards.length === 0 &&
+                    !hasAutomaticAwardsContent(automaticAwards) ? (
+                    <div className="card">
+                      <p className="spectator-muted-message">
+                        No awards have been published for this event.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="card">
+                      <h3 className="spectator-awards-title">Awards</h3>
+                      {automaticAwards &&
+                        hasAutomaticAwardsContent(automaticAwards) && (
+                          <SpectatorAutomaticAwards
+                            automatic={automaticAwards}
+                          />
                         )}
-                        {manualAwards.map((award, idx) => (
-                          <div
-                            key={idx}
-                            style={{
-                              marginBottom:
-                                idx < manualAwards.length - 1 ? '1.25rem' : 0,
-                              paddingBottom:
-                                idx < manualAwards.length - 1 ? '1.25rem' : 0,
-                              borderBottom:
-                                idx < manualAwards.length - 1
-                                  ? '1px solid var(--border-color)'
-                                  : 'none',
-                            }}
-                          >
-                            <strong style={{ fontSize: '1.05rem' }}>
-                              {award.name}
-                            </strong>
-                            {award.description && (
-                              <p
-                                style={{
-                                  color: 'var(--secondary-color)',
-                                  margin: '0.25rem 0 0.5rem',
-                                }}
-                              >
-                                {award.description}
-                              </p>
-                            )}
-                            {award.recipients.length > 0 ? (
-                              <ul
-                                style={{
-                                  margin: '0.5rem 0 0',
-                                  paddingLeft: '1.25rem',
-                                }}
-                              >
-                                {award.recipients.map((r, ri) => (
-                                  <li key={ri}>
-                                    <strong>#{r.team_number}</strong>{' '}
-                                    {r.team_name}
-                                  </li>
-                                ))}
-                              </ul>
-                            ) : (
-                              <p
-                                style={{
-                                  color: 'var(--secondary-color)',
-                                  margin: '0.5rem 0 0',
-                                  fontStyle: 'italic',
-                                }}
-                              >
-                                No recipients
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+                      {manualAwards.length > 0 && (
+                        <div
+                          className={`spectator-manual-awards${hasAutomaticAwardsContent(automaticAwards) ? ' spectator-manual-awards-with-automatic' : ''}`}
+                        >
+                          {hasAutomaticAwardsContent(automaticAwards) && (
+                            <h4 className="spectator-awards-subtitle">
+                              Other awards
+                            </h4>
+                          )}
+                          {manualAwards.map((award, idx) => (
+                            <div
+                              key={idx}
+                              className="spectator-manual-award"
+                              data-has-divider={idx < manualAwards.length - 1}
+                            >
+                              <strong className="spectator-manual-award-title">
+                                {award.name}
+                              </strong>
+                              {award.description && (
+                                <p className="spectator-manual-award-description">
+                                  {award.description}
+                                </p>
+                              )}
+                              {award.recipients.length > 0 ? (
+                                <ul className="spectator-manual-award-recipients">
+                                  {award.recipients.map((r, ri) => (
+                                    <li
+                                      key={ri}
+                                      className="spectator-manual-award-recipient"
+                                    >
+                                      <strong>#{r.team_number}</strong>{' '}
+                                      <span className="spectator-manual-award-recipient-name">
+                                        {r.team_name}
+                                      </span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="spectator-manual-award-empty">
+                                  No recipients
+                                </p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
-            {activeTab === 'bracketRankings' && finalScoresAvailable && (
-              <div>
-                {brackets.length === 0 ? (
-                  <div className="card">
-                    <p style={{ color: 'var(--secondary-color)' }}>
-                      No brackets available for this event.
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {bracketSelector('spectator-rankings')}
-                    <BracketRankingView
-                      bracketId={selectedBracketId ?? 0}
-                      rankings={bracketRankings}
-                      weight={bracketRankingsWeight}
-                      loading={bracketRankingsLoading}
+              {activeTab === 'bracketRankings' && finalScoresAvailable && (
+                <div className="spectator-bracket-rankings-view">
+                  {brackets.length === 0 ? (
+                    <div className="card">
+                      <p className="spectator-muted-message">
+                        No brackets available for this event.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {bracketSelector('spectator-rankings')}
+                      <BracketRankingView
+                        bracketId={selectedBracketId ?? 0}
+                        rankings={bracketRankings}
+                        weight={bracketRankingsWeight}
+                        loading={bracketRankingsLoading}
+                        variant="spectator"
+                      />
+                    </>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'overall' && finalScoresAvailable && (
+                <div className="spectator-overall-view">
+                  {overallLoading ? (
+                    <p>Loading overall scores...</p>
+                  ) : (
+                    <OverallScoresDisplay
+                      rows={overallRows}
+                      variant="spectator"
                     />
-                  </>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'overall' && finalScoresAvailable && (
-              <div>
-                {overallLoading ? (
-                  <p>Loading overall scores...</p>
-                ) : (
-                  <OverallScoresDisplay rows={overallRows} />
-                )}
-              </div>
-            )}
-          </>
-        )}
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </UnifiedTableScrollAffordanceProvider>
       </main>
     </div>
   );
