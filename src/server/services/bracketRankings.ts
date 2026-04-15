@@ -10,6 +10,13 @@ export interface CalculateBracketRankingsResult {
   teamsRanked: number;
 }
 
+function isIncompleteBracketError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  return error.message.includes('Cannot calculate rankings');
+}
+
 /**
  * Calculate final bracket rankings for a completed double-elimination bracket.
  * Assigns ranks 1, 2, 3, 4, 5, 5, 7, 7, 9, 9, 9, 9... (ties preserved).
@@ -151,4 +158,42 @@ export async function calculateBracketRankings(
   });
 
   return { teamsRanked: rankedTeams.length };
+}
+
+/**
+ * Attempts to recalculate rankings for a bracket.
+ *
+ * Returns `true` if rankings were updated, and `false` if the bracket does not
+ * yet have enough completed games to produce final standings.
+ */
+export async function calculateBracketRankingsIfReady(
+  bracketId: number,
+): Promise<boolean> {
+  try {
+    await calculateBracketRankings(bracketId);
+    return true;
+  } catch (error) {
+    if (isIncompleteBracketError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Recalculates rankings for every bracket in an event that has enough completed
+ * games to produce final standings.
+ */
+export async function calculateEventBracketRankingsIfReady(
+  eventId: number,
+): Promise<void> {
+  const db = await getDatabase();
+  const brackets = await db.all<{ id: number }>(
+    'SELECT id FROM brackets WHERE event_id = ?',
+    [eventId],
+  );
+
+  for (const bracket of brackets) {
+    await calculateBracketRankingsIfReady(bracket.id);
+  }
 }
