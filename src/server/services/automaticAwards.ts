@@ -186,6 +186,7 @@ export async function computeAutomaticAwards(
 
   const de: DeBracketAwards[] = [];
   const perBracketOverall: PerBracketOverallAwards[] = [];
+  const shouldIncludePerBracketOverall = brackets.length > 1;
 
   for (const b of brackets) {
     const deRows = await db.all<{
@@ -210,27 +211,29 @@ export async function computeAutomaticAwards(
       });
     }
 
-    const overallRows = await fetchBracketOverallRows(eventId, b.id);
-    if (overallRows.length === 0) continue;
+    if (shouldIncludePerBracketOverall) {
+      const overallRows = await fetchBracketOverallRows(eventId, b.id);
+      if (overallRows.length === 0) continue;
 
-    if (!bracketFullyRanked(overallRows)) {
-      continue;
-    }
+      if (!bracketFullyRanked(overallRows)) {
+        continue;
+      }
 
-    const forTotals = overallRows.map((r) => ({
-      team_number: r.team_number,
-      team_name: r.team_name,
-      display_name: r.display_name,
-      total: r.total,
-    }));
+      const forTotals = overallRows.map((r) => ({
+        team_number: r.team_number,
+        team_name: r.team_name,
+        display_name: r.display_name,
+        total: r.total,
+      }));
 
-    const obPlacements = topThreeMedalPlacementsByTotal(forTotals);
-    if (obPlacements) {
-      perBracketOverall.push({
-        bracket_id: b.id,
-        bracket_name: b.name,
-        placements: obPlacements,
-      });
+      const obPlacements = topThreeMedalPlacementsByTotal(forTotals);
+      if (obPlacements) {
+        perBracketOverall.push({
+          bracket_id: b.id,
+          bracket_name: b.name,
+          placements: obPlacements,
+        });
+      }
     }
   }
 
