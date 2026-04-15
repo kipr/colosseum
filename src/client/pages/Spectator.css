@@ -184,6 +184,20 @@
   overflow-x: clip;
 }
 
+.spectator-bracket-rankings-view {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+.spectator-bracket-rankings-view .bracket-section,
+.spectator-bracket-rankings-view .bracket-section-spectator,
+.spectator-bracket-rankings-view .bracket-ranking-table-responsive-spectator {
+  min-width: 0;
+  max-width: 100%;
+}
+
 .spectator-overall-view .documentation-section,
 .spectator-overall-view .overall-section-spectator,
 .spectator-overall-view .overall-scores-table-wrapper-spectator {

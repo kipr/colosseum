@@ -695,7 +695,7 @@ export default function Spectator() {
             )}
 
             {activeTab === 'bracketRankings' && finalScoresAvailable && (
-              <div>
+              <div className="spectator-bracket-rankings-view">
                 {brackets.length === 0 ? (
                   <div className="card">
                     <p style={{ color: 'var(--secondary-color)' }}>
@@ -710,6 +710,7 @@ export default function Spectator() {
                       rankings={bracketRankings}
                       weight={bracketRankingsWeight}
                       loading={bracketRankingsLoading}
+                      variant="spectator"
                     />
                   </>
                 )}
