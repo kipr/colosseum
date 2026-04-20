@@ -4,22 +4,16 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
+import {
+  TEAM_STATUSES,
+  TEAM_STATUS_LABELS,
+  getTeamStatusClass,
+  isValidTeamStatus,
+  type TeamStatus,
+} from '@shared/domain/teamStatus';
+import type { Team } from '@shared/domain/team';
 import '../Modal.css';
 import './TeamsTab.css';
-
-interface Team {
-  id: number;
-  event_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  status: TeamStatus;
-  checked_in_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-type TeamStatus = 'registered' | 'checked_in' | 'no_show' | 'withdrawn';
 
 interface TeamFormData {
   team_number: string;
@@ -45,33 +39,11 @@ type SortDirection = 'asc' | 'desc';
 
 const STATUS_OPTIONS: { value: TeamStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All Statuses' },
-  { value: 'registered', label: 'Registered' },
-  { value: 'checked_in', label: 'Checked In' },
-  { value: 'no_show', label: 'No Show' },
-  { value: 'withdrawn', label: 'Withdrawn' },
+  ...TEAM_STATUSES.map((value) => ({
+    value,
+    label: TEAM_STATUS_LABELS[value],
+  })),
 ];
-
-const STATUS_LABELS: Record<TeamStatus, string> = {
-  registered: 'Registered',
-  checked_in: 'Checked In',
-  no_show: 'No Show',
-  withdrawn: 'Withdrawn',
-};
-
-function getStatusClass(status: TeamStatus): string {
-  switch (status) {
-    case 'checked_in':
-      return 'status-checked-in';
-    case 'registered':
-      return 'status-registered';
-    case 'no_show':
-      return 'status-no-show';
-    case 'withdrawn':
-      return 'status-withdrawn';
-    default:
-      return '';
-  }
-}
 
 interface BulkImportError {
   index: number;
@@ -147,10 +119,8 @@ function parseTeamsText(text: string): {
 
     // Optional status (4th column)
     if (parts[3]) {
-      const status = parts[3].toLowerCase() as TeamStatus;
-      if (
-        ['registered', 'checked_in', 'no_show', 'withdrawn'].includes(status)
-      ) {
+      const status = parts[3].toLowerCase();
+      if (isValidTeamStatus(status)) {
         team.status = status;
       } else {
         errors.push(`Line ${i + 1}: Invalid status "${parts[3]}"`);
@@ -683,9 +653,9 @@ export default function TeamsTab() {
                 sortAriaLabel: 'Sort by status',
                 renderCell: (team) => (
                   <span
-                    className={`team-status-badge ${getStatusClass(team.status)}`}
+                    className={`team-status-badge ${getTeamStatusClass(team.status)}`}
                   >
-                    {STATUS_LABELS[team.status]}
+                    {TEAM_STATUS_LABELS[team.status]}
                   </span>
                 ),
               },

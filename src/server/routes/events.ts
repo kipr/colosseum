@@ -6,6 +6,10 @@ import {
   isEventArchived,
   areFinalScoresReleased,
 } from '../utils/eventVisibility';
+import {
+  isFinalScoresReleasedFor,
+  SPECTATOR_EXCLUDED_STATUSES,
+} from '../../shared/domain/eventVisibility';
 import { computeOverallScores } from '../services/overallScores';
 import { calculateEventBracketRankingsIfReady } from '../services/bracketRankings';
 
@@ -54,8 +58,10 @@ function toPublicEvent(row: Record<string, unknown>) {
   const { spectator_results_released, ...rest } = row;
   return {
     ...rest,
-    final_scores_available:
-      rest.status === 'complete' && !!spectator_results_released,
+    final_scores_available: isFinalScoresReleasedFor(
+      rest.status as string,
+      spectator_results_released as boolean | number | null | undefined,
+    ),
   };
 }
 
@@ -63,9 +69,14 @@ function toPublicEvent(row: Record<string, unknown>) {
 router.get('/public', async (req: Request, res: Response) => {
   try {
     const db = await getDatabase();
+    // SPECTATOR_EXCLUDED_STATUSES (currently just 'archived') drives this filter
+    // via the shared domain layer.
+    const excluded = SPECTATOR_EXCLUDED_STATUSES.map((s) => `'${s}'`).join(
+      ', ',
+    );
     const events = await db.all(
       `SELECT ${PUBLIC_EVENT_FIELDS} FROM events
-       WHERE status != 'archived'
+       WHERE status NOT IN (${excluded})
        ORDER BY event_date DESC, created_at DESC`,
     );
     res.setHeader('Cache-Control', 'public, max-age=30');

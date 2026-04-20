@@ -4,6 +4,17 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatCalledAt } from '../../utils/dateUtils';
+import {
+  QUEUE_STATUSES,
+  QUEUE_STATUS_LABELS,
+  QUEUE_TYPES,
+  QUEUE_TYPE_LABELS,
+  getNextQueueStatus,
+  getQueueRowStatusClass,
+  getQueueStatusClass,
+  type QueueStatus,
+  type QueueType,
+} from '@shared/domain/queue';
 import '../Modal.css';
 import './QueueTab.css';
 
@@ -13,7 +24,7 @@ interface QueueItem {
   bracket_game_id: number | null;
   seeding_team_id: number | null;
   seeding_round: number | null;
-  queue_type: 'seeding' | 'bracket';
+  queue_type: QueueType;
   queue_position: number;
   status: QueueStatus;
   table_number: number | null;
@@ -64,52 +75,16 @@ interface Team {
   display_name: string | null;
 }
 
-type QueueStatus = 'queued' | 'called' | 'arrived' | 'on_table' | 'scored';
-
-const STATUS_ORDER: QueueStatus[] = [
-  'queued',
-  'called',
-  'arrived',
-  'on_table',
-  'scored',
-];
-
-type QueueType = 'seeding' | 'bracket';
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';
 
 const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'all', label: 'All Types' },
-  { value: 'seeding', label: 'Seeding' },
-  { value: 'bracket', label: 'Bracket' },
+  ...QUEUE_TYPES.map((value) => ({ value, label: QUEUE_TYPE_LABELS[value] })),
 ];
 
 function getTypeClass(type: QueueType): string {
   return `queue-type-${type}`;
-}
-
-function getStatusClass(status: QueueStatus): string {
-  return `queue-status-${status.replace(/_/g, '-')}`;
-}
-
-/** Row background tint (queued = default table background). */
-function getRowStatusClass(status: QueueStatus): string {
-  return `queue-row--${status.replace(/_/g, '-')}`;
-}
-
-const STATUS_LABELS: Record<QueueStatus, string> = {
-  queued: 'Queued',
-  called: 'Called',
-  arrived: 'Arrived',
-  on_table: 'On table',
-  scored: 'Scored',
-};
-
-/** Next status in the queue flow, or null if already at the terminal state. */
-function getNextQueueStatus(current: QueueStatus): QueueStatus | null {
-  const idx = STATUS_ORDER.indexOf(current);
-  if (idx < 0 || idx >= STATUS_ORDER.length - 1) return null;
-  return STATUS_ORDER[idx + 1]!;
 }
 
 export default function QueueTab() {
@@ -120,11 +95,7 @@ export default function QueueTab() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterStatuses, setFilterStatuses] = useState<QueueStatus[]>([
-    'queued',
-    'called',
-    'arrived',
-    'on_table',
-    'scored',
+    ...QUEUE_STATUSES,
   ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
   const [sortField, setSortField] = useState<SortField>('gameNumber');
@@ -173,8 +144,7 @@ export default function QueueTab() {
       const params = new URLSearchParams();
       params.append('sync', '1');
       // Only append status params if we are filtering (not all selected)
-      const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
-      const isAllSelected = filterStatuses.length === allStatuses.length;
+      const isAllSelected = filterStatuses.length === QUEUE_STATUSES.length;
 
       if (!isAllSelected) {
         filterStatuses.forEach((status) => {
@@ -489,12 +459,12 @@ export default function QueueTab() {
     item: QueueItem,
     direction: 'next' | 'prev',
   ) => {
-    const idx = STATUS_ORDER.indexOf(item.status);
+    const idx = QUEUE_STATUSES.indexOf(item.status);
     if (idx < 0) return;
     const delta = direction === 'next' ? 1 : -1;
     const nextIdx = idx + delta;
-    if (nextIdx < 0 || nextIdx >= STATUS_ORDER.length) return;
-    const targetStatus = STATUS_ORDER[nextIdx]!;
+    if (nextIdx < 0 || nextIdx >= QUEUE_STATUSES.length) return;
+    const targetStatus = QUEUE_STATUSES[nextIdx]!;
 
     try {
       let response: Response;
@@ -602,19 +572,18 @@ export default function QueueTab() {
 
       // Guardrail: fallback to all if empty
       if (next.length === 0) {
-        return Object.keys(STATUS_LABELS) as QueueStatus[];
+        return [...QUEUE_STATUSES];
       }
       return next;
     });
   };
 
   const toggleAllStatuses = () => {
-    const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
-    if (filterStatuses.length === allStatuses.length) {
+    if (filterStatuses.length === QUEUE_STATUSES.length) {
       // If all are selected, revert to default set
       setFilterStatuses(['queued', 'called', 'arrived', 'on_table']);
     } else {
-      setFilterStatuses(allStatuses);
+      setFilterStatuses([...QUEUE_STATUSES]);
     }
   };
 
@@ -755,15 +724,13 @@ export default function QueueTab() {
           <div className="status-filters">
             <button
               className={`status-filter-pill ${
-                filterStatuses.length === Object.keys(STATUS_LABELS).length
-                  ? 'active'
-                  : ''
+                filterStatuses.length === QUEUE_STATUSES.length ? 'active' : ''
               }`}
               onClick={toggleAllStatuses}
             >
               All
             </button>
-            {(Object.keys(STATUS_LABELS) as QueueStatus[]).map((status) => (
+            {QUEUE_STATUSES.map((status) => (
               <button
                 key={status}
                 className={`status-filter-pill ${
@@ -771,7 +738,7 @@ export default function QueueTab() {
                 }`}
                 onClick={() => toggleStatus(status)}
               >
-                {STATUS_LABELS[status]}
+                {QUEUE_STATUS_LABELS[status]}
               </button>
             ))}
           </div>
@@ -784,7 +751,7 @@ export default function QueueTab() {
           <p>Loading queue...</p>
         ) : queue.length === 0 ? (
           <p style={{ color: 'var(--secondary-color)' }}>
-            {filterStatuses.length === Object.keys(STATUS_LABELS).length &&
+            {filterStatuses.length === QUEUE_STATUSES.length &&
             filterType === 'all'
               ? 'Queue is empty. Use "Populate from Bracket" or add items manually.'
               : 'No queue items match the current filters.'}
@@ -850,9 +817,9 @@ export default function QueueTab() {
                 headerStyle: { width: '100px' },
                 renderCell: (item) => (
                   <span
-                    className={`queue-status-badge ${getStatusClass(item.status)}`}
+                    className={`queue-status-badge ${getQueueStatusClass(item.status)}`}
                   >
-                    {STATUS_LABELS[item.status]}
+                    {QUEUE_STATUS_LABELS[item.status]}
                   </span>
                 ),
               },
@@ -868,7 +835,7 @@ export default function QueueTab() {
                       <button
                         type="button"
                         className="btn btn-secondary"
-                        disabled={STATUS_ORDER.indexOf(item.status) <= 0}
+                        disabled={QUEUE_STATUSES.indexOf(item.status) <= 0}
                         onClick={() => handleFlowStep(item, 'prev')}
                         title="Previous step"
                       >
@@ -881,11 +848,13 @@ export default function QueueTab() {
                         onClick={() => handleFlowStep(item, 'next')}
                         title={
                           nextStatus
-                            ? `Advance to ${STATUS_LABELS[nextStatus]}`
+                            ? `Advance to ${QUEUE_STATUS_LABELS[nextStatus]}`
                             : 'Next step'
                         }
                       >
-                        {nextStatus ? `${STATUS_LABELS[nextStatus]}` : 'End'}
+                        {nextStatus
+                          ? `${QUEUE_STATUS_LABELS[nextStatus]}`
+                          : 'End'}
                       </button>
                     </div>
                   );
@@ -929,14 +898,14 @@ export default function QueueTab() {
             headerLabelVariant="none"
             sortButtonClassName="queue-sort-button unified-table-sort-btn"
             rowClassName={(item) =>
-              `queue-row ${getRowStatusClass(item.status)}`
+              `queue-row ${getQueueRowStatusClass(item.status)}`
             }
             highlightActiveColumn={false}
           />
         )}
         <div className="queue-summary">
           {queue.length} item{queue.length !== 1 ? 's' : ''} in queue
-          {(filterStatuses.length !== Object.keys(STATUS_LABELS).length ||
+          {(filterStatuses.length !== QUEUE_STATUSES.length ||
             filterType !== 'all') &&
             ' (filtered)'}
         </div>

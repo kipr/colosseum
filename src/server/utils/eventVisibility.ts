@@ -1,11 +1,17 @@
 import { getDatabase } from '../database/connection';
-
-const SPECTATOR_EXCLUDED_STATUSES = ['archived'];
+import {
+  isFinalScoresReleasedFor,
+  isStatusSpectatorVisible,
+} from '../../shared/domain/eventVisibility';
 
 /**
  * Check whether the given event has a status that should be hidden from
  * public / spectator consumers.  Returns `true` when the event is archived
  * (or does not exist).
+ *
+ * The status-based predicate lives in the shared domain layer
+ * (`SPECTATOR_EXCLUDED_STATUSES`) so client code can apply the same rule
+ * without round-tripping to the API.
  */
 export async function isEventArchived(
   eventId: number | string,
@@ -16,7 +22,7 @@ export async function isEventArchived(
     [eventId],
   );
   if (!row) return true;
-  return SPECTATOR_EXCLUDED_STATUSES.includes(row.status);
+  return !isStatusSpectatorVisible(row.status);
 }
 
 /**
@@ -35,5 +41,5 @@ export async function areFinalScoresReleased(
     eventId,
   ]);
   if (!row) return false;
-  return row.status === 'complete' && !!row.spectator_results_released;
+  return isFinalScoresReleasedFor(row.status, row.spectator_results_released);
 }

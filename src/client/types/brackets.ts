@@ -1,13 +1,30 @@
-// Bracket-related types shared across components
+/**
+ * Re-exports the canonical bracket enums + labels from the shared domain layer
+ * and defines client-only DTO shapes (with joined team metadata) used by the
+ * admin/spectator bracket views.
+ */
 
-export type BracketStatus = 'setup' | 'in_progress' | 'completed';
-export type GameStatus =
-  | 'pending'
-  | 'ready'
-  | 'in_progress'
-  | 'completed'
-  | 'bye';
-export type BracketSide = 'winners' | 'losers' | 'finals';
+export {
+  BRACKET_STATUSES,
+  BRACKET_STATUS_LABELS as STATUS_LABELS,
+  isValidBracketStatus,
+  GAME_STATUSES,
+  GAME_STATUS_LABELS,
+  GAME_STATUS_DISPLAY_LABELS,
+  isValidGameStatus,
+  BRACKET_SIDES,
+  BRACKET_SIDE_LABELS,
+  isValidBracketSide,
+  type BracketStatus,
+  type GameStatus,
+  type BracketSide,
+} from '@shared/domain/bracket';
+
+import type {
+  BracketStatus,
+  GameStatus,
+  BracketSide,
+} from '@shared/domain/bracket';
 
 export interface Bracket {
   id: number;
@@ -66,7 +83,6 @@ export interface BracketGame {
   scheduled_time: string | null;
   started_at: string | null;
   completed_at: string | null;
-  // Joined team info
   team1_number?: number;
   team1_name?: string;
   team1_display?: string | null;
@@ -84,33 +100,3 @@ export interface BracketDetail extends Bracket {
   /** Populated only for authenticated admins via GET /:id/rankings */
   rankings?: BracketEntryWithRank[];
 }
-
-// Display label mappings for admin management view
-export const STATUS_LABELS: Record<BracketStatus, string> = {
-  setup: 'Setup',
-  in_progress: 'In Progress',
-  completed: 'Completed',
-};
-
-export const GAME_STATUS_LABELS: Record<GameStatus, string> = {
-  pending: 'Pending',
-  ready: 'Ready',
-  in_progress: 'In Progress',
-  completed: 'Completed',
-  bye: 'Bye',
-};
-
-// Display label mappings for bracket-like view (more compact)
-export const GAME_STATUS_DISPLAY_LABELS: Record<GameStatus, string> = {
-  pending: 'Pending',
-  ready: 'Ready',
-  in_progress: 'Live',
-  completed: 'Final',
-  bye: 'Bye',
-};
-
-export const BRACKET_SIDE_LABELS: Record<BracketSide, string> = {
-  winners: 'Winners Bracket',
-  losers: 'Redemption Bracket',
-  finals: 'Finals',
-};

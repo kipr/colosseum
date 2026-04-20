@@ -1,67 +1,29 @@
 /**
- * Event status types and utilities
- * These match the database CHECK constraint: status IN ('setup', 'active', 'complete', 'archived')
+ * Re-exports the canonical event status / score-accept-mode definitions and
+ * the shared `Event` DTO from `src/shared/domain/`. Date-formatting helpers
+ * remain here since they depend on client-only `dateUtils`.
  */
-
 import { toDateOnlyString } from './dateUtils';
 
-export type EventStatus = 'setup' | 'active' | 'complete' | 'archived';
+export {
+  EVENT_STATUSES,
+  EVENT_STATUS_LABELS,
+  EVENT_STATUS_CLASSES,
+  isValidEventStatus,
+  getEventStatusLabel,
+  getEventStatusClass,
+  isEventActive,
+  type EventStatus,
+} from '@shared/domain/eventStatus';
 
-export type ScoreAcceptMode =
-  | 'manual'
-  | 'auto_accept_seeding'
-  | 'auto_accept_all';
+export {
+  SCORE_ACCEPT_MODES,
+  SCORE_ACCEPT_MODE_LABELS,
+  isValidScoreAcceptMode,
+  type ScoreAcceptMode,
+} from '@shared/domain/scoreAcceptMode';
 
-export interface Event {
-  id: number;
-  name: string;
-  description: string | null;
-  event_date: string | null;
-  location: string | null;
-  status: EventStatus;
-  seeding_rounds: number;
-  score_accept_mode: ScoreAcceptMode;
-  spectator_results_released: boolean;
-  created_by: number | null;
-  created_at: string;
-  updated_at: string;
-}
-
-/**
- * Get the CSS class for an event status badge/dot
- */
-export function getEventStatusClass(status: EventStatus | string): string {
-  switch (status) {
-    case 'active':
-      return 'event-status-active';
-    case 'setup':
-      return 'event-status-setup';
-    case 'complete':
-      return 'event-status-complete';
-    case 'archived':
-      return 'event-status-archived';
-    default:
-      return '';
-  }
-}
-
-/**
- * Get a human-readable label for an event status
- */
-export function getEventStatusLabel(status: EventStatus | string): string {
-  switch (status) {
-    case 'setup':
-      return 'Setup';
-    case 'active':
-      return 'Active';
-    case 'complete':
-      return 'Complete';
-    case 'archived':
-      return 'Archived';
-    default:
-      return status;
-  }
-}
+export type { Event, PublicEvent } from '@shared/domain/event';
 
 /**
  * Format an event date string for display.
@@ -71,7 +33,6 @@ export function formatEventDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
 
   try {
-    // Extract YYYY-MM-DD - PostgreSQL returns ISO strings, SQLite returns date-only
     const dateOnly = toDateOnlyString(dateStr);
     if (!dateOnly) return dateStr;
 
@@ -86,11 +47,4 @@ export function formatEventDate(dateStr: string | null | undefined): string {
   } catch {
     return dateStr;
   }
-}
-
-/**
- * Check if an event status is "active" (not archived or complete)
- */
-export function isEventActive(status: EventStatus): boolean {
-  return status === 'setup' || status === 'active';
 }
