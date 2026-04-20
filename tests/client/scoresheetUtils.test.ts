@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDoubleEliminationSchema,
   buildEventScopedBracketSource,
+  buildSeedingSchema,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
   getBracketGameOptionValue,
   isEventScopedBracketSource,
 } from '../../src/client/components/scoresheetUtils';
+import { parseScoresheetSchema } from '../../src/shared/domain/scoresheetSchema';
 
 describe('scoresheetUtils', () => {
   it('builds new DE schemas with an event-scoped bracket source', () => {
@@ -19,7 +21,19 @@ describe('scoresheetUtils', () => {
     expect(schema.mode).toBe('head-to-head');
     expect(schema.eventId).toBe(42);
     expect(schema.bracketSource).toEqual(buildEventScopedBracketSource(42));
-    expect(schema.teamsDataSource.eventId).toBe(42);
+    expect(schema.teamsDataSource?.eventId).toBe(42);
+    expect(() => parseScoresheetSchema(schema)).not.toThrow();
+  });
+
+  it('builds seeding schemas that pass the canonical zod parser', () => {
+    const schema = buildSeedingSchema({
+      title: 'Seeding Sheet',
+      eventId: 9,
+      templateFields: null,
+    });
+    expect(schema.layout).toBe('two-column');
+    expect(schema.fields.find((f) => f.id === 'team_number')).toBeDefined();
+    expect(() => parseScoresheetSchema(schema)).not.toThrow();
   });
 
   it('adapts template fields from side A/B to team A/B', () => {
@@ -41,20 +55,18 @@ describe('scoresheetUtils', () => {
       ],
     });
 
-    expect(
-      schema.fields.some(
-        (field: { id: string }) => field.id === 'team_a_score',
-      ),
-    ).toBe(true);
-    expect(
-      schema.fields.some(
-        (field: { id: string }) => field.id === 'team_b_total',
-      ),
-    ).toBe(true);
-    expect(
-      schema.fields.find((field: { id: string }) => field.id === 'team_b_total')
-        ?.formula,
-    ).toBe('team_b_score + team_a_score');
+    expect(schema.fields.some((field) => field.id === 'team_a_score')).toBe(
+      true,
+    );
+    expect(schema.fields.some((field) => field.id === 'team_b_total')).toBe(
+      true,
+    );
+    const teamBTotal = schema.fields.find((f) => f.id === 'team_b_total');
+    expect(teamBTotal?.type).toBe('calculated');
+    if (teamBTotal?.type === 'calculated') {
+      expect(teamBTotal.formula).toBe('team_b_score + team_a_score');
+    }
+    expect(() => parseScoresheetSchema(schema)).not.toThrow();
   });
 
   it('formats judge game labels without bracket or game context', () => {

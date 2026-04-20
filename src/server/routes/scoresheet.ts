@@ -6,6 +6,11 @@ import {
 } from '../middleware/auth';
 import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import {
+  parseScoresheetSchema,
+  tryParseScoresheetSchema,
+} from '../../shared/domain/scoresheetSchema';
+import { ZodError } from 'zod';
 
 const router = express.Router();
 
@@ -17,6 +22,37 @@ function inferTemplateType(schema: unknown): 'seeding' | 'bracket' {
     return 'bracket';
   }
   return 'seeding';
+}
+
+/**
+ * Tolerant parser for the read path: legacy rows with unknown fields still
+ * surface to the UI, with a logged warning, so the renderer's tolerant code
+ * paths can continue to handle them.
+ */
+function parseStoredSchema(
+  rawJson: string | null,
+  templateId: number,
+): unknown {
+  if (!rawJson) return null;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawJson);
+  } catch (e) {
+    console.error(
+      `Error parsing template schema JSON for template ${templateId}:`,
+      e,
+    );
+    return null;
+  }
+  const validated = tryParseScoresheetSchema(parsed);
+  if (!validated.ok) {
+    console.warn(
+      `Template ${templateId} schema failed zod validation; returning raw object so the renderer can fall back.`,
+      validated.error.issues,
+    );
+    return parsed;
+  }
+  return validated.value;
 }
 
 // Get all scoresheet templates (public - for judges, without access codes)
@@ -55,16 +91,8 @@ router.get(
       ORDER BY e.event_date DESC, e.name, t.name
     `);
 
-      // Parse schema JSON for each template
       templates.forEach((template) => {
-        if (template.schema) {
-          try {
-            template.schema = JSON.parse(template.schema);
-          } catch (e) {
-            console.error('Error parsing template schema:', e);
-            template.schema = null;
-          }
-        }
+        template.schema = parseStoredSchema(template.schema, template.id);
       });
 
       res.json(templates);
@@ -172,8 +200,7 @@ router.post(
         };
       }
 
-      // Parse JSON schema and remove sensitive data
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredSchema(template.schema, template.id);
       delete template.access_code;
       delete template.created_by;
 
@@ -202,8 +229,7 @@ router.get(
         return res.status(404).json({ error: 'Template not found' });
       }
 
-      // Parse JSON schema
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredSchema(template.schema, template.id);
       res.json(template);
     } catch (error) {
       console.error('Error fetching template:', error);
@@ -233,6 +259,18 @@ router.post(
           .json({ error: 'Name, schema, and access code are required' });
       }
 
+      let validatedSchema;
+      try {
+        validatedSchema = parseScoresheetSchema(schema);
+      } catch (err) {
+        if (err instanceof ZodError) {
+          return res
+            .status(400)
+            .json({ error: 'Invalid schema', issues: err.issues });
+        }
+        throw err;
+      }
+
       const db = await getDatabase();
       const result = await db.run(
         `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by, spreadsheet_config_id)
@@ -240,7 +278,7 @@ router.post(
         [
           name,
           description,
-          JSON.stringify(schema),
+          JSON.stringify(validatedSchema),
           accessCode,
           req.user.id,
           spreadsheetConfigId || null,
@@ -250,7 +288,7 @@ router.post(
       const templateId = result.lastID!;
 
       if (eventId != null && Number.isInteger(Number(eventId))) {
-        const templateType = inferTemplateType(schema);
+        const templateType = inferTemplateType(validatedSchema);
         await db.run(
           `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
           [Number(eventId), templateId, templateType],
@@ -261,7 +299,7 @@ router.post(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredSchema(template.schema, template.id);
 
       res.json(template);
     } catch (error) {
@@ -287,6 +325,20 @@ router.put(
         eventId,
       } = req.body;
 
+      let validatedSchema: ReturnType<typeof parseScoresheetSchema> | undefined;
+      if (schema !== undefined) {
+        try {
+          validatedSchema = parseScoresheetSchema(schema);
+        } catch (err) {
+          if (err instanceof ZodError) {
+            return res
+              .status(400)
+              .json({ error: 'Invalid schema', issues: err.issues });
+          }
+          throw err;
+        }
+      }
+
       const db = await getDatabase();
       await db.transaction(async (tx) => {
         await tx.run(
@@ -296,7 +348,7 @@ router.put(
           [
             name,
             description,
-            JSON.stringify(schema),
+            JSON.stringify(validatedSchema),
             accessCode,
             spreadsheetConfigId || null,
             id,
@@ -309,7 +361,7 @@ router.put(
         );
 
         if (eventId != null && Number.isInteger(Number(eventId))) {
-          const templateType = inferTemplateType(schema);
+          const templateType = inferTemplateType(validatedSchema);
           await tx.run(
             `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
             [Number(eventId), id, templateType],
@@ -321,7 +373,7 @@ router.put(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [id],
       );
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredSchema(template.schema, template.id);
 
       res.json(template);
     } catch (error) {

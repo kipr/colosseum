@@ -1,13 +1,46 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
+import {
+  type ScoresheetSchema,
+  tryParseScoresheetSchema,
+} from '../../../shared/domain/scoresheetSchema';
+import { ScoresheetFieldList } from '../scoresheet/ScoresheetFieldList';
+import { useCalculatedValues } from '../scoresheet/formulaEngine';
+
+interface StoredScoreField {
+  label: string;
+  value: unknown;
+  type: string;
+}
+
+interface Score {
+  id: number;
+  status: string;
+  created_at: string;
+  template_id: number;
+  template_name: string;
+  score_type?: string;
+  score_data: Record<string, StoredScoreField>;
+}
 
 interface ScoreViewModalProps {
-  score: any;
+  score: Score;
   onClose: () => void;
   onSave: () => void;
+}
+
+interface RawTemplate {
+  id: number;
+  name: string;
+  schema: unknown;
+}
+
+interface TemplateWithSchema {
+  id: number;
+  name: string;
+  schema: ScoresheetSchema | null;
 }
 
 export default function ScoreViewModal({
@@ -15,44 +48,65 @@ export default function ScoreViewModal({
   onClose,
   onSave,
 }: ScoreViewModalProps) {
-  const [template, setTemplate] = useState<any>(null);
-  const [formData, setFormData] = useState<Record<string, any>>({});
-  const [calculatedValues, setCalculatedValues] = useState<
-    Record<string, number>
-  >({});
+  const [template, setTemplate] = useState<TemplateWithSchema | null>(null);
+  const [formData, setFormData] = useState<Record<string, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const isReadOnly = score.status !== 'pending';
+
+  const calculatedValues = useCalculatedValues(
+    template?.schema?.fields,
+    formData,
+  );
+
+  const storedCalculatedValues = useMemo(() => {
+    const out: Record<string, number> = {};
+    Object.entries(score.score_data).forEach(([fieldId, fieldData]) => {
+      const v = fieldData?.value;
+      if (typeof v === 'number') out[fieldId] = v;
+      else if (typeof v === 'string' && v !== '' && !isNaN(Number(v))) {
+        out[fieldId] = Number(v);
+      }
+    });
+    return out;
+  }, [score.score_data]);
 
   useEffect(() => {
     loadTemplate();
     initializeFormData();
   }, []);
 
-  useEffect(() => {
-    if (template) {
-      calculateAllFormulas();
-    }
-  }, [formData, template]);
-
   const loadTemplate = async () => {
     try {
       const response = await fetch('/scoresheet/templates');
       if (!response.ok) throw new Error('Failed to load templates');
-      const templates = await response.json();
+      const templates: RawTemplate[] = await response.json();
 
-      // Find template by ID first (more reliable), then fall back to name
-      let foundTemplate = templates.find(
-        (t: any) => t.id === score.template_id,
-      );
+      let foundTemplate = templates.find((t) => t.id === score.template_id);
       if (!foundTemplate) {
-        foundTemplate = templates.find(
-          (t: any) => t.name === score.template_name,
-        );
+        foundTemplate = templates.find((t) => t.name === score.template_name);
       }
 
       if (foundTemplate) {
-        setTemplate(foundTemplate);
+        const parsed = tryParseScoresheetSchema(foundTemplate.schema);
+        if (parsed.ok) {
+          setTemplate({
+            id: foundTemplate.id,
+            name: foundTemplate.name,
+            schema: parsed.value,
+          });
+        } else {
+          console.warn(
+            'Score template schema failed validation; rendering fallback for template id',
+            foundTemplate.id,
+            parsed.error,
+          );
+          setTemplate({
+            id: foundTemplate.id,
+            name: foundTemplate.name,
+            schema: null,
+          });
+        }
       } else {
         console.error(
           'Template not found. Score template_id:',
@@ -62,7 +116,7 @@ export default function ScoreViewModal({
         );
         console.error(
           'Available templates:',
-          templates.map((t: any) => ({ id: t.id, name: t.name })),
+          templates.map((t) => ({ id: t.id, name: t.name })),
         );
       }
     } catch (error) {
@@ -73,76 +127,14 @@ export default function ScoreViewModal({
   };
 
   const initializeFormData = () => {
-    const data: Record<string, any> = {};
-    Object.entries(score.score_data).forEach(
-      ([fieldId, fieldData]: [string, any]) => {
-        data[fieldId] = fieldData.value;
-      },
-    );
+    const data: Record<string, unknown> = {};
+    Object.entries(score.score_data).forEach(([fieldId, fieldData]) => {
+      data[fieldId] = fieldData.value;
+    });
     setFormData(data);
   };
 
-  const calculateAllFormulas = () => {
-    if (!template?.schema?.fields) return;
-
-    const calculated: Record<string, number> = {};
-
-    template.schema.fields.forEach((field: any) => {
-      if (field.type === 'calculated' && field.formula) {
-        try {
-          const result = evaluateFormula(field.formula, formData, calculated);
-          calculated[field.id] = result;
-        } catch {
-          calculated[field.id] = 0;
-        }
-      }
-    });
-
-    setCalculatedValues(calculated);
-  };
-
-  const evaluateFormula = (
-    formula: string,
-    data: Record<string, any>,
-    calculated: Record<string, number>,
-  ): number => {
-    let expression = formula;
-    const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-    const uniqueFieldIds = Array.from(new Set(fieldIds));
-
-    uniqueFieldIds.forEach((fieldId) => {
-      let value: any = 0;
-
-      if (calculated[fieldId] !== undefined) {
-        value = calculated[fieldId];
-      } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
-        value = data[fieldId];
-      }
-
-      let replacement: string;
-      if (formula.includes(`${fieldId} ===`)) {
-        replacement = `'${String(value)}'`;
-      } else if (typeof value === 'string') {
-        replacement = String(Number(value) || 0);
-      } else if (typeof value === 'boolean') {
-        replacement = value ? '1' : '0';
-      } else {
-        replacement = String(Number(value) || 0);
-      }
-
-      const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
-      expression = expression.replace(regex, replacement);
-    });
-
-    try {
-      const result = eval(expression);
-      return Number(result) || 0;
-    } catch {
-      return 0;
-    }
-  };
-
-  const handleInputChange = (fieldId: string, value: any) => {
+  const handleInputChange = (fieldId: string, value: unknown) => {
     if (isReadOnly) return;
     setFormData((prev) => ({ ...prev, [fieldId]: value }));
   };
@@ -155,22 +147,18 @@ export default function ScoreViewModal({
 
     setSaving(true);
     try {
-      // Build updated score data with labels and types preserved
-      const updatedScoreData: Record<string, any> = {};
+      const updatedScoreData: Record<string, StoredScoreField> = {};
 
-      Object.entries(score.score_data).forEach(
-        ([fieldId, fieldData]: [string, any]) => {
-          updatedScoreData[fieldId] = {
-            ...fieldData,
-            value:
-              formData[fieldId] !== undefined
-                ? formData[fieldId]
-                : fieldData.value,
-          };
-        },
-      );
+      Object.entries(score.score_data).forEach(([fieldId, fieldData]) => {
+        updatedScoreData[fieldId] = {
+          ...fieldData,
+          value:
+            formData[fieldId] !== undefined
+              ? formData[fieldId]
+              : fieldData.value,
+        };
+      });
 
-      // Update calculated values
       Object.entries(calculatedValues).forEach(([fieldId, value]) => {
         if (updatedScoreData[fieldId]) {
           updatedScoreData[fieldId].value = value;
@@ -196,154 +184,8 @@ export default function ScoreViewModal({
     }
   };
 
-  const renderField = (field: any) => {
-    if (field.type === 'section_header') {
-      return (
-        <div key={field.id} className="section-header">
-          {field.label}
-        </div>
-      );
-    }
-
-    if (field.type === 'group_header') {
-      return (
-        <div key={field.id} className="group-header">
-          {field.label}
-        </div>
-      );
-    }
-
-    if (field.type === 'calculated') {
-      const calcValue =
-        calculatedValues[field.id] !== undefined
-          ? calculatedValues[field.id]
-          : score.score_data[field.id]?.value || 0;
-      const className = field.isGrandTotal
-        ? 'grand-total-field'
-        : field.isTotal
-          ? 'total-field'
-          : 'subtotal-field';
-      return (
-        <div key={field.id} className={`score-field ${className}`}>
-          <label
-            className="score-label"
-            style={{
-              fontWeight: field.isTotal || field.isGrandTotal ? 700 : 600,
-            }}
-          >
-            {field.label}
-          </label>
-          <div className="calculated-value">{calcValue}</div>
-        </div>
-      );
-    }
-
-    const value = formData[field.id] !== undefined ? formData[field.id] : '';
-    const isCompact =
-      field.type === 'number' ||
-      field.type === 'buttons' ||
-      field.type === 'checkbox';
-
-    if (field.isMultiplier) {
-      return (
-        <div key={field.id} className="score-field multiplier-field">
-          <label className="score-label">
-            <span className="multiplier-label">Multiplier:</span> {field.label}
-            {field.suffix && <span className="multiplier">{field.suffix}</span>}
-          </label>
-          {renderFieldInput(field, value, isCompact)}
-        </div>
-      );
-    }
-
-    return (
-      <div
-        key={field.id}
-        className={`score-field ${isCompact ? 'compact' : ''}`}
-      >
-        <label className="score-label">
-          {field.label}
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </label>
-        {renderFieldInput(field, value, isCompact)}
-      </div>
-    );
-  };
-
-  const renderFieldInput = (field: any, value: any, isCompact: boolean) => {
-    const disabled = isReadOnly || field.autoPopulated;
-
-    return (
-      <>
-        {field.type === 'text' && (
-          <input
-            type="text"
-            className="score-input"
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-          />
-        )}
-        {field.type === 'number' && (
-          <input
-            type="number"
-            className="score-input"
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-          />
-        )}
-        {field.type === 'dropdown' && (
-          <select
-            className={`score-input ${isCompact ? 'compact' : ''}`}
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-            style={{ width: isCompact ? '70px' : '100%' }}
-          >
-            <option value="">Select...</option>
-            {field.options?.map((opt: any) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-            {/* If the current value isn't in options, show it anyway */}
-            {value &&
-              !field.options?.some(
-                (opt: any) => String(opt.value) === String(value),
-              ) && <option value={value}>{value}</option>}
-          </select>
-        )}
-        {field.type === 'buttons' && (
-          <div className="score-button-group">
-            {field.options?.map((opt: any) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-                onClick={() =>
-                  !isReadOnly && handleInputChange(field.id, opt.value)
-                }
-                disabled={isReadOnly}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {field.type === 'checkbox' && (
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => handleInputChange(field.id, e.target.checked)}
-            disabled={disabled}
-          />
-        )}
-      </>
-    );
-  };
-
-  // Fallback: render raw data in scoresheet-like format
+  // Fallback: render raw data in scoresheet-like format when the template
+  // schema can't be loaded or doesn't validate.
   const renderFallbackScoreData = () => {
     return (
       <div className="scoresheet-form">
@@ -352,10 +194,10 @@ export default function ScoreViewModal({
         </div>
         <div className="scoresheet-header-fields">
           {Object.entries(score.score_data)
-            .filter(([key]: [string, any]) =>
+            .filter(([key]) =>
               ['team_number', 'team_name', 'round'].includes(key),
             )
-            .map(([fieldId, data]: [string, any]) => (
+            .map(([fieldId, data]) => (
               <div key={fieldId} className="score-field">
                 <label className="score-label">{data.label}</label>
                 <input
@@ -371,12 +213,12 @@ export default function ScoreViewModal({
         <div style={{ marginTop: '1rem' }}>
           {Object.entries(score.score_data)
             .filter(
-              ([fieldId]: [string, any]) =>
+              ([fieldId]) =>
                 !['team_number', 'team_name', 'round', 'grand_total'].includes(
                   fieldId,
                 ),
             )
-            .map(([fieldId, data]: [string, any]) => (
+            .map(([fieldId, data]) => (
               <div key={fieldId} className="score-field">
                 <label className="score-label">{data.label}</label>
                 {data.type === 'buttons' ? (
@@ -404,7 +246,7 @@ export default function ScoreViewModal({
               {score.score_data.grand_total.label}
             </label>
             <div className="calculated-value">
-              {score.score_data.grand_total.value}
+              {String(score.score_data.grand_total.value)}
             </div>
           </div>
         )}
@@ -428,9 +270,8 @@ export default function ScoreViewModal({
     );
   }
 
-  const schema = template?.schema;
+  const schema = template?.schema ?? null;
 
-  // Derive winner display for bracket games
   const isBracket = score.score_type === 'bracket';
   const winnerDisplay = isBracket
     ? (() => {
@@ -441,16 +282,17 @@ export default function ScoreViewModal({
         if (winnerNum != null && winnerName != null) {
           return `${winnerNum} - ${winnerName}`;
         }
-        if (data.winner_display?.value) return data.winner_display.value;
+        if (data.winner_display?.value)
+          return String(data.winner_display.value);
         if (winner === 'team_a') {
           const n = data.team_a_number?.value ?? '';
           const name = data.team_a_name?.value ?? '';
-          return name ? `${n} - ${name}` : n || 'Team A';
+          return name ? `${n} - ${name}` : String(n) || 'Team A';
         }
         if (winner === 'team_b') {
           const n = data.team_b_number?.value ?? '';
           const name = data.team_b_name?.value ?? '';
-          return name ? `${n} - ${name}` : n || 'Team B';
+          return name ? `${n} - ${name}` : String(n) || 'Team B';
         }
         return null;
       })()
@@ -511,57 +353,17 @@ export default function ScoreViewModal({
           {!template || !schema ? (
             renderFallbackScoreData()
           ) : (
-            <div
-              className="scoresheet-form"
-              style={{ boxShadow: 'none', padding: 0 }}
-            >
-              {schema.title && (
-                <div className="scoresheet-title">{schema.title}</div>
-              )}
-
-              <div className="scoresheet-header-fields">
-                {schema.fields
-                  .filter(
-                    (f: any) =>
-                      !f.column &&
-                      f.type !== 'section_header' &&
-                      f.type !== 'group_header' &&
-                      f.type !== 'calculated',
-                  )
-                  .map(renderField)}
-              </div>
-
-              {schema.layout === 'two-column' ? (
-                <div className="scoresheet-columns">
-                  <div className="scoresheet-column">
-                    {schema.fields
-                      .filter((f: any) => f.column === 'left')
-                      .map(renderField)}
-                  </div>
-                  <div className="scoresheet-column">
-                    {schema.fields
-                      .filter((f: any) => f.column === 'right')
-                      .map(renderField)}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  {schema.fields
-                    .filter(
-                      (f: any) =>
-                        !f.column &&
-                        f.type !== 'section_header' &&
-                        f.type !== 'group_header',
-                    )
-                    .map(renderField)}
-                </div>
-              )}
-
-              {/* Render grand total */}
-              {schema.fields
-                .filter((f: any) => f.isGrandTotal)
-                .map(renderField)}
-            </div>
+            <ScoresheetFieldList
+              schema={schema}
+              mode={isReadOnly ? 'readonly' : 'edit'}
+              formData={formData}
+              calculatedValues={calculatedValues}
+              storedCalculatedValues={storedCalculatedValues}
+              onChange={handleInputChange}
+              showWinnerSelect={false}
+              formClassName="scoresheet-form"
+              formStyle={{ boxShadow: 'none', padding: 0 }}
+            />
           )}
         </div>
 

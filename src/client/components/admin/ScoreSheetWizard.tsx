@@ -1,14 +1,22 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import { useEvent } from '../../contexts/EventContext';
-import { buildDoubleEliminationSchema } from '../scoresheetUtils';
+import {
+  buildDoubleEliminationSchema,
+  buildSeedingSchema,
+} from '../scoresheetUtils';
+import {
+  scoresheetFieldSchema,
+  type ScoresheetField,
+  type ScoresheetSchema,
+} from '../../../shared/domain/scoresheetSchema';
+import { z } from 'zod';
 import '../Modal.css';
 
 interface FieldTemplate {
   id: number;
   name: string;
   description: string;
-  fields: any[];
+  fields: ScoresheetField[];
 }
 
 interface ScoreSheetWizardProps {
@@ -16,11 +24,13 @@ interface ScoreSheetWizardProps {
     name: string;
     description: string;
     accessCode: string;
-    schema: any;
+    schema: ScoresheetSchema;
     spreadsheetConfigId: number | '' | null;
   }) => void;
   onCancel: () => void;
 }
+
+const fieldTemplateFieldsSchema = z.array(scoresheetFieldSchema);
 
 type StepType = 'type' | 'template' | 'basic' | 'review';
 type SheetType = 'seeding' | 'de';
@@ -59,139 +69,45 @@ export default function ScoreSheetWizard({
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
-      // Parse fields_json for each template
-      const templatesWithParsedFields = data.map((t: any) => ({
-        ...t,
-        fields: JSON.parse(t.fields_json),
-      }));
+      const data: Array<{
+        id: number;
+        name: string;
+        description: string;
+        fields_json: string;
+      }> = await response.json();
+      const templatesWithParsedFields: FieldTemplate[] = [];
+      for (const t of data) {
+        try {
+          const parsedFields = fieldTemplateFieldsSchema.parse(
+            JSON.parse(t.fields_json),
+          );
+          templatesWithParsedFields.push({
+            id: t.id,
+            name: t.name,
+            description: t.description,
+            fields: parsedFields,
+          });
+        } catch (err) {
+          console.error(
+            `Skipping field template ${t.id} (${t.name}) – invalid schema:`,
+            err,
+          );
+        }
+      }
       setFieldTemplates(templatesWithParsedFields);
     } catch (error) {
       console.error('Error loading field templates:', error);
     }
   };
 
-  const generateSchema = () => {
+  const generateSchema = (): ScoresheetSchema => {
     if (sheetType === 'seeding') {
-      return generateSeedingSchema();
-    } else {
-      return generateDESchema();
-    }
-  };
-
-  const generateSeedingSchema = () => {
-    const schema: any = {
-      layout: 'two-column',
-      title: name || 'Seeding Score Sheet',
-      eventId: selectedEvent?.id ?? null,
-      scoreDestination: 'db',
-      fields: [],
-    };
-
-    // Add team selection fields (always included) - teams from DB
-    schema.fields.push({
-      id: 'team_number',
-      label: 'Team Number',
-      type: 'dropdown',
-      required: true,
-      dataSource: {
-        type: 'db',
-        eventId: selectedEvent?.id,
-        labelField: 'team_number',
-        valueField: 'team_number',
-      },
-      cascades: {
-        targetField: 'team_name',
-        sourceField: 'team_name',
-      },
-    });
-
-    schema.fields.push({
-      id: 'team_name',
-      label: 'Team Name',
-      type: 'text',
-      required: true,
-      autoPopulated: true,
-      placeholder: 'Select team number first',
-    });
-
-    schema.fields.push({
-      id: 'round',
-      label: 'Round',
-      type: 'number',
-      required: true,
-      min: 1,
-      step: 1,
-      placeholder: 'Enter round number',
-    });
-
-    // Add scoring fields from template if selected
-    if (selectedTemplate && selectedTemplate.fields) {
-      // Shared side A/B templates can carry one certification field per side for
-      // DE. Seeding only needs a single team certification, so keep the side A
-      // field and omit the side B counterpart when generating the seeding schema.
-      const seedingFields = selectedTemplate.fields.filter(
-        (field: any) => field.id !== 'side_b_team_initials',
-      );
-      schema.fields.push(...seedingFields);
-
-      // Add grand total for seeding sheets (templates don't include this so it can be conditional)
-      schema.fields.push({
-        id: 'grand_total',
-        label: 'Total Score (A + B)',
-        type: 'calculated',
-        formula: 'side_a_total + side_b_total',
-        isGrandTotal: true,
-      });
-    } else {
-      // Default basic scoring fields
-      schema.fields.push({
-        id: 'section_header_side_a',
-        label: 'SIDE A',
-        type: 'section_header',
-        column: 'left',
-      });
-
-      schema.fields.push({
-        id: 'side_a_score',
-        label: 'Side A Score',
-        type: 'number',
-        column: 'left',
-        required: false,
-        min: 0,
-        step: 1,
-      });
-
-      schema.fields.push({
-        id: 'section_header_side_b',
-        label: 'SIDE B',
-        type: 'section_header',
-        column: 'right',
-      });
-
-      schema.fields.push({
-        id: 'side_b_score',
-        label: 'Side B Score',
-        type: 'number',
-        column: 'right',
-        required: false,
-        min: 0,
-        step: 1,
-      });
-
-      schema.fields.push({
-        id: 'grand_total',
-        label: 'Total Score (A + B)',
-        type: 'calculated',
-        formula: 'side_a_score + side_b_score',
-        isGrandTotal: true,
+      return buildSeedingSchema({
+        title: name || 'Seeding Score Sheet',
+        eventId: selectedEvent?.id ?? null,
+        templateFields: selectedTemplate?.fields ?? null,
       });
     }
-
-    return schema;
-  };
-
-  const generateDESchema = () => {
     return buildDoubleEliminationSchema({
       title: name || 'Double Elimination Score Sheet',
       eventId: selectedEvent?.id ?? null,

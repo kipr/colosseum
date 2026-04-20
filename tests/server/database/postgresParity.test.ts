@@ -51,7 +51,9 @@ function extractColumnNames(createTableSql: string): string[] {
   for (const raw of clauses) {
     const clause = raw.trim();
     if (!clause) continue;
-    if (/^(UNIQUE|CHECK|FOREIGN\s+KEY|PRIMARY\s+KEY|CONSTRAINT)\b/i.test(clause))
+    if (
+      /^(UNIQUE|CHECK|FOREIGN\s+KEY|PRIMARY\s+KEY|CONSTRAINT)\b/i.test(clause)
+    )
       continue;
     const match = clause.match(/^"?([A-Za-z_][A-Za-z0-9_]*)"?/);
     if (match) names.push(match[1]);

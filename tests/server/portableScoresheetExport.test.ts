@@ -27,7 +27,9 @@ describe('portable scoresheet exporter', () => {
     const html = readFileSync(outputPath, 'utf8');
 
     expect(html).toContain('<style>');
-    expect(html).toContain('<script id="portable-template-data" type="application/json">');
+    expect(html).toContain(
+      '<script id="portable-template-data" type="application/json">',
+    );
     expect(html).toContain('<script>');
     expect(html).toContain('Portable Scoresheet');
     expect(html).toContain('side_a_score + side_b_score');

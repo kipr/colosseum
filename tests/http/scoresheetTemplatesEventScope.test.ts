@@ -112,7 +112,10 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Bracket Sheet',
         description: 'Bracket via bracketSource',
         accessCode: 'code999',
-        schema: { bracketSource: 'winners', fields: [] },
+        schema: {
+          bracketSource: { type: 'db', scope: 'event', eventId: event.id },
+          fields: [],
+        },
         eventId: event.id,
       });
 

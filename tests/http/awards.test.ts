@@ -93,9 +93,7 @@ describe('Awards API', () => {
       const res = await http.delete(`${baseUrl}/awards/templates/${t.id}`);
       expect(res.status).toBe(200);
 
-      const listRes = await http.get<unknown[]>(
-        `${baseUrl}/awards/templates`,
-      );
+      const listRes = await http.get<unknown[]>(`${baseUrl}/awards/templates`);
       expect(listRes.json).toHaveLength(0);
     });
 
@@ -361,17 +359,13 @@ describe('Awards API', () => {
       const event = await seedEvent(testDb.db, {
         status: 'complete',
       });
-      const res = await http.get(
-        `${baseUrl}/awards/event/${event.id}/public`,
-      );
+      const res = await http.get(`${baseUrl}/awards/event/${event.id}/public`);
       expect(res.status).toBe(404);
     });
 
     it('returns 404 for active event', async () => {
       const event = await seedEvent(testDb.db, { status: 'active' });
-      const res = await http.get(
-        `${baseUrl}/awards/event/${event.id}/public`,
-      );
+      const res = await http.get(`${baseUrl}/awards/event/${event.id}/public`);
       expect(res.status).toBe(404);
     });
 
@@ -516,10 +510,16 @@ describe('Awards API', () => {
           de: { bracket_name: string; placements: { place: number }[] }[];
           perBracketOverall: {
             bracket_name: string;
-            placements: { place: number; recipients: { team_number: number }[] }[];
+            placements: {
+              place: number;
+              recipients: { team_number: number }[];
+            }[];
           }[];
           eventOverall: {
-            placements: { place: number; recipients: { team_number: number }[] }[];
+            placements: {
+              place: number;
+              recipients: { team_number: number }[];
+            }[];
           } | null;
         };
       }>(`${baseUrl}/awards/event/${event.id}/public`);

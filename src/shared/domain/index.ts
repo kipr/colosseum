@@ -17,3 +17,4 @@ export * from './bracket';
 export * from './event';
 export * from './team';
 export * from './eventVisibility';
+export * from './scoresheetSchema';

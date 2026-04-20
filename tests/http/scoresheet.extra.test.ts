@@ -269,7 +269,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const event = await seedEvent(testDb.db);
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bracket Template',
-        schema: { mode: 'head-to-head' },
+        schema: { mode: 'head-to-head', fields: [] },
         accessCode: 'bracket123',
         eventId: event.id,
       });
@@ -287,7 +287,10 @@ describe('Scoresheet Routes – extra coverage', () => {
       const event = await seedEvent(testDb.db);
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bracket Source Template',
-        schema: { bracketSource: true },
+        schema: {
+          bracketSource: { type: 'db', scope: 'event', eventId: event.id },
+          fields: [],
+        },
         accessCode: 'bs123',
         eventId: event.id,
       });
@@ -312,19 +315,22 @@ describe('Scoresheet Routes – extra coverage', () => {
         created_by: userId,
       });
 
+      const updatedSchema = {
+        fields: [{ id: 'x', label: 'X', type: 'text' as const }],
+      };
       const res = await http.put(
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Updated',
-          schema: { fields: ['x'] },
+          schema: updatedSchema,
           accessCode: 'new',
           eventId: event.id,
         },
       );
       expect(res.status).toBe(200);
-      const body = res.json as { name: string; schema: { fields: string[] } };
+      const body = res.json as { name: string; schema: typeof updatedSchema };
       expect(body.name).toBe('Updated');
-      expect(body.schema).toEqual({ fields: ['x'] });
+      expect(body.schema).toEqual(updatedSchema);
 
       const link = await testDb.db.get(
         'SELECT * FROM event_scoresheet_templates WHERE template_id = ?',
@@ -352,7 +358,7 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Unlinked',
-          schema: {},
+          schema: { fields: [] },
           accessCode: 'y',
         },
       );

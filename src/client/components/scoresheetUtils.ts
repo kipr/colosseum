@@ -1,4 +1,8 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import type {
+  ScoresheetField,
+  ScoresheetSchema,
+} from '../../shared/domain/scoresheetSchema';
+
 export interface BracketTeamDisplay {
   teamNumber: string;
   displayName: string;
@@ -61,9 +65,16 @@ export function isEventScopedBracketSource(
   return getBracketSourceEventId(bracketSource, fallbackEventId) != null;
 }
 
-export function adaptDoubleEliminationFields(templateFields: any[]): any[] {
+/**
+ * Rewrite shared "side A/B" template fields into "team A/B" identifiers used
+ * by double-elimination scoresheets. Any unknown extra properties pass through
+ * untouched.
+ */
+export function adaptDoubleEliminationFields(
+  templateFields: ScoresheetField[],
+): ScoresheetField[] {
   return templateFields.map((field) => {
-    const newField = { ...field };
+    const newField: ScoresheetField = { ...field };
 
     if (newField.id) {
       newField.id = newField.id
@@ -71,7 +82,7 @@ export function adaptDoubleEliminationFields(templateFields: any[]): any[] {
         .replace(/side_b/g, 'team_b');
     }
 
-    if (newField.formula) {
+    if (newField.type === 'calculated' && newField.formula) {
       newField.formula = newField.formula
         .replace(/side_a/g, 'team_a')
         .replace(/side_b/g, 'team_b');
@@ -86,13 +97,17 @@ export function adaptDoubleEliminationFields(templateFields: any[]): any[] {
   });
 }
 
-export function buildDoubleEliminationSchema(options: {
+export interface BuildDoubleEliminationSchemaOptions {
   title: string;
   eventId: number | null;
-  templateFields?: any[] | null;
-}): any {
+  templateFields?: ScoresheetField[] | null;
+}
+
+export function buildDoubleEliminationSchema(
+  options: BuildDoubleEliminationSchemaOptions,
+): ScoresheetSchema {
   const { title, eventId, templateFields } = options;
-  const schema: any = {
+  const schema: ScoresheetSchema = {
     layout: 'two-column',
     mode: 'head-to-head',
     title: title || 'Double Elimination Score Sheet',
@@ -227,6 +242,127 @@ export function buildDoubleEliminationSchema(options: {
     isTotal: true,
     formula: 'team_b_score',
   });
+
+  return schema;
+}
+
+export interface BuildSeedingSchemaOptions {
+  title: string;
+  eventId: number | null;
+  templateFields?: ScoresheetField[] | null;
+}
+
+/**
+ * Mirrors the seeding schema previously inlined in `ScoreSheetWizard`. Keeps
+ * the shared template's side-A certification field, drops the side-B one, and
+ * appends a grand total.
+ */
+export function buildSeedingSchema(
+  options: BuildSeedingSchemaOptions,
+): ScoresheetSchema {
+  const { title, eventId, templateFields } = options;
+  const schema: ScoresheetSchema = {
+    layout: 'two-column',
+    title: title || 'Seeding Score Sheet',
+    eventId,
+    scoreDestination: 'db',
+    fields: [],
+  };
+
+  schema.fields.push({
+    id: 'team_number',
+    label: 'Team Number',
+    type: 'dropdown',
+    required: true,
+    dataSource: {
+      type: 'db',
+      eventId,
+      labelField: 'team_number',
+      valueField: 'team_number',
+    },
+    cascades: {
+      targetField: 'team_name',
+      sourceField: 'team_name',
+    },
+  });
+
+  schema.fields.push({
+    id: 'team_name',
+    label: 'Team Name',
+    type: 'text',
+    required: true,
+    autoPopulated: true,
+    placeholder: 'Select team number first',
+  });
+
+  schema.fields.push({
+    id: 'round',
+    label: 'Round',
+    type: 'number',
+    required: true,
+    min: 1,
+    step: 1,
+    placeholder: 'Enter round number',
+  });
+
+  if (templateFields && templateFields.length > 0) {
+    // Shared templates can carry one certification field per side for DE; for
+    // seeding we only keep the side-A certification.
+    const seedingFields = templateFields.filter(
+      (field) => field.id !== 'side_b_team_initials',
+    );
+    schema.fields.push(...seedingFields);
+
+    schema.fields.push({
+      id: 'grand_total',
+      label: 'Total Score (A + B)',
+      type: 'calculated',
+      formula: 'side_a_total + side_b_total',
+      isGrandTotal: true,
+    });
+  } else {
+    schema.fields.push({
+      id: 'section_header_side_a',
+      label: 'SIDE A',
+      type: 'section_header',
+      column: 'left',
+    });
+
+    schema.fields.push({
+      id: 'side_a_score',
+      label: 'Side A Score',
+      type: 'number',
+      column: 'left',
+      required: false,
+      min: 0,
+      step: 1,
+    });
+
+    schema.fields.push({
+      id: 'section_header_side_b',
+      label: 'SIDE B',
+      type: 'section_header',
+      column: 'right',
+    });
+
+    schema.fields.push({
+      id: 'side_b_score',
+      label: 'Side B Score',
+      type: 'number',
+      column: 'right',
+      required: false,
+      min: 0,
+      step: 1,
+    });
+
+    schema.fields.push({
+      id: 'grand_total',
+      label: 'Total Score (A + B)',
+      type: 'calculated',
+      formula: 'side_a_score + side_b_score',
+      isGrandTotal: true,
+    });
+  }
 
   return schema;
 }

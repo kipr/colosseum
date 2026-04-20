@@ -14,7 +14,7 @@ export default defineConfig({
     environment: 'node',
 
     // Include SQL tests from tests/ directory (keeps them out of server tsc build)
-    include: ['tests/**/*.test.ts'],
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
 
     // Global test timeout
     testTimeout: 10000,

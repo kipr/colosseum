@@ -1,17 +1,31 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import {
-  BracketGameOption,
+  type ScoresheetField,
+  type ScoresheetSchema,
+} from '../../shared/domain/scoresheetSchema';
+import {
+  type BracketGameOption,
   findBracketGameBySelection,
-  formatBracketGameOptionLabel,
-  getBracketGameOptionValue,
   getBracketSourceEventId,
   isEventScopedBracketSource,
 } from './scoresheetUtils';
+import { ScoresheetFieldList } from './scoresheet/ScoresheetFieldList';
+import { useCalculatedValues } from './scoresheet/formulaEngine';
 import '../pages/Scoresheet.css';
 
 interface ScoresheetFormProps {
-  template: any;
+  template: { id: number; schema: ScoresheetSchema };
+}
+
+interface QueueItem {
+  id: number;
+  queue_type: string;
+  seeding_team_id: number;
+  seeding_round: number;
+  seeding_team_number: number;
+  seeding_team_name: string;
+  queue_position: number;
+  status: string;
 }
 
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
@@ -27,24 +41,23 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     schema.eventId,
   );
 
-  // Use queue for DB-backed seeding: replace team+round selection with queue picker
-  const useQueueForSeeding =
-    schema.eventId && schema.scoreDestination === 'db' && !isHeadToHead;
+  const useQueueForSeeding = !!(
+    schema.eventId &&
+    schema.scoreDestination === 'db' &&
+    !isHeadToHead
+  );
 
-  // Helper to get initial form data with default values from schema
-  const getInitialFormData = () => {
-    const initial: Record<string, any> = {};
+  const getInitialFormData = (): Record<string, unknown> => {
+    const initial: Record<string, unknown> = {};
     if (!useQueueForSeeding) {
       const cachedRound = localStorage.getItem('lastRoundNumber');
       if (cachedRound) initial.round = cachedRound;
     }
 
-    // Initialize fields with their default values if specified
-    template.schema.fields.forEach((field: any) => {
-      if (field.defaultValue !== undefined) {
+    schema.fields.forEach((field) => {
+      if ('defaultValue' in field && field.defaultValue !== undefined) {
         initial[field.id] = field.defaultValue;
-      } else if (field.startValue !== undefined) {
-        // Support both defaultValue and startValue
+      } else if ('startValue' in field && field.startValue !== undefined) {
         initial[field.id] = field.startValue;
       }
     });
@@ -53,57 +66,43 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const [formData, setFormData] =
-    useState<Record<string, any>>(getInitialFormData);
+    useState<Record<string, unknown>>(getInitialFormData);
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>(
     {},
   );
-  const [dynamicData, setDynamicData] = useState<Record<string, any[]>>({});
-  const [bracketGames, setBracketGames] = useState<BracketGameOption[]>([]);
-  const [teamsData, setTeamsData] = useState<any[]>([]); // Teams lookup for head-to-head
-  const [calculatedValues, setCalculatedValues] = useState<
-    Record<string, number>
+  const [dynamicData, setDynamicData] = useState<
+    Record<string, Array<Record<string, unknown>>>
   >({});
+  const [bracketGames, setBracketGames] = useState<BracketGameOption[]>([]);
+  const [teamsData, setTeamsData] = useState<Array<Record<string, unknown>>>(
+    [],
+  );
   const [notification, setNotification] = useState<{
     message: string;
     type: 'success' | 'error';
   } | null>(null);
   const [showGameAreas, setShowGameAreas] = useState(false);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
 
-  const [queueItems, setQueueItems] = useState<
-    Array<{
-      id: number;
-      queue_type: string;
-      seeding_team_id: number;
-      seeding_round: number;
-      seeding_team_number: number;
-      seeding_team_name: string;
-      queue_position: number;
-      status: string;
-    }>
-  >([]);
+  const calculatedValues = useCalculatedValues(schema.fields, formData);
 
-  // Show notification and auto-dismiss
   const showNotification = (
     message: string,
     type: 'success' | 'error' = 'success',
   ) => {
     setNotification({ message, type });
 
-    // Scroll to top using multiple methods for better browser compatibility
-    // Use a small delay to ensure the DOM has updated
     setTimeout(() => {
       window.scrollTo(0, 0);
       document.documentElement.scrollTop = 0;
-      document.body.scrollTop = 0; // For Safari
+      document.body.scrollTop = 0;
     }, 100);
 
-    // Auto-dismiss after 2 seconds
     setTimeout(() => {
       setNotification(null);
     }, 2000);
   };
 
-  // Reset form to initial values
   const handleReset = () => {
     if (
       window.confirm(
@@ -112,33 +111,23 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     ) {
       setFormData(getInitialFormData());
       setTouchedFields({});
-      setCalculatedValues({});
       showNotification('Form has been reset', 'success');
     }
   };
 
-  // Recalculate all formulas when form data changes
   useEffect(() => {
-    calculateAllFormulas();
-  }, [formData]);
-
-  useEffect(() => {
-    // Load dynamic dropdown data (skip team_number when using queue)
     loadDynamicData();
 
-    // Load queue for DB-backed seeding
     if (useQueueForSeeding && schema.eventId) {
       loadQueue();
       const interval = setInterval(() => loadQueue(), 5000);
       return () => clearInterval(interval);
     }
 
-    // Load bracket games if head-to-head mode
     if (isHeadToHead && schema.bracketSource) {
       loadBracketGames();
       loadTeamsData();
 
-      // Poll for bracket updates every 5 seconds so new games appear as winners are decided
       const interval = setInterval(() => {
         loadBracketGames();
       }, 5000);
@@ -187,36 +176,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           return;
         }
         const dbGames = await response.json();
-        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
-          const team1 =
-            g.team1_id != null && (g.team1_number != null || g.team1_name)
-              ? {
-                  teamNumber: String(g.team1_number ?? g.team1_name ?? ''),
-                  displayName:
-                    g.team1_display || g.team1_name || String(g.team1_number),
-                }
-              : null;
-          const team2 =
-            g.team2_id != null && (g.team2_number != null || g.team2_name)
-              ? {
-                  teamNumber: String(g.team2_number ?? g.team2_name ?? ''),
-                  displayName:
-                    g.team2_display || g.team2_name || String(g.team2_number),
-                }
-              : null;
-          return {
-            gameNumber: g.game_number,
-            bracketId: g.bracket_id,
-            bracketName: g.bracket_name,
-            roundName: g.round_name,
-            bracketSide: g.bracket_side,
-            queuePosition: g.queue_position ?? null,
-            team1,
-            team2,
-            hasWinner: !!g.winner_id || g.status === 'completed',
-            bracketGameId: g.bracket_game_id ?? g.id,
-          };
-        });
+        const mapped: BracketGameOption[] = dbGames.map(
+          (g: Record<string, unknown>) => mapDbGame(g),
+        );
         setBracketGames(mapped);
       } else if (bracketSource.type === 'db' && bracketSource.bracketId) {
         const response = await fetch(
@@ -229,35 +191,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           return;
         }
         const dbGames = await response.json();
-        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
-          const team1 =
-            g.team1_id != null && (g.team1_number != null || g.team1_name)
-              ? {
-                  teamNumber: String(g.team1_number ?? g.team1_name ?? ''),
-                  displayName:
-                    g.team1_display || g.team1_name || String(g.team1_number),
-                }
-              : null;
-          const team2 =
-            g.team2_id != null && (g.team2_number != null || g.team2_name)
-              ? {
-                  teamNumber: String(g.team2_number ?? g.team2_name ?? ''),
-                  displayName:
-                    g.team2_display || g.team2_name || String(g.team2_number),
-                }
-              : null;
-          return {
-            gameNumber: g.game_number,
-            bracketId: g.bracket_id ?? bracketSource.bracketId,
-            team1,
-            team2,
-            hasWinner: !!g.winner_id || g.status === 'completed',
-            bracketGameId: g.id,
-          };
-        });
+        const mapped: BracketGameOption[] = dbGames.map(
+          (g: Record<string, unknown>) =>
+            mapDbGame(g, bracketSource.bracketId ?? undefined),
+        );
         setBracketGames(mapped);
       } else {
-        // Only DB-backed bracket source is supported
         setBracketGames([]);
       }
     } catch (error) {
@@ -265,12 +204,45 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
   };
 
-  // Load teams data for looking up full team names in head-to-head mode
+  const mapDbGame = (
+    g: Record<string, unknown>,
+    fallbackBracketId?: number,
+  ): BracketGameOption => {
+    const team1 =
+      g.team1_id != null && (g.team1_number != null || g.team1_name)
+        ? {
+            teamNumber: String(g.team1_number ?? g.team1_name ?? ''),
+            displayName: String(
+              g.team1_display || g.team1_name || g.team1_number,
+            ),
+          }
+        : null;
+    const team2 =
+      g.team2_id != null && (g.team2_number != null || g.team2_name)
+        ? {
+            teamNumber: String(g.team2_number ?? g.team2_name ?? ''),
+            displayName: String(
+              g.team2_display || g.team2_name || g.team2_number,
+            ),
+          }
+        : null;
+    return {
+      gameNumber: g.game_number as number,
+      bracketId: (g.bracket_id as number) ?? fallbackBracketId,
+      bracketName: g.bracket_name as string | null | undefined,
+      roundName: g.round_name as string | null | undefined,
+      bracketSide: g.bracket_side as string | null | undefined,
+      queuePosition: (g.queue_position as number | null | undefined) ?? null,
+      team1,
+      team2,
+      hasWinner: !!g.winner_id || g.status === 'completed',
+      bracketGameId: (g.bracket_game_id as number) ?? (g.id as number),
+    };
+  };
+
   const loadTeamsData = async () => {
     try {
       const teamsConfig = schema.teamsDataSource;
-
-      // DB backend: load teams from event
       if (teamsConfig?.type === 'db' && teamsConfig?.eventId) {
         const response = await fetch(`/teams/event/${teamsConfig.eventId}`, {
           credentials: 'include',
@@ -287,29 +259,27 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
   };
 
-  // Look up full team name from Teams data using team number
   const lookupTeamName = (teamNumber: string): string => {
     if (!teamNumber || teamNumber === 'Bye') return 'Bye';
 
-    // Use field names from teamsDataSource config, or common defaults
     const teamsConfig = schema.teamsDataSource;
     const teamNumberField = teamsConfig?.teamNumberField || 'Team Number';
     const teamNameField = teamsConfig?.teamNameField || 'Team Name';
 
-    // Normalize team number by stripping leading zeros (e.g., "001" -> "1")
     const normalizedTeamNumber = String(parseInt(teamNumber, 10) || teamNumber);
 
-    const team = teamsData.find((t: any) => {
-      // Normalize the stored team number as well for comparison
+    const team = teamsData.find((t) => {
       const storedNumber = String(
-        parseInt(t[teamNumberField], 10) || t[teamNumberField],
+        parseInt(String(t[teamNumberField]), 10) || t[teamNumberField],
       );
-      const storedNumberAlt1 = String(parseInt(t['Team #'], 10) || t['Team #']);
+      const storedNumberAlt1 = String(
+        parseInt(String(t['Team #']), 10) || t['Team #'],
+      );
       const storedNumberAlt2 = String(
-        parseInt(t['Team Number'], 10) || t['Team Number'],
+        parseInt(String(t['Team Number']), 10) || t['Team Number'],
       );
       const storedNumberAlt3 = String(
-        parseInt(t['team_number'], 10) || t['team_number'],
+        parseInt(String(t['team_number']), 10) || t['team_number'],
       );
 
       return (
@@ -321,20 +291,19 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     });
 
     if (team) {
-      return (
+      return String(
         team[teamNameField] ||
-        team['Team Name'] ||
-        team['Name'] ||
-        team['team_name'] ||
-        team['display_name'] ||
-        teamNumber
+          team['Team Name'] ||
+          team['Name'] ||
+          team['team_name'] ||
+          team['display_name'] ||
+          teamNumber,
       );
     }
 
-    return teamNumber; // Fallback to team number if not found
+    return teamNumber;
   };
 
-  // Format team display for bracket (team number + first 7 chars of name)
   const formatBracketDisplay = (
     teamNumber: string,
     teamName: string,
@@ -346,18 +315,17 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const loadDynamicData = async () => {
     const fieldsWithDataSource = schema.fields.filter(
-      (f: any) =>
+      (f) =>
         f.dataSource &&
         f.dataSource.type !== 'bracket' &&
-        // Skip team_number when using queue - it gets populated from queue selection
         !(useQueueForSeeding && f.id === 'team_number'),
     );
 
     for (const field of fieldsWithDataSource) {
       try {
         const ds = field.dataSource;
+        if (!ds) continue;
 
-        // DB backend: load teams from event for dropdown
         if (ds.type === 'db' && ds.eventId) {
           const response = await fetch(`/teams/event/${ds.eventId}`, {
             credentials: 'include',
@@ -366,13 +334,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             console.error(`Failed to load ${field.id} from DB`);
             continue;
           }
-          let data = await response.json();
+          const raw = await response.json();
           const labelField = ds.labelField || 'team_number';
           const valueField = ds.valueField || 'team_number';
 
-          // Map DB format to dropdown format (labelField/valueField for cascades)
-          // Include id for score submission (team_id for seeding_scores)
-          data = data.map((t: any) => ({
+          let data = raw.map((t: Record<string, unknown>) => ({
             [labelField]: String(t.team_number),
             [valueField]: String(t.team_number),
             team_name: t.team_name || t.display_name,
@@ -381,23 +347,22 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             'Team Name': t.team_name || t.display_name,
           }));
 
-          data = data.sort((a: any, b: any) => {
-            const aVal = String(a[labelField] || '');
-            const bVal = String(b[labelField] || '');
-            const aNum = parseFloat(aVal);
-            const bNum = parseFloat(bVal);
-            if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-            return aVal.localeCompare(bVal, undefined, {
-              numeric: true,
-              sensitivity: 'base',
-            });
-          });
+          data = data.sort(
+            (a: Record<string, unknown>, b: Record<string, unknown>) => {
+              const aVal = String(a[labelField] || '');
+              const bVal = String(b[labelField] || '');
+              const aNum = parseFloat(aVal);
+              const bNum = parseFloat(bVal);
+              if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
+              return aVal.localeCompare(bVal, undefined, {
+                numeric: true,
+                sensitivity: 'base',
+              });
+            },
+          );
 
           setDynamicData((prev) => ({ ...prev, [field.id]: data }));
-          continue;
         }
-
-        // Only DB-backed data sources are supported
       } catch (error) {
         console.error(`Error loading data for ${field.id}:`, error);
       }
@@ -453,7 +418,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return;
     }
 
-    const updates: Record<string, any> = {
+    const updates: Record<string, unknown> = {
       game_number: selectedGame.gameNumber,
       winner: '',
     };
@@ -491,27 +456,40 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     setFormData((prev) => ({ ...prev, ...updates }));
   };
 
-  const handleInputChange = (fieldId: string, value: any, field?: any) => {
-    const updates: Record<string, any> = { [fieldId]: value };
-
-    // Handle bracket game selection - populate both teams
+  const handleInputChange = (
+    fieldId: string,
+    value: unknown,
+    field?: ScoresheetField,
+  ) => {
     if (fieldId === 'game_number' && isHeadToHead) {
       handleBracketGameSelect(String(value));
       return;
     }
 
-    // Handle cascading fields (e.g., team number selection updates team name)
-    if (field?.cascades && !isHeadToHead) {
-      const cascadeField = schema.fields.find(
-        (f: any) => f.id === field.cascades.targetField,
-      );
-      if (cascadeField && dynamicData[field.id]) {
-        const selectedItem = dynamicData[field.id].find(
-          (item: any) => item[field.dataSource.valueField] === value,
-        );
-        if (selectedItem && field.cascades.sourceField) {
-          updates[field.cascades.targetField] =
-            selectedItem[field.cascades.sourceField];
+    const updates: Record<string, unknown> = { [fieldId]: value };
+
+    if (
+      field &&
+      'cascades' in field &&
+      field.cascades &&
+      !isHeadToHead &&
+      field.dataSource?.type === 'db'
+    ) {
+      const cascades = field.cascades as Record<string, string>;
+      const targetField = cascades.targetField;
+      const sourceField = cascades.sourceField;
+      if (targetField && sourceField) {
+        const cascadeField = schema.fields.find((f) => f.id === targetField);
+        const ds = field.dataSource;
+        const valueField =
+          ds && ds.type === 'db' ? ds.valueField || 'value' : 'value';
+        if (cascadeField && dynamicData[field.id]) {
+          const selectedItem = dynamicData[field.id].find(
+            (item) => item[valueField] === value,
+          );
+          if (selectedItem) {
+            updates[targetField] = selectedItem[sourceField];
+          }
         }
       }
     }
@@ -519,135 +497,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     setFormData((prev) => ({ ...prev, ...updates }));
   };
 
-  const getFieldStartingValue = (field: any) => {
-    if (field.defaultValue !== undefined) {
-      return field.defaultValue;
-    }
-
-    return field.startValue;
-  };
-
-  const shouldShowNumberPlaceholder = (field: any, value: any) => {
-    const startingValue = getFieldStartingValue(field);
-
-    return (
-      !touchedFields[field.id] &&
-      (value === '' ||
-        value === undefined ||
-        value === null ||
-        value === 0 ||
-        value === '0') &&
-      (startingValue === undefined ||
-        startingValue === null ||
-        startingValue === '' ||
-        startingValue === 0 ||
-        startingValue === '0')
-    );
-  };
-
-  const getDisplayedNumberValue = (field: any, value: any) => {
-    if (shouldShowNumberPlaceholder(field, value)) {
-      return '';
-    }
-
-    return value ?? '';
-  };
-
-  const getNumberPlaceholder = (field: any, value: any) => {
-    if (!shouldShowNumberPlaceholder(field, value)) {
-      return field.placeholder || '';
-    }
-
-    const startingValue = getFieldStartingValue(field);
-    if (
-      startingValue !== undefined &&
-      startingValue !== null &&
-      String(startingValue) !== ''
-    ) {
-      return String(startingValue);
-    }
-
-    return field.placeholder || '0';
-  };
-
-  const calculateAllFormulas = () => {
-    const calculated: Record<string, number> = {};
-
-    schema.fields.forEach((field: any) => {
-      if (field.type === 'calculated' && field.formula) {
-        try {
-          const result = evaluateFormula(field.formula, formData, calculated);
-          calculated[field.id] = result;
-        } catch (error) {
-          console.error(`Error calculating ${field.id}:`, error);
-          calculated[field.id] = 0;
-        }
-      }
-    });
-
-    setCalculatedValues(calculated);
-  };
-
-  const evaluateFormula = (
-    formula: string,
-    data: Record<string, any>,
-    calculated: Record<string, number>,
-  ): number => {
-    let expression = formula;
-    const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-    const uniqueFieldIds = Array.from(new Set(fieldIds));
-
-    uniqueFieldIds.forEach((fieldId) => {
-      let value: any = 0;
-
-      if (calculated[fieldId] !== undefined) {
-        value = calculated[fieldId];
-      } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
-        value = data[fieldId];
-      }
-
-      let replacement: string;
-
-      if (formula.includes(`${fieldId} ===`)) {
-        replacement = `'${String(value)}'`;
-      } else if (typeof value === 'string') {
-        replacement = String(Number(value) || 0);
-      } else if (typeof value === 'boolean') {
-        replacement = value ? '1' : '0';
-      } else {
-        replacement = String(Number(value) || 0);
-      }
-
-      const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
-      expression = expression.replace(regex, replacement);
-    });
-
-    try {
-      const result = eval(expression);
-      return Number(result) || 0;
-    } catch (error) {
-      console.error(
-        'Formula evaluation error:',
-        error,
-        'Formula:',
-        formula,
-        'Expression:',
-        expression,
-      );
-      return 0;
-    }
+  const handleNumberInputTouched = (fieldId: string, touched: boolean) => {
+    setTouchedFields((prev) => ({ ...prev, [fieldId]: touched }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate winner selection for head-to-head
     if (isHeadToHead && !formData.winner) {
       alert('Please select a winner before submitting.');
       return;
     }
 
-    // Validate bracket_game_id for DB-backed bracket submissions
     if (
       isHeadToHead &&
       schema.scoreDestination === 'db' &&
@@ -659,20 +520,22 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return;
     }
 
-    // Validate game_queue_id for queue-based seeding
     if (useQueueForSeeding && formData.game_queue_id == null) {
       alert('Please select a team and round from the queue before submitting.');
       return;
     }
 
-    const scoreData: Record<string, any> = {};
+    const scoreData: Record<
+      string,
+      { label: string; value: unknown; type: string }
+    > = {};
 
-    schema.fields.forEach((field: any) => {
+    schema.fields.forEach((field) => {
       if (field.type === 'section_header' || field.type === 'group_header') {
         return;
       }
 
-      let value;
+      let value: unknown;
 
       if (field.type === 'calculated') {
         value = calculatedValues[field.id] || 0;
@@ -692,14 +555,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
       scoreData[field.id] = {
         label: field.label,
-        value: value,
+        value,
         type: field.type,
       };
     });
 
-    // For head-to-head, determine the winner info
     let participantName = '';
-    let matchId = '';
+    let matchId: string | number = '';
 
     if (isHeadToHead) {
       const winnerTeam =
@@ -715,11 +577,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
               bracketDisplay: formData.team_b_bracket_display,
             };
 
-      // participantName shows full team info for display
       participantName = `${winnerTeam.number} - ${winnerTeam.name}`;
-      matchId = formData.game_number;
+      matchId = formData.game_number as string | number;
 
-      // Add winner info to score data
       scoreData.winner_team_number = {
         label: 'Winner Team Number',
         value: winnerTeam.number,
@@ -730,40 +590,44 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         value: winnerTeam.name,
         type: 'text',
       };
-      // winner_display is what gets written to the bracket (team # + first 7 chars)
       scoreData.winner_display = {
         label: 'Winner Display',
         value:
-          winnerTeam.bracketDisplay ||
-          formatBracketDisplay(winnerTeam.number, winnerTeam.name),
+          (winnerTeam.bracketDisplay as string) ||
+          formatBracketDisplay(
+            String(winnerTeam.number),
+            String(winnerTeam.name),
+          ),
         type: 'text',
       };
     } else {
-      participantName = scoreData['team_name']?.value || '';
-      matchId = scoreData['round']?.value || '';
+      participantName = String(scoreData['team_name']?.value || '');
+      matchId = (scoreData['round']?.value as string | number) || '';
     }
 
-    // For DB-backed seeding: include event_id, team_id for correct storage
     const eventId = schema.eventId ?? null;
     const scoreDestination = schema.scoreDestination;
-    const isDbBackedSeeding =
-      scoreDestination === 'db' && eventId && !isHeadToHead;
-    const isDbBackedBracket =
+    const isDbBackedSeeding = !!(
+      scoreDestination === 'db' &&
+      eventId &&
+      !isHeadToHead
+    );
+    const isDbBackedBracket = !!(
       isHeadToHead &&
       scoreDestination === 'db' &&
       eventId &&
       schema.bracketSource?.type === 'db' &&
-      formData.bracket_game_id != null;
+      formData.bracket_game_id != null
+    );
 
     if (isDbBackedSeeding && scoreData.team_number?.value) {
-      // team_id from queue selection (useQueueForSeeding) or from team dropdown
       const fromQueue = formData.team_id;
       const fromDropdown = (dynamicData.team_number || []).find(
-        (t: any) =>
+        (t) =>
           String(t.team_number || t['Team Number']) ===
           String(scoreData.team_number.value),
       );
-      const teamId = fromQueue ?? fromDropdown?.team_id;
+      const teamId = fromQueue ?? (fromDropdown?.team_id as number | undefined);
       if (teamId != null) {
         scoreData.team_id = {
           label: 'Team ID',
@@ -774,12 +638,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     if (isDbBackedBracket) {
-      // Resolve winner_team_id from teamsData
       const winnerTeamNum =
         formData.winner === 'team_a'
           ? formData.team_a_number
           : formData.team_b_number;
-      const winnerTeam = teamsData.find((t: any) => {
+      const winnerTeam = teamsData.find((t) => {
         const n = String(t.team_number ?? t['Team Number'] ?? '');
         return n === String(winnerTeamNum);
       });
@@ -844,26 +707,22 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       }
       if (!response.ok) throw new Error('Failed to submit score');
 
-      // Cache the round number for next submission (seeding only, not queue-based)
       if (!isHeadToHead && !useQueueForSeeding && scoreData['round']?.value) {
-        localStorage.setItem('lastRoundNumber', scoreData['round'].value);
+        localStorage.setItem(
+          'lastRoundNumber',
+          String(scoreData['round'].value),
+        );
       }
 
-      // Show success notification
       showNotification('Score submitted successfully!', 'success');
 
-      // Reset form
       if (isHeadToHead) {
-        // For head-to-head, reset completely so user can select a new game
         setFormData({});
-        // Reload bracket games in case some are now decided
         loadBracketGames();
       } else if (useQueueForSeeding) {
-        // For queue-based seeding, reset and reload queue
         setFormData({});
         loadQueue();
       } else {
-        // For manual seeding, keep round number for convenience
         const currentRound = formData['round'];
         setFormData({ round: currentRound });
       }
@@ -873,13 +732,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
   };
 
-  const renderWinnerSelect = (field: any) => {
+  const renderWinnerSelect = (field: ScoresheetField) => {
     const teamATotal = calculatedValues['team_a_total'] || 0;
     const teamBTotal = calculatedValues['team_b_total'] || 0;
-    const teamAName = formData.team_a_name || 'Team A';
-    const teamBName = formData.team_b_name || 'Team B';
-    const teamANumber = formData.team_a_number || '';
-    const teamBNumber = formData.team_b_number || '';
+    const teamAName = (formData.team_a_name as string) || 'Team A';
+    const teamBName = (formData.team_b_name as string) || 'Team B';
+    const teamANumber = (formData.team_a_number as string) || '';
+    const teamBNumber = (formData.team_b_number as string) || '';
     const selectedWinner = formData.winner;
 
     return (
@@ -924,270 +783,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     );
   };
 
-  const renderField = (field: any) => {
-    if (field.type === 'section_header') {
-      return (
-        <div key={field.id} className="section-header">
-          {field.label}
-        </div>
-      );
-    }
-
-    if (field.type === 'group_header') {
-      return (
-        <div key={field.id} className="group-header">
-          {field.label}
-        </div>
-      );
-    }
-
-    if (field.type === 'winner-select') {
-      return renderWinnerSelect(field);
-    }
-
-    if (field.type === 'calculated') {
-      const calcValue = calculatedValues[field.id] || 0;
-      const className = field.isGrandTotal
-        ? 'grand-total-field'
-        : field.isTotal
-          ? 'total-field'
-          : 'subtotal-field';
-      return (
-        <div key={field.id} className={`score-field ${className}`}>
-          <label
-            className="score-label"
-            style={{
-              fontWeight: field.isTotal || field.isGrandTotal ? 700 : 600,
-            }}
-          >
-            {field.label}
-          </label>
-          <div className="calculated-value">{calcValue}</div>
-        </div>
-      );
-    }
-
-    const value = formData[field.id] !== undefined ? formData[field.id] : '';
-
-    const isCompact =
-      field.type === 'number' ||
-      field.type === 'buttons' ||
-      field.type === 'checkbox';
-
-    if (field.isMultiplier) {
-      return (
-        <div key={field.id} className="score-field multiplier-field">
-          <label className="score-label">
-            <span className="multiplier-label">Multiplier:</span> {field.label}
-            {field.suffix && <span className="multiplier">{field.suffix}</span>}
-          </label>
-          {renderFieldInput(field, value, isCompact)}
-        </div>
-      );
-    }
-
-    return (
-      <div
-        key={field.id}
-        className={`score-field ${isCompact ? 'compact' : ''}`}
-      >
-        <label className="score-label">
-          {field.label}
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </label>
-        {renderFieldInput(field, value, isCompact)}
-      </div>
-    );
-  };
-
-  const renderFieldInput = (field: any, value: any, isCompact: boolean) => {
-    // Handle bracket data source for game selection
-    if (field.dataSource?.type === 'bracket') {
-      // Filter out games that already have a winner or have a Bye
-      const availableGames = bracketGames.filter((game) => {
-        // Exclude games with winners
-        if (game.hasWinner) return false;
-        // Exclude games where either team is a Bye (null team)
-        if (game.team1 === null || game.team2 === null) return false;
-        return true;
-      });
-
-      return (
-        <select
-          className="score-input"
-          value={
-            isEventScopedBracket
-              ? String(formData.bracket_game_id ?? '')
-              : value
-          }
-          onChange={(e) => handleBracketGameSelect(e.target.value)}
-          required={field.required}
-          style={{ width: '250px' }}
-        >
-          <option value="">Select Game...</option>
-          {availableGames.length === 0 ? (
-            <option value="" disabled>
-              No undecided games available
-            </option>
-          ) : (
-            availableGames.map((game) => {
-              return (
-                <option
-                  key={
-                    game.bracketGameId ?? `${game.bracketId}-${game.gameNumber}`
-                  }
-                  value={getBracketGameOptionValue(game, isEventScopedBracket)}
-                >
-                  {formatBracketGameOptionLabel(game)}
-                </option>
-              );
-            })
-          )}
-        </select>
-      );
-    }
-
-    return (
-      <>
-        {field.type === 'text' && (
-          <input
-            type="text"
-            className="score-input"
-            placeholder={field.placeholder || ''}
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            required={field.required}
-            disabled={field.autoPopulated}
-          />
-        )}
-        {field.type === 'number' && (
-          <input
-            type="number"
-            className="score-input"
-            min={field.min ?? 0}
-            max={field.max}
-            step={field.step || 1}
-            value={getDisplayedNumberValue(field, value)}
-            placeholder={getNumberPlaceholder(field, value)}
-            onChange={(e) => {
-              let newValue = e.target.value;
-              if (newValue === '' || !isNaN(Number(newValue))) {
-                // Enforce min/max bounds
-                const numValue = Number(newValue);
-                if (
-                  newValue !== '' &&
-                  field.max !== undefined &&
-                  numValue > field.max
-                ) {
-                  newValue = String(field.max);
-                }
-                if (
-                  newValue !== '' &&
-                  field.min !== undefined &&
-                  numValue < field.min
-                ) {
-                  newValue = String(field.min);
-                }
-                setTouchedFields((prev) => ({
-                  ...prev,
-                  [field.id]: newValue !== '',
-                }));
-                handleInputChange(field.id, newValue);
-              }
-            }}
-            onInput={(e) => {
-              const input = e.target as HTMLInputElement;
-              const cursorPosition = input.selectionStart;
-              const cleaned = input.value.replace(/[^0-9.-]/g, '');
-              if (input.value !== cleaned) {
-                input.value = cleaned;
-                if (cursorPosition) {
-                  input.setSelectionRange(
-                    cursorPosition - 1,
-                    cursorPosition - 1,
-                  );
-                }
-                e.preventDefault();
-              }
-            }}
-            required={field.required}
-          />
-        )}
-        {field.type === 'dropdown' && (
-          <select
-            className={`score-input ${isCompact ? 'compact' : ''}`}
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value, field)}
-            required={field.required}
-            style={{
-              width: isCompact ? '70px' : '100%',
-              textAlign: isCompact ? 'center' : 'left',
-            }}
-          >
-            <option value="">Select...</option>
-            {field.dataSource && dynamicData[field.id]
-              ? dynamicData[field.id].map((item: any, idx: number) => (
-                  <option key={idx} value={item[field.dataSource.valueField]}>
-                    {item[field.dataSource.labelField]}
-                  </option>
-                ))
-              : field.options
-                ? field.options.map((opt: any) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))
-                : null}
-          </select>
-        )}
-        {field.type === 'buttons' && (
-          <div className="score-button-group">
-            {field.options?.map((opt: any) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`score-option-button ${value === opt.value ? 'selected' : ''}`}
-                onClick={() => handleInputChange(field.id, opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {field.type === 'checkbox' && (
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => handleInputChange(field.id, e.target.checked)}
-            required={field.required}
-          />
-        )}
-      </>
-    );
-  };
-
-  // Filter header fields - exclude auto-populated team fields in head-to-head mode
-  // When using queue for seeding, exclude team_number, team_name, round (replaced by queue selector)
-  const headerFields = schema.fields.filter((f: any) => {
-    if (f.column) return false;
-    if (
-      f.type === 'section_header' ||
-      f.type === 'group_header' ||
-      f.type === 'calculated'
-    )
-      return false;
-    if (f.type === 'winner-select') return false;
-    if (
-      useQueueForSeeding &&
-      ['team_number', 'team_name', 'round'].includes(f.id)
-    )
-      return false;
-    return true;
-  });
-
   return (
     <>
-      {/* Notification overlay */}
       {notification && (
         <div className={`notification-overlay ${notification.type}`}>
           <div className="notification-content">
@@ -1196,7 +793,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         </div>
       )}
 
-      {/* Game Areas overlay */}
       {showGameAreas && gameAreasImage && (
         <div
           className="game-areas-overlay"
@@ -1260,7 +856,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       )}
 
       <form onSubmit={handleSubmit} className="scoresheet-form">
-        {/* Title row with reset button */}
         <div
           style={{
             display: 'flex',
@@ -1270,10 +865,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             borderBottom: '2px solid var(--border-color)',
           }}
         >
-          {/* Invisible spacer to balance the reset button and keep title centered */}
           <div style={{ width: '60px' }}></div>
 
-          {/* Centered title */}
           <div
             style={{
               flex: 1,
@@ -1285,7 +878,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             {schema.title || ''}
           </div>
 
-          {/* Reset button */}
           <button
             type="button"
             className="btn btn-secondary"
@@ -1300,7 +892,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           </button>
         </div>
 
-        {/* Game Areas button */}
         {gameAreasImage && (
           <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
             <button
@@ -1332,7 +923,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             <label className="score-label">Select from Queue</label>
             <select
               className="score-input"
-              value={formData.game_queue_id ?? ''}
+              value={
+                (formData.game_queue_id as string | number | undefined) ?? ''
+              }
               onChange={(e) => handleQueueSelect(e.target.value)}
               required
               style={{ width: '100%', maxWidth: '400px' }}
@@ -1351,7 +944,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
                 ))
               )}
             </select>
-            {formData.game_queue_id && (
+            {formData.game_queue_id != null && (
               <div
                 style={{
                   marginTop: '0.5rem',
@@ -1359,52 +952,37 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
                   color: 'var(--secondary-color)',
                 }}
               >
-                Team {formData.team_number} – {formData.team_name} (Round{' '}
-                {formData.round})
+                Team {String(formData.team_number)} –{' '}
+                {String(formData.team_name)} (Round {String(formData.round)})
               </div>
             )}
           </div>
         )}
 
-        <div className="scoresheet-header-fields">
-          {headerFields.map(renderField)}
-        </div>
-
-        {schema.layout === 'two-column' ? (
-          <div className="scoresheet-columns">
-            <div className="scoresheet-column">
-              {schema.fields
-                .filter((f: any) => f.column === 'left')
-                .map(renderField)}
-            </div>
-            <div className="scoresheet-column">
-              {schema.fields
-                .filter((f: any) => f.column === 'right')
-                .map(renderField)}
-            </div>
-          </div>
-        ) : (
-          <div>
-            {schema.fields
-              .filter(
-                (f: any) =>
-                  !f.column &&
-                  f.type !== 'section_header' &&
-                  f.type !== 'group_header' &&
-                  f.type !== 'winner-select',
-              )
-              .map(renderField)}
-          </div>
-        )}
-
-        {/* Winner selection for head-to-head mode */}
-        {isHeadToHead &&
-          schema.fields
-            .filter((f: any) => f.type === 'winner-select')
-            .map(renderField)}
-
-        {/* Render grand total if it exists (no column specified) */}
-        {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
+        <ScoresheetFieldList
+          schema={schema}
+          mode="edit"
+          formData={formData}
+          calculatedValues={calculatedValues}
+          touchedFields={touchedFields}
+          onChange={handleInputChange}
+          onNumberInputTouched={handleNumberInputTouched}
+          dynamicData={dynamicData}
+          bracket={{
+            games: bracketGames,
+            eventScoped: isEventScopedBracket,
+            selectedGameId:
+              (formData.bracket_game_id as number | string | undefined) ?? '',
+            onSelect: handleBracketGameSelect,
+          }}
+          renderWinnerSelect={renderWinnerSelect}
+          excludeHeaderFieldId={(id) =>
+            useQueueForSeeding &&
+            ['team_number', 'team_name', 'round'].includes(id)
+          }
+          showTitle={false}
+          formClassName=""
+        />
 
         <div className="scoresheet-footer">
           <button type="submit" className="btn btn-primary btn-large">

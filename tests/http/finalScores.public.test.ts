@@ -321,9 +321,7 @@ describe('Public Final Scores API', () => {
   describe('GET /awards/event/:eventId/public', () => {
     it('returns 404 for unreleased complete event', async () => {
       const event = await createUnreleasedEvent();
-      const res = await http.get(
-        `${baseUrl}/awards/event/${event.id}/public`,
-      );
+      const res = await http.get(`${baseUrl}/awards/event/${event.id}/public`);
       expect(res.status).toBe(404);
     });
 
