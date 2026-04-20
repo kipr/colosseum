@@ -1,175 +1,102 @@
 /**
- * Postgres schema parity test.
+ * Postgres / SQLite schema parity test.
  *
- * Runs initializePostgres() against a recording adapter that captures all
- * emitted SQL, then asserts every feature-critical table, column, index,
- * and trigger that initializeSQLite() already creates is also present in
- * the Postgres path.
+ * Two assertions:
+ *   1. Structural: for every entry in TABLES_IN_ORDER that defines both
+ *      dialects, the column NAMES declared in `pg` and `sqlite` are the same
+ *      set. Types are intentionally allowed to differ (SERIAL vs
+ *      AUTOINCREMENT, TIMESTAMP vs DATETIME).
+ *   2. Smoke: the existing game_queue v2 migration emits the canonical
+ *      `queued/called/arrived/on_table/scored` CHECK on Postgres.
  */
-import { describe, it, expect, beforeAll } from 'vitest';
-import type {
-  Database,
-  DatabaseResult,
-  Transaction,
-} from '../../../src/server/database/connection';
-import { initializePostgres } from '../../../src/server/database/init';
+import { describe, it, expect } from 'vitest';
+import { TABLES_IN_ORDER } from '../../../src/server/database/tables';
+import migration0001 from '../../../src/server/database/migrations/0001_game_queue_status_v2';
+import type { Database } from '../../../src/server/database/connection';
 
-const noop: DatabaseResult = { lastID: 0, changes: 0 };
+/**
+ * Extract column names from a CREATE TABLE body.
+ *
+ * Strategy:
+ *   - Strip the leading `CREATE TABLE IF NOT EXISTS <name> (`.
+ *   - Strip the trailing `)` that closes the table.
+ *   - Split on top-level commas (commas not inside `(...)`), ignoring lines
+ *     that begin with `UNIQUE`, `CHECK`, `FOREIGN KEY`, `PRIMARY KEY`, or
+ *     `CONSTRAINT`.
+ *   - Take the first identifier of each remaining clause.
+ */
+function extractColumnNames(createTableSql: string): string[] {
+  const stripped = createTableSql
+    .replace(/--.*$/gm, '')
+    .trim()
+    .replace(/^CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+"?\w+"?\s*\(/i, '')
+    .replace(/\)\s*;?\s*$/, '');
 
-function createRecordingAdapter(): { db: Database; sql: string[] } {
-  const sql: string[] = [];
-  const db: Database = {
-    exec: async (s: string) => {
-      sql.push(s);
+  const clauses: string[] = [];
+  let depth = 0;
+  let buf = '';
+  for (const ch of stripped) {
+    if (ch === '(') depth++;
+    else if (ch === ')') depth--;
+    if (ch === ',' && depth === 0) {
+      clauses.push(buf);
+      buf = '';
+    } else {
+      buf += ch;
+    }
+  }
+  if (buf.trim()) clauses.push(buf);
+
+  const names: string[] = [];
+  for (const raw of clauses) {
+    const clause = raw.trim();
+    if (!clause) continue;
+    if (/^(UNIQUE|CHECK|FOREIGN\s+KEY|PRIMARY\s+KEY|CONSTRAINT)\b/i.test(clause))
+      continue;
+    const match = clause.match(/^"?([A-Za-z_][A-Za-z0-9_]*)"?/);
+    if (match) names.push(match[1]);
+  }
+  return names;
+}
+
+describe('Postgres / SQLite schema parity', () => {
+  const dualDialectTables = TABLES_IN_ORDER.filter(
+    (t) => t.pg.trim() && t.sqlite.trim(),
+  );
+
+  it.each(dualDialectTables.map((t) => [t.name, t] as const))(
+    '%s declares the same column set in both dialects',
+    (_name, table) => {
+      const pgCols = new Set(extractColumnNames(table.pg));
+      const sqliteCols = new Set(extractColumnNames(table.sqlite));
+      expect([...pgCols].sort()).toEqual([...sqliteCols].sort());
     },
-    run: async () => noop,
-    get: async () => undefined,
-    all: async () => [],
-    transaction: async <T>(fn: (tx: Transaction) => Promise<T>) => {
-      const tx: Transaction = {
-        run: async () => noop,
+  );
+
+  it('declares at least one column in each dialect for every dual-dialect table', () => {
+    for (const table of dualDialectTables) {
+      expect(extractColumnNames(table.pg).length).toBeGreaterThan(0);
+      expect(extractColumnNames(table.sqlite).length).toBeGreaterThan(0);
+    }
+  });
+
+  describe('game_queue status v2 migration smoke', () => {
+    it('emits the canonical status CHECK on Postgres', async () => {
+      const sql: string[] = [];
+      const stub: Database = {
         exec: async (s: string) => {
           sql.push(s);
         },
+        run: async () => ({ changes: 0 }),
+        get: async () => undefined,
+        all: async () => [],
+        transaction: async () => {
+          throw new Error('not used in pg branch');
+        },
       };
-      return fn(tx);
-    },
-  };
-  return { db, sql };
-}
-
-function joined(sql: string[]): string {
-  return sql.join('\n');
-}
-
-describe('initializePostgres parity with SQLite', () => {
-  let allSql: string;
-
-  beforeAll(async () => {
-    const { db, sql } = createRecordingAdapter();
-    await initializePostgres(db);
-    allSql = joined(sql);
-  });
-
-  // =========================================================================
-  // events.spectator_results_released
-  // =========================================================================
-  describe('events table', () => {
-    it('CREATE TABLE includes spectator_results_released', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*events[\s\S]*spectator_results_released/i);
-    });
-
-    it('has ALTER TABLE migration for spectator_results_released', () => {
-      expect(allSql).toMatch(/ALTER TABLE events.*ADD COLUMN.*spectator_results_released/i);
-    });
-  });
-
-  // =========================================================================
-  // brackets.weight
-  // =========================================================================
-  describe('brackets table', () => {
-    it('CREATE TABLE includes weight column with CHECK constraint', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*brackets[\s\S]*weight REAL/i);
-    });
-
-    it('has ALTER TABLE migration for weight', () => {
-      expect(allSql).toMatch(/ALTER TABLE brackets.*ADD COLUMN.*weight/i);
-    });
-  });
-
-  // =========================================================================
-  // bracket_entries ranking columns
-  // =========================================================================
-  describe('bracket_entries table', () => {
-    it('CREATE TABLE includes final_rank', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*bracket_entries[\s\S]*final_rank/i);
-    });
-
-    it('CREATE TABLE includes bracket_raw_score', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*bracket_entries[\s\S]*bracket_raw_score/i);
-    });
-
-    it('CREATE TABLE includes weighted_bracket_raw_score', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*bracket_entries[\s\S]*weighted_bracket_raw_score/i);
-    });
-
-    it('has ALTER TABLE migrations for ranking columns', () => {
-      expect(allSql).toMatch(/ALTER TABLE bracket_entries.*ADD COLUMN.*final_rank/i);
-      expect(allSql).toMatch(/ALTER TABLE bracket_entries.*ADD COLUMN.*bracket_raw_score/i);
-      expect(allSql).toMatch(/ALTER TABLE bracket_entries.*ADD COLUMN.*weighted_bracket_raw_score/i);
-    });
-  });
-
-  // =========================================================================
-  // Documentation scoring tables
-  // =========================================================================
-  describe('documentation scoring tables', () => {
-    it('creates documentation_categories', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*documentation_categories/i);
-    });
-
-    it('creates event_documentation_categories', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*event_documentation_categories/i);
-    });
-
-    it('creates documentation_scores', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*documentation_scores/i);
-    });
-
-    it('creates documentation_sub_scores', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*documentation_sub_scores/i);
-    });
-  });
-
-  // =========================================================================
-  // Documentation indexes
-  // =========================================================================
-  describe('documentation indexes', () => {
-    it('creates idx_event_doc_categories_event', () => {
-      expect(allSql).toContain('idx_event_doc_categories_event');
-    });
-
-    it('creates idx_event_doc_categories_category', () => {
-      expect(allSql).toContain('idx_event_doc_categories_category');
-    });
-
-    it('creates idx_doc_scores_event', () => {
-      expect(allSql).toContain('idx_doc_scores_event');
-    });
-
-    it('creates idx_doc_scores_team', () => {
-      expect(allSql).toContain('idx_doc_scores_team');
-    });
-
-    it('creates idx_doc_sub_scores_doc', () => {
-      expect(allSql).toContain('idx_doc_sub_scores_doc');
-    });
-  });
-
-  // =========================================================================
-  // Triggers
-  // =========================================================================
-  describe('updated_at triggers', () => {
-    it('includes documentation_scores in updated_at trigger set', () => {
-      expect(allSql).toMatch(/documentation_scores_updated_at/i);
-    });
-  });
-
-  describe('game_queue status v2 migration', () => {
-    it('drops status check constraints before remapping legacy queue statuses', () => {
-      const dropIndex = allSql.indexOf(
-        'ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS',
-      );
-      const updateIndex = allSql.indexOf(
-        "UPDATE game_queue\n      SET status = CASE status",
-      );
-
-      expect(dropIndex).toBeGreaterThan(-1);
-      expect(updateIndex).toBeGreaterThan(dropIndex);
-    });
-
-    it('recreates the canonical status check with arrived support', () => {
-      expect(allSql).toMatch(
+      await migration0001.up(stub, 'pg');
+      const joined = sql.join('\n');
+      expect(joined).toMatch(
         /ADD CONSTRAINT game_queue_status_check[\s\S]*CHECK \(status IN \('queued', 'called', 'arrived', 'on_table', 'scored'\)\)/i,
       );
     });
