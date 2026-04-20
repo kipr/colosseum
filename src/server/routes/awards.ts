@@ -8,6 +8,11 @@ import {
   applyAutomaticAwardsAsEventAwards,
   AUTO_AWARD_NAME_PREFIX,
 } from '../services/automaticAwards';
+import type {
+  PublicAwardRecipient,
+  PublicEventAwardsResponse,
+  PublicManualAward,
+} from '../../shared/domain/awards';
 
 const router = express.Router();
 
@@ -495,14 +500,7 @@ router.get(
         [eventId, `${AUTO_AWARD_NAME_PREFIX}%`],
       );
 
-      const recipientsByAward = new Map<
-        number,
-        {
-          team_number: number;
-          team_name: string;
-          display_name: string | null;
-        }[]
-      >();
+      const recipientsByAward = new Map<number, PublicAwardRecipient[]>();
       for (const r of recipients) {
         const row = r as Record<string, unknown>;
         const awardId = row.event_award_id as number;
@@ -516,16 +514,19 @@ router.get(
         });
       }
 
-      const manual = awards.map((a: Record<string, unknown>) => ({
-        name: a.name,
-        description: a.description,
-        sort_order: a.sort_order,
-        recipients: recipientsByAward.get(a.id as number) ?? [],
-      }));
+      const manual: PublicManualAward[] = awards.map(
+        (a: Record<string, unknown>) => ({
+          name: a.name as string,
+          description: (a.description as string | null) ?? null,
+          sort_order: a.sort_order as number,
+          recipients: recipientsByAward.get(a.id as number) ?? [],
+        }),
+      );
 
       const automatic = await computeAutomaticAwards(Number(eventId));
 
-      res.json({ manual, automatic });
+      const response: PublicEventAwardsResponse = { manual, automatic };
+      res.json(response);
     } catch (error) {
       console.error('Error fetching public awards:', error);
       res.status(500).json({ error: 'Failed to fetch awards' });

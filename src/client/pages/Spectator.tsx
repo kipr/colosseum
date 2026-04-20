@@ -40,22 +40,14 @@ import {
 import '../components/bracket/BracketDisplay.css';
 import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
-  type AutomaticAwardsPublic,
 } from '../components/spectator/SpectatorAutomaticAwards';
+import type { AutomaticAwardsPublic } from '@shared/domain/automaticAwards';
+import type { PublicEvent } from '@shared/domain/event';
+import type { PublicManualAward } from '@shared/domain/awards';
 import './SpectatorShared.css';
 import './Spectator.css';
 import './SpectatorTableLayout.css';
 import { UnifiedTableScrollAffordanceProvider } from '../components/table';
-
-interface PublicEvent {
-  id: number;
-  name: string;
-  status: string;
-  event_date: string | null;
-  location: string | null;
-  seeding_rounds: number;
-  final_scores_available: boolean;
-}
 
 type EffectiveTab =
   | 'seeding'
@@ -104,16 +96,6 @@ export default function Spectator() {
   >(null);
 
   // Awards state (lazy-loaded)
-  interface PublicManualAward {
-    name: string;
-    description: string | null;
-    sort_order: number;
-    recipients: {
-      team_number: number;
-      team_name: string;
-      display_name?: string | null;
-    }[];
-  }
   const [manualAwards, setManualAwards] = useState<PublicManualAward[]>([]);
   const [automaticAwards, setAutomaticAwards] =
     useState<AutomaticAwardsPublic | null>(null);

@@ -18,3 +18,7 @@ export * from './event';
 export * from './team';
 export * from './eventVisibility';
 export * from './scoresheetSchema';
+export * from './automaticAwards';
+export * from './awards';
+export * from './fieldTemplate';
+export * from './scoreSheet';

@@ -6,18 +6,16 @@ import {
 } from '../scoresheetUtils';
 import {
   scoresheetFieldSchema,
-  type ScoresheetField,
   type ScoresheetSchema,
 } from '../../../shared/domain/scoresheetSchema';
+import type {
+  FieldTemplateRow,
+  FieldTemplateWithFields,
+} from '@shared/domain/fieldTemplate';
 import { z } from 'zod';
 import '../Modal.css';
 
-interface FieldTemplate {
-  id: number;
-  name: string;
-  description: string;
-  fields: ScoresheetField[];
-}
+type FieldTemplate = FieldTemplateWithFields;
 
 interface ScoreSheetWizardProps {
   onComplete: (generatedData: {
@@ -69,22 +67,17 @@ export default function ScoreSheetWizard({
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load templates');
-      const data: Array<{
-        id: number;
-        name: string;
-        description: string;
-        fields_json: string;
-      }> = await response.json();
+      const data: FieldTemplateRow[] = await response.json();
       const templatesWithParsedFields: FieldTemplate[] = [];
       for (const t of data) {
         try {
           const parsedFields = fieldTemplateFieldsSchema.parse(
             JSON.parse(t.fields_json),
           );
+          const { fields_json: _ignored, ...rest } = t;
+          void _ignored;
           templatesWithParsedFields.push({
-            id: t.id,
-            name: t.name,
-            description: t.description,
+            ...rest,
             fields: parsedFields,
           });
         } catch (err) {

@@ -1,44 +1,13 @@
 import React from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import type {
+  AutomaticAwardsPublic,
+  MedalPlacement,
+  PublicAwardTeam,
+} from '@shared/domain/automaticAwards';
 import '../seeding/SeedingTables.css';
 import '../../pages/Spectator.css';
-
-export type MedalKind = 'gold' | 'silver' | 'bronze';
-
-export interface PublicAwardTeam {
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export interface MedalPlacement {
-  place: 1 | 2 | 3;
-  medal: MedalKind;
-  recipients: PublicAwardTeam[];
-}
-
-export interface DeBracketAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface PerBracketOverallAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface EventOverallAwards {
-  placements: MedalPlacement[];
-}
-
-export interface AutomaticAwardsPublic {
-  de: DeBracketAwards[];
-  perBracketOverall: PerBracketOverallAwards[];
-  eventOverall: EventOverallAwards | null;
-}
 
 function placeLabel(place: 1 | 2 | 3): string {
   if (place === 1) return '1st';

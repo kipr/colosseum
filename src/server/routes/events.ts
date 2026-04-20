@@ -10,9 +10,13 @@ import {
   isFinalScoresReleasedFor,
   SPECTATOR_EXCLUDED_STATUSES,
 } from '../../shared/domain/eventVisibility';
+import type { PublicEvent } from '../../shared/domain/event';
+import type { EventStatus } from '../../shared/domain/eventStatus';
 import { computeOverallScores } from '../services/overallScores';
 import { calculateEventBracketRankingsIfReady } from '../services/bracketRankings';
 
+// Keep this SELECT list in sync with the `PublicEvent` interface in
+// `src/shared/domain/event.ts`. Adding a public field requires updating both.
 const PUBLIC_EVENT_FIELDS =
   'id, name, status, event_date, location, seeding_rounds, spectator_results_released';
 
@@ -54,10 +58,15 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-function toPublicEvent(row: Record<string, unknown>) {
+function toPublicEvent(row: Record<string, unknown>): PublicEvent {
   const { spectator_results_released, ...rest } = row;
   return {
-    ...rest,
+    id: rest.id as number,
+    name: rest.name as string,
+    status: rest.status as EventStatus,
+    event_date: (rest.event_date as string | null) ?? null,
+    location: (rest.location as string | null) ?? null,
+    seeding_rounds: rest.seeding_rounds as number,
     final_scores_available: isFinalScoresReleasedFor(
       rest.status as string,
       spectator_results_released as boolean | number | null | undefined,

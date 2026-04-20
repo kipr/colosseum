@@ -5,45 +5,24 @@
 
 import { getDatabase } from '../database/connection';
 import { computeOverallScores } from './overallScores';
+import type {
+  AutomaticAwardsPublic,
+  DeBracketAwards,
+  MedalKind,
+  MedalPlacement,
+  PerBracketOverallAwards,
+  PublicAwardTeam,
+} from '../../shared/domain/automaticAwards';
 
-export interface PublicAwardTeam {
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export type MedalKind = 'gold' | 'silver' | 'bronze';
-
-export interface MedalPlacement {
-  place: 1 | 2 | 3;
-  medal: MedalKind;
-  recipients: PublicAwardTeam[];
-}
-
-export interface DeBracketAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface PerBracketOverallAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface EventOverallAwards {
-  placements: MedalPlacement[];
-}
-
-export interface AutomaticAwardsPublic {
-  /** Double-elimination placement medals (ranks 1–3) per bracket that has a champion (rank 1). */
-  de: DeBracketAwards[];
-  /** Composite overall within each bracket (doc + seed + weighted DE), top three score groups. */
-  perBracketOverall: PerBracketOverallAwards[];
-  /** Event-wide overall (doc + seed + sum of weighted DE across brackets). */
-  eventOverall: EventOverallAwards | null;
-}
+export type {
+  AutomaticAwardsPublic,
+  DeBracketAwards,
+  EventOverallAwards,
+  MedalKind,
+  MedalPlacement,
+  PerBracketOverallAwards,
+  PublicAwardTeam,
+} from '../../shared/domain/automaticAwards';
 
 const MEDALS: MedalKind[] = ['gold', 'silver', 'bronze'];
 

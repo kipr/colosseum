@@ -9,27 +9,12 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDate } from '../../utils/dateUtils';
-
-interface ScoreSheet {
-  id: number;
-  name: string;
-  description: string;
-  access_code: string;
-  created_at: string;
-  spreadsheet_config_id: number | null;
-  spreadsheet_name: string | null;
-}
-
-interface FieldTemplate {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-}
+import type { AdminScoreSheetSummary } from '@shared/domain/scoreSheet';
+import type { FieldTemplateRow } from '@shared/domain/fieldTemplate';
 
 export default function ScoreSheetsTab() {
-  const [scoreSheets, setScoreSheets] = useState<ScoreSheet[]>([]);
-  const [fieldTemplates, setFieldTemplates] = useState<FieldTemplate[]>([]);
+  const [scoreSheets, setScoreSheets] = useState<AdminScoreSheetSummary[]>([]);
+  const [fieldTemplates, setFieldTemplates] = useState<FieldTemplateRow[]>([]);
   const [editingScoreSheet, setEditingScoreSheet] = useState<number | null>(
     null,
   );
@@ -166,7 +151,7 @@ export default function ScoreSheetsTab() {
     loadFieldTemplates();
   };
 
-  const fieldTemplateColumns: UnifiedColumnDef<FieldTemplate>[] = [
+  const fieldTemplateColumns: UnifiedColumnDef<FieldTemplateRow>[] = [
     {
       kind: 'data',
       id: 'name',
@@ -212,7 +197,7 @@ export default function ScoreSheetsTab() {
     },
   ];
 
-  const scoreSheetColumns: UnifiedColumnDef<ScoreSheet>[] = [
+  const scoreSheetColumns: UnifiedColumnDef<AdminScoreSheetSummary>[] = [
     {
       kind: 'data',
       id: 'name',

@@ -1,6 +1,11 @@
 import express, { Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import type {
+  FieldTemplateRow,
+  FieldTemplateWithFields,
+} from '../../shared/domain/fieldTemplate';
+import type { ScoresheetField } from '../../shared/domain/scoresheetSchema';
 
 const router = express.Router();
 
@@ -8,7 +13,7 @@ const router = express.Router();
 router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
-    const templates = await db.all(
+    const templates = await db.all<FieldTemplateRow>(
       'SELECT * FROM scoresheet_field_templates ORDER BY created_at DESC',
     );
     res.json(templates);
@@ -24,7 +29,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
-    const template = await db.get(
+    const template = await db.get<FieldTemplateRow>(
       'SELECT * FROM scoresheet_field_templates WHERE id = ?',
       [id],
     );
@@ -33,10 +38,13 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Field template not found' });
     }
 
-    // Parse the JSON
-    template.fields = JSON.parse(template.fields_json);
+    const { fields_json, ...rest } = template;
+    const response: FieldTemplateWithFields = {
+      ...rest,
+      fields: JSON.parse(fields_json) as ScoresheetField[],
+    };
 
-    res.json(template);
+    res.json(response);
   } catch (error) {
     console.error('Error fetching field template:', error);
     res.status(500).json({ error: 'Failed to fetch field template' });
@@ -63,7 +71,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       [name, description || null, JSON.stringify(fields), req.user.id],
     );
 
-    const template = await db.get(
+    const template = await db.get<FieldTemplateRow>(
       'SELECT * FROM scoresheet_field_templates WHERE id = ?',
       [result.lastID],
     );
@@ -96,7 +104,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       [name, description || null, JSON.stringify(fields), id],
     );
 
-    const template = await db.get(
+    const template = await db.get<FieldTemplateRow>(
       'SELECT * FROM scoresheet_field_templates WHERE id = ?',
       [id],
     );
