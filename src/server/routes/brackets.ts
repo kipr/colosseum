@@ -1,9 +1,7 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
-import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
-import { recalculateSeedingRankings } from '../services/seedingRankings';
 import {
   calculateBracketRankings,
   calculateBracketRankingsIfReady,
@@ -12,6 +10,9 @@ import {
   isEventArchived,
   areFinalScoresReleased,
 } from '../utils/eventVisibility';
+import { createBracket } from '../usecases/createBracket';
+import { generateBracketEntries } from '../usecases/generateBracketEntries';
+import { generateBracketGames } from '../usecases/generateBracketGames';
 
 const router = express.Router();
 
@@ -338,338 +339,24 @@ router.get(
   },
 );
 
-function nextPowerOfTwo(n: number): number {
-  if (n <= 0) return 4;
-  const p = Math.pow(2, Math.ceil(Math.log2(n)));
-  return Math.max(4, Math.min(64, p));
-}
-
 // POST /brackets - Create bracket
 router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
-    const {
-      event_id,
-      name,
-      bracket_size,
-      actual_team_count,
-      status,
-      weight,
-      team_ids,
-    } = req.body;
-
     const db = await getDatabase();
-
-    if (
-      weight !== undefined &&
-      (typeof weight !== 'number' || weight <= 0 || weight > 1)
-    ) {
-      return res
-        .status(400)
-        .json({ error: 'weight must be a number in (0, 1]' });
+    const result = await createBracket({
+      db,
+      body: req.body,
+      userId: req.user?.id ?? null,
+    });
+    if (!result.ok) {
+      const payload: Record<string, unknown> = { error: result.error };
+      if ('conflicts' in result) payload.conflicts = result.conflicts;
+      if ('team_ids' in result && result.team_ids) {
+        payload.team_ids = result.team_ids;
+      }
+      return res.status(result.status).json(payload);
     }
-    const bracketWeight: number = weight ?? 1.0;
-
-    if (Array.isArray(team_ids) && team_ids.length > 0) {
-      // New flow: create bracket from explicit team selection
-      if (!event_id || !name) {
-        return res.status(400).json({
-          error: 'event_id and name are required when team_ids provided',
-        });
-      }
-
-      const teamIds = team_ids as number[];
-      const uniqueIds = [...new Set(teamIds)];
-      if (uniqueIds.length !== teamIds.length) {
-        return res.status(400).json({ error: 'team_ids must be unique' });
-      }
-
-      const event = await db.get('SELECT id FROM events WHERE id = ?', [
-        event_id,
-      ]);
-      if (!event) {
-        return res.status(400).json({ error: 'Event does not exist' });
-      }
-
-      const placeholders = teamIds.map(() => '?').join(',');
-      const teams = await db.all<{ id: number; event_id: number }>(
-        `SELECT id, event_id FROM teams WHERE id IN (${placeholders})`,
-        teamIds,
-      );
-      const foundIds = new Set(teams.map((t) => t.id));
-      const notFound = teamIds.filter((id) => !foundIds.has(id));
-      if (notFound.length > 0) {
-        return res.status(400).json({
-          error: 'One or more team_ids not found',
-          team_ids: notFound,
-        });
-      }
-      const wrongEvent = teams.filter((t) => t.event_id !== event_id);
-      if (wrongEvent.length > 0) {
-        return res.status(400).json({
-          error: 'All teams must belong to the same event as the bracket',
-          team_ids: wrongEvent.map((t) => t.id),
-        });
-      }
-
-      const assigned = await db.all<{
-        team_id: number;
-        team_number: number;
-        team_name: string;
-        bracket_id: number;
-        bracket_name: string;
-      }>(
-        `SELECT be.team_id, t.team_number, t.team_name, b.id as bracket_id, b.name as bracket_name
-         FROM bracket_entries be
-         JOIN brackets b ON be.bracket_id = b.id
-         JOIN teams t ON be.team_id = t.id
-         WHERE b.event_id = ? AND be.team_id IS NOT NULL AND be.team_id IN (${placeholders})`,
-        [event_id, ...teamIds],
-      );
-      if (assigned.length > 0) {
-        return res.status(409).json({
-          error:
-            'One or more teams are already assigned to a bracket at this event',
-          conflicts: assigned.map((a) => ({
-            team_id: a.team_id,
-            team_number: a.team_number,
-            team_name: a.team_name,
-            bracket_id: a.bracket_id,
-            bracket_name: a.bracket_name,
-          })),
-        });
-      }
-
-      const actualTeamCount = teamIds.length;
-      const bracketSize = nextPowerOfTwo(actualTeamCount);
-      if (bracketSize > 64) {
-        return res.status(400).json({
-          error: `Too many teams (${actualTeamCount}). Maximum bracket size is 64.`,
-        });
-      }
-
-      await recalculateSeedingRankings(event_id);
-
-      const rankings = await db.all<{
-        team_id: number;
-        seed_rank: number | null;
-        team_number: number;
-      }>(
-        `SELECT sr.team_id, sr.seed_rank, t.team_number
-         FROM seeding_rankings sr
-         JOIN teams t ON sr.team_id = t.id
-         WHERE sr.team_id IN (${placeholders})
-         ORDER BY sr.seed_rank ASC NULLS LAST, t.team_number ASC`,
-        teamIds,
-      );
-      const teamIdToRank = new Map(rankings.map((r, i) => [r.team_id, i + 1]));
-      const orderedTeamIds = teamIds
-        .slice()
-        .sort(
-          (a, b) => (teamIdToRank.get(a) ?? 999) - (teamIdToRank.get(b) ?? 999),
-        );
-
-      let bracketId: number | null = null;
-      await db.transaction(async (tx) => {
-        const br = await tx.run(
-          `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [
-            event_id,
-            name,
-            bracketSize,
-            actualTeamCount,
-            status || 'setup',
-            bracketWeight,
-            req.user?.id || null,
-          ],
-        );
-        const newBracketId = br.lastID!;
-        bracketId = newBracketId;
-
-        for (
-          let seedPosition = 1;
-          seedPosition <= bracketSize;
-          seedPosition++
-        ) {
-          const teamId =
-            seedPosition <= orderedTeamIds.length
-              ? orderedTeamIds[seedPosition - 1]
-              : null;
-          const isBye = teamId === null;
-          await tx.run(
-            `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, ?, ?)`,
-            [newBracketId, teamId, seedPosition, isBye],
-          );
-        }
-      });
-
-      if (!bracketId) {
-        throw new Error('Failed to create bracket');
-      }
-
-      await ensureBracketTemplatesSeeded(db, bracketSize);
-      const templates = await db.all(
-        'SELECT * FROM bracket_templates WHERE bracket_size = ? ORDER BY game_number ASC',
-        [bracketSize],
-      );
-      if (templates.length === 0) {
-        return res.status(400).json({
-          error: `No bracket templates found for size ${bracketSize}`,
-        });
-      }
-
-      const entries = await db.all(
-        'SELECT * FROM bracket_entries WHERE bracket_id = ? ORDER BY seed_position ASC',
-        [bracketId],
-      );
-      const entriesBySeed = new Map<
-        number,
-        { team_id: number | null; is_bye: boolean }
-      >();
-      for (const entry of entries) {
-        entriesBySeed.set(entry.seed_position, {
-          team_id: entry.team_id,
-          is_bye: !!entry.is_bye,
-        });
-      }
-
-      const gameIdByNumber = new Map<number, number>();
-      for (const template of templates) {
-        const result = await db.run(
-          `INSERT INTO bracket_games (
-            bracket_id, game_number, round_name, round_number, bracket_side,
-            team1_source, team2_source, status, winner_slot, loser_slot
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-          [
-            bracketId,
-            template.game_number,
-            template.round_name,
-            template.round_number,
-            template.bracket_side,
-            template.team1_source,
-            template.team2_source,
-            template.winner_slot,
-            template.loser_slot,
-          ],
-        );
-        gameIdByNumber.set(template.game_number, result.lastID as number);
-      }
-
-      for (const template of templates) {
-        const gameId = gameIdByNumber.get(template.game_number);
-        if (!gameId) continue;
-
-        const winnerAdvancesToId = template.winner_advances_to
-          ? gameIdByNumber.get(template.winner_advances_to)
-          : null;
-        const loserAdvancesToId = template.loser_advances_to
-          ? gameIdByNumber.get(template.loser_advances_to)
-          : null;
-
-        let team1Id: number | null = null;
-        let team2Id: number | null = null;
-
-        if (template.team1_source.startsWith('seed:')) {
-          const seedNum = parseInt(template.team1_source.split(':')[1], 10);
-          const entry = entriesBySeed.get(seedNum);
-          if (entry) team1Id = entry.team_id;
-        }
-        if (template.team2_source.startsWith('seed:')) {
-          const seedNum = parseInt(template.team2_source.split(':')[1], 10);
-          const entry = entriesBySeed.get(seedNum);
-          if (entry) team2Id = entry.team_id;
-        }
-
-        const team1Entry = template.team1_source.startsWith('seed:')
-          ? entriesBySeed.get(parseInt(template.team1_source.split(':')[1], 10))
-          : null;
-        const team2Entry = template.team2_source.startsWith('seed:')
-          ? entriesBySeed.get(parseInt(template.team2_source.split(':')[1], 10))
-          : null;
-
-        let gameStatus = 'pending';
-        let winnerId: number | null = null;
-        if (team1Entry?.is_bye && team2Id) {
-          winnerId = team2Id;
-          gameStatus = 'bye';
-        } else if (team2Entry?.is_bye && team1Id) {
-          winnerId = team1Id;
-          gameStatus = 'bye';
-        } else if (team1Id && team2Id) {
-          gameStatus = 'ready';
-        }
-
-        await db.run(
-          `UPDATE bracket_games SET
-            winner_advances_to_id = ?,
-            loser_advances_to_id = ?,
-            team1_id = ?,
-            team2_id = ?,
-            winner_id = ?,
-            status = ?
-          WHERE id = ?`,
-          [
-            winnerAdvancesToId,
-            loserAdvancesToId,
-            team1Id,
-            team2Id,
-            winnerId,
-            gameStatus,
-            gameId,
-          ],
-        );
-
-        if (winnerId && winnerAdvancesToId && template.winner_slot) {
-          const column =
-            template.winner_slot === 'team1' ? 'team1_id' : 'team2_id';
-          await db.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
-            winnerId,
-            winnerAdvancesToId,
-          ]);
-        }
-      }
-
-      await db.run(
-        `UPDATE bracket_games SET status = 'ready'
-         WHERE bracket_id = ? AND status = 'pending'
-         AND team1_id IS NOT NULL AND team2_id IS NOT NULL`,
-        [bracketId],
-      );
-
-      await resolveBracketByes(db, bracketId);
-
-      const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
-        bracketId,
-      ]);
-      return res.status(201).json(bracket);
-    }
-
-    // Legacy flow: bracket_size required
-    if (!event_id || !name || !bracket_size) {
-      return res
-        .status(400)
-        .json({ error: 'event_id, name, and bracket_size are required' });
-    }
-
-    const result = await db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        event_id,
-        name,
-        bracket_size,
-        actual_team_count ?? null,
-        status || 'setup',
-        bracketWeight,
-        req.user?.id || null,
-      ],
-    );
-
-    const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
-      result.lastID,
-    ]);
-    res.status(201).json(bracket);
+    return res.status(result.status).json(result.bracket);
   } catch (error) {
     console.error('Error creating bracket:', error);
     const errMsg = (error as Error).message || '';
@@ -679,7 +366,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     if (errMsg.includes('CHECK constraint failed')) {
       return res.status(400).json({ error: 'Invalid status value' });
     }
-    res.status(500).json({ error: 'Failed to create bracket' });
+    return res.status(500).json({ error: 'Failed to create bracket' });
   }
 });
 
@@ -884,105 +571,27 @@ router.post(
   requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
-      const { force } = req.query;
       const db = await getDatabase();
-
-      // Get bracket info
-      const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [id]);
-
-      if (!bracket) {
-        return res.status(404).json({ error: 'Bracket not found' });
-      }
-
-      // Check if entries already exist
-      const existingEntries = await db.all(
-        'SELECT id FROM bracket_entries WHERE bracket_id = ?',
-        [id],
-      );
-
-      if (existingEntries.length > 0 && force !== 'true') {
-        return res.status(409).json({
-          error: 'Bracket already has entries. Use ?force=true to replace.',
-          entriesCount: existingEntries.length,
-        });
-      }
-
-      // Recalculate seeding rankings before fetching (ensures fresh data)
-      const recalcResult = await recalculateSeedingRankings(bracket.event_id);
-      console.log(
-        `Recalculated rankings for event ${bracket.event_id}: ${recalcResult.teamsRanked} ranked, ${recalcResult.teamsUnranked} unranked`,
-      );
-
-      // Get ranked teams for this event
-      const rankedTeams = await db.all(
-        `SELECT sr.team_id, sr.seed_rank, t.team_number, t.team_name, t.display_name
-         FROM seeding_rankings sr
-         JOIN teams t ON sr.team_id = t.id
-         WHERE t.event_id = ? AND sr.seed_rank IS NOT NULL
-         ORDER BY sr.seed_rank ASC`,
-        [bracket.event_id],
-      );
-
-      if (rankedTeams.length === 0) {
-        return res.status(400).json({
-          error: 'No ranked teams found. Calculate seeding rankings first.',
-        });
-      }
-
-      const bracketSize = bracket.bracket_size;
-
-      // Always use the current count of ranked teams (capped at bracket size)
-      // This ensures regeneration picks up newly scored teams
-      const teamCount = Math.min(rankedTeams.length, bracketSize);
-
-      // Delete existing entries if force=true
-      if (existingEntries.length > 0) {
-        await db.run('DELETE FROM bracket_entries WHERE bracket_id = ?', [id]);
-      }
-
-      // Create entries
-      let entriesCreated = 0;
-      let byeCount = 0;
-
-      for (let seedPosition = 1; seedPosition <= bracketSize; seedPosition++) {
-        const team = rankedTeams[seedPosition - 1];
-
-        if (team && seedPosition <= teamCount) {
-          // Real team entry
-          await db.run(
-            `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, ?, 0)`,
-            [id, team.team_id, seedPosition],
-          );
-          entriesCreated++;
-        } else {
-          // Bye entry
-          await db.run(
-            `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, NULL, ?, 1)`,
-            [id, seedPosition],
-          );
-          byeCount++;
-        }
-      }
-
-      // Always update actual_team_count to reflect the current number of ranked teams
-      await db.run('UPDATE brackets SET actual_team_count = ? WHERE id = ?', [
-        teamCount,
-        id,
-      ]);
-
-      res.json({
-        message: 'Entries generated successfully',
-        entriesCreated,
-        byeCount,
-        totalEntries: entriesCreated + byeCount,
-        actualTeamCount: teamCount,
+      const result = await generateBracketEntries({
+        db,
+        bracketId: req.params.id,
+        force: req.query.force === 'true',
       });
+      if (!result.ok) {
+        const payload: Record<string, unknown> = { error: result.error };
+        if ('entriesCount' in result && result.entriesCount !== undefined) {
+          payload.entriesCount = result.entriesCount;
+        }
+        return res.status(result.status).json(payload);
+      }
+      const { ok: _ok, ...body } = result;
+      void _ok;
+      return res.json(body);
     } catch (error) {
       console.error('Error generating bracket entries:', error);
-      res.status(500).json({ error: 'Failed to generate bracket entries' });
+      return res
+        .status(500)
+        .json({ error: 'Failed to generate bracket entries' });
     }
   },
 );
@@ -1264,195 +873,27 @@ router.post(
   requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
-      const { force } = req.query;
       const db = await getDatabase();
-
-      // Get bracket info
-      const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [id]);
-
-      if (!bracket) {
-        return res.status(404).json({ error: 'Bracket not found' });
-      }
-
-      // Check if games already exist
-      const existingGames = await db.all(
-        'SELECT id FROM bracket_games WHERE bracket_id = ?',
-        [id],
-      );
-
-      if (existingGames.length > 0 && force !== 'true') {
-        return res.status(409).json({
-          error: 'Bracket already has games. Use ?force=true to replace.',
-          gamesCount: existingGames.length,
-        });
-      }
-
-      // Ensure templates exist for this bracket size
-      await ensureBracketTemplatesSeeded(db, bracket.bracket_size);
-
-      // Get templates for this bracket size
-      const templates = await db.all(
-        'SELECT * FROM bracket_templates WHERE bracket_size = ? ORDER BY game_number ASC',
-        [bracket.bracket_size],
-      );
-
-      if (templates.length === 0) {
-        return res.status(400).json({
-          error: `No bracket templates found for size ${bracket.bracket_size}`,
-        });
-      }
-
-      // Get entries for looking up seed-based team assignments
-      const entries = await db.all(
-        'SELECT * FROM bracket_entries WHERE bracket_id = ? ORDER BY seed_position ASC',
-        [id],
-      );
-
-      const entriesBySeed = new Map<
-        number,
-        { team_id: number | null; is_bye: boolean }
-      >();
-      for (const entry of entries) {
-        entriesBySeed.set(entry.seed_position, {
-          team_id: entry.team_id,
-          is_bye: !!entry.is_bye,
-        });
-      }
-
-      // Delete existing games if force=true
-      if (existingGames.length > 0) {
-        await db.run('DELETE FROM bracket_games WHERE bracket_id = ?', [id]);
-      }
-
-      // First pass: Create all games and collect their IDs
-      const gameIdByNumber = new Map<number, number>();
-
-      for (const template of templates) {
-        const result = await db.run(
-          `INSERT INTO bracket_games (
-            bracket_id, game_number, round_name, round_number, bracket_side,
-            team1_source, team2_source, status, winner_slot, loser_slot
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
-          [
-            id,
-            template.game_number,
-            template.round_name,
-            template.round_number,
-            template.bracket_side,
-            template.team1_source,
-            template.team2_source,
-            template.winner_slot,
-            template.loser_slot,
-          ],
-        );
-        gameIdByNumber.set(template.game_number, result.lastID as number);
-      }
-
-      // Second pass: Update advancement links and seed-based teams
-      for (const template of templates) {
-        const gameId = gameIdByNumber.get(template.game_number);
-        if (!gameId) continue;
-
-        // Resolve winner/loser advances_to IDs
-        const winnerAdvancesToId = template.winner_advances_to
-          ? gameIdByNumber.get(template.winner_advances_to)
-          : null;
-        const loserAdvancesToId = template.loser_advances_to
-          ? gameIdByNumber.get(template.loser_advances_to)
-          : null;
-
-        // Resolve seed-based team assignments
-        let team1Id: number | null = null;
-        let team2Id: number | null = null;
-        let status = 'pending';
-
-        if (template.team1_source.startsWith('seed:')) {
-          const seedNum = parseInt(template.team1_source.split(':')[1], 10);
-          const entry = entriesBySeed.get(seedNum);
-          if (entry) {
-            team1Id = entry.team_id;
-          }
-        }
-
-        if (template.team2_source.startsWith('seed:')) {
-          const seedNum = parseInt(template.team2_source.split(':')[1], 10);
-          const entry = entriesBySeed.get(seedNum);
-          if (entry) {
-            team2Id = entry.team_id;
-          }
-        }
-
-        // Check for bye scenarios
-        const team1Entry = template.team1_source.startsWith('seed:')
-          ? entriesBySeed.get(parseInt(template.team1_source.split(':')[1], 10))
-          : null;
-        const team2Entry = template.team2_source.startsWith('seed:')
-          ? entriesBySeed.get(parseInt(template.team2_source.split(':')[1], 10))
-          : null;
-
-        // If one team is a bye, auto-advance the other team
-        let winnerId: number | null = null;
-        if (team1Entry?.is_bye && team2Id) {
-          winnerId = team2Id;
-          status = 'bye';
-        } else if (team2Entry?.is_bye && team1Id) {
-          winnerId = team1Id;
-          status = 'bye';
-        } else if (team1Id && team2Id) {
-          status = 'ready';
-        }
-
-        await db.run(
-          `UPDATE bracket_games SET
-            winner_advances_to_id = ?,
-            loser_advances_to_id = ?,
-            team1_id = ?,
-            team2_id = ?,
-            winner_id = ?,
-            status = ?
-          WHERE id = ?`,
-          [
-            winnerAdvancesToId,
-            loserAdvancesToId,
-            team1Id,
-            team2Id,
-            winnerId,
-            status,
-            gameId,
-          ],
-        );
-
-        // If this was a bye game, propagate the winner forward
-        if (winnerId && winnerAdvancesToId && template.winner_slot) {
-          const column =
-            template.winner_slot === 'team1' ? 'team1_id' : 'team2_id';
-          await db.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
-            winnerId,
-            winnerAdvancesToId,
-          ]);
-        }
-      }
-
-      // Third pass: Check for ready games (both teams assigned, neither null)
-      await db.run(
-        `UPDATE bracket_games SET status = 'ready'
-         WHERE bracket_id = ? AND status = 'pending'
-         AND team1_id IS NOT NULL AND team2_id IS NOT NULL`,
-        [id],
-      );
-
-      // Fourth pass: Resolve bye chains (implicit byes from loser sources, etc.)
-      const byeResolution = await resolveBracketByes(db, parseInt(id, 10));
-
-      res.json({
-        message: 'Games generated successfully',
-        gamesCreated: templates.length,
-        byeResolution,
+      const result = await generateBracketGames({
+        db,
+        bracketId: req.params.id,
+        force: req.query.force === 'true',
       });
+      if (!result.ok) {
+        const payload: Record<string, unknown> = { error: result.error };
+        if ('gamesCount' in result && result.gamesCount !== undefined) {
+          payload.gamesCount = result.gamesCount;
+        }
+        return res.status(result.status).json(payload);
+      }
+      const { ok: _ok, ...body } = result;
+      void _ok;
+      return res.json(body);
     } catch (error) {
       console.error('Error generating bracket games:', error);
-      res.status(500).json({ error: 'Failed to generate bracket games' });
+      return res
+        .status(500)
+        .json({ error: 'Failed to generate bracket games' });
     }
   },
 );

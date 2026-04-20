@@ -1,85 +1,31 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { UnifiedTable } from '../table';
-import type { UnifiedColumnDef } from '../table';
+import { useCallback, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { UnifiedTable } from '../table';
 import ScoreViewModal from './ScoreViewModal';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import { formatDateTime } from '../../utils/dateUtils';
+import { apiSend } from '../../utils/apiClient';
 import '../Modal.css';
 import './ScoringTab.css';
+import {
+  buildBracketColumns,
+  buildSeedingColumns,
+} from './scoring/scoringColumns';
+import { useEventScores } from './scoring/useEventScores';
+import { BulkAcceptModal } from './scoring/BulkAcceptModal';
+import type { AffectedGame, ScoreSubmission } from './scoring/types';
 
-interface ScoreSubmission {
-  id: number;
-  template_name: string;
-  participant_name: string;
-  match_id: string;
-  created_at: string;
-  submitted_to_sheet: boolean;
-  status: string;
-  reviewed_by: number | null;
-  reviewed_at: string | null;
-  reviewer_name: string | null;
-  score_data: any;
-  // Event-scoped fields
-  event_id?: number;
-  score_type?: 'seeding' | 'bracket';
-  bracket_game_id?: number;
-  seeding_score_id?: number;
-  game_queue_id?: number;
-  // Joined display fields from by-event endpoint
-  submitted_by?: string;
-  team_display_number?: string;
-  team_name?: string;
-  bracket_name?: string;
-  game_number?: number;
-  queue_position?: number;
-  seeding_round?: number;
-  // Bracket-specific joined display fields
-  bracket_team1_id?: number | null;
-  bracket_team2_id?: number | null;
-  bracket_team1_score?: number | null;
-  bracket_team2_score?: number | null;
-  bracket_team1_number?: number | null;
-  bracket_team1_name?: string | null;
-  bracket_team1_display?: string | null;
-  bracket_team2_number?: number | null;
-  bracket_team2_name?: string | null;
-  bracket_team2_display?: string | null;
-  bracket_winner_number?: number | null;
-  bracket_winner_name?: string | null;
-  bracket_winner_display?: string | null;
-}
-
-interface EventScoresResponse {
-  rows: ScoreSubmission[];
-  page: number;
-  limit: number;
-  totalCount: number;
-  totalPages: number;
-}
-
-interface AffectedGame {
-  id: number;
-  game_number: number;
-  round_name: string;
-  affectedSlot: 'team1' | 'team2' | 'winner';
-}
+const EVENT_LIMIT = 50;
 
 export default function ScoringTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
 
-  // Shared state
-  const [scores, setScores] = useState<ScoreSubmission[]>([]);
   const [editingScore, setEditingScore] = useState<ScoreSubmission | null>(
     null,
   );
-  const [loading, setLoading] = useState(true);
 
-  // URL-backed pagination
   const [searchParams, setSearchParams] = useSearchParams();
   const eventPage = Math.max(1, Number(searchParams.get('page')) || 1);
   const setEventPage = useCallback(
@@ -88,11 +34,8 @@ export default function ScoringTab() {
       setSearchParams(
         (prev) => {
           const p = new URLSearchParams(prev);
-          if (next <= 1) {
-            p.delete('page');
-          } else {
-            p.set('page', String(next));
-          }
+          if (next <= 1) p.delete('page');
+          else p.set('page', String(next));
           return p;
         },
         { replace: true },
@@ -101,399 +44,44 @@ export default function ScoringTab() {
     [eventPage, setSearchParams],
   );
 
-  // Event mode state
   const [eventFilterStatus, setEventFilterStatus] = useState<string>('');
   const [eventFilterType, setEventFilterType] = useState<string>('');
-  const [eventTotalPages, setEventTotalPages] = useState(1);
-  const [eventTotalCount, setEventTotalCount] = useState(0);
-  const eventLimit = 50;
 
-  // Bulk accept state
   const [showBulkAccept, setShowBulkAccept] = useState(false);
-  const [bulkAcceptSelected, setBulkAcceptSelected] = useState<Set<number>>(
-    new Set(),
-  );
   const [bulkAccepting, setBulkAccepting] = useState(false);
+
+  const { confirm, ConfirmDialog } = useConfirm();
+  const {
+    error: toastError,
+    success: toastSuccess,
+    warning: toastWarning,
+    ToastContainer,
+  } = useToast();
+
+  const handleError = useCallback(
+    (message: string) => toastError(message),
+    [toastError],
+  );
+
+  const {
+    scores,
+    loading,
+    totalPages: eventTotalPages,
+    totalCount: eventTotalCount,
+    reload,
+  } = useEventScores({
+    eventId: selectedEventId,
+    page: eventPage,
+    limit: EVENT_LIMIT,
+    filterStatus: eventFilterStatus,
+    filterType: eventFilterType,
+    onError: handleError,
+  });
 
   const pendingScores = useMemo(
     () => scores.filter((s) => s.status === 'pending'),
     [scores],
   );
-
-  const { confirm, ConfirmDialog } = useConfirm();
-  const toast = useToast();
-
-  // Event mode effect
-  useEffect(() => {
-    if (selectedEventId) {
-      loadEventScores(true);
-
-      // Auto-refresh every 10 seconds
-      const interval = setInterval(() => {
-        loadEventScores(false);
-      }, 10000);
-
-      return () => clearInterval(interval);
-    }
-  }, [selectedEventId, eventFilterStatus, eventFilterType, eventPage]);
-
-  // Load event-scoped scores
-  const loadEventScores = async (showLoading = true) => {
-    if (!selectedEventId) return;
-
-    if (showLoading) setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set('page', String(eventPage));
-      params.set('limit', String(eventLimit));
-      if (eventFilterStatus) params.set('status', eventFilterStatus);
-      if (eventFilterType) params.set('score_type', eventFilterType);
-
-      const response = await fetch(
-        `/scores/by-event/${selectedEventId}?${params.toString()}`,
-        { credentials: 'include' },
-      );
-      if (!response.ok) throw new Error('Failed to load event scores');
-
-      const data: EventScoresResponse = await response.json();
-      setScores(data.rows);
-      setEventTotalPages(data.totalPages);
-      setEventTotalCount(data.totalCount);
-    } catch (error) {
-      console.error('Error loading event scores:', error);
-      toast.error('Failed to load event scores');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Accept event-scoped score
-  const handleAcceptEvent = async (id: number, force = false) => {
-    try {
-      const response = await fetch(`/scores/${id}/accept-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ force }),
-      });
-
-      const data = await response.json();
-
-      if (response.status === 409 && !force) {
-        // Conflict - ask user to confirm override
-        const confirmed = await confirm({
-          title: 'Score Conflict',
-          message: `A score already exists for this entry.\n\nExisting: ${data.existingScore ?? data.existingWinnerId}\nNew: ${data.newScore ?? data.newWinnerId}\n\nDo you want to override?`,
-          confirmText: 'Override',
-          confirmStyle: 'warning',
-        });
-        if (confirmed) {
-          return handleAcceptEvent(id, true);
-        }
-        return;
-      }
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to accept score');
-      }
-
-      if (data.advanced) {
-        toast.success(
-          `Score accepted. Winner advanced to game ${data.advancedTo || 'next round'}.`,
-        );
-      } else {
-        toast.success('Score accepted successfully');
-      }
-
-      loadEventScores(false);
-    } catch (error: any) {
-      console.error('Error accepting event score:', error);
-      toast.error(error.message || 'Failed to accept score');
-    }
-  };
-
-  // Revert event-scoped score
-  const handleRevertEvent = async (id: number, confirm_revert = false) => {
-    try {
-      // First, do a dry-run to check for cascading effects
-      const dryRunResponse = await fetch(`/scores/${id}/revert-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ dryRun: true }),
-      });
-
-      const dryRunData = await dryRunResponse.json();
-
-      if (!dryRunResponse.ok) {
-        throw new Error(dryRunData.error || 'Failed to check revert');
-      }
-
-      // If cascade confirmation is required
-      if (dryRunData.requiresConfirmation && !confirm_revert) {
-        const affectedGames: AffectedGame[] = dryRunData.affectedGames || [];
-        const gamesList = affectedGames
-          .map(
-            (g) =>
-              `• Game ${g.game_number} (${g.round_name}): ${g.affectedSlot}`,
-          )
-          .join('\n');
-
-        const confirmed = await confirm({
-          title: 'Confirm Cascade Revert',
-          message: `Reverting this score will affect ${affectedGames.length} downstream game(s):\n\n${gamesList}\n\nAre you sure you want to proceed?`,
-          confirmText: 'Revert All',
-          confirmStyle: 'danger',
-        });
-
-        if (!confirmed) return;
-      } else if (!confirm_revert) {
-        // Simple confirmation for non-cascade revert
-        const confirmed = await confirm({
-          title: 'Revert Score',
-          message: 'Are you sure you want to revert this score to pending?',
-          confirmText: 'Revert',
-          confirmStyle: 'warning',
-        });
-        if (!confirmed) return;
-      }
-
-      // Apply the revert
-      const response = await fetch(`/scores/${id}/revert-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ confirm: true }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to revert score');
-      }
-
-      if (data.revertedGames && data.revertedGames > 1) {
-        toast.success(`Score reverted. ${data.revertedGames} games affected.`);
-      } else {
-        toast.success('Score reverted successfully');
-      }
-
-      loadEventScores(false);
-    } catch (error: any) {
-      console.error('Error reverting event score:', error);
-      toast.error(error.message || 'Failed to revert score');
-    }
-  };
-
-  const handleReject = async (id: number) => {
-    const confirmed = await confirm({
-      title: 'Reject Score',
-      message: 'Are you sure you want to reject this score?',
-      confirmText: 'Reject',
-      confirmStyle: 'danger',
-    });
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`/scores/${id}/reject`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to reject score');
-      loadEventScores(false);
-    } catch (error) {
-      console.error('Error rejecting score:', error);
-      toast.error('Failed to reject score');
-    }
-  };
-
-  const handleEdit = (score: ScoreSubmission) => {
-    setEditingScore(score);
-  };
-
-  // Bulk accept handlers
-  const handleOpenBulkAccept = () => {
-    setBulkAcceptSelected(new Set(pendingScores.map((s) => s.id)));
-    setShowBulkAccept(true);
-  };
-
-  const handleCloseBulkAccept = () => {
-    setShowBulkAccept(false);
-    setBulkAcceptSelected(new Set());
-  };
-
-  const handleToggleBulkAcceptScore = (id: number) => {
-    setBulkAcceptSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const handleSelectAllBulkAccept = () => {
-    setBulkAcceptSelected(new Set(pendingScores.map((s) => s.id)));
-  };
-
-  const handleSelectNoneBulkAccept = () => {
-    setBulkAcceptSelected(new Set());
-  };
-
-  const handleBulkAccept = async () => {
-    if (bulkAcceptSelected.size === 0 || !selectedEventId) return;
-
-    setBulkAccepting(true);
-    try {
-      const response = await fetch(
-        `/scores/event/${selectedEventId}/accept/bulk`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            score_ids: Array.from(bulkAcceptSelected),
-          }),
-        },
-      );
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to accept scores');
-      }
-
-      const data = await response.json();
-      toast.success(`Accepted ${data.accepted} score(s)`);
-      if (data.skipped && data.skipped.length > 0) {
-        toast.warning(`${data.skipped.length} score(s) skipped (conflicts)`);
-      }
-      handleCloseBulkAccept();
-      loadEventScores(false);
-    } catch (error: any) {
-      console.error('Error bulk accepting scores:', error);
-      toast.error(error.message || 'Failed to accept scores');
-    } finally {
-      setBulkAccepting(false);
-    }
-  };
-
-  const handleScoreUpdated = () => {
-    setEditingScore(null);
-    loadEventScores(false);
-  };
-
-  const getSeedingRowDisplay = (score: ScoreSubmission) => {
-    const data = score.score_data || {};
-    const teamNum =
-      score.team_display_number ||
-      data.team_number?.value ||
-      data.team_a_number?.value ||
-      '-';
-    const teamName =
-      score.team_name || data.team_name?.value || data.team_a_name?.value || '';
-    const round = score.seeding_round || data.round?.value;
-    const roundLabel = round ? `Round ${round}` : '-';
-    const total =
-      data.grand_total?.value ??
-      data.team_a_total?.value ??
-      data.score?.value ??
-      '-';
-    return { teamNum, teamName, roundLabel, total };
-  };
-
-  const getBracketRowDisplay = (score: ScoreSubmission) => {
-    const data = score.score_data || {};
-
-    const team1Label =
-      score.bracket_team1_display ||
-      score.bracket_team1_name ||
-      (score.bracket_team1_number != null
-        ? String(score.bracket_team1_number)
-        : null) ||
-      data.team_a_name?.value ||
-      data.team_a_number?.value ||
-      'TBD';
-    const team2Label =
-      score.bracket_team2_display ||
-      score.bracket_team2_name ||
-      (score.bracket_team2_number != null
-        ? String(score.bracket_team2_number)
-        : null) ||
-      data.team_b_name?.value ||
-      data.team_b_number?.value ||
-      'TBD';
-
-    const bracketName = score.bracket_name || 'Bracket';
-    const gameNum = score.game_number || data.game_number?.value;
-    const gameLabel = gameNum ? `Game ${gameNum}` : '-';
-
-    const team1Score =
-      data.team1_score?.value ?? score.bracket_team1_score ?? null;
-    const team2Score =
-      data.team2_score?.value ?? score.bracket_team2_score ?? null;
-    const scoreLabel =
-      team1Score != null && team2Score != null
-        ? `${team1Score} – ${team2Score}`
-        : '-';
-
-    let winnerLabel =
-      score.bracket_winner_display ||
-      score.bracket_winner_name ||
-      (score.bracket_winner_number != null
-        ? String(score.bracket_winner_number)
-        : null) ||
-      data.winner_name?.value ||
-      null;
-
-    if (!winnerLabel) {
-      const winnerId =
-        data.winner_team_id?.value ?? data.winner_id?.value ?? null;
-      if (winnerId != null) {
-        if (winnerId === score.bracket_team1_id) {
-          winnerLabel = team1Label;
-        } else if (winnerId === score.bracket_team2_id) {
-          winnerLabel = team2Label;
-        } else {
-          winnerLabel = `Team ${winnerId}`;
-        }
-      } else {
-        winnerLabel = '-';
-      }
-    }
-
-    return {
-      team1Label,
-      team2Label,
-      bracketName,
-      gameLabel,
-      scoreLabel,
-      winnerLabel,
-    };
-  };
-
-  const getStatusBadge = (score: ScoreSubmission) => {
-    const { status, reviewed_by } = score;
-    switch (status) {
-      case 'accepted':
-        return reviewed_by == null ? (
-          <span
-            className="badge badge-success"
-            title="Auto-accepted by the system"
-          >
-            Automatically Accepted
-          </span>
-        ) : (
-          <span className="badge badge-success">Accepted</span>
-        );
-      case 'rejected':
-        return <span className="badge badge-danger">Rejected</span>;
-      default:
-        return <span className="badge badge-warning">Pending</span>;
-    }
-  };
-
   const seedingScores = useMemo(
     () => scores.filter((s) => s.score_type === 'seeding'),
     [scores],
@@ -503,188 +91,222 @@ export default function ScoringTab() {
     [scores],
   );
 
-  const buildSeedingColumns = (
-    showType: boolean,
-  ): UnifiedColumnDef<ScoreSubmission>[] => {
-    const cols: UnifiedColumnDef<ScoreSubmission>[] = [];
-    if (showType) {
-      cols.push({
-        kind: 'data',
-        id: 'type',
-        header: { full: 'Type' },
-        renderCell: () => <span className="badge badge-info">Seeding</span>,
-      });
-    }
-    cols.push(
-      {
-        kind: 'data',
-        id: 'team',
-        header: { full: 'Team' },
-        renderCell: (score) => {
-          const { teamNum, teamName } = getSeedingRowDisplay(score);
-          return (
-            <>
-              <div>
-                <strong>{teamNum}</strong>
-              </div>
-              {teamName && (
-                <small style={{ color: 'var(--text-secondary)' }}>
-                  {teamName}
-                </small>
-              )}
-            </>
+  const handleAcceptEvent = useCallback(
+    async (id: number, force = false): Promise<void> => {
+      try {
+        const data = await apiSend<{
+          advanced?: boolean;
+          advancedTo?: number | string;
+        }>('POST', `/scores/${id}/accept-event`, { force });
+        if (data.advanced) {
+          toastSuccess(
+            `Score accepted. Winner advanced to game ${data.advancedTo || 'next round'}.`,
           );
-        },
-      },
-      {
-        kind: 'data',
-        id: 'round',
-        header: { full: 'Round' },
-        renderCell: (score) => getSeedingRowDisplay(score).roundLabel,
-      },
-      {
-        kind: 'data',
-        id: 'total',
-        header: { full: 'Total' },
-        renderCell: (score) => (
-          <strong style={{ color: 'var(--primary-color)' }}>
-            {getSeedingRowDisplay(score).total}
-          </strong>
-        ),
-      },
-      {
-        kind: 'data',
-        id: 'submitted',
-        header: { full: 'Submitted' },
-        renderCell: (score) => formatDateTime(score.created_at),
-      },
-      {
-        kind: 'data',
-        id: 'status',
-        header: { full: 'Status' },
-        renderCell: (score) => getStatusBadge(score),
-      },
-      {
-        kind: 'data',
-        id: 'reviewed',
-        header: { full: 'Reviewed' },
-        renderCell: (score) => (
-          <>
-            {score.reviewer_name || '-'}
-            {score.reviewed_at && (
-              <>
-                <br />
-                <small>{formatDateTime(score.reviewed_at)}</small>
-              </>
-            )}
-          </>
-        ),
-      },
-      {
-        kind: 'data',
-        id: 'actions',
-        header: { full: 'Actions' },
-        renderCell: (score) => renderEventActions(score),
-      },
-    );
-    return cols;
-  };
+        } else {
+          toastSuccess('Score accepted successfully');
+        }
+        reload(false);
+      } catch (error) {
+        const apiErr = error as {
+          status?: number;
+          body?: {
+            existingScore?: unknown;
+            existingWinnerId?: unknown;
+            newScore?: unknown;
+            newWinnerId?: unknown;
+            error?: string;
+          };
+          message?: string;
+        };
+        if (apiErr.status === 409 && !force) {
+          const body = apiErr.body ?? {};
+          const confirmed = await confirm({
+            title: 'Score Conflict',
+            message: `A score already exists for this entry.\n\nExisting: ${body.existingScore ?? body.existingWinnerId}\nNew: ${body.newScore ?? body.newWinnerId}\n\nDo you want to override?`,
+            confirmText: 'Override',
+            confirmStyle: 'warning',
+          });
+          if (confirmed) await handleAcceptEvent(id, true);
+          return;
+        }
+        console.error('Error accepting event score:', error);
+        toastError(apiErr.message || 'Failed to accept score');
+      }
+    },
+    [confirm, reload, toastSuccess, toastError],
+  );
 
-  const buildBracketColumns = (
-    showType: boolean,
-  ): UnifiedColumnDef<ScoreSubmission>[] => {
-    const cols: UnifiedColumnDef<ScoreSubmission>[] = [];
-    if (showType) {
-      cols.push({
-        kind: 'data',
-        id: 'type',
-        header: { full: 'Type' },
-        renderCell: () => <span className="badge badge-purple">Bracket</span>,
+  const handleRevertEvent = useCallback(
+    async (id: number) => {
+      try {
+        const dryRunData = await apiSend<{
+          requiresConfirmation?: boolean;
+          affectedGames?: AffectedGame[];
+        }>('POST', `/scores/${id}/revert-event`, { dryRun: true });
+
+        if (dryRunData.requiresConfirmation) {
+          const affectedGames = dryRunData.affectedGames || [];
+          const gamesList = affectedGames
+            .map(
+              (g) =>
+                `• Game ${g.game_number} (${g.round_name}): ${g.affectedSlot}`,
+            )
+            .join('\n');
+          const confirmed = await confirm({
+            title: 'Confirm Cascade Revert',
+            message: `Reverting this score will affect ${affectedGames.length} downstream game(s):\n\n${gamesList}\n\nAre you sure you want to proceed?`,
+            confirmText: 'Revert All',
+            confirmStyle: 'danger',
+          });
+          if (!confirmed) return;
+        } else {
+          const confirmed = await confirm({
+            title: 'Revert Score',
+            message: 'Are you sure you want to revert this score to pending?',
+            confirmText: 'Revert',
+            confirmStyle: 'warning',
+          });
+          if (!confirmed) return;
+        }
+
+        const data = await apiSend<{ revertedGames?: number }>(
+          'POST',
+          `/scores/${id}/revert-event`,
+          { confirm: true },
+        );
+        if (data.revertedGames && data.revertedGames > 1) {
+          toastSuccess(`Score reverted. ${data.revertedGames} games affected.`);
+        } else {
+          toastSuccess('Score reverted successfully');
+        }
+        reload(false);
+      } catch (error) {
+        console.error('Error reverting event score:', error);
+        toastError(
+          error instanceof Error ? error.message : 'Failed to revert score',
+        );
+      }
+    },
+    [confirm, reload, toastSuccess, toastError],
+  );
+
+  const handleReject = useCallback(
+    async (id: number) => {
+      const confirmed = await confirm({
+        title: 'Reject Score',
+        message: 'Are you sure you want to reject this score?',
+        confirmText: 'Reject',
+        confirmStyle: 'danger',
       });
-    }
-    cols.push(
-      {
-        kind: 'data',
-        id: 'matchup',
-        header: { full: 'Matchup' },
-        renderCell: (score) => {
-          const { team1Label, team2Label } = getBracketRowDisplay(score);
-          return (
-            <div className="bracket-matchup-cell">
-              <span>{team1Label}</span>
-              <span className="bracket-vs">vs</span>
-              <span>{team2Label}</span>
-            </div>
-          );
-        },
-      },
-      {
-        kind: 'data',
-        id: 'game',
-        header: { full: 'Game' },
-        renderCell: (score) => getBracketRowDisplay(score).gameLabel,
-      },
-      {
-        kind: 'data',
-        id: 'score',
-        header: { full: 'Score' },
-        renderCell: (score) => (
-          <strong style={{ color: 'var(--primary-color)' }}>
-            {getBracketRowDisplay(score).scoreLabel}
-          </strong>
-        ),
-      },
-      {
-        kind: 'data',
-        id: 'winner',
-        header: { full: 'Winner' },
-        renderCell: (score) => (
-          <span className="bracket-winner-cell">
-            {getBracketRowDisplay(score).winnerLabel}
-          </span>
-        ),
-      },
-      {
-        kind: 'data',
-        id: 'submitted',
-        header: { full: 'Submitted' },
-        renderCell: (score) => formatDateTime(score.created_at),
-      },
-      {
-        kind: 'data',
-        id: 'status',
-        header: { full: 'Status' },
-        renderCell: (score) => getStatusBadge(score),
-      },
-      {
-        kind: 'data',
-        id: 'reviewed',
-        header: { full: 'Reviewed' },
-        renderCell: (score) => (
+      if (!confirmed) return;
+      try {
+        await apiSend('POST', `/scores/${id}/reject`);
+        reload(false);
+      } catch (error) {
+        console.error('Error rejecting score:', error);
+        toastError('Failed to reject score');
+      }
+    },
+    [confirm, reload, toastError],
+  );
+
+  const handleBulkAccept = useCallback(
+    async (selectedIds: number[]) => {
+      if (selectedIds.length === 0 || !selectedEventId) return;
+      setBulkAccepting(true);
+      try {
+        const data = await apiSend<{
+          accepted: number;
+          skipped?: unknown[];
+        }>('POST', `/scores/event/${selectedEventId}/accept/bulk`, {
+          score_ids: selectedIds,
+        });
+        toastSuccess(`Accepted ${data.accepted} score(s)`);
+        if (data.skipped && data.skipped.length > 0) {
+          toastWarning(`${data.skipped.length} score(s) skipped (conflicts)`);
+        }
+        setShowBulkAccept(false);
+        reload(false);
+      } catch (error) {
+        console.error('Error bulk accepting scores:', error);
+        toastError(
+          error instanceof Error ? error.message : 'Failed to accept scores',
+        );
+      } finally {
+        setBulkAccepting(false);
+      }
+    },
+    [selectedEventId, reload, toastSuccess, toastWarning, toastError],
+  );
+
+  const renderEventActions = useCallback(
+    (score: ScoreSubmission) => (
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '0.25rem',
+          width: '160px',
+          minWidth: '160px',
+        }}
+      >
+        {score.status === 'pending' ? (
           <>
-            {score.reviewer_name || '-'}
-            {score.reviewed_at && (
-              <>
-                <br />
-                <small>{formatDateTime(score.reviewed_at)}</small>
-              </>
-            )}
+            <button
+              className="btn btn-primary"
+              onClick={() => handleAcceptEvent(score.id)}
+              style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+            >
+              Accept
+            </button>
+            <button
+              className="btn btn-danger"
+              onClick={() => handleReject(score.id)}
+              style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+            >
+              Reject
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setEditingScore(score)}
+              style={{
+                fontSize: '0.85rem',
+                padding: '0.4rem 0.6rem',
+                gridColumn: '1 / 3',
+              }}
+            >
+              View Details
+            </button>
           </>
-        ),
-      },
-      {
-        kind: 'data',
-        id: 'actions',
-        header: { full: 'Actions' },
-        renderCell: (score) => renderEventActions(score),
-      },
-    );
-    return cols;
-  };
+        ) : (
+          <>
+            <button
+              className="btn btn-secondary"
+              onClick={() => handleRevertEvent(score.id)}
+              style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+            >
+              Revert
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setEditingScore(score)}
+              style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+            >
+              View
+            </button>
+          </>
+        )}
+      </div>
+    ),
+    [handleAcceptEvent, handleReject, handleRevertEvent],
+  );
 
   const renderSeedingTable = (rows: ScoreSubmission[], showType: boolean) => (
     <UnifiedTable
-      columns={buildSeedingColumns(showType)}
+      columns={buildSeedingColumns({
+        showType,
+        renderActions: renderEventActions,
+      })}
       rows={rows}
       getRowKey={(s) => s.id}
       headerLabelVariant="none"
@@ -693,7 +315,10 @@ export default function ScoringTab() {
 
   const renderBracketTable = (rows: ScoreSubmission[], showType: boolean) => (
     <UnifiedTable
-      columns={buildBracketColumns(showType)}
+      columns={buildBracketColumns({
+        showType,
+        renderActions: renderEventActions,
+      })}
       rows={rows}
       getRowKey={(s) => s.id}
       headerLabelVariant="none"
@@ -701,13 +326,8 @@ export default function ScoringTab() {
   );
 
   const renderEventTables = () => {
-    if (eventFilterType === 'seeding') {
-      return renderSeedingTable(scores, false);
-    }
-    if (eventFilterType === 'bracket') {
-      return renderBracketTable(scores, false);
-    }
-    // "All" — show stacked sections so columns stay stable
+    if (eventFilterType === 'seeding') return renderSeedingTable(scores, false);
+    if (eventFilterType === 'bracket') return renderBracketTable(scores, false);
     return (
       <>
         {seedingScores.length > 0 && (
@@ -726,67 +346,6 @@ export default function ScoringTab() {
     );
   };
 
-  // Render actions for event-scoped scores
-  const renderEventActions = (score: ScoreSubmission) => (
-    <div
-      style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
-        gap: '0.25rem',
-        width: '160px',
-        minWidth: '160px',
-      }}
-    >
-      {score.status === 'pending' ? (
-        <>
-          <button
-            className="btn btn-primary"
-            onClick={() => handleAcceptEvent(score.id)}
-            style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
-          >
-            Accept
-          </button>
-          <button
-            className="btn btn-danger"
-            onClick={() => handleReject(score.id)}
-            style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
-          >
-            Reject
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => handleEdit(score)}
-            style={{
-              fontSize: '0.85rem',
-              padding: '0.4rem 0.6rem',
-              gridColumn: '1 / 3',
-            }}
-          >
-            View Details
-          </button>
-        </>
-      ) : (
-        <>
-          <button
-            className="btn btn-secondary"
-            onClick={() => handleRevertEvent(score.id)}
-            style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
-          >
-            Revert
-          </button>
-          <button
-            className="btn btn-secondary"
-            onClick={() => handleEdit(score)}
-            style={{ fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
-          >
-            View
-          </button>
-        </>
-      )}
-    </div>
-  );
-
-  // Render pagination controls for event mode
   const renderEventPagination = () => (
     <div
       style={{
@@ -830,7 +389,6 @@ export default function ScoringTab() {
     <div>
       <h2>Scoring</h2>
 
-      {/* Event Controls */}
       <div className="card">
         <div
           style={{
@@ -874,7 +432,7 @@ export default function ScoringTab() {
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
             <button
               className="btn btn-success"
-              onClick={handleOpenBulkAccept}
+              onClick={() => setShowBulkAccept(true)}
               disabled={pendingScores.length === 0}
               title={
                 pendingScores.length === 0
@@ -887,7 +445,7 @@ export default function ScoringTab() {
             </button>
             <button
               className="btn btn-secondary"
-              onClick={() => loadEventScores(true)}
+              onClick={() => reload(true)}
               style={{ padding: '0.5rem 1rem' }}
             >
               Refresh
@@ -896,170 +454,40 @@ export default function ScoringTab() {
         </div>
       </div>
 
-      {/* Event Content */}
-      <>
-        {!selectedEventId ? (
-          <p>Please select an event from the top navigation to view scores.</p>
-        ) : loading ? (
-          <p>Loading scores...</p>
-        ) : scores.length === 0 ? (
-          <p>No scores found for this event with the selected filters.</p>
-        ) : (
-          <>
-            {renderEventTables()}
-            {eventTotalPages > 1 && renderEventPagination()}
-          </>
-        )}
-      </>
+      {!selectedEventId ? (
+        <p>Please select an event from the top navigation to view scores.</p>
+      ) : loading ? (
+        <p>Loading scores...</p>
+      ) : scores.length === 0 ? (
+        <p>No scores found for this event with the selected filters.</p>
+      ) : (
+        <>
+          {renderEventTables()}
+          {eventTotalPages > 1 && renderEventPagination()}
+        </>
+      )}
 
       {editingScore && (
         <ScoreViewModal
           score={editingScore}
           onClose={() => setEditingScore(null)}
-          onSave={handleScoreUpdated}
+          onSave={() => {
+            setEditingScore(null);
+            reload(false);
+          }}
         />
       )}
 
-      {/* Bulk Accept Modal */}
-      {showBulkAccept && (
-        <div className="modal show" onClick={handleCloseBulkAccept}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '600px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={handleCloseBulkAccept}>
-              &times;
-            </span>
-            <h3>Bulk Accept Scores</h3>
-            <p
-              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
-            >
-              Select the pending scores you want to accept. All scores are
-              selected by default.
-            </p>
-
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                marginBottom: '1rem',
-              }}
-            >
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleSelectAllBulkAccept}
-                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
-              >
-                Select All
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleSelectNoneBulkAccept}
-                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
-              >
-                Select None
-              </button>
-              <span
-                style={{
-                  marginLeft: 'auto',
-                  color: 'var(--secondary-color)',
-                  fontSize: '0.875rem',
-                  alignSelf: 'center',
-                }}
-              >
-                {bulkAcceptSelected.size} of {pendingScores.length} selected
-              </span>
-            </div>
-
-            <div className="bulk-accept-list">
-              {pendingScores.length === 0 ? (
-                <p style={{ color: 'var(--secondary-color)' }}>
-                  No pending scores in the current view. Filter by status
-                  &quot;Pending&quot; to see scores to accept.
-                </p>
-              ) : (
-                pendingScores.map((score) => {
-                  const scoreType = score.score_type || 'unknown';
-
-                  if (scoreType === 'bracket') {
-                    const {
-                      team1Label,
-                      team2Label,
-                      gameLabel,
-                      scoreLabel,
-                      winnerLabel,
-                    } = getBracketRowDisplay(score);
-                    return (
-                      <label key={score.id} className="bulk-accept-item">
-                        <input
-                          type="checkbox"
-                          checked={bulkAcceptSelected.has(score.id)}
-                          onChange={() => handleToggleBulkAcceptScore(score.id)}
-                        />
-                        <span className="bulk-accept-context">{gameLabel}</span>
-                        <span className="bulk-accept-detail">
-                          {team1Label} vs {team2Label} — {scoreLabel} →{' '}
-                          {winnerLabel}
-                        </span>
-                      </label>
-                    );
-                  }
-
-                  const { teamNum, roundLabel, total } =
-                    getSeedingRowDisplay(score);
-                  return (
-                    <label key={score.id} className="bulk-accept-item">
-                      <input
-                        type="checkbox"
-                        checked={bulkAcceptSelected.has(score.id)}
-                        onChange={() => handleToggleBulkAcceptScore(score.id)}
-                      />
-                      <span className="bulk-accept-context">{roundLabel}</span>
-                      <span className="bulk-accept-detail">
-                        Team {teamNum} — {total}
-                      </span>
-                    </label>
-                  );
-                })
-              )}
-            </div>
-
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                justifyContent: 'flex-end',
-                marginTop: '1.5rem',
-              }}
-            >
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleCloseBulkAccept}
-                disabled={bulkAccepting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-success"
-                onClick={handleBulkAccept}
-                disabled={bulkAccepting || bulkAcceptSelected.size === 0}
-              >
-                {bulkAccepting
-                  ? 'Accepting...'
-                  : `Accept ${bulkAcceptSelected.size} Score(s)`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BulkAcceptModal
+        open={showBulkAccept}
+        pendingScores={pendingScores}
+        accepting={bulkAccepting}
+        onClose={() => setShowBulkAccept(false)}
+        onAccept={handleBulkAccept}
+      />
 
       {ConfirmDialog}
-      {toast.ToastContainer}
+      {ToastContainer}
     </div>
   );
 }
