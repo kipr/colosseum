@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title></title>
+</head>
+<body>
+<h1 id="srcsharedapi-shared-api-response-dtos"><code>src&#47;shared&#47;api&#47;</code> — Shared API response DTOs</h1>
+<p>This directory is the single source of truth for <strong>HTTP response shapes</strong>
+exchanged between the Express server (<code>src&#47;server&#47;</code>) and the React client
+(<code>src&#47;client&#47;</code>). Both <code>tsconfig.json</code> (server) and <code>tsconfig.client.json</code>
+(client) include <code>src&#47;shared</code>, so types defined here are usable on both
+sides without any build-config changes.</p>
+<p>It complements <code>src&#47;shared&#47;domain&#47;</code>, which holds canonical <strong>entity</strong>
+DTOs, enums, label maps, and validators (e.g. <code>Event</code>, <code>Bracket</code>,
+<code>TeamStatus</code>). Where a response simply returns a domain entity, prefer
+re-using or re-exporting that entity instead of restating it.</p>
+<h2 id="why-this-exists">Why this exists</h2>
+<p>Before this folder existed, response shapes were redeclared on the client
+(usually as <code>interface Foo { ... }</code> near the call site). That made
+silent contract drift very easy: a server route could add, rename, or
+drop a field and the client would compile fine while reading
+<code>undefined</code> at runtime. Centralising response DTOs lets the TypeScript
+compiler catch drift at build time.</p>
+<h2 id="rules-for-adding-a-new-response-dto">Rules for adding a new response DTO</h2>
+<ol>
+<li><strong>One DTO per response shape.</strong> Name it after the response, e.g.
+<code>PublicEvent</code> for <code>GET &#47;events&#47;:id&#47;public</code>, <code>EventScoresPage</code> for the
+paginated <code>GET &#47;scores&#47;by-event&#47;:eventId</code>. If two endpoints really
+return the exact same shape, share one type and document both routes
+in its doc comment.</li>
+<li><strong>Reuse <code>src&#47;shared&#47;domain&#47;</code>.</strong> Status fields should be typed with the
+domain enum (e.g. <code>EventStatus</code>, <code>QueueStatus</code>, <code>BracketStatus</code>,
+<code>ScoreSubmissionStatus</code>), never <code>string</code>. Entity payloads should reuse
+the domain DTO (e.g. <code>Event</code>, <code>Bracket</code>).</li>
+<li><strong>No <code>any</code>, no stringly-typed unions.</strong> If the wire format is a small
+set of literals, type it as a union (e.g. <code>&#39;seeding&#39; | &#39;bracket&#39;</code>) or
+reuse the matching domain enum.</li>
+<li><strong>Prefer <code>readonly</code> arrays and properties.</strong> A decoded response is, by
+construction, a snapshot — mutating it in place is almost always a
+bug. <code>readonly Foo[]</code> everywhere keeps that intent in the type
+system.</li>
+<li><strong>Document the route(s) that produce the shape</strong> in a JSDoc comment at
+the top of each file, so a future maintainer can find the server
+handler from the type and vice versa.</li>
+<li><strong>Imports.</strong> From the server use <code>from &#39;..&#47;..&#47;shared&#47;api&#39;</code>; from the
+client use <code>from &#39;..&#47;..&#47;shared&#47;api&#39;</code> (depth varies). The barrel
+<code>src&#47;shared&#47;api&#47;index.ts</code> re-exports everything.</li>
+</ol>
+<h2 id="currently-shared">Currently shared</h2>
+<table>
+<thead>
+<tr>
+<th>Type &#47; family</th>
+<th>File</th>
+<th>Server handler(s)</th>
+<th>Client consumer(s)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PublicEvent</code>, <code>PublicEventListResponse</code></td>
+<td><code>events.ts</code></td>
+<td><code>GET &#47;events&#47;public</code>, <code>GET &#47;events&#47;:id&#47;public</code> (<code>src&#47;server&#47;routes&#47;events.ts</code>)</td>
+<td><code>pages&#47;SpectatorEvents.tsx</code>, <code>pages&#47;Spectator.tsx</code></td>
+</tr>
+<tr>
+<td><code>AutomaticAwardsPublic</code> and the <code>MedalPlacement</code> family</td>
+<td><code>awards.ts</code></td>
+<td><code>computeAutomaticAwards()</code> (<code>src&#47;server&#47;services&#47;automaticAwards.ts</code>), surfaced by <code>GET &#47;awards&#47;event&#47;:eventId&#47;public</code> and <code>POST &#47;awards&#47;event&#47;:eventId&#47;automatic</code></td>
+<td><code>components&#47;spectator&#47;SpectatorAutomaticAwards.tsx</code>, <code>pages&#47;Spectator.tsx</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="migration-backlog">Migration backlog</h2>
+<p>The following client interfaces still locally restate a server response
+(or a server entity) and should be migrated into <code>shared&#47;api&#47;</code> (or, when
+they really are full entities, into <code>shared&#47;domain&#47;</code>). Roughly in
+priority order:</p>
+<h3 id="high-value-non-trivial-shapes-that-already-drift-risk">High value — non-trivial shapes that already drift risk</h3>
+<ul>
+<li><code>EventScoresResponse</code> + <code>ScoreSubmission</code>
+(<code>src&#47;client&#47;components&#47;admin&#47;ScoringTab.tsx</code>) ↔
+<code>GET &#47;scores&#47;by-event&#47;:eventId</code> in <code>src&#47;server&#47;routes&#47;scores.ts</code>. The
+client <code>ScoreSubmission</code> carries ~30 optional joined display fields;
+this is exactly the kind of shape that drifts silently today.</li>
+<li><code>OverallRow</code> (<code>src&#47;client&#47;components&#47;overall&#47;OverallScoresDisplay.tsx</code>)
+↔ <code>OverallScoreRow</code> in <code>src&#47;server&#47;services&#47;overallScores.ts</code>. Already
+defined twice with the same fields minus <code>team_id</code>.</li>
+<li><code>QueueItem</code> (<code>src&#47;client&#47;components&#47;admin&#47;QueueTab.tsx</code>) ↔
+<code>GET &#47;queue&#47;event&#47;:eventId</code> in <code>src&#47;server&#47;routes&#47;queue.ts</code>. ~20
+joined display fields.</li>
+<li><code>AuditLogEntry</code> (<code>src&#47;client&#47;components&#47;admin&#47;AuditTab.tsx</code>) ↔
+<code>src&#47;server&#47;routes&#47;audit.ts</code>.</li>
+<li>Documentation scores: <code>DocCategory</code>, <code>DocScore</code>, <code>DocSubScore</code>
+(<code>src&#47;client&#47;components&#47;admin&#47;DocumentationTab.tsx</code>,
+<code>src&#47;client&#47;components&#47;documentation&#47;DocumentationScoresDisplay.tsx</code>)
+↔ <code>src&#47;server&#47;routes&#47;documentationScores.ts</code> (incl. the <code>{ categories,
+scores }</code> public bundle and <code>{ team, documentation_score, sub_scores }</code>
+per-team shape).</li>
+<li>Awards admin: <code>AwardTemplate</code>, <code>EventAward</code>, <code>Recipient</code>
+(<code>src&#47;client&#47;components&#47;admin&#47;AwardsTab.tsx</code>) ↔
+<code>src&#47;server&#47;routes&#47;awards.ts</code>.</li>
+</ul>
+<h3 id="entity-dtos-that-should-re-use-existing-shareddomain">Entity DTOs that should re-use existing <code>shared&#47;domain</code></h3>
+<ul>
+<li><code>Team</code> redeclared in <code>TeamsTab</code>, <code>QueueTab</code>, <code>AwardsTab</code>,
+<code>SeedingScoresTable</code>, <code>DocumentationTab</code>. Add a canonical <code>Team</code> to
+<code>src&#47;shared&#47;domain&#47;team.ts</code> (the enum module already lives there) and
+re-export.</li>
+<li><code>Bracket</code> &#47; <code>BracketGame</code> redeclared in
+<code>components&#47;admin&#47;QueueTab.tsx</code> and
+<code>components&#47;admin&#47;TemplateEditorModal.tsx</code>. The canonical versions
+already live in <code>src&#47;shared&#47;domain&#47;bracket.ts</code>.</li>
+<li><code>User</code> (<code>src&#47;client&#47;contexts&#47;AuthContext.tsx</code>) ↔
+<code>AuthenticatedUser</code> shape in <code>src&#47;server&#47;routes&#47;auth.ts</code>
+(<code>GET &#47;auth&#47;user</code>).</li>
+<li><code>AdminUser</code> (<code>src&#47;client&#47;components&#47;admin&#47;AdminsTab.tsx</code>) ↔
+<code>GET &#47;api&#47;admin&#47;users</code> in <code>src&#47;server&#47;routes&#47;admin.ts</code>.</li>
+<li><code>Template</code> (<code>src&#47;client&#47;pages&#47;Judge.tsx</code>,
+<code>src&#47;client&#47;components&#47;admin&#47;TemplatesTab.tsx</code>,
+<code>src&#47;client&#47;components&#47;admin&#47;TemplateEditorModal.tsx</code>).</li>
+<li><code>ChatMessage</code>, <code>Spreadsheet</code> (<code>src&#47;client&#47;contexts&#47;ChatContext.tsx</code>) ↔
+<code>src&#47;server&#47;routes&#47;chat.ts</code>.</li>
+<li><code>SeedingScore</code>, <code>SeedingRanking</code>
+(<code>src&#47;client&#47;components&#47;seeding&#47;SeedingScoresTable.tsx</code>) ↔
+<code>src&#47;server&#47;routes&#47;seeding.ts</code>.</li>
+</ul>
+<h3 id="server-side-typing-deferred">Server-side typing (deferred)</h3>
+<p>The pattern established here gives the <strong>client</strong> a typed view of the
+wire, but server handlers in <code>src&#47;server&#47;routes&#47;*.ts</code> still call
+<code>res.json(rawDbRow)</code> with no compile-time link back to the shared DTO.
+That means a renamed column or dropped JOIN field can ship without TS
+catching it on the server side.</p>
+<p>A follow-up pass should:</p>
+<ol>
+<li>Introduce a small <code>typedJson&#60;T&#62;(res: Response, body: T): Response</code>
+helper (or annotate handler return types via
+<code>Response&#60;T&#62;</code> from <code>express-serve-static-core</code>), and migrate
+handlers to use it.</li>
+<li>Replace the ad-hoc <code>Record&#60;string, unknown&#62;</code> casts around
+<code>db.all</code> &#47; <code>db.get</code> results with concrete row types (often a
+<code>Pick&#60;...&#62;</code> of the corresponding entity DTO plus the joined
+display fields). The DTOs in this folder are forward-compatible
+with that change — no rework needed when the server side is
+tightened later.</li>
+</ol>
+</body>
+</html>

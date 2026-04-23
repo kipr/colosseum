@@ -7,22 +7,13 @@ import {
   getEventStatusLabel,
 } from '../utils/eventStatus';
 import { spectatorEventPath } from '../utils/routes';
+import type { PublicEvent } from '../../shared/api';
 import './SpectatorShared.css';
 import './SpectatorEvents.css';
 
-interface PublicEvent {
-  id: number;
-  name: string;
-  status: string;
-  event_date: string | null;
-  location: string | null;
-  seeding_rounds: number;
-  final_scores_available: boolean;
-}
-
 export default function SpectatorEvents() {
   const navigate = useNavigate();
-  const [events, setEvents] = useState<PublicEvent[]>([]);
+  const [events, setEvents] = useState<readonly PublicEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,7 +21,7 @@ export default function SpectatorEvents() {
       try {
         const res = await fetch('/events/public');
         if (!res.ok) throw new Error('Failed to fetch events');
-        const data: PublicEvent[] = await res.json();
+        const data: readonly PublicEvent[] = await res.json();
         setEvents(data);
       } catch (error) {
         console.error('Error loading events:', error);

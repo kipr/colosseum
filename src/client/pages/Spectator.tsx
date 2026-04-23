@@ -40,22 +40,12 @@ import {
 import '../components/bracket/BracketDisplay.css';
 import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
-  type AutomaticAwardsPublic,
 } from '../components/spectator/SpectatorAutomaticAwards';
+import type { AutomaticAwardsPublic, PublicEvent } from '../../shared/api';
 import './SpectatorShared.css';
 import './Spectator.css';
 import './SpectatorTableLayout.css';
 import { UnifiedTableScrollAffordanceProvider } from '../components/table';
-
-interface PublicEvent {
-  id: number;
-  name: string;
-  status: string;
-  event_date: string | null;
-  location: string | null;
-  seeding_rounds: number;
-  final_scores_available: boolean;
-}
 
 type EffectiveTab =
   | 'seeding'
@@ -73,7 +63,7 @@ export default function Spectator() {
   }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [events, setEvents] = useState<PublicEvent[]>([]);
+  const [events, setEvents] = useState<readonly PublicEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
 
   // Seeding state
@@ -186,7 +176,7 @@ export default function Spectator() {
       try {
         const res = await fetch('/events/public');
         if (!res.ok) throw new Error('Failed to fetch events');
-        const data: PublicEvent[] = await res.json();
+        const data: readonly PublicEvent[] = await res.json();
         setEvents(data);
       } catch (error) {
         console.error('Error loading events:', error);

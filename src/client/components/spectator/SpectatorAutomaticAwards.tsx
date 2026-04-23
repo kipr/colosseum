@@ -1,44 +1,23 @@
 import React from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import type {
+  AutomaticAwardsPublic,
+  MedalPlacement,
+  PublicAwardTeam,
+} from '../../../shared/api';
 import '../seeding/SeedingTables.css';
 import '../../pages/Spectator.css';
 
-export type MedalKind = 'gold' | 'silver' | 'bronze';
-
-export interface PublicAwardTeam {
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export interface MedalPlacement {
-  place: 1 | 2 | 3;
-  medal: MedalKind;
-  recipients: PublicAwardTeam[];
-}
-
-export interface DeBracketAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface PerBracketOverallAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface EventOverallAwards {
-  placements: MedalPlacement[];
-}
-
-export interface AutomaticAwardsPublic {
-  de: DeBracketAwards[];
-  perBracketOverall: PerBracketOverallAwards[];
-  eventOverall: EventOverallAwards | null;
-}
+export type {
+  AutomaticAwardsPublic,
+  DeBracketAwards,
+  EventOverallAwards,
+  MedalKind,
+  MedalPlacement,
+  PerBracketOverallAwards,
+  PublicAwardTeam,
+} from '../../../shared/api';
 
 function placeLabel(place: 1 | 2 | 3): string {
   if (place === 1) return '1st';
@@ -96,12 +75,12 @@ const medalColumns: UnifiedColumnDef<MedalPlacement>[] = [
   },
 ];
 
-function MedalTable({ placements }: { placements: MedalPlacement[] }) {
+function MedalTable({ placements }: { placements: readonly MedalPlacement[] }) {
   return (
     <UnifiedTable
       showHeader={false}
       columns={medalColumns}
-      rows={placements}
+      rows={[...placements]}
       getRowKey={(p) => `${p.place}-${p.medal}`}
       rowClassName={(p) => `ranking-row-${p.medal}`}
       tableClassName="seeding-table spectator-awards-medal-table"
