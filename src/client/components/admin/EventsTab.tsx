@@ -8,6 +8,8 @@ import { formatDate, toDateOnlyString } from '../../utils/dateUtils';
 import {
   Event,
   EventStatus,
+  EVENT_STATUSES,
+  EVENT_STATUS_LABELS,
   ScoreAcceptMode,
   getEventStatusClass,
   getEventStatusLabel,
@@ -630,10 +632,11 @@ export default function EventsTab() {
               }}
             >
               <option value="all">All Events</option>
-              <option value="setup">Setup</option>
-              <option value="active">Active</option>
-              <option value="complete">Complete</option>
-              <option value="archived">Archived</option>
+              {EVENT_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {EVENT_STATUS_LABELS[status]}
+                </option>
+              ))}
             </select>
           </div>
           <button className="btn btn-primary" onClick={handleCreateNew}>

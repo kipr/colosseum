@@ -1,6 +1,30 @@
 import { getDatabase, Database } from './connection';
 import fs from 'fs';
 import path from 'path';
+import {
+  EVENT_STATUSES,
+  SCORE_ACCEPT_MODES,
+  TEAM_STATUSES,
+  BRACKET_STATUSES,
+  GAME_STATUSES,
+  BRACKET_SIDES,
+  QUEUE_STATUSES,
+  QUEUE_TYPES,
+  sqlEnumCheck,
+} from '../../shared/domain';
+
+const eventStatusCheck = sqlEnumCheck('status', EVENT_STATUSES);
+const scoreAcceptModeCheck = sqlEnumCheck(
+  'score_accept_mode',
+  SCORE_ACCEPT_MODES,
+);
+const teamStatusCheck = sqlEnumCheck('status', TEAM_STATUSES);
+const bracketStatusCheck = sqlEnumCheck('status', BRACKET_STATUSES);
+const gameStatusCheck = sqlEnumCheck('status', GAME_STATUSES);
+const bracketSideCheck = sqlEnumCheck('bracket_side', BRACKET_SIDES);
+const queueStatusCheck = sqlEnumCheck('status', QUEUE_STATUSES);
+const queueTypeCheck = sqlEnumCheck('queue_type', QUEUE_TYPES);
+const queueStatusValueList = QUEUE_STATUSES.map((s) => `'${s}'`).join(', ');
 
 /**
  * SQLite: rebuild `game_queue` when an older schema used legacy status values.
@@ -25,10 +49,10 @@ async function migrateGameQueueStatusV2SQLite(db: Database): Promise<void> {
           bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
           seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
           seeding_round INTEGER,
-          queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+          queue_type TEXT NOT NULL ${queueTypeCheck},
           queue_position INTEGER NOT NULL,
           status TEXT DEFAULT 'queued'
-            CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
+            ${queueStatusCheck},
           called_at DATETIME,
           table_number INTEGER,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -109,7 +133,7 @@ async function migrateGameQueueStatusV2Postgres(db: Database): Promise<void> {
       WHERE status IN ('in_progress', 'completed', 'skipped');
 
       ALTER TABLE game_queue ADD CONSTRAINT game_queue_status_check
-        CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored'));
+        CHECK (status IN (${queueStatusValueList}));
     END $$;
   `);
 }
@@ -232,9 +256,9 @@ export async function initializePostgres(db: Database): Promise<void> {
       description TEXT,
       event_date DATE,
       location TEXT,
-      status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
+      status TEXT NOT NULL DEFAULT 'setup' ${eventStatusCheck},
       seeding_rounds INTEGER DEFAULT 3,
-      score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
+      score_accept_mode TEXT NOT NULL DEFAULT 'manual' ${scoreAcceptModeCheck},
       spectator_results_released INTEGER NOT NULL DEFAULT 0,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -270,7 +294,7 @@ export async function initializePostgres(db: Database): Promise<void> {
       team_name TEXT NOT NULL,
       display_name TEXT,
       status TEXT DEFAULT 'registered'
-        CHECK (status IN ('registered', 'checked_in', 'no_show', 'withdrawn')),
+        ${teamStatusCheck},
       checked_in_at TIMESTAMP,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -380,7 +404,7 @@ export async function initializePostgres(db: Database): Promise<void> {
       bracket_size INTEGER NOT NULL,
       actual_team_count INTEGER,
       status TEXT DEFAULT 'setup'
-        CHECK (status IN ('setup', 'in_progress', 'completed')),
+        ${bracketStatusCheck},
       weight REAL NOT NULL DEFAULT 1.0
         CHECK (weight > 0 AND weight <= 1),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -485,13 +509,13 @@ export async function initializePostgres(db: Database): Promise<void> {
       round_name TEXT,
       round_number INTEGER,
       bracket_side TEXT
-        CHECK (bracket_side IN ('winners', 'losers', 'finals')),
+        ${bracketSideCheck},
       team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       team1_source TEXT,
       team2_source TEXT,
       status TEXT DEFAULT 'pending'
-        CHECK (status IN ('pending', 'ready', 'in_progress', 'completed', 'bye')),
+        ${gameStatusCheck},
       winner_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       loser_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       winner_advances_to_id INTEGER REFERENCES bracket_games(id),
@@ -573,10 +597,10 @@ export async function initializePostgres(db: Database): Promise<void> {
       bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
       seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
       seeding_round INTEGER,
-      queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+      queue_type TEXT NOT NULL ${queueTypeCheck},
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
+        ${queueStatusCheck},
       called_at TIMESTAMP,
       table_number INTEGER,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1146,9 +1170,9 @@ export async function initializeSQLite(db: Database): Promise<void> {
       description TEXT,
       event_date DATE,
       location TEXT,
-      status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
+      status TEXT NOT NULL DEFAULT 'setup' ${eventStatusCheck},
       seeding_rounds INTEGER DEFAULT 3,
-      score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
+      score_accept_mode TEXT NOT NULL DEFAULT 'manual' ${scoreAcceptModeCheck},
       spectator_results_released INTEGER NOT NULL DEFAULT 0,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1169,7 +1193,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       team_name TEXT NOT NULL,
       display_name TEXT,
       status TEXT DEFAULT 'registered'
-        CHECK (status IN ('registered', 'checked_in', 'no_show', 'withdrawn')),
+        ${teamStatusCheck},
       checked_in_at DATETIME,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1283,7 +1307,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       bracket_size INTEGER NOT NULL,
       actual_team_count INTEGER,
       status TEXT DEFAULT 'setup'
-        CHECK (status IN ('setup', 'in_progress', 'completed')),
+        ${bracketStatusCheck},
       weight REAL NOT NULL DEFAULT 1.0
         CHECK (weight > 0 AND weight <= 1),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -1327,13 +1351,13 @@ export async function initializeSQLite(db: Database): Promise<void> {
       round_name TEXT,
       round_number INTEGER,
       bracket_side TEXT
-        CHECK (bracket_side IN ('winners', 'losers', 'finals')),
+        ${bracketSideCheck},
       team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       team1_source TEXT,
       team2_source TEXT,
       status TEXT DEFAULT 'pending'
-        CHECK (status IN ('pending', 'ready', 'in_progress', 'completed', 'bye')),
+        ${gameStatusCheck},
       winner_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       loser_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
       winner_advances_to_id INTEGER REFERENCES bracket_games(id),
@@ -1402,10 +1426,10 @@ export async function initializeSQLite(db: Database): Promise<void> {
       bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
       seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
       seeding_round INTEGER,
-      queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+      queue_type TEXT NOT NULL ${queueTypeCheck},
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
-        CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
+        ${queueStatusCheck},
       called_at DATETIME,
       table_number INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,

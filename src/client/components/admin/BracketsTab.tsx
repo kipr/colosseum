@@ -20,7 +20,7 @@ import {
   BracketDetail,
   BracketEntryWithRank,
   BracketStatus,
-  STATUS_LABELS,
+  BRACKET_STATUS_LABELS,
 } from '../../types/brackets';
 import BracketListTable from '../bracket/BracketListTable';
 import BracketDetailView from '../bracket/BracketDetailView';
@@ -564,7 +564,9 @@ export default function BracketsTab() {
         throw new Error(errorData.error || 'Failed to update status');
       }
 
-      toast.success(`Bracket status updated to ${STATUS_LABELS[newStatus]}`);
+      toast.success(
+        `Bracket status updated to ${BRACKET_STATUS_LABELS[newStatus]}`,
+      );
       await fetchBrackets();
       await fetchBracketDetail(bracketDetail.id);
     } catch (error) {

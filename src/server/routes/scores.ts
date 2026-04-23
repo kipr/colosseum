@@ -12,6 +12,7 @@ import {
   updateSeedingQueueItem,
   updateBracketQueueItem,
 } from '../services/scoreAccept';
+import { isScoreSubmissionStatus, isQueueType } from '../../shared/domain';
 
 const router = express.Router();
 
@@ -47,13 +48,13 @@ router.get(
       const eventIdNum = parseInt(eventId, 10);
       const params: (string | number)[] = [eventIdNum];
 
-      if (status && ['pending', 'accepted', 'rejected'].includes(status)) {
+      if (status && isScoreSubmissionStatus(status)) {
         countConditions.push('s.status = ?');
         dataConditions.push('s.status = ?');
         params.push(status);
       }
 
-      if (score_type && ['seeding', 'bracket'].includes(score_type)) {
+      if (score_type && isQueueType(score_type)) {
         countConditions.push('s.score_type = ?');
         dataConditions.push('s.score_type = ?');
         params.push(score_type);

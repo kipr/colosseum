@@ -3,7 +3,7 @@ import { requireAuth, AuthRequest } from '../middleware/auth';
 import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import type { Database } from '../database/connection';
-import { isValidQueueStatus } from '../constants/queueStatus';
+import { isValidQueueStatus } from '../../shared/domain';
 
 const router = express.Router();
 

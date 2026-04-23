@@ -1,8 +1,13 @@
 import React from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
-import { BracketDetail, BracketGame } from '../../types/brackets';
-import { GAME_STATUS_LABELS } from '../../types/brackets';
+import {
+  BracketDetail,
+  BracketGame,
+  BRACKET_SIDES,
+  BRACKET_SIDE_LABELS,
+  GAME_STATUS_LABELS,
+} from '../../types/brackets';
 import { getBracketWinner, getGameStatusClass } from './bracketUtils';
 import './BracketDisplay.css';
 
@@ -162,7 +167,7 @@ export default function BracketManagementView({
           <p style={{ color: 'var(--secondary-color)' }}>No games yet.</p>
         ) : (
           <div className="games-list">
-            {['winners', 'losers', 'finals'].map((side) => {
+            {BRACKET_SIDES.map((side) => {
               const sideGames = bracketDetail.games.filter(
                 (g) => g.bracket_side === side,
               );
@@ -171,11 +176,7 @@ export default function BracketManagementView({
               return (
                 <div key={side} className="games-side-group">
                   <h5 className="games-side-title">
-                    {side === 'winners'
-                      ? 'Winners Bracket'
-                      : side === 'losers'
-                        ? 'Redemption Bracket'
-                        : 'Finals'}
+                    {BRACKET_SIDE_LABELS[side]}
                   </h5>
                   <UnifiedTable
                     columns={bracketGameColumns}

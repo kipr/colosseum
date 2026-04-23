@@ -4,8 +4,8 @@ import {
   BracketDetail,
   BracketEntryWithRank,
   BracketSide,
+  BRACKET_STATUS_LABELS,
 } from '../../types/brackets';
-import { STATUS_LABELS } from '../../types/brackets';
 import { getStatusClass } from './bracketUtils';
 import BracketView from './BracketView';
 import BracketManagementView from './BracketManagementView';
@@ -121,7 +121,7 @@ export default function BracketDetailView({
               <span
                 className={`bracket-status-badge ${getStatusClass(bracketDetail.status)}`}
               >
-                {STATUS_LABELS[bracketDetail.status]}
+                {BRACKET_STATUS_LABELS[bracketDetail.status]}
               </span>
             </div>
           </div>

@@ -9,7 +9,6 @@ import React, {
 import {
   BracketGame,
   BracketSide,
-  GameStatus,
   GAME_STATUS_DISPLAY_LABELS,
   BRACKET_SIDE_LABELS,
 } from '../../types/brackets';
@@ -37,10 +36,6 @@ interface RoundData {
   roundNumber: number;
   roundName: string;
   games: BracketGame[];
-}
-
-function getStatusLabel(status: GameStatus): string {
-  return GAME_STATUS_DISPLAY_LABELS[status];
 }
 
 function getTeamDisplayName(
@@ -297,7 +292,7 @@ export default function BracketLikeView({
       >
         {/* Status header */}
         <div className={`match-header match-status-${game.status}`}>
-          {getStatusLabel(game.status)}
+          {GAME_STATUS_DISPLAY_LABELS[game.status]}
         </div>
 
         {/* Team 1 row */}
