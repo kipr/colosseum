@@ -397,7 +397,7 @@ Public and abuse-prone API endpoints are protected by `express-rate-limit` with 
 | `accessCodeLimiter` | `POST /scoresheet/templates/:id/verify` | 15 min | 10 | IP + template id |
 | `chatWriteLimiter` | `POST /chat/messages` | 1 min | 15 | IP |
 | `chatReadLimiter` | `GET /chat/messages/:spreadsheetId` | 1 min | 120 | IP |
-| `queueSyncLimiter` | `GET /queue/event/:eventId` (sync=1 only) | 1 min | 60 | IP |
+| `queueSyncLimiter` | `GET /queue/event/:eventId` (sync=1 only) | 1 min | 90 | IP |
 | `publicExpensiveReadLimiter` | `GET /events/:id/overall/public`, `GET /documentation-scores/event/:eventId/public` | 1 min | 30 | IP |
 
 ### Storage Constraints

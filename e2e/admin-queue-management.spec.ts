@@ -44,7 +44,7 @@ async function setAdminCookie(context: BrowserContext) {
   ]);
 }
 
-/** Avoid queueSyncLimiter (10 req/min) during heavy filter/refetch interactions. */
+/** Avoid queueSyncLimiter (90 req/min) during heavy filter/refetch interactions. */
 async function bypassQueueSyncLimit(page: Page) {
   await page.route('**/queue/event/**', (route) => {
     const url = new URL(route.request().url());
