@@ -9,5 +9,15 @@
  * See `./README.md` for migration rules and the outstanding backlog.
  */
 
+export * from './admin';
+export * from './auth';
 export * from './events';
 export * from './awards';
+export * from './scores';
+export * from './overall';
+export * from './audit';
+export * from './queue';
+export * from './seeding';
+export * from './documentationScores';
+export * from './chat';
+export * from './scoresheetTemplates';

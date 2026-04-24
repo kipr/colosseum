@@ -1,15 +1,7 @@
 import { getDatabase } from '../database/connection';
+import type { OverallScoreRow } from '../../shared/api';
 
-export interface OverallScoreRow {
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  doc_score: number;
-  raw_seed_score: number;
-  weighted_de_score: number;
-  total: number;
-}
+export type { OverallScoreRow };
 
 /**
  * Compute overall scores for all teams in an event.

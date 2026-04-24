@@ -8,53 +8,14 @@ import {
   buildBulkImportSubScores,
   parseDocScoresText,
 } from './documentationBulkImport';
+import type { Team } from '../../../shared/domain';
+import type {
+  DocumentationCategory,
+  DocumentationGlobalCategory,
+  DocumentationScoreAdmin,
+} from '../../../shared/api';
 import '../Modal.css';
 import './DocumentationTab.css';
-
-interface DocCategory {
-  id: number;
-  event_id: number;
-  ordinal: number;
-  name: string;
-  weight: number;
-  max_score: number;
-}
-
-interface GlobalCategory {
-  id: number;
-  name: string;
-  weight: number;
-  max_score: number;
-}
-
-interface DocSubScore {
-  category_id: number;
-  category_name: string;
-  ordinal: number;
-  max_score: number;
-  weight: number;
-  score: number;
-}
-
-interface DocScore {
-  id: number;
-  event_id: number;
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  overall_score: number | null;
-  scored_at: string | null;
-  sub_scores?: DocSubScore[];
-}
-
-interface Team {
-  id: number;
-  event_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
 
 interface CategoryFormData {
   ordinal: string;
@@ -74,12 +35,12 @@ export default function DocumentationTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
 
-  const [categories, setCategories] = useState<DocCategory[]>([]);
-  const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>(
-    [],
-  );
+  const [categories, setCategories] = useState<DocumentationCategory[]>([]);
+  const [globalCategories, setGlobalCategories] = useState<
+    DocumentationGlobalCategory[]
+  >([]);
   const [teams, setTeams] = useState<Team[]>([]);
-  const [scores, setScores] = useState<DocScore[]>([]);
+  const [scores, setScores] = useState<DocumentationScoreAdmin[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -89,9 +50,8 @@ export default function DocumentationTab() {
   const [selectedGlobalCategoryId, setSelectedGlobalCategoryId] = useState<
     number | null
   >(null);
-  const [editingCategory, setEditingCategory] = useState<DocCategory | null>(
-    null,
-  );
+  const [editingCategory, setEditingCategory] =
+    useState<DocumentationCategory | null>(null);
   const [categoryForm, setCategoryForm] =
     useState<CategoryFormData>(defaultCategoryForm);
   const [savingCategory, setSavingCategory] = useState(false);
@@ -124,7 +84,7 @@ export default function DocumentationTab() {
         { credentials: 'include' },
       );
       if (!res.ok) throw new Error('Failed to fetch categories');
-      const data: DocCategory[] = await res.json();
+      const data: DocumentationCategory[] = await res.json();
       setCategories(data);
     } catch (err) {
       console.error(err);
@@ -138,7 +98,7 @@ export default function DocumentationTab() {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to fetch global categories');
-      const data: GlobalCategory[] = await res.json();
+      const data: DocumentationGlobalCategory[] = await res.json();
       setGlobalCategories(data);
     } catch (err) {
       console.error(err);
@@ -175,7 +135,7 @@ export default function DocumentationTab() {
         { credentials: 'include' },
       );
       if (!res.ok) throw new Error('Failed to fetch scores');
-      const data: DocScore[] = await res.json();
+      const data: DocumentationScoreAdmin[] = await res.json();
       setScores(data);
     } catch (err) {
       console.error(err);
@@ -276,7 +236,7 @@ export default function DocumentationTab() {
     setShowCategoryModal(true);
   };
 
-  const handleEditCategory = (cat: DocCategory) => {
+  const handleEditCategory = (cat: DocumentationCategory) => {
     setEditingCategory(cat);
     setCategoryForm({
       ordinal: String(cat.ordinal),
@@ -397,7 +357,7 @@ export default function DocumentationTab() {
     }
   };
 
-  const handleDeleteCategory = async (cat: DocCategory) => {
+  const handleDeleteCategory = async (cat: DocumentationCategory) => {
     const ok = await confirm({
       title: 'Remove Category',
       message: `Remove "${cat.name}" from this event?`,
@@ -434,7 +394,7 @@ export default function DocumentationTab() {
   const getCellValue = (
     teamId: number,
     categoryId: number,
-    doc: DocScore | undefined,
+    doc: DocumentationScoreAdmin | undefined,
   ): string => {
     const edits = inlineEdits[teamId];
     if (edits?.[categoryId] !== undefined) return edits[categoryId];
@@ -529,9 +489,9 @@ export default function DocumentationTab() {
     }
   };
 
-  type DocScoreRow = { team: Team; doc: DocScore | undefined };
+  type DocScoreRow = { team: Team; doc: DocumentationScoreAdmin | undefined };
 
-  const categoryColumns: UnifiedColumnDef<DocCategory>[] = [
+  const categoryColumns: UnifiedColumnDef<DocumentationCategory>[] = [
     {
       kind: 'data',
       id: 'ordinal',

@@ -8,6 +8,7 @@ import {
   getBracketSourceEventId,
   isEventScopedBracketSource,
 } from './scoresheetUtils';
+import type { QueueItem } from '../../shared/api';
 import '../pages/Scoresheet.css';
 
 interface ScoresheetFormProps {
@@ -69,18 +70,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   } | null>(null);
   const [showGameAreas, setShowGameAreas] = useState(false);
 
-  const [queueItems, setQueueItems] = useState<
-    Array<{
-      id: number;
-      queue_type: string;
-      seeding_team_id: number;
-      seeding_round: number;
-      seeding_team_number: number;
-      seeding_team_name: string;
-      queue_position: number;
-      status: string;
-    }>
-  >([]);
+  const [queueItems, setQueueItems] = useState<readonly QueueItem[]>([]);
 
   // Show notification and auto-dismiss
   const showNotification = (

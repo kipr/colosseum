@@ -5,70 +5,38 @@ import {
   compareNullableNumber,
 } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import type { Team } from '../../../shared/domain';
+import type { SeedingRanking, SeedingScore } from '../../../shared/api';
 import './SeedingTables.css';
 
-export interface Team {
-  id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export interface SeedingScore {
-  id: number;
-  team_id: number;
-  round_number: number;
-  score: number | null;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export interface SeedingRanking {
-  id: number;
-  team_id: number;
-  seed_average: number | null;
-  seed_rank: number | null;
-  raw_seed_score: number | null;
-  tiebreaker_value: number | null;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
 export interface TeamRowData {
-  team: Team;
-  scores: Map<number, SeedingScore | null>;
-  ranking: SeedingRanking | null;
+  readonly team: Team;
+  readonly scores: ReadonlyMap<number, SeedingScore | null>;
+  readonly ranking: SeedingRanking | null;
 }
 
 export function buildTeamRowData(
-  teams: Team[],
-  scores: SeedingScore[],
-  rankings: SeedingRanking[],
+  teams: readonly Team[],
+  scores: readonly SeedingScore[],
+  rankings: readonly SeedingRanking[],
   effectiveRounds: number,
 ): TeamRowData[] {
-  const scoreMap = new Map<string, SeedingScore>();
-  for (const score of scores) {
-    scoreMap.set(`${score.team_id}:${score.round_number}`, score);
-  }
+  const scoreKey = (teamId: number, round: number) => `${teamId}:${round}`;
+  const scoreMap = new Map(
+    scores.map((s) => [scoreKey(s.team_id, s.round_number), s]),
+  );
+  const rankingMap = new Map(rankings.map((r) => [r.team_id, r]));
 
-  const rankingMap = new Map<number, SeedingRanking>();
-  for (const ranking of rankings) {
-    rankingMap.set(ranking.team_id, ranking);
-  }
-
-  return teams.map((team) => {
-    const teamScores = new Map<number, SeedingScore | null>();
-    for (let round = 1; round <= effectiveRounds; round++) {
-      teamScores.set(round, scoreMap.get(`${team.id}:${round}`) || null);
-    }
-    return {
-      team,
-      scores: teamScores,
-      ranking: rankingMap.get(team.id) || null,
-    };
-  });
+  return teams.map((team) => ({
+    team,
+    scores: new Map(
+      Array.from({ length: effectiveRounds }, (_, i) => {
+        const round = i + 1;
+        return [round, scoreMap.get(scoreKey(team.id, round)) ?? null] as const;
+      }),
+    ),
+    ranking: rankingMap.get(team.id) ?? null,
+  }));
 }
 
 /** Sort field: meta keys or `round:${n}` for round score columns */

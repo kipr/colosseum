@@ -4,6 +4,8 @@ import {
   getBracketSourceEventId,
   isEventScopedBracketSource,
 } from '../scoresheetUtils';
+import type { Bracket } from '../../types/brackets';
+import type { ScoresheetTemplateDetail } from '../../../shared/api';
 import '../Modal.css';
 
 interface TemplateEditorModalProps {
@@ -18,12 +20,6 @@ interface TemplateEditorModalProps {
     schema: any;
     spreadsheetConfigId: number | '' | null;
   };
-}
-
-interface Bracket {
-  id: number;
-  name: string;
-  bracket_size: number;
 }
 
 export default function TemplateEditorModal({
@@ -43,7 +39,7 @@ export default function TemplateEditorModal({
   const [loading, setLoading] = useState(!!templateId);
   const [gameAreasImage, setGameAreasImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  const [brackets, setBrackets] = useState<Bracket[]>([]);
+  const [brackets, setBrackets] = useState<readonly Bracket[]>([]);
   const [isBracketScoreSheet, setIsBracketScoreSheet] = useState(false);
   const [legacyBracketId, setLegacyBracketId] = useState<number | null>(null);
   const [eventScopedBracketSource, setEventScopedBracketSource] =
@@ -131,18 +127,20 @@ export default function TemplateEditorModal({
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load template');
-      const template = await response.json();
+      const template: ScoresheetTemplateDetail = await response.json();
 
       setName(template.name);
-      setDescription(template.description || '');
-      setAccessCode(template.access_code || '');
+      setDescription(template.description ?? '');
+      setAccessCode(template.access_code ?? '');
       // Extract gameAreasImage from schema before stringifying
-      if (template.schema?.gameAreasImage) {
-        setGameAreasImage(template.schema.gameAreasImage);
+      const schemaImage = (template.schema as { gameAreasImage?: unknown })
+        ?.gameAreasImage;
+      if (typeof schemaImage === 'string') {
+        setGameAreasImage(schemaImage);
       }
       setSchema(JSON.stringify(template.schema, null, 2));
       updateBracketStateFromSchema(template.schema);
-      setSpreadsheetConfigId(template.spreadsheet_config_id || '');
+      setSpreadsheetConfigId(template.spreadsheet_config_id ?? '');
     } catch (error) {
       console.error('Error loading template:', error);
       alert('Failed to load template');

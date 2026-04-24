@@ -5,6 +5,7 @@ import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
 import {
+  type Team,
   type TeamStatus,
   TEAM_STATUSES,
   TEAM_STATUS_LABELS,
@@ -13,18 +14,6 @@ import {
 } from '../../../shared/domain';
 import '../Modal.css';
 import './TeamsTab.css';
-
-interface Team {
-  id: number;
-  event_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  status: TeamStatus;
-  checked_in_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
 
 interface TeamFormData {
   team_number: string;

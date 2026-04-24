@@ -12,24 +12,11 @@ import * as Diff from 'diff';
 import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import { formatDateTime } from '../../utils/dateUtils';
+import type { AuditLogEntry, AuditLogResponse } from '../../../shared/api';
 import '../Modal.css';
 import './AuditTab.css';
 
 const PAGE_SIZE = 50;
-
-interface AuditLogEntry {
-  id: number;
-  event_id: number | null;
-  user_id: number | null;
-  action: string;
-  entity_type: string;
-  entity_id: number | null;
-  old_value: string | null;
-  new_value: string | null;
-  created_at: string;
-  user_name: string | null;
-  user_email: string | null;
-}
 
 import type { AdminView } from '../../utils/routes';
 
@@ -154,14 +141,14 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
           signal,
         });
         if (!response.ok) throw new Error('Failed to fetch audit log');
-        const data: AuditLogEntry[] = await response.json();
+        const data: AuditLogResponse = await response.json();
 
         if (currentGen !== fetchGenerationRef.current) return;
 
         if (append) {
           setLogs((prev) => [...prev, ...data]);
         } else {
-          setLogs(data);
+          setLogs([...data]);
         }
         setHasMore(data.length === PAGE_SIZE);
         setOffset(currentOffset + data.length);
@@ -600,8 +587,8 @@ function EntityHistoryModal({
         const url = `/audit/entity/${encodeURIComponent(entityType)}/${entityId}?limit=50`;
         const response = await fetch(url, { credentials: 'include' });
         if (!response.ok) throw new Error('Failed to fetch');
-        const data: AuditLogEntry[] = await response.json();
-        if (!cancelled) setLogs(data);
+        const data: AuditLogResponse = await response.json();
+        if (!cancelled) setLogs([...data]);
       } catch (error) {
         console.error('Error fetching entity audit:', error);
         if (!cancelled) setLogs([]);

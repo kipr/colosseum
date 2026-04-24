@@ -8,20 +8,7 @@ import React, {
   useRef,
 } from 'react';
 import { useAuth } from './AuthContext';
-
-interface ChatMessage {
-  id: number;
-  spreadsheet_id: string;
-  sender_name: string;
-  message: string;
-  is_admin: boolean;
-  created_at: string;
-}
-
-interface Spreadsheet {
-  spreadsheet_id: string;
-  spreadsheet_name: string;
-}
+import type { ChatMessage, ChatSpreadsheet } from '../../shared/api';
 
 interface ChatContextType {
   isOpen: boolean;
@@ -29,10 +16,10 @@ interface ChatContextType {
   chatName: string | null;
   setChatName: (name: string) => void;
   needsNamePrompt: boolean;
-  spreadsheets: Spreadsheet[];
-  selectedSpreadsheet: Spreadsheet | null;
-  setSelectedSpreadsheet: (spreadsheet: Spreadsheet | null) => void;
-  messages: ChatMessage[];
+  spreadsheets: readonly ChatSpreadsheet[];
+  selectedSpreadsheet: ChatSpreadsheet | null;
+  setSelectedSpreadsheet: (spreadsheet: ChatSpreadsheet | null) => void;
+  messages: readonly ChatMessage[];
   sendMessage: (message: string) => Promise<void>;
   loadMessages: () => Promise<void>;
   clearChat: () => Promise<void>;
@@ -62,10 +49,12 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }
     return null;
   });
-  const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
+  const [spreadsheets, setSpreadsheets] = useState<readonly ChatSpreadsheet[]>(
+    [],
+  );
   const [selectedSpreadsheet, setSelectedSpreadsheetState] =
-    useState<Spreadsheet | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+    useState<ChatSpreadsheet | null>(null);
+  const [messages, setMessages] = useState<readonly ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [view, setViewState] = useState<'list' | 'chat' | 'settings'>('list');
   const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
@@ -107,7 +96,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
   // Wrapper for setSelectedSpreadsheet that also persists to localStorage
   const setSelectedSpreadsheet = useCallback(
-    (spreadsheet: Spreadsheet | null) => {
+    (spreadsheet: ChatSpreadsheet | null) => {
       setSelectedSpreadsheetState(spreadsheet);
       if (spreadsheet) {
         localStorage.setItem(LAST_CHAT_KEY, JSON.stringify(spreadsheet));
@@ -141,39 +130,37 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     const loadSpreadsheets = async () => {
       try {
         const response = await fetch('/chat/spreadsheets');
-        if (response.ok) {
-          let data = await response.json();
+        if (!response.ok) return;
 
-          // Add admin-only chat room at the top for admin users
-          if (isAdmin) {
-            const adminRoom: Spreadsheet = {
-              spreadsheet_id: ADMIN_CHAT_ROOM_ID,
-              spreadsheet_name: '🔒 Admin Only',
-            };
-            data = [adminRoom, ...data];
-          }
+        const fetched = (await response.json()) as readonly ChatSpreadsheet[];
+        // Admin users see an extra pseudo-room pinned to the top.
+        const rooms: readonly ChatSpreadsheet[] = isAdmin
+          ? [
+              {
+                spreadsheet_id: ADMIN_CHAT_ROOM_ID,
+                spreadsheet_name: '🔒 Admin Only',
+              },
+              ...fetched,
+            ]
+          : fetched;
 
-          setSpreadsheets(data);
+        setSpreadsheets(rooms);
 
-          // Restore last chat if not already restored
-          if (!hasRestoredRef.current) {
-            hasRestoredRef.current = true;
-            const lastChatStr = localStorage.getItem(LAST_CHAT_KEY);
-            if (lastChatStr) {
-              try {
-                const lastChat = JSON.parse(lastChatStr) as Spreadsheet;
-                // Verify this spreadsheet still exists in the list (or is admin chat for admins)
-                const exists = data.some(
-                  (s: Spreadsheet) =>
-                    s.spreadsheet_id === lastChat.spreadsheet_id,
-                );
-                if (exists) {
-                  setSelectedSpreadsheetState(lastChat);
-                  setViewState('chat');
-                }
-              } catch (e) {
-                console.error('Failed to parse last chat:', e);
+        if (!hasRestoredRef.current) {
+          hasRestoredRef.current = true;
+          const lastChatStr = localStorage.getItem(LAST_CHAT_KEY);
+          if (lastChatStr) {
+            try {
+              const lastChat = JSON.parse(lastChatStr) as ChatSpreadsheet;
+              const exists = rooms.some(
+                (s) => s.spreadsheet_id === lastChat.spreadsheet_id,
+              );
+              if (exists) {
+                setSelectedSpreadsheetState(lastChat);
+                setViewState('chat');
               }
+            } catch (e) {
+              console.error('Failed to parse last chat:', e);
             }
           }
         }
@@ -229,7 +216,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
         const response = await fetch(url, { credentials: 'include' });
         if (response.ok) {
-          const data = (await response.json()) as ChatMessage[];
+          const data = (await response.json()) as readonly ChatMessage[];
           setMessages(data);
 
           // Check for unread messages (new messages since last seen)
@@ -315,7 +302,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         });
 
         if (response.ok) {
-          const newMessage = await response.json();
+          const newMessage = (await response.json()) as ChatMessage;
           setMessages((prev) => [...prev, newMessage]);
         }
       } catch (error) {

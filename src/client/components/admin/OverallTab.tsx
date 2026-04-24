@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import OverallScoresDisplay from '../overall/OverallScoresDisplay';
-import type { OverallRow } from '../overall/OverallScoresDisplay';
+import type { OverallScoreRow } from '../../../shared/api';
 import './DocumentationTab.css';
 
 export default function OverallTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
-  const [rows, setRows] = useState<OverallRow[]>([]);
+  const [rows, setRows] = useState<readonly OverallScoreRow[]>([]);
   const [loading, setLoading] = useState(false);
   const toast = useToast();
   const toastRef = useRef(toast);

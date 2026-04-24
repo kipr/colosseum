@@ -47,10 +47,20 @@ compiler catch drift at build time.
 
 ## Currently shared
 
-| Type / family                                           | File        | Server handler(s)                                                                                                                                                  | Client consumer(s)                                                         |
-| ------------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------- |
-| `PublicEvent`, `PublicEventListResponse`                | `events.ts` | `GET /events/public`, `GET /events/:id/public` (`src/server/routes/events.ts`)                                                                                     | `pages/SpectatorEvents.tsx`, `pages/Spectator.tsx`                         |
-| `AutomaticAwardsPublic` and the `MedalPlacement` family | `awards.ts` | `computeAutomaticAwards()` (`src/server/services/automaticAwards.ts`), surfaced by `GET /awards/event/:eventId/public` and `POST /awards/event/:eventId/automatic` | `components/spectator/SpectatorAutomaticAwards.tsx`, `pages/Spectator.tsx` |
+| Type / family                                                                                                                                                                                   | File                     | Server handler(s)                                                                                                                                                                                                                                                                   | Client consumer(s)                                                                                                                             |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PublicEvent`, `PublicEventListResponse`                                                                                                                                                        | `events.ts`              | `GET /events/public`, `GET /events/:id/public` (`src/server/routes/events.ts`)                                                                                                                                                                                                      | `pages/SpectatorEvents.tsx`, `pages/Spectator.tsx`                                                                                             |
+| `AutomaticAwardsPublic` and the `MedalPlacement` family; `AwardTemplate`, `EventAward`, `EventAwardRecipient`, `ApplyAutomaticAwardsResponse`; `PublicManualAward`, `PublicEventAwardsResponse` | `awards.ts`              | Templates: `GET/POST/PATCH /awards/templates`. Admin event awards: `GET /awards/event/:eventId`, `POST /awards/event/:eventId/automatic`. Public bundle: `GET /awards/event/:eventId/public` (composed from `computeAutomaticAwards()` in `src/server/services/automaticAwards.ts`) | `components/admin/AwardsTab.tsx`, `components/spectator/SpectatorAutomaticAwards.tsx`, `pages/Spectator.tsx`                                   |
+| `EventScoresResponse`, `EventScoreSubmission`, `ScoreData`, `ScoreDataField`                                                                                                                    | `scores.ts`              | `GET /scores/by-event/:eventId` (`src/server/routes/scores.ts`)                                                                                                                                                                                                                     | `components/admin/ScoringTab.tsx`                                                                                                              |
+| `OverallScoreRow`, `OverallScoresResponse`                                                                                                                                                      | `overall.ts`             | `GET /events/:id/overall`, `GET /events/:id/overall/public` (`src/server/routes/events.ts`); `computeOverallScores()` (`src/server/services/overallScores.ts`)                                                                                                                      | `components/overall/OverallScoresDisplay.tsx`, `components/admin/OverallTab.tsx`, `pages/Spectator.tsx`                                        |
+| `AuditLogEntry`, `AuditLogResponse`                                                                                                                                                             | `audit.ts`               | `GET /audit/event/:eventId`, `GET /audit/entity/:type/:id` (`src/server/routes/audit.ts`)                                                                                                                                                                                           | `components/admin/AuditTab.tsx` (incl. `EntityHistoryModal`)                                                                                   |
+| `AuthUser`                                                                                                                                                                                      | `auth.ts`                | `GET /auth/user` (`src/server/routes/auth.ts`)                                                                                                                                                                                                                                      | `contexts/AuthContext.tsx`                                                                                                                     |
+| `AdminUser`, `AdminUserListResponse`                                                                                                                                                            | `admin.ts`               | `GET /api/admin/users` (`src/server/routes/admin.ts`)                                                                                                                                                                                                                               | `components/admin/AdminsTab.tsx`                                                                                                               |
+| `QueueItem`                                                                                                                                                                                     | `queue.ts`               | `GET /queue/event/:eventId` (`src/server/routes/queue.ts`)                                                                                                                                                                                                                          | `components/admin/QueueTab.tsx`, `components/ScoresheetForm.tsx`                                                                               |
+| `DocumentationCategory` / `DocumentationGlobalCategory`, `DocumentationScoreAdmin`, `PublicDocumentationScores` (and friends)                                                                   | `documentationScores.ts` | `GET /documentation-scores/...` family (`src/server/routes/documentationScores.ts`)                                                                                                                                                                                                 | `components/admin/DocumentationTab.tsx`, `components/documentation/DocumentationScoresDisplay.tsx`, `pages/Spectator.tsx`                      |
+| `SeedingScore`, `SeedingRanking`                                                                                                                                                                | `seeding.ts`             | `GET /seeding/scores/event/:eventId`, `GET /seeding/rankings/event/:eventId`, `POST /seeding/rankings/recalculate/:eventId` (`src/server/routes/seeding.ts`)                                                                                                                        | `components/admin/SeedingTab.tsx`, `components/seeding/SeedingDisplay.tsx`, `components/seeding/SeedingScoresTable.tsx`, `pages/Spectator.tsx` |
+| `ChatMessage`, `ChatSpreadsheet`                                                                                                                                                                | `chat.ts`                | `GET /chat/spreadsheets`, `GET /chat/messages/:spreadsheetId`, `POST /chat/messages`, `GET /chat/admin/messages`, `POST /chat/admin/messages` (`src/server/routes/chat.ts`)                                                                                                         | `contexts/ChatContext.tsx` (and `components/PublicChat.tsx` via the chat context)                                                              |
+| `ScoresheetTemplateAdminListItem`, `ScoresheetTemplateForJudges`, `ScoresheetTemplateDetail` (and the matching `*Response` aliases, plus the `ScoresheetSchema` placeholder)                    | `scoresheetTemplates.ts` | `GET /scoresheet/templates`, `GET /scoresheet/templates/admin`, `GET/POST/PUT /scoresheet/templates/:id` (`src/server/routes/scoresheet.ts`)                                                                                                                                        | `pages/Judge.tsx`, `components/admin/TemplatesTab.tsx`, `components/admin/TemplateEditorModal.tsx`                                             |
 
 ## Migration backlog
 
@@ -61,52 +71,11 @@ priority order:
 
 ### High value — non-trivial shapes that already drift risk
 
-- `EventScoresResponse` + `ScoreSubmission`
-  (`src/client/components/admin/ScoringTab.tsx`) ↔
-  `GET /scores/by-event/:eventId` in `src/server/routes/scores.ts`. The
-  client `ScoreSubmission` carries ~30 optional joined display fields;
-  this is exactly the kind of shape that drifts silently today.
-- `OverallRow` (`src/client/components/overall/OverallScoresDisplay.tsx`)
-  ↔ `OverallScoreRow` in `src/server/services/overallScores.ts`. Already
-  defined twice with the same fields minus `team_id`.
-- `QueueItem` (`src/client/components/admin/QueueTab.tsx`) ↔
-  `GET /queue/event/:eventId` in `src/server/routes/queue.ts`. ~20
-  joined display fields.
-- `AuditLogEntry` (`src/client/components/admin/AuditTab.tsx`) ↔
-  `src/server/routes/audit.ts`.
-- Documentation scores: `DocCategory`, `DocScore`, `DocSubScore`
-  (`src/client/components/admin/DocumentationTab.tsx`,
-  `src/client/components/documentation/DocumentationScoresDisplay.tsx`)
-  ↔ `src/server/routes/documentationScores.ts` (incl. the `{ categories,
-scores }` public bundle and `{ team, documentation_score, sub_scores }`
-  per-team shape).
-- Awards admin: `AwardTemplate`, `EventAward`, `Recipient`
-  (`src/client/components/admin/AwardsTab.tsx`) ↔
-  `src/server/routes/awards.ts`.
+_(empty — see "Currently shared" above for completed migrations)_
 
 ### Entity DTOs that should re-use existing `shared/domain`
 
-- `Team` redeclared in `TeamsTab`, `QueueTab`, `AwardsTab`,
-  `SeedingScoresTable`, `DocumentationTab`. Add a canonical `Team` to
-  `src/shared/domain/team.ts` (the enum module already lives there) and
-  re-export.
-- `Bracket` / `BracketGame` redeclared in
-  `components/admin/QueueTab.tsx` and
-  `components/admin/TemplateEditorModal.tsx`. The canonical versions
-  already live in `src/shared/domain/bracket.ts`.
-- `User` (`src/client/contexts/AuthContext.tsx`) ↔
-  `AuthenticatedUser` shape in `src/server/routes/auth.ts`
-  (`GET /auth/user`).
-- `AdminUser` (`src/client/components/admin/AdminsTab.tsx`) ↔
-  `GET /api/admin/users` in `src/server/routes/admin.ts`.
-- `Template` (`src/client/pages/Judge.tsx`,
-  `src/client/components/admin/TemplatesTab.tsx`,
-  `src/client/components/admin/TemplateEditorModal.tsx`).
-- `ChatMessage`, `Spreadsheet` (`src/client/contexts/ChatContext.tsx`) ↔
-  `src/server/routes/chat.ts`.
-- `SeedingScore`, `SeedingRanking`
-  (`src/client/components/seeding/SeedingScoresTable.tsx`) ↔
-  `src/server/routes/seeding.ts`.
+_(empty — see "Currently shared" above for completed migrations)_
 
 ### Server-side typing (deferred)
 

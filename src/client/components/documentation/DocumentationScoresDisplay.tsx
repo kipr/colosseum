@@ -1,37 +1,15 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import type {
+  PublicDocumentationCategory,
+  PublicDocumentationScore,
+} from '../../../shared/api';
 import '../admin/DocumentationTab.css';
 
-export interface DocCategoryDisplay {
-  id: number;
-  name: string;
-  weight: number;
-  max_score: number;
-  ordinal: number;
-}
-
-export interface DocSubScoreDisplay {
-  category_id: number;
-  category_name: string;
-  ordinal: number;
-  max_score: number;
-  weight: number;
-  score: number;
-}
-
-export interface DocScoreDisplay {
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  overall_score: number | null;
-  sub_scores?: DocSubScoreDisplay[];
-}
-
 interface DocumentationScoresDisplayProps {
-  categories: DocCategoryDisplay[];
-  scores: DocScoreDisplay[];
+  categories: readonly PublicDocumentationCategory[];
+  scores: readonly PublicDocumentationScore[];
   variant?: 'default' | 'spectator';
 }
 
@@ -123,8 +101,8 @@ export default function DocumentationScoresDisplay({
     ? 'sticky-col sticky-col-team-name doc-team-name-cell'
     : '';
 
-  const columns: UnifiedColumnDef<DocScoreDisplay>[] = useMemo(() => {
-    const base: UnifiedColumnDef<DocScoreDisplay>[] = [
+  const columns: UnifiedColumnDef<PublicDocumentationScore>[] = useMemo(() => {
+    const base: UnifiedColumnDef<PublicDocumentationScore>[] = [
       {
         kind: 'data',
         id: 'team_number',

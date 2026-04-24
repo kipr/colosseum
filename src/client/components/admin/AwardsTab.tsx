@@ -4,44 +4,22 @@ import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
+import type { Team } from '../../../shared/domain';
+import type {
+  ApplyAutomaticAwardsResponse,
+  AwardTemplate,
+  AwardTemplateListResponse,
+  EventAward,
+  EventAwardListResponse,
+} from '../../../shared/api';
 import '../Modal.css';
-
-interface AwardTemplate {
-  id: number;
-  name: string;
-  description: string | null;
-}
-
-interface Recipient {
-  id: number;
-  event_award_id: number;
-  team_id: number;
-  team_number: number;
-  team_name: string;
-}
-
-interface EventAward {
-  id: number;
-  event_id: number;
-  template_award_id: number | null;
-  name: string;
-  description: string | null;
-  sort_order: number;
-  recipients: Recipient[];
-}
-
-interface Team {
-  id: number;
-  team_number: number;
-  team_name: string;
-}
 
 export default function AwardsTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
 
-  const [templates, setTemplates] = useState<AwardTemplate[]>([]);
-  const [eventAwards, setEventAwards] = useState<EventAward[]>([]);
+  const [templates, setTemplates] = useState<readonly AwardTemplate[]>([]);
+  const [eventAwards, setEventAwards] = useState<readonly EventAward[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -81,7 +59,7 @@ export default function AwardsTab() {
     try {
       const res = await fetch('/awards/templates', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch templates');
-      setTemplates(await res.json());
+      setTemplates((await res.json()) as AwardTemplateListResponse);
     } catch (err) {
       console.error(err);
       toast.error('Failed to load award templates');
@@ -98,7 +76,7 @@ export default function AwardsTab() {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to fetch event awards');
-      setEventAwards(await res.json());
+      setEventAwards((await res.json()) as EventAwardListResponse);
     } catch (err) {
       console.error(err);
       toast.error('Failed to load event awards');
@@ -292,16 +270,14 @@ export default function AwardsTab() {
         method: 'POST',
         credentials: 'include',
       });
-      const data = (await res.json()) as {
-        created?: number;
-        removed?: number;
-        error?: string;
-      };
+      const data = (await res.json()) as
+        | ApplyAutomaticAwardsResponse
+        | { readonly error?: string };
       if (!res.ok) {
-        throw new Error(data.error ?? 'Failed to apply automatic awards');
+        const err = (data as { readonly error?: string }).error;
+        throw new Error(err ?? 'Failed to apply automatic awards');
       }
-      const created = data.created ?? 0;
-      const removed = data.removed ?? 0;
+      const { created, removed } = data as ApplyAutomaticAwardsResponse;
       if (created === 0) {
         toast.success(
           removed > 0
@@ -472,7 +448,7 @@ export default function AwardsTab() {
           <div style={{ marginTop: '1rem' }}>
             <UnifiedTable
               columns={templateTableColumns}
-              rows={templates}
+              rows={[...templates]}
               getRowKey={(t) => t.id}
               headerLabelVariant="none"
             />

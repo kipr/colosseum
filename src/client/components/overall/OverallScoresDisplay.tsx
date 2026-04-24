@@ -1,20 +1,11 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import type { OverallScoreRow } from '../../../shared/api';
 import '../admin/DocumentationTab.css';
 
-export interface OverallRow {
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  doc_score: number;
-  raw_seed_score: number;
-  weighted_de_score: number;
-  total: number;
-}
-
 interface OverallScoresDisplayProps {
-  rows: OverallRow[];
+  rows: readonly OverallScoreRow[];
   variant?: 'default' | 'spectator';
 }
 
@@ -109,7 +100,7 @@ export default function OverallScoresDisplay({
     ? 'sticky-col sticky-col-team-name overall-team-name-cell'
     : '';
 
-  const columns: UnifiedColumnDef<OverallRow>[] = useMemo(
+  const columns: UnifiedColumnDef<OverallScoreRow>[] = useMemo(
     () => [
       {
         kind: 'data',

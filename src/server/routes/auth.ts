@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import passport from 'passport';
 import { oauthLimiter } from '../middleware/rateLimit';
+import type { AuthUser } from '../../shared/api';
 
 const router = express.Router();
 
@@ -151,25 +152,30 @@ router.get('/logout', (req: Request, res: Response) => {
   });
 });
 
-// Get current user
-interface AuthenticatedUser {
+// Get current user.
+//
+// `PassportUser` mirrors the row deserialised by passport from the
+// `users` table — snake_case `is_admin`, optional name. The wire shape
+// returned to the client is the camelCase `AuthUser` from
+// `src/shared/api/auth.ts`.
+interface PassportUser {
   id: number;
   email: string;
   name?: string;
   is_admin?: boolean;
 }
 router.get('/user', (req: Request, res: Response) => {
-  if (req.isAuthenticated()) {
-    const user = req.user as AuthenticatedUser;
-    res.json({
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      isAdmin: user.is_admin,
-    });
-  } else {
-    res.status(401).json({ error: 'Not authenticated' });
+  if (!req.isAuthenticated()) {
+    return res.status(401).json({ error: 'Not authenticated' });
   }
+  const user = req.user as PassportUser;
+  const body: AuthUser = {
+    id: user.id,
+    email: user.email,
+    name: user.name ?? '',
+    isAdmin: user.is_admin ?? false,
+  };
+  res.json(body);
 });
 
 // Check if current user's tokens are valid (for admin notification)

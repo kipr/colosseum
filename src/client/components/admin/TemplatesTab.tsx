@@ -4,19 +4,15 @@ import type { UnifiedColumnDef } from '../table';
 import TemplateEditorModal from './TemplateEditorModal';
 import TemplatePreviewModal from './TemplatePreviewModal';
 import { formatDate } from '../../utils/dateUtils';
+import type {
+  ScoresheetTemplateAdminListItem,
+  ScoresheetTemplateAdminListResponse,
+} from '../../../shared/api';
 
-interface Template {
-  id: number;
-  name: string;
-  description: string;
-  access_code: string;
-  created_at: string;
-  spreadsheet_config_id: number | null;
-  spreadsheet_name: string | null;
-}
+type Template = ScoresheetTemplateAdminListItem;
 
 export default function TemplatesTab() {
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<readonly Template[]>([]);
   const [editingTemplate, setEditingTemplate] = useState<number | null>(null);
   const [previewingTemplate, setPreviewingTemplate] = useState<number | null>(
     null,
@@ -33,7 +29,7 @@ export default function TemplatesTab() {
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
+      const data: ScoresheetTemplateAdminListResponse = await response.json();
       setTemplates(data);
     } catch (error) {
       console.error('Error loading templates:', error);
@@ -145,7 +141,7 @@ export default function TemplatesTab() {
           ) : (
             <UnifiedTable
               columns={templateColumns}
-              rows={templates}
+              rows={[...templates]}
               getRowKey={(t) => t.id}
               headerLabelVariant="none"
             />

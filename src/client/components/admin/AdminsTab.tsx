@@ -1,21 +1,9 @@
 import React, { useEffect, useState } from 'react';
+import type { AdminUser, AdminUserListResponse } from '../../../shared/api';
 import './AdminsTab.css';
 
-interface AdminUser {
-  id: number;
-  email: string;
-  name: string;
-  is_admin: boolean;
-  isActive: boolean;
-  isRecentlyActive: boolean;
-  tokenValid: boolean;
-  last_activity: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export default function AdminsTab() {
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
+  const [admins, setAdmins] = useState<readonly AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,7 +14,7 @@ export default function AdminsTab() {
         credentials: 'include',
       });
       if (!response.ok) throw new Error('Failed to load admins');
-      const data = await response.json();
+      const data = (await response.json()) as AdminUserListResponse;
       setAdmins(data);
     } catch (err) {
       console.error('Error loading admins:', err);

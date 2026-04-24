@@ -5,72 +5,19 @@ import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatCalledAt } from '../../utils/dateUtils';
 import {
+  type Bracket,
+  type BracketGame,
   type QueueStatus,
   type QueueType,
+  type Team,
   QUEUE_STATUSES,
   QUEUE_STATUS_LABELS,
   QUEUE_STATUS_ORDER,
   getNextQueueStatus,
 } from '../../../shared/domain';
+import type { QueueItem } from '../../../shared/api';
 import '../Modal.css';
 import './QueueTab.css';
-
-interface QueueItem {
-  id: number;
-  event_id: number;
-  bracket_game_id: number | null;
-  seeding_team_id: number | null;
-  seeding_round: number | null;
-  queue_type: 'seeding' | 'bracket';
-  queue_position: number;
-  status: QueueStatus;
-  table_number: number | null;
-  called_at: string | null;
-  created_at: string;
-  // Bracket game info
-  game_number: number | null;
-  round_name: string | null;
-  bracket_side: string | null;
-  bracket_name: string | null;
-  team1_number: number | null;
-  team1_name: string | null;
-  team1_display: string | null;
-  team2_number: number | null;
-  team2_name: string | null;
-  team2_display: string | null;
-  // Seeding team info
-  seeding_team_number: number | null;
-  seeding_team_name: string | null;
-  seeding_team_display: string | null;
-}
-
-interface Bracket {
-  id: number;
-  name: string;
-  bracket_size: number;
-  status: string;
-}
-
-interface BracketGame {
-  id: number;
-  game_number: number;
-  round_name: string | null;
-  bracket_side: string | null;
-  team1_id: number | null;
-  team2_id: number | null;
-  team1_number: number | null;
-  team1_name: string | null;
-  team2_number: number | null;
-  team2_name: string | null;
-  status: string;
-}
-
-interface Team {
-  id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
 
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';

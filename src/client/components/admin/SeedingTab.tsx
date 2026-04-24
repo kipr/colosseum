@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import type {
-  Team,
-  SeedingScore,
-  SeedingRanking,
-} from '../seeding/SeedingScoresTable';
+import type { Team } from '../../../shared/domain';
+import type { SeedingScore, SeedingRanking } from '../../../shared/api';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 

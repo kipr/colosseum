@@ -4,23 +4,23 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import AccessCodeModal from '../components/AccessCodeModal';
 import { formatDate } from '../utils/dateUtils';
+import type {
+  ScoresheetTemplateForJudges,
+  ScoresheetTemplateForJudgesResponse,
+} from '../../shared/api';
 import './Judge.css';
 
-interface Template {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-  spreadsheet_config_id: number | null;
-  spreadsheet_name: string | null;
-  event_id?: number;
-  event_name?: string;
-  event_date?: string | null;
-  event_status?: string;
+type Template = ScoresheetTemplateForJudges;
+
+interface TemplateGroup {
+  readonly eventId: number;
+  readonly eventName: string;
+  readonly eventDate: string | null;
+  readonly templates: readonly Template[];
 }
 
 export default function Judge() {
-  const [templates, setTemplates] = useState<Template[]>([]);
+  const [templates, setTemplates] = useState<readonly Template[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<{
     id: number;
@@ -36,7 +36,7 @@ export default function Judge() {
     try {
       const response = await fetch('/scoresheet/templates');
       if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
+      const data: ScoresheetTemplateForJudgesResponse = await response.json();
       setTemplates(data);
     } catch (error) {
       console.error('Error loading templates:', error);
@@ -44,22 +44,6 @@ export default function Judge() {
       setLoading(false);
     }
   };
-
-  // Group templates by stable event identifier (event_id); event_name can duplicate across events
-  const groupedTemplates = useMemo(() => {
-    const groups: Record<string, Template[]> = {};
-
-    templates.forEach((template) => {
-      const groupKey =
-        template.event_id != null ? `event-${template.event_id}` : 'unassigned';
-      if (!groups[groupKey]) {
-        groups[groupKey] = [];
-      }
-      groups[groupKey].push(template);
-    });
-
-    return groups;
-  }, [templates]);
 
   const handleTemplateSelect = (id: number, name: string) => {
     setSelectedTemplate({ id, name });
@@ -74,22 +58,38 @@ export default function Judge() {
     navigate(`/scoresheet?template=${selectedTemplate!.id}&name=${urlName}`);
   };
 
-  // Get sorted group keys (by event date desc, then name; unassigned at end)
-  const sortedGroupKeys = useMemo(() => {
-    const keys = Object.keys(groupedTemplates);
-    return keys.sort((a, b) => {
-      if (a === 'unassigned') return 1;
-      if (b === 'unassigned') return -1;
-      const templateA = groupedTemplates[a][0];
-      const templateB = groupedTemplates[b][0];
-      const dateA = templateA?.event_date ?? '';
-      const dateB = templateB?.event_date ?? '';
-      if (dateA !== dateB) return dateB.localeCompare(dateA);
-      return (templateA?.event_name ?? '').localeCompare(
-        templateB?.event_name ?? '',
-      );
-    });
-  }, [groupedTemplates]);
+  // Group templates by stable event_id (event_name can duplicate across
+  // events) and sort each group + the group list itself in a single pass:
+  // groups by event date desc then event name; templates within a group
+  // by name. Every visible template is linked to a setup/active event,
+  // so there is no "unassigned" bucket.
+  const templateGroups = useMemo<readonly TemplateGroup[]>(() => {
+    const byEvent = new Map<number, Template[]>();
+    for (const template of templates) {
+      const bucket = byEvent.get(template.event_id);
+      if (bucket) {
+        bucket.push(template);
+      } else {
+        byEvent.set(template.event_id, [template]);
+      }
+    }
+    return Array.from(byEvent.values())
+      .map((bucket): TemplateGroup => {
+        const head = bucket[0];
+        return {
+          eventId: head.event_id,
+          eventName: head.event_name,
+          eventDate: head.event_date,
+          templates: [...bucket].sort((a, b) => a.name.localeCompare(b.name)),
+        };
+      })
+      .sort((a, b) => {
+        const dateA = a.eventDate ?? '';
+        const dateB = b.eventDate ?? '';
+        if (dateA !== dateB) return dateB.localeCompare(dateA);
+        return a.eventName.localeCompare(b.eventName);
+      });
+  }, [templates]);
 
   return (
     <div className="app">
@@ -105,31 +105,23 @@ export default function Judge() {
           </p>
         ) : (
           <div className="template-groups">
-            {sortedGroupKeys.map((groupKey) => (
-              <div key={groupKey} className="template-group">
-                <h3 className="template-group-header">
-                  {groupKey === 'unassigned'
-                    ? 'Unassigned'
-                    : (groupedTemplates[groupKey][0]?.event_name ?? groupKey)}
-                </h3>
+            {templateGroups.map((group) => (
+              <div key={group.eventId} className="template-group">
+                <h3 className="template-group-header">{group.eventName}</h3>
                 <div className="template-grid">
-                  {[...groupedTemplates[groupKey]]
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((template) => (
-                      <div
-                        key={template.id}
-                        className="template-card"
-                        onClick={() =>
-                          handleTemplateSelect(template.id, template.name)
-                        }
-                      >
-                        <h4>{template.name}</h4>
-                        <p>{template.description || 'No description'}</p>
-                        <small>
-                          Created: {formatDate(template.created_at)}
-                        </small>
-                      </div>
-                    ))}
+                  {group.templates.map((template) => (
+                    <div
+                      key={template.id}
+                      className="template-card"
+                      onClick={() =>
+                        handleTemplateSelect(template.id, template.name)
+                      }
+                    >
+                      <h4>{template.name}</h4>
+                      <p>{template.description || 'No description'}</p>
+                      <small>Created: {formatDate(template.created_at)}</small>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}

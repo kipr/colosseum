@@ -6,16 +6,10 @@ import React, {
   ReactNode,
   useRef,
 } from 'react';
-
-interface User {
-  id: number;
-  email: string;
-  name: string;
-  isAdmin: boolean;
-}
+import type { AuthUser } from '../../shared/api';
 
 interface AuthContextType {
-  user: User | null;
+  user: AuthUser | null;
   loading: boolean;
   serverAvailable: boolean;
   checkAuth: () => Promise<void>;
@@ -25,7 +19,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [serverAvailable, setServerAvailable] = useState(true);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -37,7 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (response.ok) {
-        const userData = await response.json();
+        const userData = (await response.json()) as AuthUser;
         setUser(userData);
         setServerAvailable(true);
       } else {

@@ -8,58 +8,12 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
+import type {
+  EventScoreSubmission,
+  EventScoresResponse,
+} from '../../../shared/api';
 import '../Modal.css';
 import './ScoringTab.css';
-
-interface ScoreSubmission {
-  id: number;
-  template_name: string;
-  participant_name: string;
-  match_id: string;
-  created_at: string;
-  submitted_to_sheet: boolean;
-  status: string;
-  reviewed_by: number | null;
-  reviewed_at: string | null;
-  reviewer_name: string | null;
-  score_data: any;
-  // Event-scoped fields
-  event_id?: number;
-  score_type?: 'seeding' | 'bracket';
-  bracket_game_id?: number;
-  seeding_score_id?: number;
-  game_queue_id?: number;
-  // Joined display fields from by-event endpoint
-  submitted_by?: string;
-  team_display_number?: string;
-  team_name?: string;
-  bracket_name?: string;
-  game_number?: number;
-  queue_position?: number;
-  seeding_round?: number;
-  // Bracket-specific joined display fields
-  bracket_team1_id?: number | null;
-  bracket_team2_id?: number | null;
-  bracket_team1_score?: number | null;
-  bracket_team2_score?: number | null;
-  bracket_team1_number?: number | null;
-  bracket_team1_name?: string | null;
-  bracket_team1_display?: string | null;
-  bracket_team2_number?: number | null;
-  bracket_team2_name?: string | null;
-  bracket_team2_display?: string | null;
-  bracket_winner_number?: number | null;
-  bracket_winner_name?: string | null;
-  bracket_winner_display?: string | null;
-}
-
-interface EventScoresResponse {
-  rows: ScoreSubmission[];
-  page: number;
-  limit: number;
-  totalCount: number;
-  totalPages: number;
-}
 
 interface AffectedGame {
   id: number;
@@ -73,8 +27,8 @@ export default function ScoringTab() {
   const selectedEventId = selectedEvent?.id ?? null;
 
   // Shared state
-  const [scores, setScores] = useState<ScoreSubmission[]>([]);
-  const [editingScore, setEditingScore] = useState<ScoreSubmission | null>(
+  const [scores, setScores] = useState<readonly EventScoreSubmission[]>([]);
+  const [editingScore, setEditingScore] = useState<EventScoreSubmission | null>(
     null,
   );
   const [loading, setLoading] = useState(true);
@@ -307,7 +261,7 @@ export default function ScoringTab() {
     }
   };
 
-  const handleEdit = (score: ScoreSubmission) => {
+  const handleEdit = (score: EventScoreSubmission) => {
     setEditingScore(score);
   };
 
@@ -384,7 +338,7 @@ export default function ScoringTab() {
     loadEventScores(false);
   };
 
-  const getSeedingRowDisplay = (score: ScoreSubmission) => {
+  const getSeedingRowDisplay = (score: EventScoreSubmission) => {
     const data = score.score_data || {};
     const teamNum =
       score.team_display_number ||
@@ -403,7 +357,7 @@ export default function ScoringTab() {
     return { teamNum, teamName, roundLabel, total };
   };
 
-  const getBracketRowDisplay = (score: ScoreSubmission) => {
+  const getBracketRowDisplay = (score: EventScoreSubmission) => {
     const data = score.score_data || {};
 
     const team1Label =
@@ -473,7 +427,7 @@ export default function ScoringTab() {
     };
   };
 
-  const getStatusBadge = (score: ScoreSubmission) => {
+  const getStatusBadge = (score: EventScoreSubmission) => {
     const { status, reviewed_by } = score;
     switch (status) {
       case 'accepted':
@@ -505,8 +459,8 @@ export default function ScoringTab() {
 
   const buildSeedingColumns = (
     showType: boolean,
-  ): UnifiedColumnDef<ScoreSubmission>[] => {
-    const cols: UnifiedColumnDef<ScoreSubmission>[] = [];
+  ): UnifiedColumnDef<EventScoreSubmission>[] => {
+    const cols: UnifiedColumnDef<EventScoreSubmission>[] = [];
     if (showType) {
       cols.push({
         kind: 'data',
@@ -592,8 +546,8 @@ export default function ScoringTab() {
 
   const buildBracketColumns = (
     showType: boolean,
-  ): UnifiedColumnDef<ScoreSubmission>[] => {
-    const cols: UnifiedColumnDef<ScoreSubmission>[] = [];
+  ): UnifiedColumnDef<EventScoreSubmission>[] => {
+    const cols: UnifiedColumnDef<EventScoreSubmission>[] = [];
     if (showType) {
       cols.push({
         kind: 'data',
@@ -682,19 +636,25 @@ export default function ScoringTab() {
     return cols;
   };
 
-  const renderSeedingTable = (rows: ScoreSubmission[], showType: boolean) => (
+  const renderSeedingTable = (
+    rows: readonly EventScoreSubmission[],
+    showType: boolean,
+  ) => (
     <UnifiedTable
       columns={buildSeedingColumns(showType)}
-      rows={rows}
+      rows={[...rows]}
       getRowKey={(s) => s.id}
       headerLabelVariant="none"
     />
   );
 
-  const renderBracketTable = (rows: ScoreSubmission[], showType: boolean) => (
+  const renderBracketTable = (
+    rows: readonly EventScoreSubmission[],
+    showType: boolean,
+  ) => (
     <UnifiedTable
       columns={buildBracketColumns(showType)}
-      rows={rows}
+      rows={[...rows]}
       getRowKey={(s) => s.id}
       headerLabelVariant="none"
     />
@@ -727,7 +687,7 @@ export default function ScoringTab() {
   };
 
   // Render actions for event-scoped scores
-  const renderEventActions = (score: ScoreSubmission) => (
+  const renderEventActions = (score: EventScoreSubmission) => (
     <div
       style={{
         display: 'grid',

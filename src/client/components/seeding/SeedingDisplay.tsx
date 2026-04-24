@@ -1,15 +1,12 @@
 import React from 'react';
-import SeedingScoresTable, {
-  buildTeamRowData,
-  type Team,
-  type SeedingScore,
-  type SeedingRanking,
-} from './SeedingScoresTable';
+import SeedingScoresTable, { buildTeamRowData } from './SeedingScoresTable';
+import type { Team } from '../../../shared/domain';
+import type { SeedingScore, SeedingRanking } from '../../../shared/api';
 
 interface SeedingDisplayProps {
-  teams: Team[];
-  scores: SeedingScore[];
-  rankings: SeedingRanking[];
+  teams: readonly Team[];
+  scores: readonly SeedingScore[];
+  rankings: readonly SeedingRanking[];
   effectiveRounds: number;
   variant?: 'default' | 'spectator';
 }

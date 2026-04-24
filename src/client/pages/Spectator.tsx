@@ -7,11 +7,8 @@ import BracketRankingView from '../components/bracket/BracketRankingView';
 import DocumentationScoresDisplay from '../components/documentation/DocumentationScoresDisplay';
 import OverallScoresDisplay from '../components/overall/OverallScoresDisplay';
 import { getBracketWinner } from '../components/bracket/bracketUtils';
-import type {
-  Team,
-  SeedingScore,
-  SeedingRanking,
-} from '../components/seeding/SeedingScoresTable';
+import type { Team } from '../../shared/domain';
+import type { SeedingScore, SeedingRanking } from '../../shared/api';
 import type {
   Bracket,
   BracketGame,
@@ -19,10 +16,11 @@ import type {
   BracketSide,
 } from '../types/brackets';
 import type {
-  DocCategoryDisplay,
-  DocScoreDisplay,
-} from '../components/documentation/DocumentationScoresDisplay';
-import type { OverallRow } from '../components/overall/OverallScoresDisplay';
+  OverallScoreRow,
+  PublicDocumentationCategory,
+  PublicDocumentationScore,
+  PublicDocumentationScores,
+} from '../../shared/api';
 import {
   formatEventDate,
   getEventStatusClass,
@@ -41,7 +39,12 @@ import '../components/bracket/BracketDisplay.css';
 import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
 } from '../components/spectator/SpectatorAutomaticAwards';
-import type { AutomaticAwardsPublic, PublicEvent } from '../../shared/api';
+import type {
+  AutomaticAwardsPublic,
+  PublicEvent,
+  PublicEventAwardsResponse,
+  PublicManualAward,
+} from '../../shared/api';
 import './SpectatorShared.css';
 import './Spectator.css';
 import './SpectatorTableLayout.css';
@@ -78,8 +81,12 @@ export default function Spectator() {
   const [bracketLoading, setBracketLoading] = useState(false);
 
   // Documentation state (lazy-loaded)
-  const [docCategories, setDocCategories] = useState<DocCategoryDisplay[]>([]);
-  const [docScores, setDocScores] = useState<DocScoreDisplay[]>([]);
+  const [docCategories, setDocCategories] = useState<
+    readonly PublicDocumentationCategory[]
+  >([]);
+  const [docScores, setDocScores] = useState<
+    readonly PublicDocumentationScore[]
+  >([]);
   const [docLoading, setDocLoading] = useState(false);
   const [docLoaded, setDocLoaded] = useState(false);
 
@@ -94,24 +101,18 @@ export default function Spectator() {
   >(null);
 
   // Awards state (lazy-loaded)
-  interface PublicManualAward {
-    name: string;
-    description: string | null;
-    sort_order: number;
-    recipients: {
-      team_number: number;
-      team_name: string;
-      display_name?: string | null;
-    }[];
-  }
-  const [manualAwards, setManualAwards] = useState<PublicManualAward[]>([]);
+  const [manualAwards, setManualAwards] = useState<
+    readonly PublicManualAward[]
+  >([]);
   const [automaticAwards, setAutomaticAwards] =
     useState<AutomaticAwardsPublic | null>(null);
   const [awardsLoading, setAwardsLoading] = useState(false);
   const [awardsLoaded, setAwardsLoaded] = useState(false);
 
   // Overall state (lazy-loaded)
-  const [overallRows, setOverallRows] = useState<OverallRow[]>([]);
+  const [overallRows, setOverallRows] = useState<readonly OverallScoreRow[]>(
+    [],
+  );
   const [overallLoading, setOverallLoading] = useState(false);
   const [overallLoaded, setOverallLoaded] = useState(false);
 
@@ -295,7 +296,7 @@ export default function Spectator() {
     fetch(`/documentation-scores/event/${selectedEventId}/public`)
       .then(async (res) => {
         if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
+        const data = (await res.json()) as PublicDocumentationScores;
         setDocCategories(data.categories);
         setDocScores(data.scores);
         setDocLoaded(true);
@@ -317,10 +318,7 @@ export default function Spectator() {
     fetch(`/awards/event/${selectedEventId}/public`)
       .then(async (res) => {
         if (!res.ok) throw new Error('Failed to fetch');
-        const data: {
-          manual: PublicManualAward[];
-          automatic: AutomaticAwardsPublic;
-        } = await res.json();
+        const data = (await res.json()) as PublicEventAwardsResponse;
         setManualAwards(data.manual ?? []);
         setAutomaticAwards(data.automatic ?? null);
         setAwardsLoaded(true);
