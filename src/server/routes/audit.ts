@@ -1,8 +1,63 @@
 import express, { Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase, Database } from '../database/connection';
+import { typedJson } from '../utils/typedJson';
+import type { AuditLogEntry, AuditLogResponse } from '../../shared/api';
 
 const router = express.Router();
+
+// ---------------------------------------------------------------------------
+// Typed row → DTO mapper for the wire-typed endpoints below.
+// `AuditLogRow` mirrors the shared `SELECT` list 1:1, including the joined
+// `u.name AS user_name` / `u.email AS user_email` display columns. The
+// mapper is the one place that turns a decoded DB row into the shared
+// `AuditLogEntry` DTO, so a renamed column or dropped JOIN field fails
+// to compile here instead of silently shipping `undefined`.
+// ---------------------------------------------------------------------------
+
+interface AuditLogRow {
+  readonly id: number;
+  readonly event_id: number | null;
+  readonly user_id: number | null;
+  readonly action: string;
+  readonly entity_type: string;
+  readonly entity_id: number | null;
+  readonly old_value: string | null;
+  readonly new_value: string | null;
+  readonly ip_address: string | null;
+  // SQLite returns a string, PostgreSQL returns a Date; normalised below so
+  // the wire shape is always a string regardless of driver.
+  readonly created_at: Date | string;
+  readonly user_name: string | null;
+  readonly user_email: string | null;
+}
+
+const toIsoString = (value: Date | string): string =>
+  value instanceof Date ? value.toISOString() : value;
+
+const toAuditLogEntry = (row: AuditLogRow): AuditLogEntry => ({
+  id: row.id,
+  event_id: row.event_id,
+  user_id: row.user_id,
+  action: row.action,
+  entity_type: row.entity_type,
+  entity_id: row.entity_id,
+  old_value: row.old_value,
+  new_value: row.new_value,
+  ip_address: row.ip_address,
+  created_at: toIsoString(row.created_at),
+  user_name: row.user_name,
+  user_email: row.user_email,
+});
+
+// Explicit column list shared by both GET endpoints; mirrors `AuditLogRow`.
+const AUDIT_LOG_SELECT = `
+  SELECT al.id, al.event_id, al.user_id, al.action, al.entity_type,
+         al.entity_id, al.old_value, al.new_value, al.ip_address, al.created_at,
+         u.name AS user_name, u.email AS user_email
+  FROM audit_log al
+  LEFT JOIN users u ON al.user_id = u.id
+`;
 
 // GET /audit/event/:eventId - Get audit log for event
 router.get(
@@ -14,12 +69,7 @@ router.get(
       const { limit, offset, action, entity_type } = req.query;
       const db = await getDatabase();
 
-      let query = `
-        SELECT al.*, u.name as user_name, u.email as user_email
-        FROM audit_log al
-        LEFT JOIN users u ON al.user_id = u.id
-        WHERE al.event_id = ?
-      `;
+      let query = `${AUDIT_LOG_SELECT} WHERE al.event_id = ?`;
       const params: (string | number)[] = [eventId];
 
       if (action) {
@@ -44,8 +94,9 @@ router.get(
         params.push(parseInt(offset as string, 10));
       }
 
-      const logs = await db.all(query, params);
-      res.json(logs);
+      const rows = await db.all<AuditLogRow>(query, params);
+      const body: AuditLogResponse = rows.map(toAuditLogEntry);
+      typedJson(res, body);
     } catch (error) {
       console.error('Error fetching audit log:', error);
       res.status(500).json({ error: 'Failed to fetch audit log' });
@@ -63,13 +114,9 @@ router.get(
       const { limit } = req.query;
       const db = await getDatabase();
 
-      let query = `
-        SELECT al.*, u.name as user_name, u.email as user_email
-        FROM audit_log al
-        LEFT JOIN users u ON al.user_id = u.id
+      let query = `${AUDIT_LOG_SELECT}
         WHERE al.entity_type = ? AND al.entity_id = ?
-        ORDER BY al.created_at DESC
-      `;
+        ORDER BY al.created_at DESC`;
       const params: (string | number)[] = [type, id];
 
       if (limit) {
@@ -77,8 +124,9 @@ router.get(
         params.push(parseInt(limit as string, 10));
       }
 
-      const logs = await db.all(query, params);
-      res.json(logs);
+      const rows = await db.all<AuditLogRow>(query, params);
+      const body: AuditLogResponse = rows.map(toAuditLogEntry);
+      typedJson(res, body);
     } catch (error) {
       console.error('Error fetching entity audit log:', error);
       res.status(500).json({ error: 'Failed to fetch audit log' });
