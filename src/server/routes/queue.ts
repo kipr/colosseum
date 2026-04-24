@@ -4,11 +4,120 @@ import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import type { Database } from '../database/connection';
 import { isValidQueueStatus } from '../../shared/domain';
+import type { QueueStatus, QueueType } from '../../shared/domain';
+import type { QueueItem } from '../../shared/api';
+import { typedJson } from '../utils/typedJson';
 
 const router = express.Router();
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
+
+// ---------------------------------------------------------------------------
+// Typed row → DTO mapping for the queue endpoints. The base row mirrors the
+// columns of `game_queue`; the joined row adds the display columns the GET
+// endpoint pulls from the bracket / team / bracket_games tables. Mutation
+// endpoints (POST, PATCH, /call) return the bare base row, with the joined
+// fields filled in as `null` so the wire shape always matches `QueueItem`.
+// ---------------------------------------------------------------------------
+
+interface BaseQueueItemRow {
+  readonly id: number;
+  readonly event_id: number;
+  readonly bracket_game_id: number | null;
+  readonly seeding_team_id: number | null;
+  readonly seeding_round: number | null;
+  readonly queue_type: QueueType;
+  readonly queue_position: number;
+  readonly status: QueueStatus;
+  readonly table_number: number | null;
+  readonly called_at: string | null;
+  readonly created_at: string;
+}
+
+interface JoinedQueueItemRow extends BaseQueueItemRow {
+  readonly game_number: number | null;
+  readonly round_name: string | null;
+  readonly bracket_side: string | null;
+  readonly bracket_name: string | null;
+  readonly team1_number: number | null;
+  readonly team1_name: string | null;
+  readonly team1_display: string | null;
+  readonly team2_number: number | null;
+  readonly team2_name: string | null;
+  readonly team2_display: string | null;
+  readonly seeding_team_number: number | null;
+  readonly seeding_team_name: string | null;
+  readonly seeding_team_display: string | null;
+}
+
+const toQueueItem = (row: JoinedQueueItemRow): QueueItem => ({
+  id: row.id,
+  event_id: row.event_id,
+  bracket_game_id: row.bracket_game_id,
+  seeding_team_id: row.seeding_team_id,
+  seeding_round: row.seeding_round,
+  queue_type: row.queue_type,
+  queue_position: row.queue_position,
+  status: row.status,
+  table_number: row.table_number,
+  called_at: row.called_at,
+  created_at: row.created_at,
+  game_number: row.game_number,
+  round_name: row.round_name,
+  bracket_side: row.bracket_side,
+  bracket_name: row.bracket_name,
+  team1_number: row.team1_number,
+  team1_name: row.team1_name,
+  team1_display: row.team1_display,
+  team2_number: row.team2_number,
+  team2_name: row.team2_name,
+  team2_display: row.team2_display,
+  seeding_team_number: row.seeding_team_number,
+  seeding_team_name: row.seeding_team_name,
+  seeding_team_display: row.seeding_team_display,
+});
+
+/**
+ * Lift a bare `game_queue` row (returned by POST / PATCH / /call, which do
+ * not JOIN the display tables) into the full `QueueItem` shape by filling
+ * the joined display fields with `null`. Clients re-merge mutation
+ * responses against the cached, fully-joined GET row, so the missing
+ * display columns are never read off the mutation response itself.
+ */
+const toBareQueueItem = (row: BaseQueueItemRow): QueueItem =>
+  toQueueItem({
+    ...row,
+    game_number: null,
+    round_name: null,
+    bracket_side: null,
+    bracket_name: null,
+    team1_number: null,
+    team1_name: null,
+    team1_display: null,
+    team2_number: null,
+    team2_name: null,
+    team2_display: null,
+    seeding_team_number: null,
+    seeding_team_name: null,
+    seeding_team_display: null,
+  });
+
+const BASE_QUEUE_COLUMNS = `gq.id, gq.event_id, gq.bracket_game_id, gq.seeding_team_id,
+         gq.seeding_round, gq.queue_type, gq.queue_position, gq.status,
+         gq.table_number, gq.called_at, gq.created_at`;
+
+/** Fetch a single bare game_queue row by id, typed against `BaseQueueItemRow`. */
+const fetchBaseQueueRow = (
+  db: Database,
+  id: number | string,
+): Promise<BaseQueueItemRow | undefined> =>
+  db.get<BaseQueueItemRow>(
+    `SELECT id, event_id, bracket_game_id, seeding_team_id, seeding_round,
+            queue_type, queue_position, status, table_number, called_at, created_at
+     FROM game_queue WHERE id = ?`,
+    [id],
+  );
 
 /** Non-destructive sync: ensure game_queue has all team×round items for seeding, with correct status from seeding_scores. */
 async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
@@ -301,7 +410,7 @@ router.get(
       }
 
       let query = `
-      SELECT gq.*,
+      SELECT ${BASE_QUEUE_COLUMNS},
              bg.game_number, bg.round_name, bg.bracket_side,
              b.name as bracket_name,
              t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
@@ -345,8 +454,9 @@ router.get(
 
       query += ' ORDER BY gq.queue_position ASC';
 
-      const queue = await db.all(query, params);
-      res.json(queue);
+      const rows = await db.all<JoinedQueueItemRow>(query, params);
+      const body: readonly QueueItem[] = rows.map(toQueueItem);
+      typedJson(res, body);
     } catch (error) {
       console.error('Error fetching game queue:', error);
       res.status(500).json({ error: 'Failed to fetch game queue' });
@@ -437,10 +547,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       ],
     );
 
-    const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
-      result.lastID,
-    ]);
-    res.status(201).json(queueItem);
+    const row =
+      result.lastID !== undefined
+        ? await fetchBaseQueueRow(db, result.lastID)
+        : undefined;
+    if (!row) {
+      return res.status(500).json({ error: 'Failed to add to queue' });
+    }
+    res.status(201);
+    typedJson(res, toBareQueueItem(row));
   } catch (error) {
     console.error('Error adding to queue:', error);
     const errMsg = (error as Error).message || '';
@@ -695,10 +810,11 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Queue item not found' });
     }
 
-    const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
-      id,
-    ]);
-    res.json(queueItem);
+    const row = await fetchBaseQueueRow(db, id);
+    if (!row) {
+      return res.status(404).json({ error: 'Queue item not found' });
+    }
+    typedJson(res, toBareQueueItem(row));
   } catch (error) {
     console.error('Error updating queue item:', error);
     const errMsg = (error as Error).message || '';
@@ -739,10 +855,11 @@ router.patch(
         return res.status(404).json({ error: 'Queue item not found' });
       }
 
-      const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
-        id,
-      ]);
-      res.json(queueItem);
+      const row = await fetchBaseQueueRow(db, id);
+      if (!row) {
+        return res.status(404).json({ error: 'Queue item not found' });
+      }
+      typedJson(res, toBareQueueItem(row));
     } catch (error) {
       console.error('Error calling queue item:', error);
       res.status(500).json({ error: 'Failed to call queue item' });
