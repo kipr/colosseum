@@ -3,6 +3,14 @@ import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { isEventArchived } from '../utils/eventVisibility';
+import { typedJson } from '../utils/typedJson';
+import type {
+  EventSeedingRankingsResponse,
+  EventSeedingScoresResponse,
+  RecalculateSeedingRankingsResponse,
+  SeedingRanking,
+  SeedingScore,
+} from '../../shared/api';
 
 const router = express.Router();
 
@@ -12,6 +20,59 @@ const ALLOWED_SCORE_UPDATE_FIELDS = [
   'score_submission_id',
   'scored_at',
 ];
+
+// ---------------------------------------------------------------------------
+// Typed row → DTO mappers for the wire-typed endpoints below.
+// Each `Row` interface mirrors one SQL `SELECT` list exactly; the mapper
+// returns the matching `shared/api` DTO so a renamed or dropped column
+// fails to compile here instead of silently shipping `undefined`.
+// ---------------------------------------------------------------------------
+
+/** Row shape of the `seeding_scores` + `teams` join used below. */
+interface SeedingScoreRow {
+  readonly id: number;
+  readonly team_id: number;
+  readonly round_number: number;
+  readonly score: number | null;
+  readonly team_number: number;
+  readonly team_name: string;
+  readonly display_name: string | null;
+}
+
+const toSeedingScore = (row: SeedingScoreRow): SeedingScore => ({
+  id: row.id,
+  team_id: row.team_id,
+  round_number: row.round_number,
+  score: row.score,
+  team_number: row.team_number,
+  team_name: row.team_name,
+  display_name: row.display_name,
+});
+
+/** Row shape of the `seeding_rankings` + `teams` join used below. */
+interface SeedingRankingRow {
+  readonly id: number;
+  readonly team_id: number;
+  readonly seed_average: number | null;
+  readonly seed_rank: number | null;
+  readonly raw_seed_score: number | null;
+  readonly tiebreaker_value: number | null;
+  readonly team_number: number;
+  readonly team_name: string;
+  readonly display_name: string | null;
+}
+
+const toSeedingRanking = (row: SeedingRankingRow): SeedingRanking => ({
+  id: row.id,
+  team_id: row.team_id,
+  seed_average: row.seed_average,
+  seed_rank: row.seed_rank,
+  raw_seed_score: row.raw_seed_score,
+  tiebreaker_value: row.tiebreaker_value,
+  team_number: row.team_number,
+  team_name: row.team_name,
+  display_name: row.display_name,
+});
 
 // GET /seeding/scores/team/:teamId - Get scores for team (public for judges)
 router.get('/scores/team/:teamId', async (req: Request, res: Response) => {
@@ -40,8 +101,9 @@ router.get('/scores/event/:eventId', async (req: Request, res: Response) => {
     }
     const db = await getDatabase();
 
-    const scores = await db.all(
-      `SELECT ss.*, t.team_number, t.team_name, t.display_name
+    const rows = await db.all<SeedingScoreRow>(
+      `SELECT ss.id, ss.team_id, ss.round_number, ss.score,
+              t.team_number, t.team_name, t.display_name
        FROM seeding_scores ss
        JOIN teams t ON ss.team_id = t.id
        WHERE t.event_id = ?
@@ -49,7 +111,8 @@ router.get('/scores/event/:eventId', async (req: Request, res: Response) => {
       [eventId],
     );
 
-    res.json(scores);
+    const body: EventSeedingScoresResponse = rows.map(toSeedingScore);
+    typedJson(res, body);
   } catch (error) {
     console.error('Error fetching event seeding scores:', error);
     res.status(500).json({ error: 'Failed to fetch seeding scores' });
@@ -171,8 +234,10 @@ router.get('/rankings/event/:eventId', async (req: Request, res: Response) => {
     }
     const db = await getDatabase();
 
-    const rankings = await db.all(
-      `SELECT sr.*, t.team_number, t.team_name, t.display_name
+    const rows = await db.all<SeedingRankingRow>(
+      `SELECT sr.id, sr.team_id, sr.seed_average, sr.seed_rank,
+              sr.raw_seed_score, sr.tiebreaker_value,
+              t.team_number, t.team_name, t.display_name
        FROM seeding_rankings sr
        JOIN teams t ON sr.team_id = t.id
        WHERE t.event_id = ?
@@ -180,7 +245,8 @@ router.get('/rankings/event/:eventId', async (req: Request, res: Response) => {
       [eventId],
     );
 
-    res.json(rankings);
+    const body: EventSeedingRankingsResponse = rows.map(toSeedingRanking);
+    typedJson(res, body);
   } catch (error) {
     console.error('Error fetching seeding rankings:', error);
     res.status(500).json({ error: 'Failed to fetch seeding rankings' });
@@ -204,8 +270,10 @@ router.post(
       }
 
       // Fetch and return updated rankings
-      const updatedRankings = await db.all(
-        `SELECT sr.*, t.team_number, t.team_name, t.display_name
+      const rows = await db.all<SeedingRankingRow>(
+        `SELECT sr.id, sr.team_id, sr.seed_average, sr.seed_rank,
+                sr.raw_seed_score, sr.tiebreaker_value,
+                t.team_number, t.team_name, t.display_name
          FROM seeding_rankings sr
          JOIN teams t ON sr.team_id = t.id
          WHERE t.event_id = ?
@@ -213,12 +281,13 @@ router.post(
         [eventId],
       );
 
-      res.json({
+      const body: RecalculateSeedingRankingsResponse = {
         message: 'Rankings recalculated',
-        rankings: updatedRankings,
+        rankings: rows.map(toSeedingRanking),
         teamsRanked: result.teamsRanked,
         teamsUnranked: result.teamsUnranked,
-      });
+      };
+      typedJson(res, body);
     } catch (error) {
       console.error('Error recalculating rankings:', error);
       res.status(500).json({ error: 'Failed to recalculate rankings' });
