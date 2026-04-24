@@ -102,7 +102,7 @@ and forward them directly with no link to the shared DTO.
 | `AutomaticAwardsPublic` & friends                                                                                                        | `awards.ts`              | **Fully typed via service.** `services/automaticAwards.ts` imports and re-exports the public-bundle DTOs and returns `AutomaticAwardsPublic` from `computeAutomaticAwards`.                                                                                                                                                                                  |
 | `AwardTemplate`, `EventAward`, `EventAwardRecipient`, `ApplyAutomaticAwardsResponse`, `PublicManualAward`, `PublicEventAwardsResponse`   | `awards.ts`              | **Untyped.** `routes/awards.ts` does not import `shared/api`; templates, event awards, recipients, the apply-automatic response, and the public `{ manual, automatic }` bundle are all assembled from raw `db.all` rows with `Record<string, unknown>` casts.                                                                                                |
 | `PublicEvent`, `PublicEventListResponse`                                                                                                 | `events.ts`              | **Untyped.** `routes/events.ts` does not import `shared/api`; `toPublicEvent` takes `Record<string, unknown>` and the `/public` and `/:id/public` handlers forward whatever shape the spread produces.                                                                                                                                                       |
-| `EventScoresResponse`, `EventScoreSubmission`, `ScoreData`, `ScoreDataField`                                                             | `scores.ts`              | **Untyped.** `routes/scores.ts` does not import `shared/api`; the paginated `GET /scores/by-event/:eventId` returns raw join rows mutated in place to swap `score_data` from string to parsed JSON.                                                                                                                                                          |
+| `EventScoresResponse`, `EventScoreSubmission`, `ScoreData`, `ScoreDataField`                                                             | `scores.ts`              | **Fully typed.** `routes/scores.ts` defines an `EventScoreSubmissionRow` interface that mirrors the join's `SELECT` list, parses `score_data` JSON inside a `toEventScoreSubmission` mapper (instead of mutating the raw row), and returns an `EventScoresResponse` via `typedJson`.                                                                         |
 | `AuditLogEntry`, `AuditLogResponse`                                                                                                      | `audit.ts`               | **Untyped.** `routes/audit.ts` does not import `shared/api`; both endpoints return raw `db.all` results from the `al.*` + `users` join.                                                                                                                                                                                                                      |
 | `QueueItem`                                                                                                                              | `queue.ts`               | **Untyped.** `routes/queue.ts` does not import `shared/api`; the public `GET /queue/event/:eventId` returns the raw multi-join row (and POST/PATCH endpoints return `SELECT *` rows).                                                                                                                                                                        |
 | `DocumentationCategory`, `DocumentationGlobalCategory`, `DocumentationScoreAdmin`, `PublicDocumentationScores` (and friends)             | `documentationScores.ts` | **Untyped.** `routes/documentationScores.ts` does not import `shared/api`; categories, scores, and sub-scores are attached onto raw rows via `(row as Record<string, unknown>).sub_scores = ...`.                                                                                                                                                            |
@@ -178,26 +178,22 @@ Notes on the pattern:
 
 In rough priority order (busiest endpoints / most join-heavy first):
 
-1. `routes/scores.ts` — `GET /scores/by-event/:eventId`. Type the
-   join row, build an `EventScoreSubmission[]` via a mapper that
-   parses `score_data` into `ScoreData` instead of mutating the row,
-   and return an `EventScoresResponse` object.
-2. `routes/queue.ts` — `GET /queue/event/:eventId`. Type the
+1. `routes/queue.ts` — `GET /queue/event/:eventId`. Type the
    multi-join row and map to `QueueItem[]`. The POST/PATCH/`call`
    endpoints currently return `SELECT *` rows; these should also be
    mapped to `QueueItem` (or get a dedicated mutation-response DTO
    added to `queue.ts`).
-3. `routes/documentationScores.ts` — all read endpoints. Replace the
+2. `routes/documentationScores.ts` — all read endpoints. Replace the
    `(row as Record<string, unknown>).sub_scores = ...` mutation with
    typed mappers that produce `DocumentationCategory`,
    `DocumentationGlobalCategory`, `DocumentationScoreAdmin`, and
    `PublicDocumentationScores` directly.
-4. `routes/scoresheet.ts` — the four read endpoints. Wrap the raw
+3. `routes/scoresheet.ts` — the four read endpoints. Wrap the raw
    row in a typed mapper that parses the schema column once and
    strips `access_code` / `created_by` in the type, returning
    `ScoresheetTemplateAdminListItem[]`,
    `ScoresheetTemplateForJudges[]`, and `ScoresheetTemplateDetail`.
-5. `routes/awards.ts` — every handler. Type the template /
+4. `routes/awards.ts` — every handler. Type the template /
    event-award / recipient row shapes; make `GET /awards/event/:eventId`
    return `EventAward[]` (with typed `recipients`); make
    `POST /awards/event/:eventId/automatic` return
@@ -205,13 +201,13 @@ In rough priority order (busiest endpoints / most join-heavy first):
    `GET /awards/event/:eventId/public` return
    `PublicEventAwardsResponse` (the `automatic` half is already typed
    via the service).
-6. `routes/audit.ts` — both `GET` endpoints. Type the
+5. `routes/audit.ts` — both `GET` endpoints. Type the
    `audit_log` + `users` join row and map to `AuditLogResponse`.
-7. `routes/events.ts` — `GET /events/public` and
+6. `routes/events.ts` — `GET /events/public` and
    `GET /events/:id/public`. Replace `toPublicEvent`'s
    `Record<string, unknown>` parameter with a typed row interface
    and produce `PublicEvent` / `PublicEventListResponse`.
-8. `routes/chat.ts` — delete the local `ChatMessage` interface,
+7. `routes/chat.ts` — delete the local `ChatMessage` interface,
    import `ChatMessage` and `ChatSpreadsheet` from `shared/api`
    instead, and type the `/spreadsheets` and message-list / send
    handlers against them.

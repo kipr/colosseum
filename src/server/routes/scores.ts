@@ -13,8 +13,151 @@ import {
   updateBracketQueueItem,
 } from '../services/scoreAccept';
 import { isScoreSubmissionStatus, isQueueType } from '../../shared/domain';
+import type { QueueType, ScoreSubmissionStatus } from '../../shared/domain';
+import { typedJson } from '../utils/typedJson';
+import type {
+  EventScoreSubmission,
+  EventScoresResponse,
+  ScoreData,
+} from '../../shared/api';
 
 const router = express.Router();
+
+// ---------------------------------------------------------------------------
+// Typed row → DTO mapping for `GET /scores/by-event/:eventId`.
+//
+// The row interface mirrors the SELECT list one-for-one. The mapper is the
+// single place that knows how to turn a raw join row into the wire DTO:
+// it parses `score_data` JSON instead of mutating the row in place, and
+// coerces SQLite's 0/1 boolean encoding into a real `boolean` so the wire
+// shape is the same on SQLite and Postgres.
+// ---------------------------------------------------------------------------
+
+interface EventScoreSubmissionRow {
+  readonly id: number;
+  readonly template_id: number;
+  readonly participant_name: string | null;
+  readonly match_id: string | null;
+  readonly score_data: string | null;
+  readonly submitted_to_sheet: number | boolean | null;
+  readonly status: string | null;
+  readonly reviewed_by: number | null;
+  readonly reviewed_at: string | null;
+  readonly event_id: number | null;
+  readonly bracket_game_id: number | null;
+  readonly seeding_score_id: number | null;
+  readonly score_type: string | null;
+  readonly game_queue_id: number | null;
+  readonly created_at: string;
+  readonly template_name: string | null;
+  readonly submitted_by: string | null;
+  readonly reviewer_name: string | null;
+  readonly bracket_name: string | null;
+  readonly game_number: number | null;
+  readonly queue_position: number | null;
+  readonly seeding_round: number | null;
+  readonly team_display_number: number | null;
+  readonly team_name: string | null;
+  readonly bracket_team1_id: number | null;
+  readonly bracket_team2_id: number | null;
+  readonly bracket_team1_score: number | null;
+  readonly bracket_team2_score: number | null;
+  readonly bracket_team1_number: number | null;
+  readonly bracket_team1_name: string | null;
+  readonly bracket_team1_display: string | null;
+  readonly bracket_team2_number: number | null;
+  readonly bracket_team2_name: string | null;
+  readonly bracket_team2_display: string | null;
+  readonly bracket_winner_number: number | null;
+  readonly bracket_winner_name: string | null;
+  readonly bracket_winner_display: string | null;
+}
+
+const EVENT_SCORE_SUBMISSION_COLUMNS = `
+  s.id, s.template_id, s.participant_name, s.match_id, s.score_data,
+  s.submitted_to_sheet, s.status, s.reviewed_by, s.reviewed_at,
+  s.event_id, s.bracket_game_id, s.seeding_score_id, s.score_type,
+  s.game_queue_id, s.created_at,
+  t.name AS template_name,
+  submitter.name AS submitted_by,
+  reviewer.name AS reviewer_name,
+  b.name AS bracket_name,
+  bg.game_number,
+  gq.queue_position,
+  ss.round_number AS seeding_round,
+  seeding_team.team_number AS team_display_number,
+  seeding_team.team_name AS team_name,
+  bg.team1_id AS bracket_team1_id,
+  bg.team2_id AS bracket_team2_id,
+  bg.team1_score AS bracket_team1_score,
+  bg.team2_score AS bracket_team2_score,
+  bt1.team_number AS bracket_team1_number,
+  bt1.team_name AS bracket_team1_name,
+  bt1.display_name AS bracket_team1_display,
+  bt2.team_number AS bracket_team2_number,
+  bt2.team_name AS bracket_team2_name,
+  bt2.display_name AS bracket_team2_display,
+  bw.team_number AS bracket_winner_number,
+  bw.team_name AS bracket_winner_name,
+  bw.display_name AS bracket_winner_display
+`;
+
+const parseScoreData = (raw: string | null): ScoreData => {
+  if (!raw) return Object.freeze({});
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object') {
+      return Object.freeze({ ...(parsed as ScoreData) });
+    }
+  } catch {
+    // Fall through to empty snapshot on malformed JSON; keeps the wire
+    // shape uniform instead of leaking the original string.
+  }
+  return Object.freeze({});
+};
+
+const toEventScoreSubmission = (
+  row: EventScoreSubmissionRow,
+): EventScoreSubmission =>
+  Object.freeze({
+    id: row.id,
+    template_id: row.template_id,
+    template_name: row.template_name,
+    participant_name: row.participant_name,
+    match_id: row.match_id,
+    created_at: row.created_at,
+    submitted_to_sheet: Boolean(row.submitted_to_sheet),
+    status: (row.status ?? 'pending') as ScoreSubmissionStatus,
+    reviewed_by: row.reviewed_by,
+    reviewed_at: row.reviewed_at,
+    reviewer_name: row.reviewer_name,
+    score_data: parseScoreData(row.score_data),
+    event_id: row.event_id,
+    score_type: row.score_type as QueueType | null,
+    bracket_game_id: row.bracket_game_id,
+    seeding_score_id: row.seeding_score_id,
+    game_queue_id: row.game_queue_id,
+    submitted_by: row.submitted_by,
+    team_display_number: row.team_display_number,
+    team_name: row.team_name,
+    bracket_name: row.bracket_name,
+    game_number: row.game_number,
+    queue_position: row.queue_position,
+    seeding_round: row.seeding_round,
+    bracket_team1_id: row.bracket_team1_id,
+    bracket_team2_id: row.bracket_team2_id,
+    bracket_team1_score: row.bracket_team1_score,
+    bracket_team2_score: row.bracket_team2_score,
+    bracket_team1_number: row.bracket_team1_number,
+    bracket_team1_name: row.bracket_team1_name,
+    bracket_team1_display: row.bracket_team1_display,
+    bracket_team2_number: row.bracket_team2_number,
+    bracket_team2_name: row.bracket_team2_name,
+    bracket_team2_display: row.bracket_team2_display,
+    bracket_winner_number: row.bracket_winner_number,
+    bracket_winner_name: row.bracket_winner_name,
+    bracket_winner_display: row.bracket_winner_display,
+  });
 
 // Get scores filtered by event (admin-only, paginated)
 router.get(
@@ -79,32 +222,8 @@ router.get(
       const totalCount = eventAndCount.count || 0;
       const totalPages = Math.ceil(totalCount / limitNum);
 
-      // Fetch rows with joins for display fields
-      const scores = await db.all(
-        `SELECT 
-          s.*,
-          t.name as template_name,
-          submitter.name as submitted_by,
-          reviewer.name as reviewer_name,
-          b.name as bracket_name,
-          bg.game_number,
-          gq.queue_position,
-          ss.round_number as seeding_round,
-          seeding_team.team_number as team_display_number,
-          seeding_team.team_name as team_name,
-          bg.team1_id as bracket_team1_id,
-          bg.team2_id as bracket_team2_id,
-          bg.team1_score as bracket_team1_score,
-          bg.team2_score as bracket_team2_score,
-          bt1.team_number as bracket_team1_number,
-          bt1.team_name as bracket_team1_name,
-          bt1.display_name as bracket_team1_display,
-          bt2.team_number as bracket_team2_number,
-          bt2.team_name as bracket_team2_name,
-          bt2.display_name as bracket_team2_display,
-          bw.team_number as bracket_winner_number,
-          bw.team_name as bracket_winner_name,
-          bw.display_name as bracket_winner_display
+      const rows = await db.all<EventScoreSubmissionRow>(
+        `SELECT ${EVENT_SCORE_SUBMISSION_COLUMNS}
         FROM score_submissions s
         LEFT JOIN scoresheet_templates t ON s.template_id = t.id
         LEFT JOIN users submitter ON s.user_id = submitter.id
@@ -123,24 +242,14 @@ router.get(
         [...params, limitNum, offset],
       );
 
-      // Parse score_data JSON for each row
-      scores.forEach((score) => {
-        if (score.score_data) {
-          try {
-            score.score_data = JSON.parse(score.score_data);
-          } catch {
-            // Keep as string if invalid JSON
-          }
-        }
-      });
-
-      res.json({
-        rows: scores,
+      const body: EventScoresResponse = {
+        rows: rows.map(toEventScoreSubmission),
         page: pageNum,
         limit: limitNum,
         totalCount,
         totalPages,
-      });
+      };
+      typedJson(res, body);
     } catch (error) {
       console.error('Error fetching scores by event:', error);
       res.status(500).json({ error: 'Failed to fetch scores' });

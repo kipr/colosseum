@@ -44,15 +44,18 @@ export type ScoreData = Readonly<Record<string, ScoreDataField | undefined>>;
 
 /**
  * One row of `GET /scores/by-event/:eventId`. The base columns come from
- * `score_submissions`; the rest are joined display fields and may be `null`
- * (no matching row) or `undefined` (irrelevant for this score's `score_type`,
- * e.g. bracket fields on a seeding row).
+ * `score_submissions`; the rest are joined display fields. LEFT-JOINed
+ * fields are `null` when there is no matching row (e.g. bracket join fields
+ * on a seeding submission, or vice versa). The server normalises every
+ * LEFT-JOIN miss to `null` (never `undefined`) so the client only has to
+ * branch on a single absent value.
  */
 export interface EventScoreSubmission {
   readonly id: number;
-  readonly template_name: string;
-  readonly participant_name: string;
-  readonly match_id: string;
+  readonly template_id: number;
+  readonly template_name: string | null;
+  readonly participant_name: string | null;
+  readonly match_id: string | null;
   readonly created_at: string;
   readonly submitted_to_sheet: boolean;
   readonly status: ScoreSubmissionStatus;
@@ -61,33 +64,33 @@ export interface EventScoreSubmission {
   readonly reviewer_name: string | null;
   readonly score_data: ScoreData;
 
-  readonly event_id?: number;
-  readonly score_type?: QueueType;
-  readonly bracket_game_id?: number;
-  readonly seeding_score_id?: number;
-  readonly game_queue_id?: number;
+  readonly event_id: number | null;
+  readonly score_type: QueueType | null;
+  readonly bracket_game_id: number | null;
+  readonly seeding_score_id: number | null;
+  readonly game_queue_id: number | null;
 
-  readonly submitted_by?: string;
-  readonly team_display_number?: string;
-  readonly team_name?: string;
-  readonly bracket_name?: string;
-  readonly game_number?: number;
-  readonly queue_position?: number;
-  readonly seeding_round?: number;
+  readonly submitted_by: string | null;
+  readonly team_display_number: number | null;
+  readonly team_name: string | null;
+  readonly bracket_name: string | null;
+  readonly game_number: number | null;
+  readonly queue_position: number | null;
+  readonly seeding_round: number | null;
 
-  readonly bracket_team1_id?: number | null;
-  readonly bracket_team2_id?: number | null;
-  readonly bracket_team1_score?: number | null;
-  readonly bracket_team2_score?: number | null;
-  readonly bracket_team1_number?: number | null;
-  readonly bracket_team1_name?: string | null;
-  readonly bracket_team1_display?: string | null;
-  readonly bracket_team2_number?: number | null;
-  readonly bracket_team2_name?: string | null;
-  readonly bracket_team2_display?: string | null;
-  readonly bracket_winner_number?: number | null;
-  readonly bracket_winner_name?: string | null;
-  readonly bracket_winner_display?: string | null;
+  readonly bracket_team1_id: number | null;
+  readonly bracket_team2_id: number | null;
+  readonly bracket_team1_score: number | null;
+  readonly bracket_team2_score: number | null;
+  readonly bracket_team1_number: number | null;
+  readonly bracket_team1_name: string | null;
+  readonly bracket_team1_display: string | null;
+  readonly bracket_team2_number: number | null;
+  readonly bracket_team2_name: string | null;
+  readonly bracket_team2_display: string | null;
+  readonly bracket_winner_number: number | null;
+  readonly bracket_winner_name: string | null;
+  readonly bracket_winner_display: string | null;
 }
 
 /** Response body of `GET /scores/by-event/:eventId`. */

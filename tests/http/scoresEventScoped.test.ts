@@ -312,13 +312,20 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/by-event/${event.id}`,
       );
 
+      // DB-only submissions (no `spreadsheet_config_id`) should appear in the
+      // event-scoped listing. The wire DTO no longer exposes
+      // `spreadsheet_config_id` itself — it is an internal column — so the
+      // observable behaviour is just that the row is returned with the
+      // template/event link the client cares about.
       expect(res.status).toBe(200);
       const data = res.json as {
-        rows: { spreadsheet_config_id: number | null }[];
+        rows: { template_id: number; event_id: number | null }[];
         totalCount: number;
       };
       expect(data.totalCount).toBe(1);
-      expect(data.rows[0].spreadsheet_config_id).toBeNull();
+      expect(data.rows).toHaveLength(1);
+      expect(data.rows[0].template_id).toBe(template.id);
+      expect(data.rows[0].event_id).toBe(event.id);
     });
 
     it('respects page and limit for pagination', async () => {
