@@ -12,8 +12,8 @@
     }
   },
   "mounts": [
-    "source=/home/tom/.codex,target=/home/node/.codex,type=bind,consistency=cached",
-    "source=/home/tom/.serena,target=/home/node/.serena,type=bind,consistency=cached",
+    //"source=/var/home/tom/.codex,target=/home/node/.codex,type=bind,consistency=cached",
+    //"source=/var/home/tom/.serena,target=/home/node/.serena,type=bind,consistency=cached",
   ],
   "workspaceFolder": "/workspaces/colosseum",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/colosseum,type=bind,consistency=cached",

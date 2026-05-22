@@ -40,7 +40,11 @@
 
   function initializeState() {
     fields.forEach((field) => {
-      if (field.type === 'section_header' || field.type === 'group_header' || field.type === 'calculated') {
+      if (
+        field.type === 'section_header' ||
+        field.type === 'group_header' ||
+        field.type === 'calculated'
+      ) {
         return;
       }
       state.values[field.id] = defaultValueFor(field);
@@ -66,7 +70,7 @@
     }
   }
 
-  function evaluateFormula(formula) {
+  function evaluateFormula(formula, calculatedValues = state.calculated) {
     let expression = formula;
     const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
     const uniqueFieldIds = Array.from(new Set(fieldIds));
@@ -74,8 +78,8 @@
     uniqueFieldIds.forEach((fieldId) => {
       let value = 0;
 
-      if (state.calculated[fieldId] !== undefined) {
-        value = state.calculated[fieldId];
+      if (calculatedValues[fieldId] !== undefined) {
+        value = calculatedValues[fieldId];
       } else if (state.values[fieldId] !== undefined && state.values[fieldId] !== '') {
         value = state.values[fieldId];
       }
@@ -108,7 +112,7 @@
 
     fields.forEach((field) => {
       if (field.type === 'calculated' && field.formula) {
-        nextCalculated[field.id] = evaluateFormula(field.formula);
+        nextCalculated[field.id] = evaluateFormula(field.formula, nextCalculated);
       }
     });
 
