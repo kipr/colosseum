@@ -1,0 +1,123 @@
+[
+  {
+    "id": "section_header_cube_stacks",
+    "label": "CUBE STACKS",
+    "type": "section_header",
+    "column": "left"
+  },
+  {
+    "id": "cube_stacks",
+    "label": "Cube Stacks",
+    "type": "repeatableGroup",
+    "column": "left",
+    "rowLabel": "Stack",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "has_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      },
+      {
+        "id": "small_red",
+        "label": "Small Red",
+        "type": "number",
+        "min": 0,
+        "step": 1
+      },
+      {
+        "id": "small_green",
+        "label": "Small Green",
+        "type": "number",
+        "min": 0,
+        "step": 1
+      },
+      {
+        "id": "small_yellow",
+        "label": "Small Yellow",
+        "type": "number",
+        "min": 0,
+        "step": 1
+      },
+      {
+        "id": "large_red",
+        "label": "Large Red",
+        "type": "number",
+        "min": 0,
+        "step": 1
+      },
+      {
+        "id": "large_green",
+        "label": "Large Green",
+        "type": "number",
+        "min": 0,
+        "step": 1
+      },
+      {
+        "id": "large_brown",
+        "label": "Large Brown",
+        "type": "number",
+        "min": 0,
+        "step": 1
+      }
+    ],
+    "derived": {
+      "type": "botballCubeStacks",
+      "sortedValue": 30,
+      "unsortedValue": 10,
+      "outputs": {
+        "sortedEquivalent": "cube_stacks_sorted_cubes",
+        "unsortedEquivalent": "cube_stacks_unsorted_cubes",
+        "subtotal": "cube_stacks_subtotal"
+      }
+    }
+  },
+  {
+    "id": "section_header_totals",
+    "label": "TOTALS",
+    "type": "section_header",
+    "column": "right"
+  },
+  {
+    "id": "bonus_points",
+    "label": "Bonus Points",
+    "type": "number",
+    "column": "right",
+    "required": false,
+    "min": 0,
+    "step": 1
+  },
+  {
+    "id": "cube_stacks_sorted_cubes_display",
+    "label": "Sorted Cube Equivalents",
+    "type": "calculated",
+    "column": "right",
+    "formula": "cube_stacks_sorted_cubes",
+    "isTotal": true
+  },
+  {
+    "id": "cube_stacks_unsorted_cubes_display",
+    "label": "Unsorted Cube Equivalents",
+    "type": "calculated",
+    "column": "right",
+    "formula": "cube_stacks_unsorted_cubes",
+    "isTotal": true
+  },
+  {
+    "id": "cube_stacks_subtotal_display",
+    "label": "Cube Stack Subtotal",
+    "type": "calculated",
+    "column": "right",
+    "formula": "cube_stacks_subtotal",
+    "isTotal": true
+  },
+  {
+    "id": "grand_total",
+    "label": "Total Score",
+    "type": "calculated",
+    "formula": "cube_stacks_subtotal + bonus_points",
+    "isGrandTotal": true
+  }
+]

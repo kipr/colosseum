@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
+
 export interface BracketTeamDisplay {
   teamNumber: string;
   displayName: string;
@@ -22,6 +24,320 @@ export interface DbBracketSource {
   scope?: 'event';
   eventId?: number | null;
   bracketId?: number | null;
+}
+
+const REPEATABLE_GROUP_TEXT_TYPES = new Set(['text', 'dropdown', 'buttons']);
+
+function isBlankRepeatableGroupValue(value: any, field?: any): boolean {
+  if (field?.type === 'number') {
+    return (
+      value === '' ||
+      value === null ||
+      value === undefined ||
+      Number(value) === 0
+    );
+  }
+
+  if (field?.type === 'checkbox') {
+    return value === false || value === null || value === undefined;
+  }
+
+  if (field && REPEATABLE_GROUP_TEXT_TYPES.has(field.type)) {
+    return value === '' || value === null || value === undefined;
+  }
+
+  if (
+    value === '' ||
+    value === null ||
+    value === undefined ||
+    value === false
+  ) {
+    return true;
+  }
+
+  if (typeof value === 'number') {
+    return value === 0;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length === 0;
+  }
+
+  if (typeof value === 'object') {
+    return Object.keys(value).length === 0;
+  }
+
+  return false;
+}
+
+function getRepeatableGroupMinRows(field: any): number {
+  const minRows = Number(field?.minRows);
+  return Number.isFinite(minRows) && minRows > 0 ? Math.floor(minRows) : 1;
+}
+
+function getBlankRepeatableGroupValue(field: any): any {
+  if (field.defaultValue !== undefined) {
+    return field.defaultValue;
+  }
+
+  if (field.startValue !== undefined) {
+    return field.startValue;
+  }
+
+  if (field.type === 'checkbox') {
+    return false;
+  }
+
+  return '';
+}
+
+export function createBlankRepeatableGroupRow(field: any): Record<string, any> {
+  const row: Record<string, any> = {};
+
+  (field?.fields || []).forEach((childField: any) => {
+    if (!childField?.id) return;
+    row[childField.id] = getBlankRepeatableGroupValue(childField);
+  });
+
+  return row;
+}
+
+export function isRepeatableGroupRowBlank(row: any, field: any): boolean {
+  if (!row || typeof row !== 'object') {
+    return true;
+  }
+
+  const childFields = field?.fields || [];
+  const configuredFieldIds = new Set(
+    childFields
+      .map((childField: any) => childField?.id)
+      .filter((id: any) => id != null),
+  );
+  const configuredValuesBlank = childFields.every((childField: any) => {
+    const value = row[childField.id];
+
+    return isBlankRepeatableGroupValue(value, childField);
+  });
+
+  if (!configuredValuesBlank) {
+    return false;
+  }
+
+  return Object.entries(row).every(([key, value]) => {
+    if (configuredFieldIds.has(key)) {
+      return true;
+    }
+
+    return isBlankRepeatableGroupValue(value);
+  });
+}
+
+export function normalizeRepeatableGroupRows(
+  value: any,
+  field: any,
+): Array<Record<string, any>> {
+  const minRows = getRepeatableGroupMinRows(field);
+  const rows = Array.isArray(value)
+    ? value.map((row) => ({
+        ...createBlankRepeatableGroupRow(field),
+        ...(row && typeof row === 'object' ? row : {}),
+      }))
+    : [];
+
+  while (rows.length < minRows) {
+    rows.push(createBlankRepeatableGroupRow(field));
+  }
+
+  return rows;
+}
+
+export function shouldAutoAppendRepeatableGroupRow(
+  rows: any[],
+  field: any,
+): boolean {
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return false;
+  }
+
+  return !isRepeatableGroupRowBlank(rows[rows.length - 1], field);
+}
+
+export function pruneRepeatableGroupRows(
+  rows: any[],
+  field: any,
+): Array<Record<string, any>> {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows.filter((row) => !isRepeatableGroupRowBlank(row, field));
+}
+
+function repeatableGroupRowsEqual(left: any, right: any): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+export function calculateRepeatableGroupDerived(field: any, rows: any[]): any {
+  if (field?.derived?.type !== 'botballCubeStacks') {
+    return undefined;
+  }
+
+  return scoreBotballCubeStacks(rows, {
+    sortedValue: field.derived.sortedValue,
+    unsortedValue: field.derived.unsortedValue,
+  });
+}
+
+export function calculateRepeatableGroupDerivedValues(
+  fields: any[],
+  formData: Record<string, any>,
+): {
+  derivedByFieldId: Record<string, any>;
+  outputs: Record<string, number>;
+} {
+  const derivedByFieldId: Record<string, any> = {};
+  const outputs: Record<string, number> = {};
+
+  fields.forEach((field) => {
+    if (field?.type !== 'repeatableGroup' || !field.derived) {
+      return;
+    }
+
+    const normalizedRows = normalizeRepeatableGroupRows(
+      formData[field.id],
+      field,
+    );
+    const rows = field.pruneBlankRows
+      ? pruneRepeatableGroupRows(normalizedRows, field)
+      : normalizedRows;
+    const derived = calculateRepeatableGroupDerived(field, rows);
+    if (!derived) {
+      return;
+    }
+
+    derivedByFieldId[field.id] = derived;
+
+    const configuredOutputs = field.derived.outputs || {};
+    ['sortedEquivalent', 'unsortedEquivalent', 'subtotal'].forEach(
+      (outputKey) => {
+        const outputFieldId = configuredOutputs[outputKey];
+        if (outputFieldId) {
+          outputs[outputFieldId] = Number(derived[outputKey]) || 0;
+        }
+      },
+    );
+  });
+
+  return { derivedByFieldId, outputs };
+}
+
+export function buildRepeatableGroupDerivedOutputScoreEntries(
+  field: any,
+  derived: any,
+  fields: any[] = [],
+): Record<string, any> {
+  const entries: Record<string, any> = {};
+  const configuredOutputs = field?.derived?.outputs || {};
+  const outputDefaults: Record<string, { label: string; type: string }> = {
+    sortedEquivalent: { label: 'Sorted Cubes', type: 'number' },
+    unsortedEquivalent: { label: 'Unsorted Cubes', type: 'number' },
+    subtotal: { label: 'Subtotal', type: 'calculated' },
+  };
+
+  Object.entries(outputDefaults).forEach(([outputKey, defaults]) => {
+    const outputFieldId = configuredOutputs[outputKey];
+    if (!outputFieldId) {
+      return;
+    }
+
+    const schemaField = fields.find(
+      (candidate) => candidate.id === outputFieldId,
+    );
+    entries[outputFieldId] = {
+      label: schemaField?.label ?? defaults.label,
+      type: schemaField?.type ?? defaults.type,
+      value: Number(derived?.[outputKey]) || 0,
+    };
+  });
+
+  return entries;
+}
+
+export function buildRepeatableGroupDerivedScoreEntries(
+  fields: any[],
+  derivedByFieldId: Record<string, any>,
+): Record<string, any> {
+  return fields.reduce(
+    (entries, field) => {
+      if (field?.type !== 'repeatableGroup' || !derivedByFieldId[field.id]) {
+        return entries;
+      }
+
+      return {
+        ...entries,
+        ...buildRepeatableGroupDerivedOutputScoreEntries(
+          field,
+          derivedByFieldId[field.id],
+          fields,
+        ),
+      };
+    },
+    {} as Record<string, any>,
+  );
+}
+
+export function buildRepeatableGroupScoreEntry(
+  field: any,
+  existingEntry: any,
+  formValue: any,
+  derived?: any,
+): Record<string, any> {
+  const normalizedRows = normalizeRepeatableGroupRows(formValue, field);
+  const submittedRows = Array.isArray(existingEntry?.value)
+    ? existingEntry.value
+    : [];
+  const prunedRows = field.pruneBlankRows
+    ? pruneRepeatableGroupRows(normalizedRows, field)
+    : normalizedRows;
+  const rowsUnchanged =
+    repeatableGroupRowsEqual(prunedRows, submittedRows) ||
+    repeatableGroupRowsEqual(
+      pruneRepeatableGroupRows(normalizedRows, field),
+      submittedRows,
+    );
+  const value = rowsUnchanged ? submittedRows : prunedRows;
+  const nextEntry: Record<string, any> = {
+    ...existingEntry,
+    label: field.label ?? existingEntry?.label,
+    value,
+    type: field.type,
+  };
+
+  if (!rowsUnchanged) {
+    delete nextEntry.derived;
+  }
+
+  if (derived) {
+    nextEntry.derived = derived;
+  }
+
+  return nextEntry;
+}
+
+export function getRepeatableGroupRowKeys(rows: any[]): string[] {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return Array.from(
+    new Set(
+      rows.flatMap((row: any) =>
+        row && typeof row === 'object' && !Array.isArray(row)
+          ? Object.keys(row)
+          : [],
+      ),
+    ),
+  );
 }
 
 export function buildEventScopedBracketSource(

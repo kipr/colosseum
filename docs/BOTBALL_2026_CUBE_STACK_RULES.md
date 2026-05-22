@@ -32,6 +32,8 @@ A lone brown cube counts as eight unsorted cubes.
 ### Sorted And Unsorted Examples
 
 - Any stack that does not begin with a pallet is not sorted.
+- A sorted stack must contain at least two physical objects.
+- One small cube on a pallet counts as one unsorted cube.
 - One large green cube counts as four unsorted cubes.
 - One large green cube plus three small green cubes counts as seven sorted green cubes.
 - One large brown cube plus two small red cubes counts as ten sorted red cubes.
@@ -74,12 +76,48 @@ Example schema shape:
   "pruneBlankRows": true,
   "fields": [
     { "id": "has_pallet", "label": "Pallet", "type": "checkbox" },
-    { "id": "small_red", "label": "Small Red", "type": "number", "min": 0, "step": 1 },
-    { "id": "small_green", "label": "Small Green", "type": "number", "min": 0, "step": 1 },
-    { "id": "small_yellow", "label": "Small Yellow", "type": "number", "min": 0, "step": 1 },
-    { "id": "large_red", "label": "Large Red", "type": "number", "min": 0, "step": 1 },
-    { "id": "large_green", "label": "Large Green", "type": "number", "min": 0, "step": 1 },
-    { "id": "large_brown", "label": "Large Brown", "type": "number", "min": 0, "step": 1 }
+    {
+      "id": "small_red",
+      "label": "Small Red",
+      "type": "number",
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "small_green",
+      "label": "Small Green",
+      "type": "number",
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "small_yellow",
+      "label": "Small Yellow",
+      "type": "number",
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "large_red",
+      "label": "Large Red",
+      "type": "number",
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "large_green",
+      "label": "Large Green",
+      "type": "number",
+      "min": 0,
+      "step": 1
+    },
+    {
+      "id": "large_brown",
+      "label": "Large Brown",
+      "type": "number",
+      "min": 0,
+      "step": 1
+    }
   ],
   "derived": {
     "type": "botballCubeStacks",
@@ -150,12 +188,13 @@ scoreData.side_a_ild_subtotal = {
 Helper behavior:
 
 - Any stack that does not begin with a pallet is not sorted.
+- A sorted stack must contain at least two physical objects.
 - Small red, green, and yellow cubes count as one cube equivalent each.
 - Large red and green cubes count as four cube equivalents of their own color.
 - Large brown cubes count as eight cube equivalents.
 - Brown acts as a wildcard only when it is in a stack with exactly one sortable color.
 - A brown-only stack is unsorted.
-- A stack with exactly one sortable color, plus any brown cubes, is sorted as that color.
+- A stack with at least two physical objects, exactly one sortable color, and optional brown cubes is sorted as that color.
 - A stack containing more than one sortable color is fully unsorted.
 - Fully unsorted stacks still score at the unsorted cube value; they are not worth zero.
 - Empty rows do not contribute to sorted or unsorted equivalents.
@@ -189,6 +228,7 @@ export interface BotballCubeStackResult {
 Initial test cases:
 
 - One large green cube counts as four unsorted cube equivalents.
+- One small red cube on a pallet counts as one unsorted cube equivalent.
 - One large brown cube counts as eight unsorted cube equivalents.
 - One small red plus one small green counts as two unsorted cube equivalents.
 - One small red plus one small green plus one large brown counts as ten unsorted cube equivalents.
@@ -201,9 +241,10 @@ Initial test cases:
 
 Implementation checklist:
 
-- Add `repeatableGroup` rendering, editing, reset, and submission support to the judge scoresheet.
-	- Write a small sample scoresheet template for testing.
-- Add matching admin review/edit rendering so submitted stack rows and row-level derived status are visible.
-- Add `repeatableGroup` support to template previews.
-- Decide whether to add `repeatableGroup` support to the portable scoresheet exporter now or intentionally reject it with a clear error.
-- After these schema updates land, update `README.md` to note that templates using the `repeatableGroup` field type are non-portable until portable exporter support is added. Do not update `README.md` before the field type exists.
+- [x] Add `repeatableGroup` rendering, editing, reset, and submission support to the judge scoresheet.
+  - [x] Write a small sample scoresheet template for testing.
+- [x] Add matching admin review/edit rendering so submitted stack rows and row-level derived status are visible.
+- [x] Add `repeatableGroup` support to template previews.
+- [x] Implement repeat row calculation helper.
+- [ ] Create new template with updated rules. Every place with cubes in the previous schema should be replaced with a stack repeat row.
+- [ ] After these schema updates land, update `README.md` to note that templates using the `repeatableGroup` field type are non-portable until portable exporter support is added. Do not update `README.md` before the field type exists.

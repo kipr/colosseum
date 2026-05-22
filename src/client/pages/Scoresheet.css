@@ -1,10 +1,18 @@
 /* Scoresheet specific styles */
+.scoresheet-page {
+  flex: 1;
+  width: 100%;
+  max-width: none;
+  padding: 2rem 1rem;
+}
+
 .scoresheet-form {
   background-color: var(--card-bg);
   border-radius: 0.5rem;
   padding: 2rem;
   box-shadow: var(--shadow);
-  max-width: 1400px;
+  width: 100%;
+  max-width: 1000px;
   margin: 0 auto;
 }
 
@@ -38,7 +46,7 @@
 
 .scoresheet-columns {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 2rem;
   margin-top: 1.5rem;
 }
@@ -209,6 +217,85 @@ select.score-input {
   font-weight: 600;
 }
 
+.repeatable-group {
+  border-bottom: 1px solid #e5e5e5;
+  padding: 0.5rem 0.25rem;
+}
+
+[data-theme='dark'] .repeatable-group {
+  border-bottom-color: #334155;
+}
+
+.repeatable-group:hover {
+  background-color: #f0f0f0;
+}
+
+[data-theme='dark'] .repeatable-group:hover {
+  background-color: #334155;
+}
+
+.repeatable-group-title {
+  color: var(--text-color);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.repeatable-group-table {
+  border: 1px solid var(--border-color);
+  border-radius: 0.375rem;
+  overflow: hidden;
+  background-color: var(--card-bg);
+}
+
+.repeatable-group-header {
+  display: none;
+}
+
+.repeatable-group-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  align-items: start;
+  gap: 0.45rem;
+  padding: 0.5rem;
+}
+
+.repeatable-group-row + .repeatable-group-row {
+  border-top: 1px solid var(--border-color);
+}
+
+.repeatable-group-row-label {
+  color: var(--text-color);
+  font-size: 0.8rem;
+  font-weight: 600;
+  grid-column: 1 / -1;
+}
+
+.repeatable-group-control {
+  min-width: 0;
+}
+
+.repeatable-group-mobile-label {
+  display: block;
+  color: var(--secondary-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-bottom: 0.15rem;
+}
+
+.repeatable-group-input {
+  width: 100%;
+}
+
+.repeatable-group-number {
+  width: 70px;
+  text-align: center;
+}
+
+.repeatable-group-buttons {
+  flex-wrap: wrap;
+}
+
 .calculated-value {
   font-weight: 700;
   font-size: 1rem;
@@ -348,6 +435,16 @@ select.score-input {
     max-width: 120px;
   }
 
+  .repeatable-group-row {
+    grid-template-columns: 1fr 1fr;
+    padding: 0.5rem;
+  }
+
+  .repeatable-group-number {
+    width: 100%;
+    max-width: 120px;
+  }
+
   .calculated-value {
     font-size: 0.9rem;
     min-width: 70px;
@@ -395,6 +492,14 @@ select.score-input {
 
   .score-field {
     padding: 0.3rem 0.25rem;
+  }
+
+  .repeatable-group {
+    padding: 0.45rem 0.15rem;
+  }
+
+  .repeatable-group-row {
+    grid-template-columns: 1fr;
   }
 
   .score-label {
