@@ -12,6 +12,56 @@
     "column": "left"
   },
   {
+    "id": "side_a_ls_cube_stacks",
+    "label": "Lower Start Box Cubes",
+    "type": "repeatableGroup",
+    "column": "left",
+    "rowLabel": "Cube",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "cube_type",
+        "label": "Cube Type",
+        "type": "buttons",
+        "options": [
+          {
+            "label": "Small",
+            "value": "small"
+          },
+          {
+            "label": "Large R/G",
+            "value": "large_red_green"
+          },
+          {
+            "label": "Large Brown",
+            "value": "large_brown"
+          }
+        ]
+      },
+      {
+        "id": "quantity",
+        "label": "Qty",
+        "type": "number",
+        "min": 0,
+        "max": 30,
+        "step": 1
+      },
+      {
+        "id": "on_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      }
+    ],
+    "derived": {
+      "type": "botballStartBoxCubes",
+      "outputs": {
+        "subtotal": "side_a_ls_cube_points"
+      }
+    }
+  },
+  {
     "id": "side_a_ls_poms",
     "label": "Poms",
     "suffix": "× 2",
@@ -19,26 +69,7 @@
     "type": "number",
     "required": false,
     "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_ls_cubes",
-    "label": "Cubes",
-    "suffix": "× 5",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_ls_cubes_pallets",
-    "label": "Cubes on Pallets",
-    "suffix": "× 10",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -49,6 +80,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -59,6 +91,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -69,6 +102,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -80,8 +114,14 @@
     "required": false,
     "isMultiplier": true,
     "options": [
-      { "label": "No", "value": "0" },
-      { "label": "Yes", "value": "1" }
+      {
+        "label": "No",
+        "value": "0"
+      },
+      {
+        "label": "Yes",
+        "value": "1"
+      }
     ]
   },
   {
@@ -93,8 +133,14 @@
     "required": false,
     "isMultiplier": true,
     "options": [
-      { "label": "No", "value": "0" },
-      { "label": "Yes", "value": "1" }
+      {
+        "label": "No",
+        "value": "0"
+      },
+      {
+        "label": "Yes",
+        "value": "1"
+      }
     ]
   },
   {
@@ -102,13 +148,63 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_ls_poms * 2) + (side_a_ls_cubes * 5) + (side_a_ls_cubes_pallets * 10) + (side_a_ls_drums * 25) + (side_a_ls_traffic_cone * 50) + (side_a_ls_botguy * 100)) * (side_a_ls_drum_mult === '1' ? 2 : 1) * (side_a_ls_botguy_mult === '1' ? 2 : 1)"
+    "formula": "((side_a_ls_poms * 2) + side_a_ls_cube_points + (side_a_ls_drums * 25) + (side_a_ls_traffic_cone * 50) + (side_a_ls_botguy * 100)) * (side_a_ls_drum_mult === '1' ? 2 : 1) * (side_a_ls_botguy_mult === '1' ? 2 : 1)"
   },
   {
     "id": "side_a_us_header",
     "label": "Upper Start Box",
     "type": "group_header",
     "column": "left"
+  },
+  {
+    "id": "side_a_us_cube_stacks",
+    "label": "Upper Start Box Cubes",
+    "type": "repeatableGroup",
+    "column": "left",
+    "rowLabel": "Cube",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "cube_type",
+        "label": "Cube Type",
+        "type": "buttons",
+        "options": [
+          {
+            "label": "Small",
+            "value": "small"
+          },
+          {
+            "label": "Large R/G",
+            "value": "large_red_green"
+          },
+          {
+            "label": "Large Brown",
+            "value": "large_brown"
+          }
+        ]
+      },
+      {
+        "id": "quantity",
+        "label": "Qty",
+        "type": "number",
+        "min": 0,
+        "max": 30,
+        "step": 1
+      },
+      {
+        "id": "on_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      }
+    ],
+    "derived": {
+      "type": "botballStartBoxCubes",
+      "outputs": {
+        "subtotal": "side_a_us_cube_points"
+      }
+    }
   },
   {
     "id": "side_a_us_poms",
@@ -118,26 +214,7 @@
     "type": "number",
     "required": false,
     "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_us_cubes",
-    "label": "Cubes",
-    "suffix": "× 5",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_us_cubes_pallets",
-    "label": "Cubes on Pallets",
-    "suffix": "× 10",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -148,6 +225,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -158,6 +236,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -168,11 +247,12 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
     "id": "side_a_us_robots_mult",
-    "label": "# of Robots",
+    "label": "# of Returned Robots",
     "suffix": "× __ + 2",
     "column": "left",
     "type": "number",
@@ -187,13 +267,87 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_us_poms * 2) + (side_a_us_cubes * 5) + (side_a_us_cubes_pallets * 10) + (side_a_us_drums * 25) + (side_a_us_traffic_cone * 100) + (side_a_us_botguy * 200)) * (side_a_us_robots_mult > 0 ? ((side_a_us_robots_mult ? side_a_us_robots_mult : 0) + 2) : 1)"
+    "formula": "((side_a_us_poms * 2) + side_a_us_cube_points + (side_a_us_drums * 25) + (side_a_us_traffic_cone * 100) + (side_a_us_botguy * 200)) * (side_a_us_robots_mult > 0 ? ((side_a_us_robots_mult ? side_a_us_robots_mult : 0) + 2) : 1)"
   },
   {
     "id": "side_a_wf_header",
     "label": "Warehouse Floor",
     "type": "group_header",
     "column": "left"
+  },
+  {
+    "id": "side_a_wf_cube_stacks",
+    "label": "Warehouse Floor Cube Stacks",
+    "type": "repeatableGroup",
+    "column": "left",
+    "rowLabel": "Stack",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "has_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      },
+      {
+        "id": "small_red",
+        "label": "Small Red",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_green",
+        "label": "Small Green",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_yellow",
+        "label": "Small Yellow",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "large_red",
+        "label": "Large Red",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_green",
+        "label": "Large Green",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_brown",
+        "label": "Large Brown",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      }
+    ],
+    "derived": {
+      "type": "botballCubeStacks",
+      "sortedValue": 10,
+      "unsortedValue": 1,
+      "outputs": {
+        "sortedEquivalent": "side_a_wf_cubes_pallets",
+        "unsortedEquivalent": "side_a_wf_cubes"
+      }
+    }
   },
   {
     "id": "side_a_wf_unsorted_poms",
@@ -203,6 +357,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -213,26 +368,7 @@
     "type": "number",
     "required": false,
     "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_wf_cubes",
-    "label": "Cubes",
-    "suffix": "× 1",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_wf_cubes_pallets",
-    "label": "Cubes on Pallets",
-    "suffix": "× 10",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -243,6 +379,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -253,6 +390,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -281,42 +419,86 @@
     "column": "left"
   },
   {
-    "id": "side_a_ild_unsorted_cubes",
-    "label": "Unsorted Cubes",
-    "suffix": "× 10",
+    "id": "side_a_ild_cube_stacks",
+    "label": "Internal Loading Dock Stacks",
+    "type": "repeatableGroup",
     "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_ild_sorted_cubes",
-    "label": "Sorted Cubes",
-    "suffix": "× 30",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_ild_pallets_mult",
-    "label": "# of Pallets with Cubes",
-    "suffix": "×",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "isMultiplier": true,
-    "min": 0,
-    "step": 1
+    "rowLabel": "Stack",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "has_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      },
+      {
+        "id": "small_red",
+        "label": "Small Red",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_green",
+        "label": "Small Green",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_yellow",
+        "label": "Small Yellow",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "large_red",
+        "label": "Large Red",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_green",
+        "label": "Large Green",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_brown",
+        "label": "Large Brown",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      }
+    ],
+    "derived": {
+      "type": "botballCubeStacks",
+      "sortedValue": 30,
+      "unsortedValue": 10,
+      "outputs": {
+        "sortedEquivalent": "side_a_ild_sorted_cubes",
+        "unsortedEquivalent": "side_a_ild_unsorted_cubes",
+        "subtotal": "side_a_ild_subtotal"
+      }
+    }
   },
   {
     "id": "side_a_ild_subtotal",
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_ild_unsorted_cubes * 10) + (side_a_ild_sorted_cubes * 30)) * (side_a_ild_pallets_mult > 0 ? side_a_ild_pallets_mult : 1)"
+    "formula": "(side_a_ild_unsorted_cubes * 10) + (side_a_ild_sorted_cubes * 30)"
   },
   {
     "id": "side_a_ds_header",
@@ -332,6 +514,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -342,6 +525,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -377,6 +561,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -387,6 +572,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -397,6 +583,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -408,6 +595,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -443,6 +631,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -453,6 +642,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -463,8 +653,14 @@
     "type": "buttons",
     "required": false,
     "options": [
-      { "label": "No", "value": "0" },
-      { "label": "Yes", "value": "100" }
+      {
+        "label": "No",
+        "value": "0"
+      },
+      {
+        "label": "Yes",
+        "value": "100"
+      }
     ]
   },
   {
@@ -493,42 +689,86 @@
     "column": "left"
   },
   {
-    "id": "side_a_eld_unsorted_cubes",
-    "label": "Unsorted Cubes",
-    "suffix": "× 15",
+    "id": "side_a_eld_cube_stacks",
+    "label": "External Loading Dock Stacks",
+    "type": "repeatableGroup",
     "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_eld_sorted_cubes",
-    "label": "Sorted Cubes",
-    "suffix": "× 45",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_a_eld_pallets_mult",
-    "label": "# of Pallets with Cubes",
-    "suffix": "× __ + 1",
-    "column": "left",
-    "type": "number",
-    "required": false,
-    "isMultiplier": true,
-    "min": 0,
-    "step": 1
+    "rowLabel": "Stack",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "has_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      },
+      {
+        "id": "small_red",
+        "label": "Small Red",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_green",
+        "label": "Small Green",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_yellow",
+        "label": "Small Yellow",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "large_red",
+        "label": "Large Red",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_green",
+        "label": "Large Green",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_brown",
+        "label": "Large Brown",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      }
+    ],
+    "derived": {
+      "type": "botballCubeStacks",
+      "sortedValue": 45,
+      "unsortedValue": 15,
+      "outputs": {
+        "sortedEquivalent": "side_a_eld_sorted_cubes",
+        "unsortedEquivalent": "side_a_eld_unsorted_cubes",
+        "subtotal": "side_a_eld_subtotal"
+      }
+    }
   },
   {
     "id": "side_a_eld_subtotal",
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_eld_unsorted_cubes * 15) + (side_a_eld_sorted_cubes * 45)) * ((side_a_eld_pallets_mult ? side_a_eld_pallets_mult : 0) + 1)"
+    "formula": "(side_a_eld_unsorted_cubes * 15) + (side_a_eld_sorted_cubes * 45)"
   },
   {
     "id": "side_a_total",
@@ -559,6 +799,56 @@
     "column": "right"
   },
   {
+    "id": "side_b_ls_cube_stacks",
+    "label": "Lower Start Box Cubes",
+    "type": "repeatableGroup",
+    "column": "right",
+    "rowLabel": "Cube",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "cube_type",
+        "label": "Cube Type",
+        "type": "buttons",
+        "options": [
+          {
+            "label": "Small",
+            "value": "small"
+          },
+          {
+            "label": "Large R/G",
+            "value": "large_red_green"
+          },
+          {
+            "label": "Large Brown",
+            "value": "large_brown"
+          }
+        ]
+      },
+      {
+        "id": "quantity",
+        "label": "Qty",
+        "type": "number",
+        "min": 0,
+        "max": 30,
+        "step": 1
+      },
+      {
+        "id": "on_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      }
+    ],
+    "derived": {
+      "type": "botballStartBoxCubes",
+      "outputs": {
+        "subtotal": "side_b_ls_cube_points"
+      }
+    }
+  },
+  {
     "id": "side_b_ls_poms",
     "label": "Poms",
     "suffix": "× 2",
@@ -566,26 +856,7 @@
     "type": "number",
     "required": false,
     "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_ls_cubes",
-    "label": "Cubes",
-    "suffix": "× 5",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_ls_cubes_pallets",
-    "label": "Cubes on Pallets",
-    "suffix": "× 10",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -596,6 +867,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -606,6 +878,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -616,6 +889,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -627,8 +901,14 @@
     "required": false,
     "isMultiplier": true,
     "options": [
-      { "label": "No", "value": "0" },
-      { "label": "Yes", "value": "1" }
+      {
+        "label": "No",
+        "value": "0"
+      },
+      {
+        "label": "Yes",
+        "value": "1"
+      }
     ]
   },
   {
@@ -640,8 +920,14 @@
     "required": false,
     "isMultiplier": true,
     "options": [
-      { "label": "No", "value": "0" },
-      { "label": "Yes", "value": "1" }
+      {
+        "label": "No",
+        "value": "0"
+      },
+      {
+        "label": "Yes",
+        "value": "1"
+      }
     ]
   },
   {
@@ -649,13 +935,63 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_ls_poms * 2) + (side_b_ls_cubes * 5) + (side_b_ls_cubes_pallets * 10) + (side_b_ls_drums * 25) + (side_b_ls_traffic_cone * 50) + (side_b_ls_botguy * 100)) * (side_b_ls_drum_mult === '1' ? 2 : 1) * (side_b_ls_botguy_mult === '1' ? 2 : 1)"
+    "formula": "((side_b_ls_poms * 2) + side_b_ls_cube_points + (side_b_ls_drums * 25) + (side_b_ls_traffic_cone * 50) + (side_b_ls_botguy * 100)) * (side_b_ls_drum_mult === '1' ? 2 : 1) * (side_b_ls_botguy_mult === '1' ? 2 : 1)"
   },
   {
     "id": "side_b_us_header",
     "label": "Upper Start Box",
     "type": "group_header",
     "column": "right"
+  },
+  {
+    "id": "side_b_us_cube_stacks",
+    "label": "Upper Start Box Cubes",
+    "type": "repeatableGroup",
+    "column": "right",
+    "rowLabel": "Cube",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "cube_type",
+        "label": "Cube Type",
+        "type": "buttons",
+        "options": [
+          {
+            "label": "Small",
+            "value": "small"
+          },
+          {
+            "label": "Large R/G",
+            "value": "large_red_green"
+          },
+          {
+            "label": "Large Brown",
+            "value": "large_brown"
+          }
+        ]
+      },
+      {
+        "id": "quantity",
+        "label": "Qty",
+        "type": "number",
+        "min": 0,
+        "max": 30,
+        "step": 1
+      },
+      {
+        "id": "on_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      }
+    ],
+    "derived": {
+      "type": "botballStartBoxCubes",
+      "outputs": {
+        "subtotal": "side_b_us_cube_points"
+      }
+    }
   },
   {
     "id": "side_b_us_poms",
@@ -665,26 +1001,7 @@
     "type": "number",
     "required": false,
     "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_us_cubes",
-    "label": "Cubes",
-    "suffix": "× 5",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_us_cubes_pallets",
-    "label": "Cubes on Pallets",
-    "suffix": "× 10",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -695,6 +1012,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -705,6 +1023,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -715,6 +1034,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -734,13 +1054,87 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_us_poms * 2) + (side_b_us_cubes * 5) + (side_b_us_cubes_pallets * 10) + (side_b_us_drums * 25) + (side_b_us_traffic_cone * 100) + (side_b_us_botguy * 200)) * (side_b_us_robots_mult > 0 ? ((side_b_us_robots_mult ? side_b_us_robots_mult : 0) + 2) : 1)"
+    "formula": "((side_b_us_poms * 2) + side_b_us_cube_points + (side_b_us_drums * 25) + (side_b_us_traffic_cone * 100) + (side_b_us_botguy * 200)) * (side_b_us_robots_mult > 0 ? ((side_b_us_robots_mult ? side_b_us_robots_mult : 0) + 2) : 1)"
   },
   {
     "id": "side_b_wf_header",
     "label": "Warehouse Floor",
     "type": "group_header",
     "column": "right"
+  },
+  {
+    "id": "side_b_wf_cube_stacks",
+    "label": "Warehouse Floor Cube Stacks",
+    "type": "repeatableGroup",
+    "column": "right",
+    "rowLabel": "Stack",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "has_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      },
+      {
+        "id": "small_red",
+        "label": "Small Red",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_green",
+        "label": "Small Green",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_yellow",
+        "label": "Small Yellow",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "large_red",
+        "label": "Large Red",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_green",
+        "label": "Large Green",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_brown",
+        "label": "Large Brown",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      }
+    ],
+    "derived": {
+      "type": "botballCubeStacks",
+      "sortedValue": 10,
+      "unsortedValue": 1,
+      "outputs": {
+        "sortedEquivalent": "side_b_wf_cubes_pallets",
+        "unsortedEquivalent": "side_b_wf_cubes"
+      }
+    }
   },
   {
     "id": "side_b_wf_unsorted_poms",
@@ -750,6 +1144,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -760,26 +1155,7 @@
     "type": "number",
     "required": false,
     "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_wf_cubes",
-    "label": "Cubes",
-    "suffix": "× 1",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_wf_cubes_pallets",
-    "label": "Cubes on Pallets",
-    "suffix": "× 10",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -790,6 +1166,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -800,6 +1177,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -828,42 +1206,86 @@
     "column": "right"
   },
   {
-    "id": "side_b_ild_unsorted_cubes",
-    "label": "Unsorted Cubes",
-    "suffix": "× 10",
+    "id": "side_b_ild_cube_stacks",
+    "label": "Internal Loading Dock Stacks",
+    "type": "repeatableGroup",
     "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_ild_sorted_cubes",
-    "label": "Sorted Cubes",
-    "suffix": "× 30",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_ild_pallets_mult",
-    "label": "# of Pallets with Cubes",
-    "suffix": "×",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "isMultiplier": true,
-    "min": 0,
-    "step": 1
+    "rowLabel": "Stack",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "has_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      },
+      {
+        "id": "small_red",
+        "label": "Small Red",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_green",
+        "label": "Small Green",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_yellow",
+        "label": "Small Yellow",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "large_red",
+        "label": "Large Red",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_green",
+        "label": "Large Green",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_brown",
+        "label": "Large Brown",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      }
+    ],
+    "derived": {
+      "type": "botballCubeStacks",
+      "sortedValue": 30,
+      "unsortedValue": 10,
+      "outputs": {
+        "sortedEquivalent": "side_b_ild_sorted_cubes",
+        "unsortedEquivalent": "side_b_ild_unsorted_cubes",
+        "subtotal": "side_b_ild_subtotal"
+      }
+    }
   },
   {
     "id": "side_b_ild_subtotal",
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_ild_unsorted_cubes * 10) + (side_b_ild_sorted_cubes * 30)) * (side_b_ild_pallets_mult > 0 ? side_b_ild_pallets_mult : 1)"
+    "formula": "(side_b_ild_unsorted_cubes * 10) + (side_b_ild_sorted_cubes * 30)"
   },
   {
     "id": "side_b_ds_header",
@@ -879,6 +1301,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -889,6 +1312,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 16,
     "step": 1
   },
   {
@@ -924,6 +1348,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -934,6 +1359,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -944,6 +1370,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -955,6 +1382,7 @@
     "required": false,
     "isMultiplier": true,
     "min": 0,
+    "max": 4,
     "step": 1
   },
   {
@@ -990,6 +1418,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 48,
     "step": 1
   },
   {
@@ -1000,6 +1429,7 @@
     "type": "number",
     "required": false,
     "min": 0,
+    "max": 1,
     "step": 1
   },
   {
@@ -1010,8 +1440,14 @@
     "type": "buttons",
     "required": false,
     "options": [
-      { "label": "No", "value": "0" },
-      { "label": "Yes", "value": "100" }
+      {
+        "label": "No",
+        "value": "0"
+      },
+      {
+        "label": "Yes",
+        "value": "100"
+      }
     ]
   },
   {
@@ -1040,42 +1476,86 @@
     "column": "right"
   },
   {
-    "id": "side_b_eld_unsorted_cubes",
-    "label": "Unsorted Cubes",
-    "suffix": "× 15",
+    "id": "side_b_eld_cube_stacks",
+    "label": "External Loading Dock Stacks",
+    "type": "repeatableGroup",
     "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_eld_sorted_cubes",
-    "label": "Sorted Cubes",
-    "suffix": "× 45",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "min": 0,
-    "step": 1
-  },
-  {
-    "id": "side_b_eld_pallets_mult",
-    "label": "# of Pallets with Cubes",
-    "suffix": "× __ + 1",
-    "column": "right",
-    "type": "number",
-    "required": false,
-    "isMultiplier": true,
-    "min": 0,
-    "step": 1
+    "rowLabel": "Stack",
+    "minRows": 1,
+    "autoAppendBlankRow": true,
+    "pruneBlankRows": true,
+    "fields": [
+      {
+        "id": "has_pallet",
+        "label": "Pallet",
+        "type": "checkbox"
+      },
+      {
+        "id": "small_red",
+        "label": "Small Red",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_green",
+        "label": "Small Green",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "small_yellow",
+        "label": "Small Yellow",
+        "type": "number",
+        "min": 0,
+        "max": 8,
+        "step": 1
+      },
+      {
+        "id": "large_red",
+        "label": "Large Red",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_green",
+        "label": "Large Green",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      },
+      {
+        "id": "large_brown",
+        "label": "Large Brown",
+        "type": "number",
+        "min": 0,
+        "max": 2,
+        "step": 1
+      }
+    ],
+    "derived": {
+      "type": "botballCubeStacks",
+      "sortedValue": 45,
+      "unsortedValue": 15,
+      "outputs": {
+        "sortedEquivalent": "side_b_eld_sorted_cubes",
+        "unsortedEquivalent": "side_b_eld_unsorted_cubes",
+        "subtotal": "side_b_eld_subtotal"
+      }
+    }
   },
   {
     "id": "side_b_eld_subtotal",
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_eld_unsorted_cubes * 15) + (side_b_eld_sorted_cubes * 45)) * ((side_b_eld_pallets_mult ? side_b_eld_pallets_mult : 0) + 1)"
+    "formula": "(side_b_eld_unsorted_cubes * 15) + (side_b_eld_sorted_cubes * 45)"
   },
   {
     "id": "side_b_total",

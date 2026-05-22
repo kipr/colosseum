@@ -537,6 +537,68 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     });
   };
 
+  const getRepeatableGroupNumberBounds = (childField: any) => {
+    const step = Number(childField.step || 1);
+
+    return {
+      min: Number(childField.min ?? 0),
+      max:
+        childField.max === undefined || childField.max === ''
+          ? undefined
+          : Number(childField.max),
+      step: isNaN(step) ? 1 : step,
+    };
+  };
+
+  const clampRepeatableGroupNumber = (value: number, childField: any) => {
+    const { min, max } = getRepeatableGroupNumberBounds(childField);
+    let nextValue = value;
+
+    if (max !== undefined && nextValue > max) {
+      nextValue = max;
+    }
+
+    if (min !== undefined && nextValue < min) {
+      nextValue = min;
+    }
+
+    return nextValue;
+  };
+
+  const getStepPrecision = (step: number) => {
+    const [, decimalPart = ''] = String(step).split('.');
+    return decimalPart.length;
+  };
+
+  const adjustRepeatableGroupNumber = (
+    field: any,
+    rowIndex: number,
+    childField: any,
+    value: any,
+    direction: -1 | 1,
+  ) => {
+    const { min, step } = getRepeatableGroupNumberBounds(childField);
+    const parsedValue = Number(value);
+    const baseValue =
+      value === '' ||
+      value === undefined ||
+      value === null ||
+      isNaN(parsedValue)
+        ? min
+        : parsedValue;
+    const nextValue = clampRepeatableGroupNumber(
+      Number((baseValue + step * direction).toFixed(getStepPrecision(step))),
+      childField,
+    );
+
+    handleRepeatableGroupInputChange(
+      field,
+      rowIndex,
+      childField,
+      String(nextValue),
+    );
+  };
+
   const handleInputChange = (fieldId: string, value: any, field?: any) => {
     const updates: Record<string, any> = { [fieldId]: value };
 
@@ -1096,7 +1158,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             { key: 'equivalent', label: 'Equivalent' },
             { key: 'subtotal', label: 'Subtotal' },
           ]
-        : [];
+        : field.derived?.type === 'botballStartBoxCubes'
+          ? [{ key: 'subtotal', label: 'Value' }]
+          : [];
     const derivedRows = rows.map(
       (row) => calculateRepeatableGroupDerived(field, [row])?.rows[0],
     );
@@ -1224,55 +1288,100 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     if (childField.type === 'number') {
+      const { min, max, step } = getRepeatableGroupNumberBounds(childField);
+      const numericValue = Number(value);
+      const hasNumericValue =
+        value !== '' &&
+        value !== undefined &&
+        value !== null &&
+        !isNaN(numericValue);
+      const currentNumericValue = hasNumericValue ? numericValue : min;
+      const canDecrement = currentNumericValue > min;
+      const canIncrement = max === undefined || currentNumericValue < max;
+
       return (
-        <input
-          type="number"
-          className="score-input repeatable-group-number"
-          min={childField.min ?? 0}
-          max={childField.max}
-          step={childField.step || 1}
-          value={value ?? ''}
-          placeholder={childField.placeholder || '0'}
-          onChange={(e) => {
-            let newValue = e.target.value;
-            if (newValue === '' || !isNaN(Number(newValue))) {
-              const numValue = Number(newValue);
-              if (
-                newValue !== '' &&
-                childField.max !== undefined &&
-                numValue > childField.max
-              ) {
-                newValue = String(childField.max);
-              }
-              if (
-                newValue !== '' &&
-                childField.min !== undefined &&
-                numValue < childField.min
-              ) {
-                newValue = String(childField.min);
-              }
-              handleRepeatableGroupInputChange(
+        <div className="repeatable-group-number-stepper">
+          <button
+            type="button"
+            className="repeatable-group-number-stepper-button"
+            onClick={() =>
+              adjustRepeatableGroupNumber(
                 field,
                 rowIndex,
                 childField,
-                newValue,
-              );
+                value,
+                -1,
+              )
             }
-          }}
-          onInput={(e) => {
-            const input = e.target as HTMLInputElement;
-            const cursorPosition = input.selectionStart;
-            const cleaned = input.value.replace(/[^0-9.-]/g, '');
-            if (input.value !== cleaned) {
-              input.value = cleaned;
-              if (cursorPosition) {
-                input.setSelectionRange(cursorPosition - 1, cursorPosition - 1);
+            disabled={!canDecrement}
+            aria-label={`Decrease ${childField.label}`}
+          >
+            -
+          </button>
+          <input
+            type="number"
+            className="score-input repeatable-group-number"
+            min={min}
+            max={max}
+            step={step}
+            inputMode={Number.isInteger(step) ? 'numeric' : 'decimal'}
+            value={value ?? ''}
+            placeholder={childField.placeholder || '0'}
+            onChange={(e) => {
+              let newValue = e.target.value;
+              if (newValue === '' || !isNaN(Number(newValue))) {
+                const numValue = Number(newValue);
+                if (
+                  newValue !== '' &&
+                  childField.max !== undefined &&
+                  numValue > childField.max
+                ) {
+                  newValue = String(childField.max);
+                }
+                if (
+                  newValue !== '' &&
+                  childField.min !== undefined &&
+                  numValue < childField.min
+                ) {
+                  newValue = String(childField.min);
+                }
+                handleRepeatableGroupInputChange(
+                  field,
+                  rowIndex,
+                  childField,
+                  newValue,
+                );
               }
-              e.preventDefault();
+            }}
+            onInput={(e) => {
+              const input = e.target as HTMLInputElement;
+              const cursorPosition = input.selectionStart;
+              const cleaned = input.value.replace(/[^0-9.-]/g, '');
+              if (input.value !== cleaned) {
+                input.value = cleaned;
+                if (cursorPosition) {
+                  input.setSelectionRange(
+                    cursorPosition - 1,
+                    cursorPosition - 1,
+                  );
+                }
+                e.preventDefault();
+              }
+            }}
+            required={childField.required}
+          />
+          <button
+            type="button"
+            className="repeatable-group-number-stepper-button"
+            onClick={() =>
+              adjustRepeatableGroupNumber(field, rowIndex, childField, value, 1)
             }
-          }}
-          required={childField.required}
-        />
+            disabled={!canIncrement}
+            aria-label={`Increase ${childField.label}`}
+          >
+            +
+          </button>
+        </div>
       );
     }
 
@@ -1329,6 +1438,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return (
         <input
           type="checkbox"
+          className="repeatable-group-checkbox"
           checked={!!value}
           onChange={(e) =>
             handleRepeatableGroupInputChange(

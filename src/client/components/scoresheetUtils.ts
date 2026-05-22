@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
+import { scoreBotballStartBoxCubes } from '../scoring/botballStartBoxCubes';
 
 export interface BracketTeamDisplay {
   teamNumber: string;
@@ -70,6 +71,42 @@ function isBlankRepeatableGroupValue(value: any, field?: any): boolean {
   return false;
 }
 
+function getRepeatableGroupChildField(field: any, childFieldId: string): any {
+  return (field?.fields || []).find(
+    (childField: any) => childField?.id === childFieldId,
+  );
+}
+
+function isStartBoxCubeRowWithoutQuantity(row: any, field: any): boolean {
+  if (field?.derived?.type !== 'botballStartBoxCubes') {
+    return false;
+  }
+
+  const quantityField = getRepeatableGroupChildField(field, 'quantity');
+  const quantityBlank = isBlankRepeatableGroupValue(
+    row.quantity,
+    quantityField,
+  );
+
+  if (!quantityBlank) {
+    return false;
+  }
+
+  const configuredFieldIds = new Set(
+    (field?.fields || [])
+      .map((childField: any) => childField?.id)
+      .filter((id: any) => id != null),
+  );
+
+  return Object.entries(row).every(([key, value]) => {
+    if (configuredFieldIds.has(key)) {
+      return true;
+    }
+
+    return isBlankRepeatableGroupValue(value);
+  });
+}
+
 function getRepeatableGroupMinRows(field: any): number {
   const minRows = Number(field?.minRows);
   return Number.isFinite(minRows) && minRows > 0 ? Math.floor(minRows) : 1;
@@ -104,6 +141,10 @@ export function createBlankRepeatableGroupRow(field: any): Record<string, any> {
 
 export function isRepeatableGroupRowBlank(row: any, field: any): boolean {
   if (!row || typeof row !== 'object') {
+    return true;
+  }
+
+  if (isStartBoxCubeRowWithoutQuantity(row, field)) {
     return true;
   }
 
@@ -178,14 +219,31 @@ function repeatableGroupRowsEqual(left: any, right: any): boolean {
 }
 
 export function calculateRepeatableGroupDerived(field: any, rows: any[]): any {
-  if (field?.derived?.type !== 'botballCubeStacks') {
-    return undefined;
+  if (field?.derived?.type === 'botballCubeStacks') {
+    return scoreBotballCubeStacks(rows, {
+      sortedValue: field.derived.sortedValue,
+      unsortedValue: field.derived.unsortedValue,
+    });
   }
 
-  return scoreBotballCubeStacks(rows, {
-    sortedValue: field.derived.sortedValue,
-    unsortedValue: field.derived.unsortedValue,
-  });
+  if (field?.derived?.type === 'botballStartBoxCubes') {
+    return scoreBotballStartBoxCubes(rows);
+  }
+
+  return undefined;
+}
+
+export function calculateRepeatableGroupDerivedRows(
+  field: any,
+  rows: any[],
+): any[] {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+
+  return rows.map(
+    (row) => calculateRepeatableGroupDerived(field, [row])?.rows[0],
+  );
 }
 
 export function calculateRepeatableGroupDerivedValues(
@@ -241,7 +299,13 @@ export function buildRepeatableGroupDerivedOutputScoreEntries(
   const outputDefaults: Record<string, { label: string; type: string }> = {
     sortedEquivalent: { label: 'Sorted Cubes', type: 'number' },
     unsortedEquivalent: { label: 'Unsorted Cubes', type: 'number' },
-    subtotal: { label: 'Subtotal', type: 'calculated' },
+    subtotal: {
+      label:
+        field?.derived?.type === 'botballStartBoxCubes'
+          ? 'Cube Points'
+          : 'Subtotal',
+      type: 'calculated',
+    },
   };
 
   Object.entries(outputDefaults).forEach(([outputKey, defaults]) => {
@@ -377,20 +441,32 @@ export function isEventScopedBracketSource(
   return getBracketSourceEventId(bracketSource, fallbackEventId) != null;
 }
 
+function adaptDoubleEliminationId(value: string): string {
+  return value.replace(/side_a/g, 'team_a').replace(/side_b/g, 'team_b');
+}
+
 export function adaptDoubleEliminationFields(templateFields: any[]): any[] {
   return templateFields.map((field) => {
     const newField = { ...field };
 
     if (newField.id) {
-      newField.id = newField.id
-        .replace(/side_a/g, 'team_a')
-        .replace(/side_b/g, 'team_b');
+      newField.id = adaptDoubleEliminationId(newField.id);
     }
 
     if (newField.formula) {
-      newField.formula = newField.formula
-        .replace(/side_a/g, 'team_a')
-        .replace(/side_b/g, 'team_b');
+      newField.formula = adaptDoubleEliminationId(newField.formula);
+    }
+
+    if (newField.derived?.outputs) {
+      newField.derived = {
+        ...newField.derived,
+        outputs: Object.fromEntries(
+          Object.entries(newField.derived.outputs).map(([key, value]) => [
+            key,
+            typeof value === 'string' ? adaptDoubleEliminationId(value) : value,
+          ]),
+        ),
+      };
     }
 
     if (newField.type === 'section_header') {

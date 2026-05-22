@@ -275,6 +275,10 @@ select.score-input {
   min-width: 0;
 }
 
+.repeatable-group-control .score-input {
+  padding: 0.3rem 0.4rem;
+}
+
 .repeatable-group-mobile-label {
   display: block;
   color: var(--secondary-color);
@@ -287,9 +291,69 @@ select.score-input {
   width: 100%;
 }
 
+.repeatable-group-number-stepper {
+  display: inline-flex;
+  align-items: stretch;
+  width: auto;
+  max-width: 100%;
+}
+
 .repeatable-group-number {
-  width: 70px;
+  width: 2.75rem;
+  min-width: 0;
   text-align: center;
+  border-radius: 0;
+}
+
+.repeatable-group-number-stepper-button {
+  min-width: 1.65rem;
+  padding: 0 0.35rem;
+  border: 1px solid var(--border-color);
+  background-color: var(--card-bg);
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.repeatable-group-number-stepper-button:first-child {
+  border-radius: 0.25rem 0 0 0.25rem;
+  border-right: 0;
+}
+
+.repeatable-group-number-stepper-button:last-child {
+  border-radius: 0 0.25rem 0.25rem 0;
+  border-left: 0;
+}
+
+.repeatable-group-number-stepper-button:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  background-color: #f0f7ff;
+}
+
+[data-theme='dark']
+  .repeatable-group-number-stepper-button:hover:not(:disabled) {
+  background-color: #1e3a5f;
+}
+
+.repeatable-group-number-stepper-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+@media (pointer: coarse) {
+  .repeatable-group-number-stepper-button {
+    min-width: 2.1rem;
+    min-height: 2.35rem;
+  }
+}
+
+.repeatable-group-checkbox {
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  margin: 0.25rem 0;
 }
 
 .repeatable-group-buttons {
@@ -441,8 +505,18 @@ select.score-input {
   }
 
   .repeatable-group-number {
-    width: 100%;
-    max-width: 120px;
+    width: 2.75rem;
+    max-width: none;
+  }
+
+  .repeatable-group-number-stepper {
+    width: auto;
+    max-width: 100%;
+  }
+
+  .repeatable-group-number-stepper .repeatable-group-number {
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .calculated-value {
@@ -500,6 +574,14 @@ select.score-input {
 
   .repeatable-group-row {
     grid-template-columns: 1fr;
+  }
+
+  .repeatable-group-number-stepper {
+    max-width: none;
+  }
+
+  .repeatable-group-number-stepper .repeatable-group-number {
+    flex: 0 0 3.25rem;
   }
 
   .score-label {

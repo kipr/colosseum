@@ -4,6 +4,7 @@ import {
   buildEventScopedBracketSource,
   buildRepeatableGroupDerivedScoreEntries,
   buildRepeatableGroupScoreEntry,
+  calculateRepeatableGroupDerivedRows,
   calculateRepeatableGroupDerivedValues,
   createBlankRepeatableGroupRow,
   findBracketGameBySelection,
@@ -28,6 +29,33 @@ describe('scoresheetUtils', () => {
       { id: 'small_red', label: 'Small Red', type: 'number' },
       { id: 'notes', label: 'Notes', type: 'text' },
     ],
+  };
+  const startBoxCubeField = {
+    id: 'side_a_ls_cube_stacks',
+    label: 'Lower Start Box Cubes',
+    type: 'repeatableGroup',
+    pruneBlankRows: true,
+    autoAppendBlankRow: true,
+    fields: [
+      {
+        id: 'cube_type',
+        label: 'Cube Type',
+        type: 'buttons',
+        options: [
+          { label: 'Small', value: 'small' },
+          { label: 'Large R/G', value: 'large_red_green' },
+          { label: 'Large Brown', value: 'large_brown' },
+        ],
+      },
+      { id: 'quantity', label: 'Qty', type: 'number' },
+      { id: 'on_pallet', label: 'Pallet', type: 'checkbox' },
+    ],
+    derived: {
+      type: 'botballStartBoxCubes',
+      outputs: {
+        subtotal: 'side_a_ls_cube_points',
+      },
+    },
   };
 
   it('builds new DE schemas with an event-scoped bracket source', () => {
@@ -59,6 +87,19 @@ describe('scoresheetUtils', () => {
           type: 'calculated',
           formula: 'side_b_score + side_a_score',
         },
+        {
+          id: 'side_a_cube_stacks',
+          label: 'Side A Cube Stacks',
+          type: 'repeatableGroup',
+          derived: {
+            type: 'botballCubeStacks',
+            outputs: {
+              sortedEquivalent: 'side_a_sorted_cubes',
+              unsortedEquivalent: 'side_a_unsorted_cubes',
+              subtotal: 'side_a_cube_points',
+            },
+          },
+        },
       ],
     });
 
@@ -76,6 +117,15 @@ describe('scoresheetUtils', () => {
       schema.fields.find((field: { id: string }) => field.id === 'team_b_total')
         ?.formula,
     ).toBe('team_b_score + team_a_score');
+    expect(
+      schema.fields.find(
+        (field: { id: string }) => field.id === 'team_a_cube_stacks',
+      )?.derived.outputs,
+    ).toEqual({
+      sortedEquivalent: 'team_a_sorted_cubes',
+      unsortedEquivalent: 'team_a_unsorted_cubes',
+      subtotal: 'team_a_cube_points',
+    });
   });
 
   it('formats judge game labels without bracket or game context', () => {
@@ -204,6 +254,31 @@ describe('scoresheetUtils', () => {
         repeatableGroupField,
       ),
     ).toBe(false);
+  });
+
+  it('treats start box cube rows without quantity as blank', () => {
+    expect(
+      isRepeatableGroupRowBlank(
+        { cube_type: 'small', quantity: '', on_pallet: false },
+        startBoxCubeField,
+      ),
+    ).toBe(true);
+    expect(
+      shouldAutoAppendRepeatableGroupRow(
+        [{ cube_type: 'large_brown', quantity: '', on_pallet: false }],
+        startBoxCubeField,
+      ),
+    ).toBe(false);
+    expect(
+      pruneRepeatableGroupRows(
+        [
+          { cube_type: 'small', quantity: '', on_pallet: false },
+          { cube_type: 'large_red_green', quantity: '0', on_pallet: false },
+          { cube_type: 'large_brown', quantity: '1', on_pallet: false },
+        ],
+        startBoxCubeField,
+      ),
+    ).toEqual([{ cube_type: 'large_brown', quantity: '1', on_pallet: false }]);
   });
 
   it('prunes fully blank repeatable group rows while keeping partially entered rows', () => {
@@ -400,6 +475,75 @@ describe('scoresheetUtils', () => {
         label: 'ILD Subtotal',
         type: 'calculated',
         value: 340,
+      },
+    });
+  });
+
+  it('calculates repeatable group derived rows from the current editable rows', () => {
+    expect(
+      calculateRepeatableGroupDerivedRows(startBoxCubeField, [
+        { cube_type: 'small', quantity: '1', on_pallet: false },
+        { cube_type: 'large_brown', quantity: '2', on_pallet: true },
+        { cube_type: 'small', quantity: '', on_pallet: false },
+      ]),
+    ).toEqual([{ subtotal: 5 }, { subtotal: 160 }, undefined]);
+  });
+
+  it('produces cube point outputs from start box cube rows', () => {
+    const field = {
+      id: 'side_a_ls_cube_stacks',
+      label: 'Lower Start Box Cubes',
+      type: 'repeatableGroup',
+      pruneBlankRows: true,
+      fields: [
+        {
+          id: 'cube_type',
+          label: 'Cube Type',
+          type: 'buttons',
+          options: [
+            { label: 'Small', value: 'small' },
+            { label: 'Large R/G', value: 'large_red_green' },
+            { label: 'Large Brown', value: 'large_brown' },
+          ],
+        },
+        { id: 'quantity', label: 'Qty', type: 'number' },
+        { id: 'on_pallet', label: 'Pallet', type: 'checkbox' },
+      ],
+      derived: {
+        type: 'botballStartBoxCubes',
+        outputs: {
+          subtotal: 'side_a_ls_cube_points',
+        },
+      },
+    };
+    const fields = [field];
+
+    const { derivedByFieldId, outputs } = calculateRepeatableGroupDerivedValues(
+      fields,
+      {
+        side_a_ls_cube_stacks: [
+          { cube_type: '', quantity: '', on_pallet: false },
+          { cube_type: 'small', quantity: '2', on_pallet: false },
+          { cube_type: 'large_brown', quantity: 1, on_pallet: true },
+          { cube_type: 'large_red_green', quantity: '', on_pallet: false },
+        ],
+      },
+    );
+
+    expect(outputs).toEqual({
+      side_a_ls_cube_points: 90,
+    });
+    expect(derivedByFieldId.side_a_ls_cube_stacks.rows).toEqual([
+      { subtotal: 10 },
+      { subtotal: 80 },
+    ]);
+    expect(
+      buildRepeatableGroupDerivedScoreEntries(fields, derivedByFieldId),
+    ).toEqual({
+      side_a_ls_cube_points: {
+        label: 'Cube Points',
+        type: 'calculated',
+        value: 90,
       },
     });
   });

@@ -9,7 +9,7 @@ A web-based tournament management and scoring platform with event-centric workfl
 - **Seeding Rounds** - Multi-round seeding with automatic ranking calculation (top 2 of 3 scores)
 - **Double Elimination Brackets** - Generate brackets (4-64 teams), automatic seeding from rankings, bye handling, and winner advancement
 - **Game Queue** - Ordered queue system for seeding rounds and bracket games with table assignments
-- **Customizable Score Sheets** - Template-driven scoring with text, number, dropdown, button, and checkbox field types
+- **Customizable Score Sheets** - Template-driven scoring with text, number, dropdown, button, checkbox, and repeatable group field types
 - **Score Review System** - Admins can accept, reject, or edit submitted scores with full audit trail
 - **Access Codes** - Judges access scoresheets via secure access codes (no login required)
 - **Google OAuth Authentication** - Secure admin login with Google accounts
@@ -25,8 +25,11 @@ Score sheet templates support the following field types:
 - **Dropdown** - Select from predefined options
 - **Buttons** - Multiple choice with visual button selection
 - **Checkbox** - Boolean (true/false) values
+- **Repeatable Group** - Repeatable rows of sub-fields (for example, per-stack cube entry)
 
 See [Template Schema Guide](docs/TEMPLATE_SCHEMA_GUIDE.md) for detailed schema documentation.
+
+> **Note:** Templates that include `repeatableGroup` fields are not portable yet. They cannot be exported with the [portable scoresheet tool](tools/portable-scoresheet/README.md) until portable exporter support for this field type is added.
 
 ## Prerequisites
 

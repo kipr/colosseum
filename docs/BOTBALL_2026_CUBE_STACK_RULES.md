@@ -225,7 +225,7 @@ export interface BotballCubeStackResult {
 }
 ```
 
-Initial test cases:
+Test cases:
 
 - One large green cube counts as four unsorted cube equivalents.
 - One small red cube on a pallet counts as one unsorted cube equivalent.
@@ -238,13 +238,3 @@ Initial test cases:
 - One small yellow plus one large brown counts as nine sorted yellow cube equivalents.
 - One small yellow plus one small red counts as two unsorted cube equivalents.
 - Multiple stack rows aggregate sorted equivalents, unsorted equivalents, and subtotal correctly.
-
-Implementation checklist:
-
-- [x] Add `repeatableGroup` rendering, editing, reset, and submission support to the judge scoresheet.
-  - [x] Write a small sample scoresheet template for testing.
-- [x] Add matching admin review/edit rendering so submitted stack rows and row-level derived status are visible.
-- [x] Add `repeatableGroup` support to template previews.
-- [x] Implement repeat row calculation helper.
-- [ ] Create new template with updated rules. Every place with cubes in the previous schema should be replaced with a stack repeat row.
-- [ ] After these schema updates land, update `README.md` to note that templates using the `repeatableGroup` field type are non-portable until portable exporter support is added. Do not update `README.md` before the field type exists.

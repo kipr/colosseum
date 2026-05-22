@@ -4,6 +4,7 @@ import '../Modal.css';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
 import {
+  calculateRepeatableGroupDerivedRows,
   buildRepeatableGroupDerivedScoreEntries,
   buildRepeatableGroupScoreEntry,
   calculateRepeatableGroupDerivedValues,
@@ -451,19 +452,26 @@ export default function ScoreViewModal({
     return rows;
   };
 
-  const getRepeatableGroupDerivedRows = (fieldId: string) => {
-    const rows = score.score_data?.[fieldId]?.derived?.rows;
-    return Array.isArray(rows) ? rows : [];
+  const getRepeatableGroupDerivedRows = (field: any, rows: any[]) => {
+    if (!isReadOnly && field.derived) {
+      return calculateRepeatableGroupDerivedRows(field, rows);
+    }
+
+    const submittedRows = score.score_data?.[field.id]?.derived?.rows;
+    return Array.isArray(submittedRows) ? submittedRows : [];
   };
 
-  const getRepeatableGroupDerivedColumns = (derivedRows: any[]) => {
-    const columns = [
-      { key: 'status', label: 'Status' },
-      { key: 'sortedColor', label: 'Sorted Color' },
-      { key: 'color', label: 'Sorted Color' },
-      { key: 'equivalent', label: 'Equivalent' },
-      { key: 'subtotal', label: 'Subtotal' },
-    ];
+  const getRepeatableGroupDerivedColumns = (field: any, derivedRows: any[]) => {
+    const columns =
+      field?.derived?.type === 'botballStartBoxCubes'
+        ? [{ key: 'subtotal', label: 'Value' }]
+        : [
+            { key: 'status', label: 'Status' },
+            { key: 'sortedColor', label: 'Sorted Color' },
+            { key: 'color', label: 'Sorted Color' },
+            { key: 'equivalent', label: 'Equivalent' },
+            { key: 'subtotal', label: 'Subtotal' },
+          ];
     const usedLabels = new Set<string>();
 
     return columns.filter((column) => {
@@ -532,8 +540,8 @@ export default function ScoreViewModal({
         childField.type,
       ),
     );
-    const derivedRows = getRepeatableGroupDerivedRows(field.id);
-    const derivedColumns = getRepeatableGroupDerivedColumns(derivedRows);
+    const derivedRows = getRepeatableGroupDerivedRows(field, rows);
+    const derivedColumns = getRepeatableGroupDerivedColumns(field, derivedRows);
 
     return (
       <div key={field.id} className="repeatable-group">
@@ -730,7 +738,10 @@ export default function ScoreViewModal({
       ? data.derived.rows
       : [];
     const rowKeys = getRepeatableGroupRowKeys(rows);
-    const derivedColumns = getRepeatableGroupDerivedColumns(derivedRows);
+    const derivedColumns = getRepeatableGroupDerivedColumns(
+      undefined,
+      derivedRows,
+    );
 
     return (
       <div key={fieldId} className="repeatable-group">
