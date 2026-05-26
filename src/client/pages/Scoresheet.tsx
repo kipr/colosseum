@@ -100,7 +100,7 @@ export default function Scoresheet() {
   return (
     <div className="app">
       <Navbar />
-      <main className="container">
+      <main className="scoresheet-page">
         {/* Use key with retryCount to force fresh component state on retry */}
         <ScoresheetForm
           key={`scoresheet-${template.id}-${retryCount}`}

@@ -2,11 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import {
   BracketGameOption,
+  buildRepeatableGroupDerivedScoreEntries,
+  calculateRepeatableGroupDerived,
+  calculateRepeatableGroupDerivedValues,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
+  normalizeRepeatableGroupRows,
+  pruneRepeatableGroupRows,
   getBracketGameOptionValue,
   getBracketSourceEventId,
   isEventScopedBracketSource,
+  shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
 import '../pages/Scoresheet.css';
 
@@ -41,7 +47,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     // Initialize fields with their default values if specified
     template.schema.fields.forEach((field: any) => {
-      if (field.defaultValue !== undefined) {
+      if (field.type === 'repeatableGroup') {
+        const startingValue =
+          field.defaultValue !== undefined
+            ? field.defaultValue
+            : field.startValue;
+        initial[field.id] =
+          startingValue !== undefined
+            ? Array.isArray(startingValue)
+              ? startingValue.map((row: any) => ({ ...row }))
+              : startingValue
+            : normalizeRepeatableGroupRows(undefined, field);
+      } else if (field.defaultValue !== undefined) {
         initial[field.id] = field.defaultValue;
       } else if (field.startValue !== undefined) {
         // Support both defaultValue and startValue
@@ -491,6 +508,97 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     setFormData((prev) => ({ ...prev, ...updates }));
   };
 
+  const handleRepeatableGroupInputChange = (
+    field: any,
+    rowIndex: number,
+    childField: any,
+    value: any,
+  ) => {
+    setFormData((prev) => {
+      const rows = normalizeRepeatableGroupRows(prev[field.id], field).map(
+        (row) => ({ ...row }),
+      );
+      rows[rowIndex] = {
+        ...rows[rowIndex],
+        [childField.id]: value,
+      };
+
+      if (
+        field.autoAppendBlankRow &&
+        shouldAutoAppendRepeatableGroupRow(rows, field)
+      ) {
+        rows.push(normalizeRepeatableGroupRows(undefined, field)[0]);
+      }
+
+      return {
+        ...prev,
+        [field.id]: rows,
+      };
+    });
+  };
+
+  const getRepeatableGroupNumberBounds = (childField: any) => {
+    const step = Number(childField.step || 1);
+
+    return {
+      min: Number(childField.min ?? 0),
+      max:
+        childField.max === undefined || childField.max === ''
+          ? undefined
+          : Number(childField.max),
+      step: isNaN(step) ? 1 : step,
+    };
+  };
+
+  const clampRepeatableGroupNumber = (value: number, childField: any) => {
+    const { min, max } = getRepeatableGroupNumberBounds(childField);
+    let nextValue = value;
+
+    if (max !== undefined && nextValue > max) {
+      nextValue = max;
+    }
+
+    if (min !== undefined && nextValue < min) {
+      nextValue = min;
+    }
+
+    return nextValue;
+  };
+
+  const getStepPrecision = (step: number) => {
+    const [, decimalPart = ''] = String(step).split('.');
+    return decimalPart.length;
+  };
+
+  const adjustRepeatableGroupNumber = (
+    field: any,
+    rowIndex: number,
+    childField: any,
+    value: any,
+    direction: -1 | 1,
+  ) => {
+    const { min, step } = getRepeatableGroupNumberBounds(childField);
+    const parsedValue = Number(value);
+    const baseValue =
+      value === '' ||
+      value === undefined ||
+      value === null ||
+      isNaN(parsedValue)
+        ? min
+        : parsedValue;
+    const nextValue = clampRepeatableGroupNumber(
+      Number((baseValue + step * direction).toFixed(getStepPrecision(step))),
+      childField,
+    );
+
+    handleRepeatableGroupInputChange(
+      field,
+      rowIndex,
+      childField,
+      String(nextValue),
+    );
+  };
+
   const handleInputChange = (fieldId: string, value: any, field?: any) => {
     const updates: Record<string, any> = { [fieldId]: value };
 
@@ -570,13 +678,22 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     return field.placeholder || '0';
   };
 
-  const calculateAllFormulas = () => {
+  const calculateFormulaValues = (data: Record<string, any>) => {
     const calculated: Record<string, number> = {};
+    const { outputs } = calculateRepeatableGroupDerivedValues(
+      schema.fields,
+      data,
+    );
+    const formulaData = { ...data, ...outputs };
 
     schema.fields.forEach((field: any) => {
       if (field.type === 'calculated' && field.formula) {
         try {
-          const result = evaluateFormula(field.formula, formData, calculated);
+          const result = evaluateFormula(
+            field.formula,
+            formulaData,
+            calculated,
+          );
           calculated[field.id] = result;
         } catch (error) {
           console.error(`Error calculating ${field.id}:`, error);
@@ -585,7 +702,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       }
     });
 
-    setCalculatedValues(calculated);
+    return calculated;
+  };
+
+  const calculateAllFormulas = () => {
+    setCalculatedValues(calculateFormulaValues(formData));
   };
 
   const evaluateFormula = (
@@ -666,6 +787,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     const scoreData: Record<string, any> = {};
+    const submitCalculatedValues = calculateFormulaValues(formData);
+    const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
+      schema.fields,
+      formData,
+    );
 
     schema.fields.forEach((field: any) => {
       if (field.type === 'section_header' || field.type === 'group_header') {
@@ -675,7 +801,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       let value;
 
       if (field.type === 'calculated') {
-        value = calculatedValues[field.id] || 0;
+        value = submitCalculatedValues[field.id] || 0;
+      } else if (field.type === 'repeatableGroup') {
+        const rows = normalizeRepeatableGroupRows(formData[field.id], field);
+        value = field.pruneBlankRows
+          ? pruneRepeatableGroupRows(rows, field)
+          : rows;
       } else {
         const rawValue = formData[field.id];
         if (field.type === 'number') {
@@ -695,7 +826,16 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         value: value,
         type: field.type,
       };
+
+      if (field.type === 'repeatableGroup' && derivedByFieldId[field.id]) {
+        scoreData[field.id].derived = derivedByFieldId[field.id];
+      }
     });
+
+    Object.assign(
+      scoreData,
+      buildRepeatableGroupDerivedScoreEntries(schema.fields, derivedByFieldId),
+    );
 
     // For head-to-head, determine the winner info
     let participantName = '';
@@ -791,9 +931,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         };
       }
       const team1Score =
-        calculatedValues.team_a_total ?? formData.team_a_score ?? 0;
+        submitCalculatedValues.team_a_total ?? formData.team_a_score ?? 0;
       const team2Score =
-        calculatedValues.team_b_total ?? formData.team_b_score ?? 0;
+        submitCalculatedValues.team_b_total ?? formData.team_b_score ?? 0;
       scoreData.team1_score = {
         label: 'Team 1 Score',
         value: team1Score,
@@ -967,6 +1107,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       );
     }
 
+    if (field.type === 'repeatableGroup') {
+      return renderRepeatableGroup(field);
+    }
+
     const value = formData[field.id] !== undefined ? formData[field.id] : '';
 
     const isCompact =
@@ -998,6 +1142,318 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         {renderFieldInput(field, value, isCompact)}
       </div>
     );
+  };
+
+  const renderRepeatableGroup = (field: any) => {
+    const rows = normalizeRepeatableGroupRows(formData[field.id], field);
+    const supportedFields = (field.fields || []).filter((childField: any) =>
+      ['text', 'number', 'dropdown', 'buttons', 'checkbox'].includes(
+        childField.type,
+      ),
+    );
+    const derivedColumns =
+      field.derived?.type === 'botballCubeStacks'
+        ? [
+            { key: 'sortedColor', label: 'Sorted Color' },
+            { key: 'equivalent', label: 'Equivalent' },
+            { key: 'subtotal', label: 'Subtotal' },
+          ]
+        : field.derived?.type === 'botballStartBoxCubes'
+          ? [{ key: 'subtotal', label: 'Value' }]
+          : [];
+    const derivedRows = rows.map(
+      (row) => calculateRepeatableGroupDerived(field, [row])?.rows[0],
+    );
+
+    return (
+      <div key={field.id} className="repeatable-group">
+        <div className="repeatable-group-title">
+          <span>{field.label}</span>
+          {field.suffix && <span className="multiplier">{field.suffix}</span>}
+        </div>
+        <div className="repeatable-group-table">
+          <div className="repeatable-group-header">
+            <div className="repeatable-group-row-label">
+              {field.rowLabel || 'Row'}
+            </div>
+            {supportedFields.map((childField: any) => (
+              <div
+                key={childField.id}
+                className="repeatable-group-column-label"
+              >
+                {childField.label}
+              </div>
+            ))}
+            {derivedColumns.map((column) => (
+              <div key={column.key} className="repeatable-group-column-label">
+                {column.label}
+              </div>
+            ))}
+          </div>
+          {rows.map((row, rowIndex) => (
+            <div key={rowIndex} className="repeatable-group-row">
+              <div className="repeatable-group-row-label">
+                {field.rowLabel || 'Row'} {rowIndex + 1}
+              </div>
+              {supportedFields.map((childField: any) => (
+                <div key={childField.id} className="repeatable-group-control">
+                  <label className="repeatable-group-mobile-label">
+                    {childField.label}
+                  </label>
+                  {renderRepeatableGroupInput(
+                    field,
+                    rowIndex,
+                    childField,
+                    row[childField.id],
+                  )}
+                </div>
+              ))}
+              {derivedColumns.map((column) => (
+                <div key={column.key} className="repeatable-group-control">
+                  <label className="repeatable-group-mobile-label">
+                    {column.label}
+                  </label>
+                  <div className="calculated-value" style={{ width: 'auto' }}>
+                    {renderRepeatableGroupDerivedValue(
+                      derivedRows[rowIndex]?.[column.key],
+                      column.key,
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  const renderRepeatableGroupDerivedValue = (value: any, columnKey: string) => {
+    if (value === undefined || value === null || value === '') {
+      return '';
+    }
+
+    if (columnKey === 'sortedColor') {
+      return (
+        <span
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: '0.75rem',
+              height: '0.75rem',
+              borderRadius: '999px',
+              border: '1px solid var(--border-color)',
+              backgroundColor: String(value),
+              display: 'inline-block',
+            }}
+          />
+          {String(value)}
+        </span>
+      );
+    }
+
+    return String(value);
+  };
+
+  const renderRepeatableGroupInput = (
+    field: any,
+    rowIndex: number,
+    childField: any,
+    value: any,
+  ) => {
+    if (childField.type === 'text') {
+      return (
+        <input
+          type="text"
+          className="score-input repeatable-group-input"
+          placeholder={childField.placeholder || ''}
+          value={value ?? ''}
+          onChange={(e) =>
+            handleRepeatableGroupInputChange(
+              field,
+              rowIndex,
+              childField,
+              e.target.value,
+            )
+          }
+          required={childField.required}
+        />
+      );
+    }
+
+    if (childField.type === 'number') {
+      const { min, max, step } = getRepeatableGroupNumberBounds(childField);
+      const numericValue = Number(value);
+      const hasNumericValue =
+        value !== '' &&
+        value !== undefined &&
+        value !== null &&
+        !isNaN(numericValue);
+      const currentNumericValue = hasNumericValue ? numericValue : min;
+      const canDecrement = currentNumericValue > min;
+      const canIncrement = max === undefined || currentNumericValue < max;
+
+      return (
+        <div className="repeatable-group-number-stepper">
+          <button
+            type="button"
+            className="repeatable-group-number-stepper-button"
+            onClick={() =>
+              adjustRepeatableGroupNumber(
+                field,
+                rowIndex,
+                childField,
+                value,
+                -1,
+              )
+            }
+            disabled={!canDecrement}
+            aria-label={`Decrease ${childField.label}`}
+          >
+            -
+          </button>
+          <input
+            type="number"
+            className="score-input repeatable-group-number"
+            min={min}
+            max={max}
+            step={step}
+            inputMode={Number.isInteger(step) ? 'numeric' : 'decimal'}
+            value={value ?? ''}
+            placeholder={childField.placeholder || '0'}
+            onChange={(e) => {
+              let newValue = e.target.value;
+              if (newValue === '' || !isNaN(Number(newValue))) {
+                const numValue = Number(newValue);
+                if (
+                  newValue !== '' &&
+                  childField.max !== undefined &&
+                  numValue > childField.max
+                ) {
+                  newValue = String(childField.max);
+                }
+                if (
+                  newValue !== '' &&
+                  childField.min !== undefined &&
+                  numValue < childField.min
+                ) {
+                  newValue = String(childField.min);
+                }
+                handleRepeatableGroupInputChange(
+                  field,
+                  rowIndex,
+                  childField,
+                  newValue,
+                );
+              }
+            }}
+            onInput={(e) => {
+              const input = e.target as HTMLInputElement;
+              const cursorPosition = input.selectionStart;
+              const cleaned = input.value.replace(/[^0-9.-]/g, '');
+              if (input.value !== cleaned) {
+                input.value = cleaned;
+                if (cursorPosition) {
+                  input.setSelectionRange(
+                    cursorPosition - 1,
+                    cursorPosition - 1,
+                  );
+                }
+                e.preventDefault();
+              }
+            }}
+            required={childField.required}
+          />
+          <button
+            type="button"
+            className="repeatable-group-number-stepper-button"
+            onClick={() =>
+              adjustRepeatableGroupNumber(field, rowIndex, childField, value, 1)
+            }
+            disabled={!canIncrement}
+            aria-label={`Increase ${childField.label}`}
+          >
+            +
+          </button>
+        </div>
+      );
+    }
+
+    if (childField.type === 'dropdown') {
+      return (
+        <select
+          className="score-input repeatable-group-input"
+          value={value ?? ''}
+          onChange={(e) =>
+            handleRepeatableGroupInputChange(
+              field,
+              rowIndex,
+              childField,
+              e.target.value,
+            )
+          }
+          required={childField.required}
+        >
+          <option value="">Select...</option>
+          {childField.options?.map((opt: any) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    if (childField.type === 'buttons') {
+      return (
+        <div className="score-button-group repeatable-group-buttons">
+          {childField.options?.map((opt: any) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`score-option-button ${value === opt.value ? 'selected' : ''}`}
+              onClick={() =>
+                handleRepeatableGroupInputChange(
+                  field,
+                  rowIndex,
+                  childField,
+                  opt.value,
+                )
+              }
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (childField.type === 'checkbox') {
+      return (
+        <input
+          type="checkbox"
+          className="repeatable-group-checkbox"
+          checked={!!value}
+          onChange={(e) =>
+            handleRepeatableGroupInputChange(
+              field,
+              rowIndex,
+              childField,
+              e.target.checked,
+            )
+          }
+          required={childField.required}
+        />
+      );
+    }
+
+    return null;
   };
 
   const renderFieldInput = (field: any, value: any, isCompact: boolean) => {
