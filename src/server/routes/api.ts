@@ -46,7 +46,7 @@ router.post(
 
       // Get the template
       const template = await db.get(
-        'SELECT id, name, created_by, spreadsheet_config_id FROM scoresheet_templates WHERE id = ?',
+        'SELECT id, name, created_by FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
 
@@ -99,8 +99,6 @@ router.post(
 
       const isDbBacked = isDbBackedSeeding || isDbBackedBracket;
 
-      const spreadsheetConfigId: number | null = null;
-
       // Single event validation for seeding (bracket already validated via game query)
       if (attemptingDbBackedSeeding) {
         const event = await db.get('SELECT id FROM events WHERE id = ?', [
@@ -147,15 +145,13 @@ router.post(
         };
       }
 
-      // Build insert - event-scoped uses null for spreadsheet_config_id
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null,
           templateId,
-          spreadsheetConfigId,
           participantName,
           matchId,
           JSON.stringify(enrichedScoreData),
@@ -171,7 +167,7 @@ router.post(
         [result.lastID],
       );
 
-      // Audit event-scoped submissions only (skip legacy spreadsheet path)
+      // Audit event-scoped submissions
       if (isDbBacked && submission) {
         await createAuditEntry(db, {
           event_id: eventId,

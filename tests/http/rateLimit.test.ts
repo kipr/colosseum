@@ -17,8 +17,6 @@ import {
   seedTeam,
   seedScoresheetTemplate,
   seedEventScoresheetTemplate,
-  seedSpreadsheetConfig,
-  seedUser,
 } from './helpers/seed';
 import apiRoutes from '../../src/server/routes/api';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
@@ -183,23 +181,34 @@ describe('Rate Limiting', () => {
   });
 
   // ==========================================================================
-  // POST /chat/messages  –  chatWriteLimiter (15 req / 1 min)
+  // POST /chat/events/:eventId/messages  –  chatWriteLimiter (15 req / 1 min)
   // ==========================================================================
-  describe('chatWriteLimiter – POST /chat/messages', () => {
+  describe('chatWriteLimiter – POST /chat/events/:eventId/messages', () => {
+    let eventId: number;
+
     beforeEach(async () => {
       testDb = await createTestDb();
       __setTestDatabaseAdapter(testDb.db);
       resetAllRateLimiters();
 
-      const user = await seedUser(testDb.db, { is_admin: true });
-      await seedSpreadsheetConfig(testDb.db, {
-        user_id: user.id,
-        spreadsheet_id: 'spread-1',
-        spreadsheet_name: 'Test',
-        sheet_name: 'Sheet1',
+      const event = await seedEvent(testDb.db);
+      eventId = event.id;
+      const template = await seedScoresheetTemplate(testDb.db);
+      await seedEventScoresheetTemplate(testDb.db, {
+        event_id: eventId,
+        template_id: template.id,
+        template_type: 'seeding',
       });
 
-      const app = createTestApp();
+      const app = createTestApp({
+        judgeSession: {
+          templateId: template.id,
+          eventIds: [eventId],
+          conversationKey: 'rate-limit-conv',
+          issuedAt: Date.now(),
+          expiresAt: Date.now() + 60 * 60 * 1000,
+        },
+      });
       app.use('/chat', chatRoutes);
       server = await startServer(app);
       baseUrl = server.baseUrl;
@@ -207,40 +216,50 @@ describe('Rate Limiting', () => {
 
     it('returns 429 after exceeding the chat write limit', async () => {
       for (let i = 0; i < 15; i++) {
-        await http.post(`${baseUrl}/chat/messages`, {
-          spreadsheetId: 'spread-1',
-          senderName: 'Judge',
+        await http.post(`${baseUrl}/chat/events/${eventId}/messages`, {
           message: `msg ${i}`,
         });
       }
 
-      const blocked = await http.post<ErrorBody>(`${baseUrl}/chat/messages`, {
-        spreadsheetId: 'spread-1',
-        senderName: 'Judge',
-        message: 'one too many',
-      });
+      const blocked = await http.post<ErrorBody>(
+        `${baseUrl}/chat/events/${eventId}/messages`,
+        { message: 'one too many' },
+      );
       expect(blocked.status).toBe(429);
       expect(blocked.json.limiter).toBe('chatWrite');
     });
   });
 
   // ==========================================================================
-  // GET /chat/messages/:id  –  chatReadLimiter (120 req / 1 min)
+  // GET /chat/events/:eventId/messages  –  chatReadLimiter (120 req / 1 min)
   // ==========================================================================
-  describe('chatReadLimiter – GET /chat/messages/:spreadsheetId', () => {
+  describe('chatReadLimiter – GET /chat/events/:eventId/messages', () => {
+    let eventId: number;
+
     beforeEach(async () => {
       testDb = await createTestDb();
       __setTestDatabaseAdapter(testDb.db);
       resetAllRateLimiters();
 
-      const app = createTestApp();
+      const event = await seedEvent(testDb.db);
+      eventId = event.id;
+
+      const app = createTestApp({
+        judgeSession: {
+          templateId: 1,
+          eventIds: [eventId],
+          conversationKey: 'read-limit-conv',
+          issuedAt: Date.now(),
+          expiresAt: Date.now() + 60 * 60 * 1000,
+        },
+      });
       app.use('/chat', chatRoutes);
       server = await startServer(app);
       baseUrl = server.baseUrl;
     });
 
     it('includes rate-limit headers on read requests', async () => {
-      const res = await http.get(`${baseUrl}/chat/messages/some-id`);
+      const res = await http.get(`${baseUrl}/chat/events/${eventId}/messages`);
       expect(res.headers.has('ratelimit-limit')).toBe(true);
       expect(res.headers.get('ratelimit-limit')).toBe('120');
     });

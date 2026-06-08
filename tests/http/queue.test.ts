@@ -1137,7 +1137,10 @@ describe('Queue Routes', () => {
         seeding_round: 1,
       });
 
-      const calledRes = await http.patch(`${baseUrl}/queue/${item.id}/call`, {});
+      const calledRes = await http.patch(
+        `${baseUrl}/queue/${item.id}/call`,
+        {},
+      );
       expect(calledRes.status).toBe(200);
 
       const arrivedRes = await http.patch(`${baseUrl}/queue/${item.id}`, {

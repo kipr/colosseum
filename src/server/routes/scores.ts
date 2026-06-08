@@ -1345,7 +1345,7 @@ router.post(
 
       await db.run(
         `UPDATE score_submissions 
-       SET status = 'pending', submitted_to_sheet = false, reviewed_by = NULL, reviewed_at = NULL
+       SET status = 'pending', reviewed_by = NULL, reviewed_at = NULL
        WHERE id = ?`,
         [id],
       );

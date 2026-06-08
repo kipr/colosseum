@@ -16,7 +16,6 @@ interface TemplateEditorModalProps {
     description: string;
     accessCode: string;
     schema: any;
-    spreadsheetConfigId: number | '' | null;
   };
 }
 
@@ -37,9 +36,6 @@ export default function TemplateEditorModal({
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
   const [schema, setSchema] = useState('');
-  const [spreadsheetConfigId, setSpreadsheetConfigId] = useState<
-    number | '' | null
-  >('');
   const [loading, setLoading] = useState(!!templateId);
   const [gameAreasImage, setGameAreasImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -94,7 +90,6 @@ export default function TemplateEditorModal({
       setDescription(initialData.description);
       setAccessCode(initialData.accessCode);
       setSchema(JSON.stringify(initialData.schema, null, 2));
-      setSpreadsheetConfigId(initialData.spreadsheetConfigId ?? '');
       updateBracketStateFromSchema(initialData.schema);
       // Load game areas image from schema if present
       if (initialData.schema?.gameAreasImage) {
@@ -142,7 +137,6 @@ export default function TemplateEditorModal({
       }
       setSchema(JSON.stringify(template.schema, null, 2));
       updateBracketStateFromSchema(template.schema);
-      setSpreadsheetConfigId(template.spreadsheet_config_id || '');
     } catch (error) {
       console.error('Error loading template:', error);
       alert('Failed to load template');
@@ -222,7 +216,6 @@ export default function TemplateEditorModal({
           description,
           accessCode,
           schema: parsedSchema,
-          spreadsheetConfigId: spreadsheetConfigId || null,
           eventId,
         }),
       });

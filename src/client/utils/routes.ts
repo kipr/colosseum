@@ -6,6 +6,7 @@ export const ADMIN_VIEWS = [
   'seeding',
   'brackets',
   'queue',
+  'judge-chat',
   'documentation',
   'awards',
   'overall',

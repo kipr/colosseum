@@ -2,7 +2,9 @@
  * HTTP route tests for scoresheet template event scoping.
  * Verifies event linkage on create/update, admin filtering, and judge list exclusions.
  */
+import express, { Request, Response, NextFunction } from 'express';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { JUDGE_SESSION_TTL_MS } from '../../src/server/middleware/auth';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
 import { __setTestDatabaseAdapter } from '../../src/server/database/connection';
 import {
@@ -179,6 +181,119 @@ describe('Scoresheet Templates Event Scope', () => {
         { accessCode: 'wrong-code' },
       );
       expect(res.status).toBe(403);
+    });
+
+    it('reuses conversationKey when re-verifying the same template in an active session', async () => {
+      const event = await seedEvent(testDb.db, { name: 'Chat Event' });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Judge Sheet',
+        schema: JSON.stringify({ fields: [] }),
+        access_code: 'judge-secret',
+      });
+      await seedEventScoresheetTemplate(testDb.db, {
+        event_id: event.id,
+        template_id: template.id,
+        template_type: 'seeding',
+      });
+
+      const session: {
+        judgeAuth?: {
+          templateId: number;
+          eventIds: number[];
+          conversationKey: string;
+          issuedAt: number;
+          expiresAt: number;
+        };
+      } = {};
+
+      const app = express();
+      app.use(express.json());
+      app.use((req: Request, _res: Response, next: NextFunction) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (req as any).isAuthenticated = () => false;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (req as any).session = session;
+        next();
+      });
+      app.use('/scoresheet', scoresheetRoutes);
+
+      const verifyServer = await startServer(app);
+      try {
+        const first = await http.post(
+          `${verifyServer.baseUrl}/scoresheet/templates/${template.id}/verify`,
+          { accessCode: 'judge-secret' },
+        );
+        expect(first.status).toBe(200);
+        const firstKey = session.judgeAuth?.conversationKey;
+        expect(firstKey).toBeTruthy();
+
+        const second = await http.post(
+          `${verifyServer.baseUrl}/scoresheet/templates/${template.id}/verify`,
+          { accessCode: 'judge-secret' },
+        );
+        expect(second.status).toBe(200);
+        expect(session.judgeAuth?.conversationKey).toBe(firstKey);
+        expect(session.judgeAuth?.expiresAt).toBeGreaterThan(Date.now());
+      } finally {
+        await verifyServer.close();
+      }
+    });
+
+    it('mints a new conversationKey after the judge session expires', async () => {
+      const event = await seedEvent(testDb.db, { name: 'Expired Chat Event' });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Expired Judge Sheet',
+        schema: JSON.stringify({ fields: [] }),
+        access_code: 'judge-secret',
+      });
+      await seedEventScoresheetTemplate(testDb.db, {
+        event_id: event.id,
+        template_id: template.id,
+        template_type: 'seeding',
+      });
+
+      const session: {
+        judgeAuth?: {
+          templateId: number;
+          eventIds: number[];
+          conversationKey: string;
+          issuedAt: number;
+          expiresAt: number;
+        };
+      } = {
+        judgeAuth: {
+          templateId: template.id,
+          eventIds: [event.id],
+          conversationKey: 'old-conversation-key',
+          issuedAt: Date.now() - JUDGE_SESSION_TTL_MS - 1000,
+          expiresAt: Date.now() - 1000,
+        },
+      };
+
+      const app = express();
+      app.use(express.json());
+      app.use((req: Request, _res: Response, next: NextFunction) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (req as any).isAuthenticated = () => false;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (req as any).session = session;
+        next();
+      });
+      app.use('/scoresheet', scoresheetRoutes);
+
+      const verifyServer = await startServer(app);
+      try {
+        const res = await http.post(
+          `${verifyServer.baseUrl}/scoresheet/templates/${template.id}/verify`,
+          { accessCode: 'judge-secret' },
+        );
+        expect(res.status).toBe(200);
+        expect(session.judgeAuth?.conversationKey).not.toBe(
+          'old-conversation-key',
+        );
+      } finally {
+        await verifyServer.close();
+      }
     });
   });
 

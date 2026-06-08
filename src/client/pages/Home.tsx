@@ -47,7 +47,7 @@ export default function Home() {
       <main className="container">
         <div className="hero">
           <h2>Welcome to Colosseum</h2>
-          <p>A powerful scoring application with Google Sheets integration</p>
+          <p>A powerful tournament scoring and management platform</p>
         </div>
 
         <div className="role-selection">
@@ -73,7 +73,7 @@ export default function Home() {
             </p>
             <ul className="role-features">
               <li>✓ Fill out digital scoresheets</li>
-              <li>✓ Submit scores directly to spreadsheets</li>
+              <li>✓ Submit scores to the tournament database</li>
               <li>✓ Multiple scoresheet templates</li>
               <li>✓ Real-time scoring</li>
             </ul>
@@ -96,14 +96,14 @@ export default function Home() {
             </div>
             <h3>Administrator</h3>
             <p>
-              Manage spreadsheets, create scoresheet templates, and configure
-              the application.
+              Manage events, create score sheet templates, and configure
+              tournaments.
             </p>
             <ul className="role-features">
-              <li>✓ Link Google Spreadsheets</li>
-              <li>✓ Create custom templates</li>
-              <li>✓ View submission history</li>
-              <li>✓ Manage configurations</li>
+              <li>✓ Create and manage events</li>
+              <li>✓ Create custom score sheets</li>
+              <li>✓ Review and accept submissions</li>
+              <li>✓ Run brackets and seeding</li>
             </ul>
           </div>
 

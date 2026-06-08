@@ -19,6 +19,7 @@ const ScoringTab = lazy(() => import('../components/admin/ScoringTab'));
 const SeedingTab = lazy(() => import('../components/admin/SeedingTab'));
 const BracketsTab = lazy(() => import('../components/admin/BracketsTab'));
 const QueueTab = lazy(() => import('../components/admin/QueueTab'));
+const JudgeChatTab = lazy(() => import('../components/admin/JudgeChatTab'));
 const DocumentationTab = lazy(
   () => import('../components/admin/DocumentationTab'),
 );
@@ -37,6 +38,7 @@ const TAB_LABELS: Record<AdminView, string> = {
   seeding: 'Seeding',
   brackets: 'Brackets',
   queue: 'Queue',
+  'judge-chat': 'Judge Chat',
   documentation: 'Documentation',
   awards: 'Awards',
   overall: 'Overall',
@@ -52,6 +54,7 @@ const TAB_ICONS: Record<AdminView, string> = {
   seeding: '🌱',
   brackets: '🏅',
   queue: '🎟️',
+  'judge-chat': '💬',
   documentation: '📚',
   awards: '🏅',
   overall: '📊',
@@ -233,6 +236,7 @@ export default function Admin() {
               {activeTab === 'seeding' && <SeedingTab />}
               {activeTab === 'brackets' && <BracketsTab />}
               {activeTab === 'queue' && <QueueTab />}
+              {activeTab === 'judge-chat' && <JudgeChatTab />}
               {activeTab === 'documentation' && <DocumentationTab />}
               {activeTab === 'awards' && <AwardsTab />}
               {activeTab === 'overall' && <OverallTab />}

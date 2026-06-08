@@ -1,6 +1,6 @@
 /**
  * HTTP route tests for POST /api/scores/submit endpoint.
- * Tests validation, template ownership, and spreadsheet config selection logic.
+ * Tests validation, template ownership, and event-scoped submission logic.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
@@ -106,11 +106,10 @@ describe('API Score Submit Routes', () => {
         );
       });
 
-      it('returns 400 when non-event-scoped submission (legacy spreadsheet path removed)', async () => {
+      it('returns 400 when non-event-scoped submission', async () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'Legacy Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -131,7 +130,7 @@ describe('API Score Submit Routes', () => {
     // ==========================================================================
 
     describe('DB-Backed (Event-Scoped) Submission', () => {
-      it('creates event-scoped seeding score with team_id (no spreadsheet)', async () => {
+      it('creates event-scoped seeding score with team_id', async () => {
         const event = await seedEvent(testDb.db);
         const team = await seedTeam(testDb.db, {
           event_id: event.id,
@@ -141,7 +140,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Seeding Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -162,12 +160,10 @@ describe('API Score Submit Routes', () => {
         expect(res.status).toBe(200);
         const submission = res.json as {
           id: number;
-          spreadsheet_config_id: number | null;
           event_id: number | null;
           score_type: string | null;
           status: string;
         };
-        expect(submission.spreadsheet_config_id).toBeNull();
         expect(submission.event_id).toBe(event.id);
         expect(submission.score_type).toBe('seeding');
         expect(submission.status).toBe('pending');
@@ -198,7 +194,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Seeding Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -217,11 +212,9 @@ describe('API Score Submit Routes', () => {
 
         expect(res.status).toBe(200);
         const submission = res.json as {
-          spreadsheet_config_id: number | null;
           event_id: number | null;
           score_type: string | null;
         };
-        expect(submission.spreadsheet_config_id).toBeNull();
         expect(submission.event_id).toBe(event.id);
         expect(submission.score_type).toBe('seeding');
 
@@ -235,7 +228,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -260,7 +252,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -285,7 +276,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -315,7 +305,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -352,7 +341,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Seeding Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -400,7 +388,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Seeding Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -453,7 +440,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Bracket Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -474,13 +460,11 @@ describe('API Score Submit Routes', () => {
         expect(res.status).toBe(200);
         const submission = res.json as {
           id: number;
-          spreadsheet_config_id: number | null;
           event_id: number | null;
           score_type: string | null;
           bracket_game_id: number | null;
           status: string;
         };
-        expect(submission.spreadsheet_config_id).toBeNull();
         expect(submission.event_id).toBe(event.id);
         expect(submission.score_type).toBe('bracket');
         expect(submission.bracket_game_id).toBe(game.id);
@@ -527,7 +511,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Bracket Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -561,7 +544,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Bracket Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -610,7 +592,6 @@ describe('API Score Submit Routes', () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'DB Bracket Template',
           created_by: null,
-          spreadsheet_config_id: null,
         });
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -649,7 +630,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'DB Seeding Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -703,7 +683,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'DB Seeding Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -776,7 +755,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'DB Bracket Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -808,7 +786,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'DB Seeding Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -838,7 +815,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'Event-Wide Bracket Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           const bracketA = await seedBracket(testDb.db, {
@@ -1046,7 +1022,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'DB Bracket Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -1103,7 +1078,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'DB Seeding Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           await testDb.db.run(
@@ -1140,7 +1114,6 @@ describe('API Score Submit Routes', () => {
           const template = await seedScoresheetTemplate(testDb.db, {
             name: 'DB Seeding Template',
             created_by: null,
-            spreadsheet_config_id: null,
           });
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
@@ -1171,7 +1144,6 @@ describe('API Score Submit Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Auth Template',
         created_by: null,
-        spreadsheet_config_id: null,
       });
       const event = await seedEvent(testDb.db);
 
@@ -1200,7 +1172,6 @@ describe('API Score Submit Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Expired Template',
         created_by: null,
-        spreadsheet_config_id: null,
       });
       const event = await seedEvent(testDb.db);
 
@@ -1208,6 +1179,7 @@ describe('API Score Submit Routes', () => {
         judgeSession: {
           templateId: template.id,
           eventIds: [event.id],
+          conversationKey: 'test-conversation-key',
           issuedAt: Date.now() - JUDGE_SESSION_TTL_MS - 60_000,
           expiresAt: Date.now() - 60_000,
         },
@@ -1236,7 +1208,6 @@ describe('API Score Submit Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Mismatch Template',
         created_by: null,
-        spreadsheet_config_id: null,
       });
       const event = await seedEvent(testDb.db);
 
@@ -1244,6 +1215,7 @@ describe('API Score Submit Routes', () => {
         judgeSession: {
           templateId: template.id + 999,
           eventIds: [event.id],
+          conversationKey: 'test-conversation-key',
           issuedAt: Date.now(),
           expiresAt: Date.now() + JUDGE_SESSION_TTL_MS,
         },
@@ -1272,7 +1244,6 @@ describe('API Score Submit Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Event Mismatch Template',
         created_by: null,
-        spreadsheet_config_id: null,
       });
       const eventA = await seedEvent(testDb.db);
       const eventB = await seedEvent(testDb.db);
@@ -1281,6 +1252,7 @@ describe('API Score Submit Routes', () => {
         judgeSession: {
           templateId: template.id,
           eventIds: [eventB.id],
+          conversationKey: 'test-conversation-key',
           issuedAt: Date.now(),
           expiresAt: Date.now() + JUDGE_SESSION_TTL_MS,
         },
@@ -1315,13 +1287,13 @@ describe('API Score Submit Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Judge Auth Template',
         created_by: null,
-        spreadsheet_config_id: null,
       });
 
       const app = createTestApp({
         judgeSession: {
           templateId: template.id,
           eventIds: [event.id],
+          conversationKey: 'test-conversation-key',
           issuedAt: Date.now(),
           expiresAt: Date.now() + JUDGE_SESSION_TTL_MS,
         },
@@ -1362,7 +1334,6 @@ describe('API Score Submit Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Admin Submit Template',
         created_by: null,
-        spreadsheet_config_id: null,
       });
 
       const app = createTestApp({ user: { id: 1, is_admin: true } });
@@ -1432,7 +1403,6 @@ describe('API Score Submit Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'History Template',
         created_by: user.id,
-        spreadsheet_config_id: null,
       });
       await seedScoreSubmission(testDb.db, {
         user_id: user.id,

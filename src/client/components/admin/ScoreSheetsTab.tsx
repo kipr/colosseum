@@ -16,8 +16,6 @@ interface ScoreSheet {
   description: string;
   access_code: string;
   created_at: string;
-  spreadsheet_config_id: number | null;
-  spreadsheet_name: string | null;
 }
 
 interface FieldTemplate {

@@ -18,7 +18,6 @@ import {
   seedBracket,
   seedBracketGame,
   seedScoresheetTemplate,
-  seedSpreadsheetConfig,
   seedScoreSubmission,
   seedQueueItem,
 } from './helpers/seed';

@@ -200,7 +200,6 @@ export interface SeedScoresheetTemplateData {
   schema?: string;
   access_code?: string;
   created_by?: number | null;
-  spreadsheet_config_id?: number | null;
 }
 
 export async function seedScoresheetTemplate(
@@ -208,14 +207,13 @@ export async function seedScoresheetTemplate(
   data: SeedScoresheetTemplateData = {},
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO scoresheet_templates (name, schema, access_code, created_by, spreadsheet_config_id)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO scoresheet_templates (name, schema, access_code, created_by)
+     VALUES (?, ?, ?, ?)`,
     [
       data.name ?? 'Test Template',
       data.schema ?? '[]',
       data.access_code ?? 'test-access-code',
       data.created_by ?? null,
-      data.spreadsheet_config_id ?? null,
     ],
   );
   return { id: result.lastID! };
@@ -245,29 +243,39 @@ export async function seedEventScoresheetTemplate(
   return { id: result.lastID! };
 }
 
-export interface SeedSpreadsheetConfigData {
-  user_id: number;
-  spreadsheet_id?: string;
-  spreadsheet_name?: string;
-  sheet_name?: string;
-  sheet_purpose?: string;
-  is_active?: boolean;
+export interface SeedScoreSubmissionData {
+  user_id?: number | null;
+  template_id: number;
+  participant_name?: string | null;
+  match_id?: string | null;
+  score_data: string;
+  status?: string;
+  event_id?: number | null;
+  bracket_game_id?: number | null;
+  seeding_score_id?: number | null;
+  score_type?: string | null;
+  game_queue_id?: number | null;
 }
 
-export async function seedSpreadsheetConfig(
+export async function seedScoreSubmission(
   db: Database,
-  data: SeedSpreadsheetConfigData,
+  data: SeedScoreSubmissionData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO spreadsheet_configs (user_id, spreadsheet_id, spreadsheet_name, sheet_name, sheet_purpose, is_active)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO score_submissions (user_id, template_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      data.user_id,
-      data.spreadsheet_id ?? 'test-spreadsheet-id',
-      data.spreadsheet_name ?? 'Test Spreadsheet',
-      data.sheet_name ?? 'Sheet1',
-      data.sheet_purpose ?? 'scores',
-      data.is_active ?? true,
+      data.user_id ?? null,
+      data.template_id,
+      data.participant_name ?? null,
+      data.match_id ?? null,
+      data.score_data,
+      data.status ?? 'pending',
+      data.event_id ?? null,
+      data.bracket_game_id ?? null,
+      data.seeding_score_id ?? null,
+      data.score_type ?? null,
+      data.game_queue_id ?? null,
     ],
   );
   return { id: result.lastID! };
@@ -318,46 +326,6 @@ export async function seedAuditLog(
   const result = await db.run(
     `INSERT INTO audit_log (${columns}) VALUES (${placeholders})`,
     values,
-  );
-  return { id: result.lastID! };
-}
-
-export interface SeedScoreSubmissionData {
-  user_id?: number | null;
-  template_id: number;
-  spreadsheet_config_id?: number | null;
-  participant_name?: string | null;
-  match_id?: string | null;
-  score_data: string;
-  status?: string;
-  event_id?: number | null;
-  bracket_game_id?: number | null;
-  seeding_score_id?: number | null;
-  score_type?: string | null;
-  game_queue_id?: number | null;
-}
-
-export async function seedScoreSubmission(
-  db: Database,
-  data: SeedScoreSubmissionData,
-): Promise<{ id: number }> {
-  const result = await db.run(
-    `INSERT INTO score_submissions (user_id, template_id, spreadsheet_config_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      data.user_id ?? null,
-      data.template_id,
-      data.spreadsheet_config_id ?? null,
-      data.participant_name ?? null,
-      data.match_id ?? null,
-      data.score_data,
-      data.status ?? 'pending',
-      data.event_id ?? null,
-      data.bracket_game_id ?? null,
-      data.seeding_score_id ?? null,
-      data.score_type ?? null,
-      data.game_queue_id ?? null,
-    ],
   );
   return { id: result.lastID! };
 }

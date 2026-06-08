@@ -15,6 +15,9 @@ import {
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
 import '../pages/Scoresheet.css';
+import { JudgeChatProvider } from '../contexts/JudgeChatContext';
+import JudgeChatButton from './judgeChat/JudgeChatButton';
+import JudgeChatDrawer from './judgeChat/JudgeChatDrawer';
 
 interface ScoresheetFormProps {
   template: any;
@@ -1624,6 +1627,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   // Filter header fields - exclude auto-populated team fields in head-to-head mode
   // When using queue for seeding, exclude team_number, team_name, round (replaced by queue selector)
+  const eventId = Number(schema.eventId);
+  const chatEnabled = Number.isInteger(eventId) && eventId > 0;
+
   const headerFields = schema.fields.filter((f: any) => {
     if (f.column) return false;
     if (
@@ -1641,7 +1647,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     return true;
   });
 
-  return (
+  const formContent = (
     <>
       {/* Notification overlay */}
       {notification && (
@@ -1716,7 +1722,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       )}
 
       <form onSubmit={handleSubmit} className="scoresheet-form">
-        {/* Title row with reset button */}
+        {/* Title row: Reset | title | Event Staff */}
         <div
           style={{
             display: 'flex',
@@ -1726,10 +1732,19 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             borderBottom: '2px solid var(--border-color)',
           }}
         >
-          {/* Invisible spacer to balance the reset button and keep title centered */}
-          <div style={{ width: '60px' }}></div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={handleReset}
+            style={{
+              padding: '0.4rem 0.75rem',
+              fontSize: '0.8rem',
+              minWidth: '60px',
+            }}
+          >
+            Reset
+          </button>
 
-          {/* Centered title */}
           <div
             style={{
               flex: 1,
@@ -1741,19 +1756,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             {schema.title || ''}
           </div>
 
-          {/* Reset button */}
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleReset}
-            style={{
-              padding: '0.4rem 0.75rem',
-              fontSize: '0.8rem',
-              width: '60px',
-            }}
-          >
-            Reset
-          </button>
+          {chatEnabled ? (
+            <JudgeChatButton />
+          ) : (
+            <div style={{ minWidth: '60px' }} />
+          )}
         </div>
 
         {/* Game Areas button */}
@@ -1870,4 +1877,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       </form>
     </>
   );
+
+  if (chatEnabled) {
+    return (
+      <JudgeChatProvider eventId={eventId} mode="judge">
+        {formContent}
+        <JudgeChatDrawer eventName={schema.title} />
+      </JudgeChatProvider>
+    );
+  }
+
+  return formContent;
 }
