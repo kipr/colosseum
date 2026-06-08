@@ -1,4 +1,5 @@
 import express from 'express';
+import { randomUUID } from 'crypto';
 import {
   requireAuth,
   AuthRequest,
@@ -40,9 +41,6 @@ router.get(
         t.description, 
         t.schema, 
         t.created_at,
-        t.spreadsheet_config_id,
-        sc.spreadsheet_name,
-        sc.sheet_name,
         e.id AS event_id,
         e.name AS event_name,
         e.event_date AS event_date,
@@ -50,7 +48,6 @@ router.get(
       FROM scoresheet_templates t
       INNER JOIN ranked r ON r.template_id = t.id AND r.rn = 1
       INNER JOIN events e ON e.id = r.event_id
-      LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
       WHERE t.is_active IS TRUE
       ORDER BY e.event_date DESC, e.name, t.name
     `);
@@ -93,12 +90,8 @@ router.get(
         t.description, 
         t.access_code, 
         t.created_at, 
-        t.is_active,
-        t.spreadsheet_config_id,
-        sc.spreadsheet_name,
-        sc.sheet_name
+        t.is_active
       FROM scoresheet_templates t
-      LEFT JOIN spreadsheet_configs sc ON t.spreadsheet_config_id = sc.id
     `;
 
       let query: string;
@@ -112,12 +105,12 @@ router.get(
         query = `${baseSelect}
       INNER JOIN event_scoresheet_templates est ON est.template_id = t.id AND est.event_id = ?
       WHERE t.is_active IS TRUE
-      ORDER BY sc.spreadsheet_name, t.name`;
+      ORDER BY t.name`;
         params.push(eventIdNum);
       } else {
         query = `${baseSelect}
       WHERE t.is_active IS TRUE
-      ORDER BY sc.spreadsheet_name, t.name`;
+      ORDER BY t.name`;
       }
 
       const templates = await db.all(query, params);
@@ -164,9 +157,20 @@ router.post(
         );
 
         const now = Date.now();
+        const existing = req.session.judgeAuth;
+        const reuseConversationKey =
+          existing != null &&
+          now <= existing.expiresAt &&
+          existing.templateId === Number(id) &&
+          typeof existing.conversationKey === 'string' &&
+          existing.conversationKey.length > 0;
+
         req.session.judgeAuth = {
           templateId: Number(id),
           eventIds,
+          conversationKey: reuseConversationKey
+            ? existing.conversationKey
+            : randomUUID(),
           issuedAt: now,
           expiresAt: now + JUDGE_SESSION_TTL_MS,
         };
@@ -218,14 +222,7 @@ router.post(
   requireAuth,
   async (req: AuthRequest, res: express.Response) => {
     try {
-      const {
-        name,
-        description,
-        schema,
-        accessCode,
-        spreadsheetConfigId,
-        eventId,
-      } = req.body;
+      const { name, description, schema, accessCode, eventId } = req.body;
 
       if (!name || !schema || !accessCode) {
         return res
@@ -235,16 +232,9 @@ router.post(
 
       const db = await getDatabase();
       const result = await db.run(
-        `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by, spreadsheet_config_id)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          name,
-          description,
-          JSON.stringify(schema),
-          accessCode,
-          req.user.id,
-          spreadsheetConfigId || null,
-        ],
+        `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by)
+       VALUES (?, ?, ?, ?, ?)`,
+        [name, description, JSON.stringify(schema), accessCode, req.user.id],
       );
 
       const templateId = result.lastID!;
@@ -278,29 +268,15 @@ router.put(
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
-      const {
-        name,
-        description,
-        schema,
-        accessCode,
-        spreadsheetConfigId,
-        eventId,
-      } = req.body;
+      const { name, description, schema, accessCode, eventId } = req.body;
 
       const db = await getDatabase();
       await db.transaction(async (tx) => {
         await tx.run(
           `UPDATE scoresheet_templates 
-         SET name = ?, description = ?, schema = ?, access_code = ?, spreadsheet_config_id = ?, updated_at = CURRENT_TIMESTAMP
+         SET name = ?, description = ?, schema = ?, access_code = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-          [
-            name,
-            description,
-            JSON.stringify(schema),
-            accessCode,
-            spreadsheetConfigId || null,
-            id,
-          ],
+          [name, description, JSON.stringify(schema), accessCode, id],
         );
 
         await tx.run(

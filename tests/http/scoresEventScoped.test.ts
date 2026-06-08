@@ -18,7 +18,6 @@ import {
   seedBracket,
   seedBracketGame,
   seedScoresheetTemplate,
-  seedSpreadsheetConfig,
   seedScoreSubmission,
   seedQueueItem,
 } from './helpers/seed';
@@ -185,14 +184,10 @@ describe('Event-Scoped Scores Routes', () => {
     it('returns scores with pagination info', async () => {
       const user = await seedUser(testDb.db);
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: user.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: 1 },
           round: { value: 1 },
@@ -222,14 +217,10 @@ describe('Event-Scoped Scores Routes', () => {
     it('filters by status', async () => {
       const user = await seedUser(testDb.db);
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: user.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({}),
         event_id: event.id,
         score_type: 'seeding',
@@ -237,7 +228,6 @@ describe('Event-Scoped Scores Routes', () => {
       });
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({}),
         event_id: event.id,
         score_type: 'seeding',
@@ -260,21 +250,16 @@ describe('Event-Scoped Scores Routes', () => {
     it('filters by score_type', async () => {
       const user = await seedUser(testDb.db);
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: user.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({}),
         event_id: event.id,
         score_type: 'seeding',
       });
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({}),
         event_id: event.id,
         score_type: 'bracket',
@@ -293,13 +278,12 @@ describe('Event-Scoped Scores Routes', () => {
       expect(data.rows[0].score_type).toBe('bracket');
     });
 
-    it('returns DB-backed scores (spreadsheet_config_id null)', async () => {
+    it('returns DB-backed scores', async () => {
       const event = await seedEvent(testDb.db);
       const template = await seedScoresheetTemplate(testDb.db);
 
       await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: null,
         score_data: JSON.stringify({
           team_id: { value: 1 },
           round: { value: 1 },
@@ -314,25 +298,21 @@ describe('Event-Scoped Scores Routes', () => {
 
       expect(res.status).toBe(200);
       const data = res.json as {
-        rows: { spreadsheet_config_id: number | null }[];
+        rows: { score_type: string }[];
         totalCount: number;
       };
       expect(data.totalCount).toBe(1);
-      expect(data.rows[0].spreadsheet_config_id).toBeNull();
+      expect(data.rows[0].score_type).toBe('seeding');
     });
 
     it('respects page and limit for pagination', async () => {
       const user = await seedUser(testDb.db);
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: user.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       for (let i = 0; i < 5; i++) {
         await seedScoreSubmission(testDb.db, {
           template_id: template.id,
-          spreadsheet_config_id: config.id,
           score_data: JSON.stringify({ round: i }),
           event_id: event.id,
           score_type: 'seeding',
@@ -385,13 +365,9 @@ describe('Event-Scoped Scores Routes', () => {
     });
 
     it('returns 400 when score is not event-scoped', async () => {
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({}),
         event_id: null, // Not event-scoped
       });
@@ -407,13 +383,9 @@ describe('Event-Scoped Scores Routes', () => {
 
     it('returns 400 when score is already accepted', async () => {
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({}),
         event_id: event.id,
         score_type: 'seeding',
@@ -435,13 +407,9 @@ describe('Event-Scoped Scores Routes', () => {
         event_id: event.id,
         team_number: 1,
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -496,13 +464,9 @@ describe('Event-Scoped Scores Routes', () => {
         seeding_round: 1,
         status: 'queued',
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -547,14 +511,9 @@ describe('Event-Scoped Scores Routes', () => {
          VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
         [team1.id, 999, 2, 0.1, 0, team2.id, 999, 1, 0.9, 0],
       );
-
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const pendingScore = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team1.id },
           round: { value: 2 },
@@ -610,13 +569,9 @@ describe('Event-Scoped Scores Routes', () => {
         team2_id: team2.id,
         status: 'ready',
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           winner_team_id: { value: team1.id },
           team1_score: { value: 100 },
@@ -674,9 +629,6 @@ describe('Event-Scoped Scores Routes', () => {
         event_id: event.id,
         team_number: 1,
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       // Create existing seeding score
@@ -687,7 +639,6 @@ describe('Event-Scoped Scores Routes', () => {
 
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -712,9 +663,6 @@ describe('Event-Scoped Scores Routes', () => {
         event_id: event.id,
         team_number: 1,
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       // Create existing seeding score
@@ -725,7 +673,6 @@ describe('Event-Scoped Scores Routes', () => {
 
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -750,7 +697,7 @@ describe('Event-Scoped Scores Routes', () => {
       expect(seedingScore.score).toBe(150);
     });
 
-    it('accepts DB-backed seeding score (spreadsheet_config_id null)', async () => {
+    it('accepts DB-backed seeding score', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -760,7 +707,6 @@ describe('Event-Scoped Scores Routes', () => {
 
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: null,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -792,7 +738,6 @@ describe('Event-Scoped Scores Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: null,
         score_data: JSON.stringify({
           round: { value: 1 },
           grand_total: { value: 100 },
@@ -818,7 +763,6 @@ describe('Event-Scoped Scores Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: null,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           grand_total: { value: 100 },
@@ -888,14 +832,10 @@ describe('Event-Scoped Scores Routes', () => {
         event_id: event.id,
         team_number: 2,
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       const score1 = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team1.id },
           round: { value: 1 },
@@ -907,7 +847,6 @@ describe('Event-Scoped Scores Routes', () => {
       });
       const score2 = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team2.id },
           round: { value: 1 },
@@ -975,14 +914,9 @@ describe('Event-Scoped Scores Routes', () => {
          VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
         [team1.id, 999, 2, 0.1, 0, team2.id, 999, 1, 0.9, 0],
       );
-
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score1 = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team1.id },
           round: { value: 2 },
@@ -994,7 +928,6 @@ describe('Event-Scoped Scores Routes', () => {
       });
       const score2 = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team2.id },
           round: { value: 2 },
@@ -1039,9 +972,6 @@ describe('Event-Scoped Scores Routes', () => {
         event_id: event.id,
         team_number: 1,
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       // Existing seeding score for team/round
@@ -1052,7 +982,6 @@ describe('Event-Scoped Scores Routes', () => {
 
       const scoreConflict = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -1069,7 +998,6 @@ describe('Event-Scoped Scores Routes', () => {
       });
       const scoreOk = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team2.id },
           round: { value: 1 },
@@ -1120,14 +1048,10 @@ describe('Event-Scoped Scores Routes', () => {
         event_id: event.id,
         team_number: 1,
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       const scorePending = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -1167,13 +1091,9 @@ describe('Event-Scoped Scores Routes', () => {
         team2_id: team2.id,
         status: 'ready',
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           winner_team_id: { value: team1.id },
           team1_score: { value: 100 },
@@ -1256,7 +1176,6 @@ describe('Event-Scoped Scores Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: null,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -1309,7 +1228,6 @@ describe('Event-Scoped Scores Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: null,
         score_data: JSON.stringify({
           winner_team_id: { value: team1.id },
         }),
@@ -1360,13 +1278,9 @@ describe('Event-Scoped Scores Routes', () => {
 
     it('returns 400 when score is not accepted', async () => {
       const event = await seedEvent(testDb.db);
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({}),
         event_id: event.id,
         score_type: 'seeding',
@@ -1388,9 +1302,6 @@ describe('Event-Scoped Scores Routes', () => {
         event_id: event.id,
         team_number: 1,
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       // Create seeding score
@@ -1401,7 +1312,6 @@ describe('Event-Scoped Scores Routes', () => {
 
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -1466,9 +1376,6 @@ describe('Event-Scoped Scores Routes', () => {
         seeding_round: 1,
         status: 'scored',
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
 
       const seedingScoreResult = await testDb.db.run(
@@ -1478,7 +1385,6 @@ describe('Event-Scoped Scores Routes', () => {
 
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -1503,7 +1409,7 @@ describe('Event-Scoped Scores Routes', () => {
       expect(queueItem.status).toBe('queued');
     });
 
-    it('reverts DB-backed seeding score (spreadsheet_config_id null)', async () => {
+    it('reverts DB-backed seeding score', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -1518,7 +1424,6 @@ describe('Event-Scoped Scores Routes', () => {
 
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: null,
         score_data: JSON.stringify({
           team_id: { value: team.id },
           round: { value: 1 },
@@ -1613,14 +1518,9 @@ describe('Event-Scoped Scores Routes', () => {
         'UPDATE bracket_games SET team1_id = ? WHERE id = ?',
         [team1.id, game2.id],
       );
-
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           winner_team_id: { value: team1.id },
         }),
@@ -1673,13 +1573,9 @@ describe('Event-Scoped Scores Routes', () => {
         bracket_game_id: game.id,
         status: 'scored',
       });
-      const config = await seedSpreadsheetConfig(testDb.db, {
-        user_id: adminUser.id,
-      });
       const template = await seedScoresheetTemplate(testDb.db);
       const score = await seedScoreSubmission(testDb.db, {
         template_id: template.id,
-        spreadsheet_config_id: config.id,
         score_data: JSON.stringify({
           winner_team_id: { value: team1.id },
         }),

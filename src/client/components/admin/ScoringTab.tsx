@@ -17,7 +17,6 @@ interface ScoreSubmission {
   participant_name: string;
   match_id: string;
   created_at: string;
-  submitted_to_sheet: boolean;
   status: string;
   reviewed_by: number | null;
   reviewed_at: string | null;

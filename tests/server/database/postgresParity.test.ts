@@ -23,7 +23,12 @@ function createRecordingAdapter(): { db: Database; sql: string[] } {
       sql.push(s);
     },
     run: async () => noop,
-    get: async () => undefined,
+    get: async (query: string) => {
+      if (query.includes('spreadsheet_configs')) {
+        return { exists: true };
+      }
+      return undefined;
+    },
     all: async () => [],
     transaction: async <T>(fn: (tx: Transaction) => Promise<T>) => {
       const tx: Transaction = {
@@ -56,11 +61,15 @@ describe('initializePostgres parity with SQLite', () => {
   // =========================================================================
   describe('events table', () => {
     it('CREATE TABLE includes spectator_results_released', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*events[\s\S]*spectator_results_released/i);
+      expect(allSql).toMatch(
+        /CREATE TABLE.*events[\s\S]*spectator_results_released/i,
+      );
     });
 
     it('has ALTER TABLE migration for spectator_results_released', () => {
-      expect(allSql).toMatch(/ALTER TABLE events.*ADD COLUMN.*spectator_results_released/i);
+      expect(allSql).toMatch(
+        /ALTER TABLE events.*ADD COLUMN.*spectator_results_released/i,
+      );
     });
   });
 
@@ -86,17 +95,27 @@ describe('initializePostgres parity with SQLite', () => {
     });
 
     it('CREATE TABLE includes bracket_raw_score', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*bracket_entries[\s\S]*bracket_raw_score/i);
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_entries[\s\S]*bracket_raw_score/i,
+      );
     });
 
     it('CREATE TABLE includes weighted_bracket_raw_score', () => {
-      expect(allSql).toMatch(/CREATE TABLE.*bracket_entries[\s\S]*weighted_bracket_raw_score/i);
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_entries[\s\S]*weighted_bracket_raw_score/i,
+      );
     });
 
     it('has ALTER TABLE migrations for ranking columns', () => {
-      expect(allSql).toMatch(/ALTER TABLE bracket_entries.*ADD COLUMN.*final_rank/i);
-      expect(allSql).toMatch(/ALTER TABLE bracket_entries.*ADD COLUMN.*bracket_raw_score/i);
-      expect(allSql).toMatch(/ALTER TABLE bracket_entries.*ADD COLUMN.*weighted_bracket_raw_score/i);
+      expect(allSql).toMatch(
+        /ALTER TABLE bracket_entries.*ADD COLUMN.*final_rank/i,
+      );
+      expect(allSql).toMatch(
+        /ALTER TABLE bracket_entries.*ADD COLUMN.*bracket_raw_score/i,
+      );
+      expect(allSql).toMatch(
+        /ALTER TABLE bracket_entries.*ADD COLUMN.*weighted_bracket_raw_score/i,
+      );
     });
   });
 
@@ -155,13 +174,48 @@ describe('initializePostgres parity with SQLite', () => {
     });
   });
 
+  // =========================================================================
+  // judge_chat_messages (event-scoped judge chat)
+  // =========================================================================
+  describe('judge_chat_messages table', () => {
+    it('creates judge_chat_messages with conversation_key and sender_role CHECK', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*judge_chat_messages[\s\S]*conversation_key TEXT NOT NULL[\s\S]*sender_role TEXT NOT NULL CHECK \(sender_role IN \('judge', 'admin'\)\)/i,
+      );
+    });
+
+    it('scopes event_id with ON DELETE CASCADE', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*judge_chat_messages[\s\S]*event_id INTEGER NOT NULL REFERENCES events\(id\) ON DELETE CASCADE/i,
+      );
+    });
+
+    it('attributes template_id and user_id with ON DELETE SET NULL', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*judge_chat_messages[\s\S]*template_id INTEGER REFERENCES scoresheet_templates\(id\) ON DELETE SET NULL/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*judge_chat_messages[\s\S]*user_id INTEGER REFERENCES users\(id\) ON DELETE SET NULL/i,
+      );
+    });
+
+    it('creates both judge chat indexes', () => {
+      expect(allSql).toContain('idx_judge_chat_thread');
+      expect(allSql).toContain('idx_judge_chat_event_created');
+    });
+
+    it('is excluded from the updated_at trigger set', () => {
+      expect(allSql).not.toMatch(/judge_chat_messages_updated_at/i);
+    });
+  });
+
   describe('game_queue status v2 migration', () => {
     it('drops status check constraints before remapping legacy queue statuses', () => {
       const dropIndex = allSql.indexOf(
         'ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS',
       );
       const updateIndex = allSql.indexOf(
-        "UPDATE game_queue\n      SET status = CASE status",
+        'UPDATE game_queue\n      SET status = CASE status',
       );
 
       expect(dropIndex).toBeGreaterThan(-1);
@@ -172,6 +226,33 @@ describe('initializePostgres parity with SQLite', () => {
       expect(allSql).toMatch(
         /ADD CONSTRAINT game_queue_status_check[\s\S]*CHECK \(status IN \('queued', 'called', 'arrived', 'on_table', 'scored'\)\)/i,
       );
+    });
+  });
+
+  describe('legacy spreadsheet artifact removal', () => {
+    it('does not create spreadsheet_configs or chat_messages tables', () => {
+      expect(allSql).not.toMatch(/CREATE TABLE IF NOT EXISTS spreadsheet_configs/i);
+      expect(allSql).not.toMatch(/CREATE TABLE IF NOT EXISTS chat_messages/i);
+    });
+
+    it('does not create spreadsheet-related indexes', () => {
+      expect(allSql).not.toContain('idx_spreadsheet_configs_user');
+      expect(allSql).not.toContain('idx_chat_messages_spreadsheet');
+      expect(allSql).not.toContain('idx_chat_messages_created');
+    });
+
+    it('emits migration SQL to drop legacy spreadsheet artifacts', () => {
+      expect(allSql).toMatch(/DROP TABLE IF EXISTS chat_messages/i);
+      expect(allSql).toMatch(
+        /ALTER TABLE score_submissions DROP COLUMN IF EXISTS spreadsheet_config_id/i,
+      );
+      expect(allSql).toMatch(
+        /ALTER TABLE score_submissions DROP COLUMN IF EXISTS submitted_to_sheet/i,
+      );
+      expect(allSql).toMatch(
+        /ALTER TABLE scoresheet_templates DROP COLUMN IF EXISTS spreadsheet_config_id/i,
+      );
+      expect(allSql).toMatch(/DROP TABLE IF EXISTS spreadsheet_configs/i);
     });
   });
 });

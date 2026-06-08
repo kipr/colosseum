@@ -17,7 +17,6 @@ interface ScoreSheetWizardProps {
     description: string;
     accessCode: string;
     schema: any;
-    spreadsheetConfigId: number | '' | null;
   }) => void;
   onCancel: () => void;
 }
@@ -217,13 +216,11 @@ export default function ScoreSheetWizard({
     } else if (currentStep === 'review') {
       // Generate and complete
       const schema = generateSchema();
-      // Seeding and DE: DB backend, no spreadsheet linkage
       onComplete({
         name,
         description,
         accessCode,
         schema,
-        spreadsheetConfigId: null,
       });
     }
   };

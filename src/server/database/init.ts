@@ -114,6 +114,143 @@ async function migrateGameQueueStatusV2Postgres(db: Database): Promise<void> {
   `);
 }
 
+/**
+ * Drop legacy Google Sheets integration tables and columns (Postgres).
+ * Idempotent: no-ops when spreadsheet_configs is already absent.
+ */
+async function migrateRemoveSpreadsheetArtifactsPostgres(
+  db: Database,
+): Promise<void> {
+  const row = await db.get<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1 FROM information_schema.tables
+       WHERE table_schema = 'public' AND table_name = 'spreadsheet_configs'
+     ) AS exists`,
+  );
+  if (!row?.exists) return;
+
+  await db.exec(`DROP TABLE IF EXISTS chat_messages`);
+  await db.exec(
+    `ALTER TABLE score_submissions DROP COLUMN IF EXISTS spreadsheet_config_id`,
+  );
+  await db.exec(
+    `ALTER TABLE score_submissions DROP COLUMN IF EXISTS submitted_to_sheet`,
+  );
+  await db.exec(
+    `ALTER TABLE scoresheet_templates DROP COLUMN IF EXISTS spreadsheet_config_id`,
+  );
+  await db.exec(`DROP TABLE IF EXISTS spreadsheet_configs`);
+}
+
+/**
+ * Drop legacy Google Sheets integration tables and columns (SQLite).
+ * Idempotent: no-ops when spreadsheet_configs is already absent.
+ *
+ * SQLite cannot DROP COLUMN when the column participates in a foreign key
+ * (`score_submissions.spreadsheet_config_id` has an explicit FK and
+ * `scoresheet_templates.spreadsheet_config_id` an inline REFERENCES), so the
+ * affected tables are rebuilt without the legacy columns/FKs instead.
+ */
+async function migrateRemoveSpreadsheetArtifactsSQLite(
+  db: Database,
+): Promise<void> {
+  const row = await db.get<{ name: string | null }>(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name='spreadsheet_configs'`,
+  );
+  if (!row?.name) return;
+
+  // PRAGMA foreign_keys cannot be toggled inside a transaction, so disable it
+  // around the rebuild (matches migrateGameQueueStatusV2SQLite).
+  await db.exec(`PRAGMA foreign_keys=OFF`);
+  try {
+    await db.transaction(async (tx) => {
+      await tx.exec(`DROP TABLE IF EXISTS chat_messages`);
+
+      // Rebuild scoresheet_templates without spreadsheet_config_id.
+      await tx.exec(`DROP TABLE IF EXISTS scoresheet_templates_new`);
+      await tx.exec(`
+        CREATE TABLE scoresheet_templates_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT,
+          schema TEXT NOT NULL,
+          access_code TEXT NOT NULL,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          is_active BOOLEAN DEFAULT 1,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `);
+      await tx.exec(`
+        INSERT INTO scoresheet_templates_new (
+          id, name, description, schema, access_code, created_by,
+          is_active, created_at, updated_at
+        )
+        SELECT
+          id, name, description, schema, access_code, created_by,
+          is_active, created_at, updated_at
+        FROM scoresheet_templates
+      `);
+      await tx.exec(`DROP TABLE scoresheet_templates`);
+      await tx.exec(
+        `ALTER TABLE scoresheet_templates_new RENAME TO scoresheet_templates`,
+      );
+
+      // Rebuild score_submissions without spreadsheet_config_id / submitted_to_sheet.
+      await tx.exec(`DROP TABLE IF EXISTS score_submissions_new`);
+      await tx.exec(`
+        CREATE TABLE score_submissions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER,
+          template_id INTEGER NOT NULL,
+          participant_name TEXT,
+          match_id TEXT,
+          score_data TEXT NOT NULL,
+          status TEXT DEFAULT 'pending',
+          reviewed_by INTEGER,
+          reviewed_at DATETIME,
+          event_id INTEGER REFERENCES events(id) ON DELETE SET NULL,
+          bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE SET NULL,
+          seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
+          score_type TEXT,
+          game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
+          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
+        )
+      `);
+      await tx.exec(`
+        INSERT INTO score_submissions_new (
+          id, user_id, template_id, participant_name, match_id, score_data,
+          status, reviewed_by, reviewed_at, event_id, bracket_game_id,
+          seeding_score_id, score_type, game_queue_id, created_at, updated_at
+        )
+        SELECT
+          id, user_id, template_id, participant_name, match_id, score_data,
+          status, reviewed_by, reviewed_at, event_id, bracket_game_id,
+          seeding_score_id, score_type, game_queue_id, created_at, updated_at
+        FROM score_submissions
+      `);
+      await tx.exec(`DROP TABLE score_submissions`);
+      await tx.exec(
+        `ALTER TABLE score_submissions_new RENAME TO score_submissions`,
+      );
+
+      await tx.exec(`DROP TABLE IF EXISTS spreadsheet_configs`);
+    });
+  } finally {
+    await db.exec(`PRAGMA foreign_keys=ON`);
+  }
+}
+
+export {
+  migrateRemoveSpreadsheetArtifactsSQLite,
+  migrateRemoveSpreadsheetArtifactsPostgres,
+};
+
 const isProduction = process.env.NODE_ENV === 'production';
 const usePostgres = isProduction || !!process.env.DATABASE_URL;
 
@@ -167,30 +304,6 @@ export async function initializePostgres(db: Database): Promise<void> {
     // Column might already exist or syntax not supported
   }
 
-  // Spreadsheet configurations
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS spreadsheet_configs (
-      id SERIAL PRIMARY KEY,
-      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      spreadsheet_id TEXT NOT NULL,
-      spreadsheet_name TEXT,
-      sheet_name TEXT,
-      sheet_purpose TEXT DEFAULT 'scores',
-      is_active BOOLEAN DEFAULT TRUE,
-      auto_accept BOOLEAN DEFAULT FALSE,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  try {
-    await db.exec(
-      `ALTER TABLE spreadsheet_configs ADD COLUMN IF NOT EXISTS auto_accept BOOLEAN DEFAULT FALSE`,
-    );
-  } catch {
-    // Column might already exist
-  }
-
   // Scoresheet field templates
   await db.exec(`
     CREATE TABLE IF NOT EXISTS scoresheet_field_templates (
@@ -212,7 +325,6 @@ export async function initializePostgres(db: Database): Promise<void> {
       description TEXT,
       schema TEXT NOT NULL,
       access_code TEXT NOT NULL,
-      spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       is_active BOOLEAN DEFAULT TRUE,
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -438,11 +550,9 @@ export async function initializePostgres(db: Database): Promise<void> {
       id SERIAL PRIMARY KEY,
       user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       template_id INTEGER NOT NULL REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
-      spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
       participant_name TEXT,
       match_id TEXT,
       score_data TEXT NOT NULL,
-      submitted_to_sheet BOOLEAN DEFAULT FALSE,
       status TEXT DEFAULT 'pending',
       reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       reviewed_at TIMESTAMP,
@@ -619,6 +729,15 @@ export async function initializePostgres(db: Database): Promise<void> {
   }
 
   // ============================================================================
+  // MIGRATION: remove legacy Google Sheets / spreadsheet-scoped chat artifacts
+  // ============================================================================
+  try {
+    await migrateRemoveSpreadsheetArtifactsPostgres(db);
+  } catch (e) {
+    console.warn('spreadsheet artifacts removal migration (Postgres):', e);
+  }
+
+  // ============================================================================
   // BRACKET TEMPLATES
   // ============================================================================
 
@@ -670,19 +789,6 @@ export async function initializePostgres(db: Database): Promise<void> {
       template_id INTEGER NOT NULL REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
       session_token TEXT UNIQUE NOT NULL,
       last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-
-  // Chat messages
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS chat_messages (
-      id SERIAL PRIMARY KEY,
-      spreadsheet_id TEXT NOT NULL,
-      sender_name TEXT NOT NULL,
-      message TEXT NOT NULL,
-      is_admin BOOLEAN DEFAULT FALSE,
-      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
@@ -741,6 +847,35 @@ export async function initializePostgres(db: Database): Promise<void> {
   `);
 
   // ============================================================================
+  // MIGRATION: judge chat (event-scoped judge-to-admin messaging)
+  // A conversation is the pair (event_id, conversation_key); admin replies
+  // reuse the judge thread's event_id + conversation_key. No updated_at column,
+  // so this table is deliberately excluded from the updated_at trigger loop.
+  // ============================================================================
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS judge_chat_messages (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      conversation_key TEXT NOT NULL,
+      sender_role TEXT NOT NULL CHECK (sender_role IN ('judge', 'admin')),
+      sender_name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      template_id INTEGER REFERENCES scoresheet_templates(id) ON DELETE SET NULL,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // fetch / paginate one thread in order (id is monotonic, use it for `before`)
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_judge_chat_thread ON judge_chat_messages(event_id, conversation_key, id)`,
+  );
+  // admin: list conversations and recent activity within an event
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_judge_chat_event_created ON judge_chat_messages(event_id, created_at)`,
+  );
+
+  // ============================================================================
   // TRIGGERS
   // ============================================================================
 
@@ -759,7 +894,6 @@ export async function initializePostgres(db: Database): Promise<void> {
 
   for (const table of [
     'users',
-    'spreadsheet_configs',
     'scoresheet_field_templates',
     'scoresheet_templates',
     'score_submissions',
@@ -876,19 +1010,10 @@ export async function initializePostgres(db: Database): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`,
   );
   await db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_spreadsheet_configs_user ON spreadsheet_configs(user_id)`,
-  );
-  await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`,
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_active_sessions_user ON active_sessions(user_id)`,
-  );
-  await db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_chat_messages_spreadsheet ON chat_messages(spreadsheet_id)`,
-  );
-  await db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)`,
   );
 
   // Event/team indexes
@@ -1030,23 +1155,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
-  // Spreadsheet configurations
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS spreadsheet_configs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      spreadsheet_id TEXT NOT NULL,
-      spreadsheet_name TEXT,
-      sheet_name TEXT,
-      sheet_purpose TEXT DEFAULT 'scores',
-      is_active BOOLEAN DEFAULT 1,
-      auto_accept BOOLEAN DEFAULT 0,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )
-  `);
-
   // Scoresheet field templates
   await db.exec(`
     CREATE TABLE IF NOT EXISTS scoresheet_field_templates (
@@ -1069,7 +1177,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
       description TEXT,
       schema TEXT NOT NULL,
       access_code TEXT NOT NULL,
-      spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id),
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       is_active BOOLEAN DEFAULT 1,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1079,17 +1186,14 @@ export async function initializeSQLite(db: Database): Promise<void> {
   `);
 
   // Score submissions (enhanced with event/bracket context from spec)
-  // spreadsheet_config_id nullable for DB-backed (event-scoped) scores
   await db.exec(`
     CREATE TABLE IF NOT EXISTS score_submissions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
       template_id INTEGER NOT NULL,
-      spreadsheet_config_id INTEGER REFERENCES spreadsheet_configs(id) ON DELETE SET NULL,
       participant_name TEXT,
       match_id TEXT,
       score_data TEXT NOT NULL,
-      submitted_to_sheet BOOLEAN DEFAULT 0,
       status TEXT DEFAULT 'pending',
       reviewed_by INTEGER,
       reviewed_at DATETIME,
@@ -1102,7 +1206,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
-      FOREIGN KEY (spreadsheet_config_id) REFERENCES spreadsheet_configs(id) ON DELETE CASCADE,
       FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
@@ -1117,20 +1220,6 @@ export async function initializeSQLite(db: Database): Promise<void> {
       last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
       FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE CASCADE
-    )
-  `);
-
-  // Chat messages
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS chat_messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      spreadsheet_id TEXT NOT NULL,
-      sender_name TEXT NOT NULL,
-      message TEXT NOT NULL,
-      is_admin BOOLEAN DEFAULT 0,
-      user_id INTEGER,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     )
   `);
 
@@ -1429,6 +1518,15 @@ export async function initializeSQLite(db: Database): Promise<void> {
   }
 
   // ============================================================================
+  // MIGRATION: remove legacy Google Sheets / spreadsheet-scoped chat artifacts
+  // ============================================================================
+  try {
+    await migrateRemoveSpreadsheetArtifactsSQLite(db);
+  } catch (e) {
+    console.warn('spreadsheet artifacts removal migration (SQLite):', e);
+  }
+
+  // ============================================================================
   // BRACKET TEMPLATES (For generating bracket structures)
   // ============================================================================
 
@@ -1515,10 +1613,41 @@ export async function initializeSQLite(db: Database): Promise<void> {
     )
   `);
 
+  // ============================================================================
+  // MIGRATION: judge chat (event-scoped judge-to-admin messaging)
+  // A conversation is the pair (event_id, conversation_key); admin replies
+  // reuse the judge thread's event_id + conversation_key. No updated_at column,
+  // so this table is deliberately excluded from the updated_at trigger loop.
+  // ============================================================================
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS judge_chat_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL,
+      conversation_key TEXT NOT NULL,
+      sender_role TEXT NOT NULL CHECK (sender_role IN ('judge', 'admin')),
+      sender_name TEXT NOT NULL,
+      message TEXT NOT NULL,
+      template_id INTEGER,
+      user_id INTEGER,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE,
+      FOREIGN KEY (template_id) REFERENCES scoresheet_templates(id) ON DELETE SET NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    )
+  `);
+
+  // fetch / paginate one thread in order (id is monotonic, use it for `before`)
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_judge_chat_thread ON judge_chat_messages(event_id, conversation_key, id)`,
+  );
+  // admin: list conversations and recent activity within an event
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_judge_chat_event_created ON judge_chat_messages(event_id, created_at)`,
+  );
+
   // Triggers to update updated_at on all tables that have it
   for (const table of [
     'users',
-    'spreadsheet_configs',
     'scoresheet_field_templates',
     'scoresheet_templates',
     'score_submissions',
@@ -1624,19 +1753,10 @@ export async function initializeSQLite(db: Database): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`,
   );
   await db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_spreadsheet_configs_user ON spreadsheet_configs(user_id)`,
-  );
-  await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`,
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_active_sessions_user ON active_sessions(user_id)`,
-  );
-  await db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_chat_messages_spreadsheet ON chat_messages(spreadsheet_id)`,
-  );
-  await db.exec(
-    `CREATE INDEX IF NOT EXISTS idx_chat_messages_created ON chat_messages(created_at)`,
   );
 
   // Event/team indexes

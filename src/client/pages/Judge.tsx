@@ -11,8 +11,6 @@ interface Template {
   name: string;
   description: string;
   created_at: string;
-  spreadsheet_config_id: number | null;
-  spreadsheet_name: string | null;
   event_id?: number;
   event_name?: string;
   event_date?: string | null;

@@ -11,11 +11,7 @@ describe('scoreBotballStartBoxCubes', () => {
       ]),
     ).toEqual({
       subtotal: 130,
-      rows: [
-        { subtotal: 10 },
-        { subtotal: 40 },
-        { subtotal: 80 },
-      ],
+      rows: [{ subtotal: 10 }, { subtotal: 40 }, { subtotal: 80 }],
     });
   });
 
