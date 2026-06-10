@@ -6,7 +6,7 @@
  * or advancement.
  */
 
-import type { Database } from '../database/connection';
+import type { Database, Transaction } from '../database/connection';
 
 export interface DoubleSeedingPair {
   round: number;
@@ -19,6 +19,12 @@ export interface DoubleSeedingPair {
 export interface GenerateDoubleSeedingResult {
   rounds: number;
   matchesCreated: number;
+}
+
+export interface DeleteDoubleSeedingRoundResult {
+  round: number;
+  deleted: number;
+  remainingRounds: number;
 }
 
 function shuffleInPlace<T>(arr: T[]): T[] {
@@ -136,6 +142,69 @@ export async function hasDoubleSeedingResults(
   return !!submission;
 }
 
+export async function hasDoubleSeedingRoundResults(
+  db: Database,
+  eventId: number,
+  roundNumber: number,
+): Promise<boolean> {
+  const score = await db.get<{ id: number }>(
+    `SELECT id FROM double_seeding_scores
+     WHERE event_id = ? AND round_number = ?
+     LIMIT 1`,
+    [eventId, roundNumber],
+  );
+  if (score) return true;
+
+  const submission = await db.get<{ id: number }>(
+    `SELECT ss.id
+     FROM score_submissions ss
+     JOIN double_seeding_matches dsm ON ss.double_seeding_match_id = dsm.id
+     WHERE ss.event_id = ?
+       AND dsm.event_id = ?
+       AND dsm.round_number = ?
+     LIMIT 1`,
+    [eventId, eventId, roundNumber],
+  );
+  return !!submission;
+}
+
+async function getEventTeamIds(
+  db: Database,
+  eventId: number,
+): Promise<number[]> {
+  const teams = await db.all<{ id: number }>(
+    'SELECT id FROM teams WHERE event_id = ? ORDER BY team_number ASC',
+    [eventId],
+  );
+  return teams.map((t) => t.id);
+}
+
+async function getCurrentDoubleSeedingRound(
+  db: Database,
+  eventId: number,
+): Promise<number> {
+  const row = await db.get<{ max_round: number | null }>(
+    'SELECT MAX(round_number) as max_round FROM double_seeding_matches WHERE event_id = ?',
+    [eventId],
+  );
+  return row?.max_round ?? 0;
+}
+
+async function insertDoubleSeedingPairs(
+  tx: Transaction,
+  eventId: number,
+  pairs: DoubleSeedingPair[],
+): Promise<void> {
+  for (const pair of pairs) {
+    await tx.run(
+      `INSERT INTO double_seeding_matches
+         (event_id, round_number, match_number, team1_id, team2_id, status)
+       VALUES (?, ?, ?, ?, ?, 'ready')`,
+      [eventId, pair.round, pair.matchNumber, pair.team1Id, pair.team2Id],
+    );
+  }
+}
+
 /**
  * Generate randomized double-seeding matches for an event.
  * Replaces any existing matches (callers must enforce explicit confirmation)
@@ -146,27 +215,14 @@ export async function generateDoubleSeedingMatches(
   eventId: number,
   rounds: number,
 ): Promise<GenerateDoubleSeedingResult> {
-  const teams = await db.all<{ id: number }>(
-    'SELECT id FROM teams WHERE event_id = ? ORDER BY team_number ASC',
-    [eventId],
-  );
-  const pairs = buildDoubleSeedingPairings(
-    teams.map((t) => t.id),
-    rounds,
-  );
+  const teamIds = await getEventTeamIds(db, eventId);
+  const pairs = buildDoubleSeedingPairings(teamIds, rounds);
 
   await db.transaction(async (tx) => {
     await tx.run('DELETE FROM double_seeding_matches WHERE event_id = ?', [
       eventId,
     ]);
-    for (const pair of pairs) {
-      await tx.run(
-        `INSERT INTO double_seeding_matches
-           (event_id, round_number, match_number, team1_id, team2_id, status)
-         VALUES (?, ?, ?, ?, ?, 'ready')`,
-        [eventId, pair.round, pair.matchNumber, pair.team1Id, pair.team2Id],
-      );
-    }
+    await insertDoubleSeedingPairs(tx, eventId, pairs);
     await tx.run('UPDATE events SET double_seeding_rounds = ? WHERE id = ?', [
       rounds,
       eventId,
@@ -174,4 +230,79 @@ export async function generateDoubleSeedingMatches(
   });
 
   return { rounds, matchesCreated: pairs.length };
+}
+
+export async function appendDoubleSeedingRounds(
+  db: Database,
+  eventId: number,
+  targetRounds: number,
+): Promise<GenerateDoubleSeedingResult> {
+  const currentRounds = await getCurrentDoubleSeedingRound(db, eventId);
+  if (targetRounds <= currentRounds) {
+    throw new Error(
+      `Target rounds (${targetRounds}) must be greater than the current round count (${currentRounds})`,
+    );
+  }
+
+  const teamIds = await getEventTeamIds(db, eventId);
+  if (targetRounds > teamIds.length) {
+    throw new Error(
+      `Number of rounds (${targetRounds}) cannot exceed the number of teams (${teamIds.length})`,
+    );
+  }
+
+  const pairs = buildDoubleSeedingPairings(teamIds, targetRounds).filter(
+    (pair) => pair.round > currentRounds,
+  );
+
+  await db.transaction(async (tx) => {
+    await insertDoubleSeedingPairs(tx, eventId, pairs);
+    await tx.run('UPDATE events SET double_seeding_rounds = ? WHERE id = ?', [
+      targetRounds,
+      eventId,
+    ]);
+  });
+
+  return { rounds: targetRounds, matchesCreated: pairs.length };
+}
+
+export async function deleteLastDoubleSeedingRound(
+  db: Database,
+  eventId: number,
+  roundNumber: number,
+): Promise<DeleteDoubleSeedingRoundResult> {
+  const currentRounds = await getCurrentDoubleSeedingRound(db, eventId);
+  if (currentRounds === 0) {
+    throw new Error('No double-seeding rounds exist for this event');
+  }
+  if (roundNumber !== currentRounds) {
+    throw new Error(
+      `Only the highest-numbered double-seeding round can be deleted. Current last round is ${currentRounds}.`,
+    );
+  }
+
+  if (await hasDoubleSeedingRoundResults(db, eventId, roundNumber)) {
+    throw new Error(
+      'Double-seeding submissions or scores already exist for this round. The round cannot be deleted.',
+    );
+  }
+
+  const remainingRounds = roundNumber - 1;
+  const result = await db.transaction(async (tx) => {
+    const del = await tx.run(
+      'DELETE FROM double_seeding_matches WHERE event_id = ? AND round_number = ?',
+      [eventId, roundNumber],
+    );
+    await tx.run('UPDATE events SET double_seeding_rounds = ? WHERE id = ?', [
+      remainingRounds,
+      eventId,
+    ]);
+    return del;
+  });
+
+  return {
+    round: roundNumber,
+    deleted: result.changes ?? 0,
+    remainingRounds,
+  };
 }

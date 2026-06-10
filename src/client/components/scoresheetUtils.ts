@@ -27,6 +27,24 @@ export interface DbBracketSource {
   bracketId?: number | null;
 }
 
+export function shouldHideSoloDoubleSeedingField(
+  fieldId: string | undefined,
+  formData: Record<string, any>,
+  isDoubleSeeding: boolean,
+): boolean {
+  if (
+    !isDoubleSeeding ||
+    formData.double_seeding_match_id == null ||
+    formData.team_b_id != null
+  ) {
+    return false;
+  }
+
+  return ['team_b_team_initials', 'side_b_team_initials'].includes(
+    fieldId ?? '',
+  );
+}
+
 const REPEATABLE_GROUP_TEXT_TYPES = new Set(['text', 'dropdown', 'buttons']);
 
 function isBlankRepeatableGroupValue(value: any, field?: any): boolean {

@@ -88,7 +88,7 @@ describe('Double Seeding Routes', () => {
       expect(eventRow?.double_seeding_rounds).toBe(5);
     });
 
-    it('requires explicit confirmation to replace existing matches', async () => {
+    it('appends new rounds without replacing existing matches', async () => {
       const event = await seedEvent(testDb.db);
       for (let i = 1; i <= 4; i++) {
         await seedTeam(testDb.db, { event_id: event.id, team_number: i });
@@ -96,31 +96,52 @@ describe('Double Seeding Routes', () => {
 
       const first = await http.post(
         `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
-        { rounds: 3 },
+        { rounds: 2 },
       );
       expect(first.status).toBe(201);
+      const firstMatches = await testDb.db.all<{ id: number }>(
+        'SELECT id FROM double_seeding_matches WHERE event_id = ? ORDER BY id',
+        [event.id],
+      );
 
-      const blocked = await http.post(
+      const appended = await http.post(
         `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
         { rounds: 3 },
       );
-      expect(blocked.status).toBe(409);
-      expect(
-        (blocked.json as { requiresConfirmation?: boolean })
-          .requiresConfirmation,
-      ).toBe(true);
-
-      const replaced = await http.post(
-        `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
-        { rounds: 2, confirmReplace: true },
+      expect(appended.status).toBe(201);
+      expect((appended.json as { matchesCreated: number }).matchesCreated).toBe(
+        2,
       );
-      expect(replaced.status).toBe(201);
-      expect((replaced.json as { matchesCreated: number }).matchesCreated).toBe(
-        4,
+
+      const allMatches = await testDb.db.all<{ id: number }>(
+        'SELECT id FROM double_seeding_matches WHERE event_id = ? ORDER BY id',
+        [event.id],
+      );
+      expect(allMatches.slice(0, firstMatches.length).map((m) => m.id)).toEqual(
+        firstMatches.map((m) => m.id),
+      );
+      expect(allMatches.length).toBe(6);
+
+      const unchanged = await http.post(
+        `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
+        { rounds: 3 },
+      );
+      expect(unchanged.status).toBe(200);
+      expect(
+        (unchanged.json as { matchesCreated: number }).matchesCreated,
+      ).toBe(0);
+
+      const lowered = await http.post(
+        `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
+        { rounds: 2 },
+      );
+      expect(lowered.status).toBe(409);
+      expect((lowered.json as { error: string }).error).toContain(
+        'highest-numbered',
       );
     });
 
-    it('blocks regeneration once double-seeding results exist', async () => {
+    it('allows appending after results exist but blocks disabling', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -141,14 +162,50 @@ describe('Double Seeding Routes', () => {
         score: 10,
       });
 
+      const appended = await http.post(
+        `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
+        { rounds: 2 },
+      );
+      expect(appended.status).toBe(201);
+      expect((appended.json as { matchesCreated: number }).matchesCreated).toBe(
+        1,
+      );
+
+      const disabled = await http.post(
+        `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
+        { rounds: 0 },
+      );
+      expect(disabled.status).toBe(409);
+      expect((disabled.json as { error: string }).error).toContain(
+        'cannot be disabled',
+      );
+    });
+
+    it('disables double seeding with rounds=0 when no results exist', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedTeam(testDb.db, { event_id: event.id, team_number: 2 });
+      await seedDoubleSeedingMatch(testDb.db, {
+        event_id: event.id,
+        round_number: 1,
+        team1_id: team.id,
+      });
+
       const res = await http.post(
         `${adminServer.baseUrl}/double-seeding/matches/generate/${event.id}`,
-        { rounds: 2, confirmReplace: true },
+        { rounds: 0 },
       );
-      expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain(
-        'cannot be regenerated',
+      expect(res.status).toBe(200);
+      expect((res.json as { rounds: number }).rounds).toBe(0);
+
+      const remaining = await testDb.db.all(
+        'SELECT * FROM double_seeding_matches WHERE event_id = ?',
+        [event.id],
       );
+      expect(remaining.length).toBe(0);
     });
 
     it('fails when rounds exceed the team count', async () => {
@@ -268,6 +325,104 @@ describe('Double Seeding Routes', () => {
         `${adminServer.baseUrl}/double-seeding/matches/event/${event.id}`,
       );
       expect(res.status).toBe(409);
+    });
+  });
+
+  describe('DELETE /double-seeding/matches/event/:eventId/round/:roundNumber', () => {
+    it('deletes the trailing unsubmitted round and updates the event round count', async () => {
+      const event = await seedEvent(testDb.db, { double_seeding_rounds: 2 });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedDoubleSeedingMatch(testDb.db, {
+        event_id: event.id,
+        round_number: 1,
+        team1_id: team.id,
+      });
+      await seedDoubleSeedingMatch(testDb.db, {
+        event_id: event.id,
+        round_number: 2,
+        team1_id: team.id,
+      });
+
+      const res = await http.delete(
+        `${adminServer.baseUrl}/double-seeding/matches/event/${event.id}/round/2`,
+      );
+      expect(res.status).toBe(200);
+      expect(
+        res.json as { deleted: number; remainingRounds: number },
+      ).toMatchObject({
+        deleted: 1,
+        remainingRounds: 1,
+      });
+
+      const round2 = await testDb.db.all(
+        'SELECT * FROM double_seeding_matches WHERE event_id = ? AND round_number = 2',
+        [event.id],
+      );
+      expect(round2.length).toBe(0);
+
+      const eventRow = await testDb.db.get(
+        'SELECT double_seeding_rounds FROM events WHERE id = ?',
+        [event.id],
+      );
+      expect(eventRow?.double_seeding_rounds).toBe(1);
+    });
+
+    it('rejects deleting a non-trailing round', async () => {
+      const event = await seedEvent(testDb.db, { double_seeding_rounds: 2 });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedDoubleSeedingMatch(testDb.db, {
+        event_id: event.id,
+        round_number: 1,
+        team1_id: team.id,
+      });
+      await seedDoubleSeedingMatch(testDb.db, {
+        event_id: event.id,
+        round_number: 2,
+        team1_id: team.id,
+      });
+
+      const res = await http.delete(
+        `${adminServer.baseUrl}/double-seeding/matches/event/${event.id}/round/1`,
+      );
+      expect(res.status).toBe(409);
+      expect((res.json as { error: string }).error).toContain(
+        'highest-numbered',
+      );
+    });
+
+    it('rejects deleting a round with a submitted score', async () => {
+      const event = await seedEvent(testDb.db, { double_seeding_rounds: 1 });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const match = await seedDoubleSeedingMatch(testDb.db, {
+        event_id: event.id,
+        round_number: 1,
+        team1_id: team.id,
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: '{}',
+        event_id: event.id,
+        score_type: 'double_seeding',
+        double_seeding_match_id: match.id,
+      });
+
+      const res = await http.delete(
+        `${adminServer.baseUrl}/double-seeding/matches/event/${event.id}/round/1`,
+      );
+      expect(res.status).toBe(409);
+      expect((res.json as { error: string }).error).toContain(
+        'submissions or scores',
+      );
     });
   });
 

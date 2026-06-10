@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import {
+  appendDoubleSeedingRounds,
+  deleteLastDoubleSeedingRound,
   generateDoubleSeedingMatches,
   hasDoubleSeedingResults,
 } from '../services/doubleSeedingMatches';
@@ -51,9 +53,8 @@ router.post(
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
-      const { rounds, confirmReplace } = req.body as {
+      const { rounds } = req.body as {
         rounds?: number;
-        confirmReplace?: boolean;
       };
       const eventIdNum = parseInt(eventId, 10);
       const db = await getDatabase();
@@ -66,36 +67,111 @@ router.post(
       }
 
       const roundsNum = Number(rounds ?? 5);
-      if (!Number.isInteger(roundsNum) || roundsNum < 1) {
+      if (!Number.isInteger(roundsNum) || roundsNum < 0) {
         return res
           .status(400)
-          .json({ error: 'rounds must be a positive integer' });
+          .json({ error: 'rounds must be a non-negative integer' });
       }
 
-      // Block regeneration once any double-seeding submission or score exists.
-      if (await hasDoubleSeedingResults(db, eventIdNum)) {
-        return res.status(409).json({
-          error:
-            'Double-seeding submissions or scores already exist for this event. Matches cannot be regenerated.',
+      const roundState = await db.get<{
+        current_rounds: number | null;
+        match_count: number;
+      }>(
+        `SELECT MAX(round_number) as current_rounds, COUNT(*) as match_count
+         FROM double_seeding_matches
+         WHERE event_id = ?`,
+        [eventIdNum],
+      );
+      const currentRounds = Number(roundState?.current_rounds ?? 0);
+      const matchCount = Number(roundState?.match_count ?? 0);
+      const teamCountRow = await db.get<{ team_count: number }>(
+        'SELECT COUNT(*) as team_count FROM teams WHERE event_id = ?',
+        [eventIdNum],
+      );
+      const teamCount = Number(teamCountRow?.team_count ?? 0);
+      const hasResults = await hasDoubleSeedingResults(db, eventIdNum);
+
+      if (roundsNum > teamCount) {
+        return res.status(400).json({
+          error: `Number of rounds (${roundsNum}) cannot exceed the number of teams (${teamCount})`,
         });
       }
 
-      // Replacing existing matches requires explicit destructive confirmation.
-      const existing = await db.get<{ id: number }>(
-        'SELECT id FROM double_seeding_matches WHERE event_id = ? LIMIT 1',
-        [eventIdNum],
-      );
-      if (existing && !confirmReplace) {
+      if (roundsNum === 0) {
+        if (hasResults) {
+          return res.status(409).json({
+            error:
+              'Double-seeding submissions or scores already exist for this event. Double seeding cannot be disabled.',
+          });
+        }
+
+        const result = await db.transaction(async (tx) => {
+          const del = await tx.run(
+            'DELETE FROM double_seeding_matches WHERE event_id = ?',
+            [eventIdNum],
+          );
+          await tx.run(
+            'UPDATE events SET double_seeding_rounds = 0 WHERE id = ?',
+            [eventIdNum],
+          );
+          return del;
+        });
+
+        await createAuditEntry(db, {
+          event_id: eventIdNum,
+          user_id: req.user?.id ?? null,
+          action: 'double_seeding_disabled',
+          entity_type: 'event',
+          entity_id: eventIdNum,
+          old_value: toAuditJson({ deleted: result.changes ?? 0 }),
+          new_value: toAuditJson({ rounds: 0 }),
+          ip_address: req.ip ?? null,
+        });
+
+        return res.json({
+          message: 'Double seeding disabled',
+          rounds: 0,
+          matchesCreated: 0,
+          deleted: result.changes ?? 0,
+          matches: [],
+        });
+      }
+
+      if (teamCount === 0) {
+        return res
+          .status(400)
+          .json({ error: 'No teams available for double seeding' });
+      }
+
+      if (matchCount > 0 && roundsNum < currentRounds) {
         return res.status(409).json({
-          requiresConfirmation: true,
           error:
-            'Double-seeding matches already exist. Set confirmReplace=true to replace them.',
+            'Double-seeding rounds can only be reduced by deleting the highest-numbered unsubmitted round.',
+        });
+      }
+
+      if (matchCount > 0 && roundsNum === currentRounds) {
+        const matches = await db.all(
+          `${MATCHES_SELECT}
+           WHERE dsm.event_id = ?
+           ORDER BY dsm.round_number ASC, dsm.match_number ASC`,
+          [eventIdNum],
+        );
+
+        return res.json({
+          message: 'Double-seeding round count unchanged',
+          rounds: currentRounds,
+          matchesCreated: 0,
+          matches,
         });
       }
 
       let result;
       try {
-        result = await generateDoubleSeedingMatches(db, eventIdNum, roundsNum);
+        result =
+          matchCount > 0
+            ? await appendDoubleSeedingRounds(db, eventIdNum, roundsNum)
+            : await generateDoubleSeedingMatches(db, eventIdNum, roundsNum);
       } catch (genError) {
         return res.status(400).json({ error: (genError as Error).message });
       }
@@ -103,7 +179,10 @@ router.post(
       await createAuditEntry(db, {
         event_id: eventIdNum,
         user_id: req.user?.id ?? null,
-        action: 'double_seeding_matches_generated',
+        action:
+          matchCount > 0
+            ? 'double_seeding_rounds_appended'
+            : 'double_seeding_matches_generated',
         entity_type: 'event',
         entity_id: eventIdNum,
         old_value: null,
@@ -119,7 +198,10 @@ router.post(
       );
 
       res.status(201).json({
-        message: 'Double-seeding matches generated',
+        message:
+          matchCount > 0
+            ? 'Double-seeding rounds appended'
+            : 'Double-seeding matches generated',
         ...result,
         matches,
       });
@@ -186,6 +268,59 @@ router.delete(
       res
         .status(500)
         .json({ error: 'Failed to delete double-seeding matches' });
+    }
+  },
+);
+
+// DELETE /double-seeding/matches/event/:eventId/round/:roundNumber - Delete the trailing unsubmitted round (admin only)
+router.delete(
+  '/matches/event/:eventId/round/:roundNumber',
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { eventId, roundNumber } = req.params;
+      const eventIdNum = parseInt(eventId, 10);
+      const roundNum = parseInt(roundNumber, 10);
+
+      if (isNaN(eventIdNum) || isNaN(roundNum) || roundNum < 1) {
+        return res.status(400).json({ error: 'Invalid event ID or round' });
+      }
+
+      const db = await getDatabase();
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        eventIdNum,
+      ]);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      let result;
+      try {
+        result = await deleteLastDoubleSeedingRound(db, eventIdNum, roundNum);
+      } catch (deleteError) {
+        const message = (deleteError as Error).message;
+        const status = message.includes('No double-seeding rounds') ? 404 : 409;
+        return res.status(status).json({ error: message });
+      }
+
+      await createAuditEntry(db, {
+        event_id: eventIdNum,
+        user_id: req.user?.id ?? null,
+        action: 'double_seeding_round_deleted',
+        entity_type: 'event',
+        entity_id: eventIdNum,
+        old_value: toAuditJson({
+          round: result.round,
+          deleted: result.deleted,
+        }),
+        new_value: toAuditJson({ rounds: result.remainingRounds }),
+        ip_address: req.ip ?? null,
+      });
+
+      res.json({ success: true, ...result });
+    } catch (error) {
+      console.error('Error deleting double-seeding round:', error);
+      res.status(500).json({ error: 'Failed to delete double-seeding round' });
     }
   },
 );

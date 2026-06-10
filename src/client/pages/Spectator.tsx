@@ -193,6 +193,25 @@ export default function Spectator() {
   const doubleSeedingRounds = selectedEvent?.double_seeding_rounds ?? 0;
   const doubleSeedingAvailable = doubleSeedingRounds > 0;
 
+  useEffect(() => {
+    if (
+      selectedEventId &&
+      selectedEvent &&
+      activeTab === 'double-seeding' &&
+      !doubleSeedingAvailable
+    ) {
+      navigate(spectatorEventPath(selectedEventId, 'seeding'), {
+        replace: true,
+      });
+    }
+  }, [
+    activeTab,
+    doubleSeedingAvailable,
+    navigate,
+    selectedEvent,
+    selectedEventId,
+  ]);
+
   // If no eventId in URL, redirect to event selection page
   useEffect(() => {
     if (!eventIdParam) {

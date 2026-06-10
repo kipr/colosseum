@@ -12,6 +12,7 @@ import {
   getBracketGameOptionValue,
   getBracketSourceEventId,
   isEventScopedBracketSource,
+  shouldHideSoloDoubleSeedingField,
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
 import '../pages/Scoresheet.css';
@@ -119,6 +120,14 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       status: string;
     }>
   >([]);
+
+  const isSoloDoubleSeedingFieldHidden = (field: any): boolean => {
+    return shouldHideSoloDoubleSeedingField(
+      field.id,
+      formData,
+      isDoubleSeeding,
+    );
+  };
 
   // Show notification and auto-dismiss
   const showNotification = (
@@ -896,6 +905,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     );
 
     schema.fields.forEach((field: any) => {
+      if (isSoloDoubleSeedingFieldHidden(field)) {
+        return;
+      }
+
       if (field.type === 'section_header' || field.type === 'group_header') {
         return;
       }
@@ -1229,6 +1242,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const renderField = (field: any) => {
+    if (isSoloDoubleSeedingFieldHidden(field)) {
+      return null;
+    }
+
     if (field.type === 'section_header') {
       return (
         <div key={field.id} className="section-header">

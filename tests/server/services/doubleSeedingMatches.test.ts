@@ -5,7 +5,9 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../../sql/helpers/testDb';
 import { __setTestDatabaseAdapter } from '../../../src/server/database/connection';
 import {
+  appendDoubleSeedingRounds,
   buildDoubleSeedingPairings,
+  deleteLastDoubleSeedingRound,
   generateDoubleSeedingMatches,
   hasDoubleSeedingResults,
 } from '../../../src/server/services/doubleSeedingMatches';
@@ -145,6 +147,94 @@ describe('generateDoubleSeedingMatches', () => {
       [event.id],
     );
     expect(matches.length).toBe(4); // 2 matches x 2 rounds
+  });
+
+  it('appends rounds without replacing existing matches', async () => {
+    const event = await seedEvent(testDb.db);
+    for (let i = 1; i <= 4; i++) {
+      await seedTeam(testDb.db, { event_id: event.id, team_number: i });
+    }
+
+    await generateDoubleSeedingMatches(testDb.db, event.id, 2);
+    const before = await testDb.db.all<{ id: number }>(
+      'SELECT id FROM double_seeding_matches WHERE event_id = ? ORDER BY id',
+      [event.id],
+    );
+
+    const result = await appendDoubleSeedingRounds(testDb.db, event.id, 4);
+    expect(result.rounds).toBe(4);
+    expect(result.matchesCreated).toBe(4); // 2 new matches x 2 new rounds
+
+    const after = await testDb.db.all<{ id: number; round_number: number }>(
+      'SELECT id, round_number FROM double_seeding_matches WHERE event_id = ? ORDER BY id',
+      [event.id],
+    );
+    expect(after.slice(0, before.length).map((m) => m.id)).toEqual(
+      before.map((m) => m.id),
+    );
+    expect(after.length).toBe(8);
+    expect(after.filter((m) => m.round_number > 2).length).toBe(4);
+
+    const eventRow = await testDb.db.get(
+      'SELECT double_seeding_rounds FROM events WHERE id = ?',
+      [event.id],
+    );
+    expect(eventRow?.double_seeding_rounds).toBe(4);
+  });
+
+  it('deletes only the highest unsubmitted round', async () => {
+    const event = await seedEvent(testDb.db);
+    for (let i = 1; i <= 4; i++) {
+      await seedTeam(testDb.db, { event_id: event.id, team_number: i });
+    }
+    await generateDoubleSeedingMatches(testDb.db, event.id, 3);
+
+    await expect(
+      deleteLastDoubleSeedingRound(testDb.db, event.id, 2),
+    ).rejects.toThrow(/highest-numbered/);
+
+    const result = await deleteLastDoubleSeedingRound(testDb.db, event.id, 3);
+    expect(result.round).toBe(3);
+    expect(result.deleted).toBe(2);
+    expect(result.remainingRounds).toBe(2);
+
+    const remaining = await testDb.db.all(
+      'SELECT * FROM double_seeding_matches WHERE event_id = ? AND round_number = 3',
+      [event.id],
+    );
+    expect(remaining.length).toBe(0);
+
+    const eventRow = await testDb.db.get(
+      'SELECT double_seeding_rounds FROM events WHERE id = ?',
+      [event.id],
+    );
+    expect(eventRow?.double_seeding_rounds).toBe(2);
+  });
+
+  it('blocks deleting a round with double-seeding results', async () => {
+    const event = await seedEvent(testDb.db);
+    const team = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    await seedTeam(testDb.db, { event_id: event.id, team_number: 2 });
+    await generateDoubleSeedingMatches(testDb.db, event.id, 2);
+    const match = await testDb.db.get<{ id: number }>(
+      'SELECT id FROM double_seeding_matches WHERE event_id = ? AND round_number = 2 LIMIT 1',
+      [event.id],
+    );
+    await seedDoubleSeedingScore(testDb.db, {
+      event_id: event.id,
+      match_id: match!.id,
+      team_id: team.id,
+      round_number: 2,
+      side: 'team1',
+      score: 50,
+    });
+
+    await expect(
+      deleteLastDoubleSeedingRound(testDb.db, event.id, 2),
+    ).rejects.toThrow(/submissions or scores/);
   });
 });
 

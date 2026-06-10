@@ -47,9 +47,8 @@ export default function DoubleSeedingTab() {
   const [matches, setMatches] = useState<DoubleSeedingMatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [roundsInput, setRoundsInput] = useState<number>(
-    configuredRounds > 0 ? configuredRounds : 5,
-  );
+  const [deletingRound, setDeletingRound] = useState<number | null>(null);
+  const [roundsInput, setRoundsInput] = useState<number>(configuredRounds);
 
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -117,18 +116,37 @@ export default function DoubleSeedingTab() {
   }, [loadData]);
 
   useEffect(() => {
-    if (configuredRounds > 0) setRoundsInput(configuredRounds);
+    setRoundsInput(configuredRounds);
   }, [configuredRounds]);
 
   const handleGenerate = async () => {
     if (!selectedEventId) return;
 
-    if (matches.length > 0) {
+    if (roundsInput > teams.length) {
+      toast.error('Double-seeding rounds cannot exceed the number of teams');
+      return;
+    }
+
+    if (roundsInput > 0 && teams.length === 0) {
+      toast.error('Add teams before enabling double seeding');
+      return;
+    }
+
+    if (
+      roundsInput > 0 &&
+      matches.length > 0 &&
+      roundsInput < effectiveRounds
+    ) {
+      toast.error('Use Remove Last Round to reduce double-seeding rounds');
+      return;
+    }
+
+    if (roundsInput === 0 && matches.length > 0) {
       const confirmed = await confirm({
-        title: 'Replace Double-Seeding Matches',
+        title: 'Disable Double Seeding',
         message:
-          'Double-seeding matches already exist for this event. Regenerating will DELETE all existing matches and create a new randomized pairing. This cannot be undone.\n\nAre you sure?',
-        confirmText: 'Replace Matches',
+          'This will delete all unsubmitted double-seeding matches and set double-seeding rounds to 0. This cannot be undone.\n\nAre you sure?',
+        confirmText: 'Disable',
         confirmStyle: 'danger',
       });
       if (!confirmed) return;
@@ -144,7 +162,6 @@ export default function DoubleSeedingTab() {
           credentials: 'include',
           body: JSON.stringify({
             rounds: roundsInput,
-            confirmReplace: matches.length > 0,
           }),
         },
       );
@@ -153,7 +170,8 @@ export default function DoubleSeedingTab() {
         throw new Error(data.error || 'Failed to generate matches');
       }
       toast.success(
-        `Generated ${data.matchesCreated} matches across ${data.rounds} rounds`,
+        data.message ||
+          `Updated double seeding to ${data.rounds} round${data.rounds === 1 ? '' : 's'}`,
       );
       await loadData();
       refreshEvents();
@@ -165,32 +183,34 @@ export default function DoubleSeedingTab() {
     }
   };
 
-  const handleDeleteMatches = async () => {
+  const handleDeleteRound = async (round: number) => {
     if (!selectedEventId) return;
     const confirmed = await confirm({
-      title: 'Delete Double-Seeding Matches',
-      message:
-        'This will delete ALL double-seeding matches for this event. This cannot be undone.\n\nAre you sure?',
-      confirmText: 'Delete Matches',
+      title: `Remove Round ${round}`,
+      message: `This will delete round ${round} if no double-seeding submissions or accepted scores exist for that round. This cannot be undone.\n\nAre you sure?`,
+      confirmText: 'Remove Round',
       confirmStyle: 'danger',
     });
     if (!confirmed) return;
 
+    setDeletingRound(round);
     try {
       const response = await fetch(
-        `/double-seeding/matches/event/${selectedEventId}`,
+        `/double-seeding/matches/event/${selectedEventId}/round/${round}`,
         { method: 'DELETE', credentials: 'include' },
       );
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to delete matches');
+        throw new Error(data.error || 'Failed to remove round');
       }
-      toast.success(`Deleted ${data.deleted} matches`);
+      toast.success(`Removed round ${data.round}`);
       await loadData();
       refreshEvents();
     } catch (error: unknown) {
-      console.error('Error deleting double-seeding matches:', error);
-      toast.error((error as Error).message || 'Failed to delete matches');
+      console.error('Error removing double-seeding round:', error);
+      toast.error((error as Error).message || 'Failed to remove round');
+    } finally {
+      setDeletingRound(null);
     }
   };
 
@@ -251,7 +271,9 @@ export default function DoubleSeedingTab() {
         <p style={{ color: 'var(--secondary-color)', fontSize: '0.9rem' }}>
           Teams are randomly paired once per round. Each team plays every round;
           with an odd team count one team runs alone each round. Each team only
-          receives the score from its own side of the table.
+          receives the score from its own side of the table. Set rounds to 0 to
+          disable double seeding; increasing the value adds rounds without
+          changing existing matches.
         </p>
         <div
           style={{
@@ -267,11 +289,16 @@ export default function DoubleSeedingTab() {
               id="double-seeding-rounds"
               type="number"
               className="field-input"
-              min={1}
-              max={Math.max(teams.length, 1)}
+              min={0}
+              max={Math.max(teams.length, 0)}
               value={roundsInput}
               onChange={(e) =>
-                setRoundsInput(Math.max(1, parseInt(e.target.value, 10) || 1))
+                setRoundsInput(
+                  Math.min(
+                    Math.max(0, parseInt(e.target.value, 10) || 0),
+                    Math.max(teams.length, 0),
+                  ),
+                )
               }
               style={{ width: '90px' }}
             />
@@ -279,20 +306,30 @@ export default function DoubleSeedingTab() {
           <button
             className="btn btn-primary"
             onClick={handleGenerate}
-            disabled={generating || teams.length === 0}
+            disabled={
+              generating ||
+              (roundsInput > 0 && teams.length === 0) ||
+              (matches.length === 0 && roundsInput === 0) ||
+              (matches.length > 0 && roundsInput === effectiveRounds)
+            }
           >
             {generating
-              ? 'Generating...'
-              : matches.length > 0
-                ? 'Regenerate Matches'
-                : 'Generate Matches'}
+              ? 'Updating...'
+              : roundsInput === 0
+                ? matches.length > 0
+                  ? 'Disable Double Seeding'
+                  : 'Double Seeding Disabled'
+                : matches.length > 0
+                  ? roundsInput > effectiveRounds
+                    ? 'Add Rounds'
+                    : 'Update Rounds'
+                  : 'Generate Matches'}
           </button>
-          {matches.length > 0 && (
-            <button className="btn btn-danger" onClick={handleDeleteMatches}>
-              Delete Matches
-            </button>
-          )}
-          <button className="btn btn-secondary" onClick={handleRecalculate}>
+          <button
+            className="btn btn-secondary"
+            onClick={handleRecalculate}
+            disabled={effectiveRounds === 0}
+          >
             Recalculate Rankings
           </button>
         </div>
@@ -307,13 +344,20 @@ export default function DoubleSeedingTab() {
         <p>Loading double-seeding data...</p>
       ) : (
         <>
-          {/* Team-round score matrix + rankings */}
-          <DoubleSeedingDisplay
-            teams={teams}
-            scores={scores}
-            rankings={rankings}
-            effectiveRounds={effectiveRounds > 0 ? effectiveRounds : 5}
-          />
+          {effectiveRounds > 0 ? (
+            <DoubleSeedingDisplay
+              teams={teams}
+              scores={scores}
+              rankings={rankings}
+              effectiveRounds={effectiveRounds}
+            />
+          ) : (
+            <div className="card">
+              <p style={{ color: 'var(--secondary-color)', margin: 0 }}>
+                Double seeding is disabled for this event.
+              </p>
+            </div>
+          )}
 
           {/* Match list grouped by round */}
           {matches.length > 0 && (
@@ -321,7 +365,28 @@ export default function DoubleSeedingTab() {
               <h3 style={{ marginTop: 0 }}>Matches by Round</h3>
               {matchesByRound.map(([round, roundMatches]) => (
                 <div key={round} style={{ marginBottom: '1rem' }}>
-                  <h4 style={{ margin: '0.5rem 0' }}>Round {round}</h4>
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      gap: '1rem',
+                      flexWrap: 'wrap',
+                    }}
+                  >
+                    <h4 style={{ margin: '0.5rem 0' }}>Round {round}</h4>
+                    {round === effectiveRounds && (
+                      <button
+                        className="btn btn-danger"
+                        onClick={() => handleDeleteRound(round)}
+                        disabled={deletingRound === round}
+                      >
+                        {deletingRound === round
+                          ? 'Removing...'
+                          : 'Remove Last Round'}
+                      </button>
+                    )}
+                  </div>
                   <div className="table-responsive">
                     <table className="seeding-table">
                       <thead>
