@@ -371,8 +371,13 @@ async function syncDoubleSeedingQueue(
       } else if (isEligible && !isCompleted) {
         await tx.run(
           `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
-           VALUES (?, ?, 'double_seeding', ?, 'queued')`,
-          [eventId, match.id, nextPos++],
+           VALUES (?, ?, 'double_seeding', ?, ?)`,
+          [
+            eventId,
+            match.id,
+            nextPos++,
+            pendingSet.has(match.id) ? 'scored' : 'queued',
+          ],
         );
       }
     }
