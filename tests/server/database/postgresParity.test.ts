@@ -231,7 +231,9 @@ describe('initializePostgres parity with SQLite', () => {
 
   describe('legacy spreadsheet artifact removal', () => {
     it('does not create spreadsheet_configs or chat_messages tables', () => {
-      expect(allSql).not.toMatch(/CREATE TABLE IF NOT EXISTS spreadsheet_configs/i);
+      expect(allSql).not.toMatch(
+        /CREATE TABLE IF NOT EXISTS spreadsheet_configs/i,
+      );
       expect(allSql).not.toMatch(/CREATE TABLE IF NOT EXISTS chat_messages/i);
     });
 

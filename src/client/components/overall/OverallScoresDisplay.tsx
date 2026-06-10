@@ -9,6 +9,7 @@ export interface OverallRow {
   team_name: string;
   doc_score: number;
   raw_seed_score: number;
+  raw_double_seed_score: number;
   weighted_de_score: number;
   total: number;
 }
@@ -23,6 +24,7 @@ type SortField =
   | 'team_name'
   | 'doc_score'
   | 'raw_seed_score'
+  | 'raw_double_seed_score'
   | 'weighted_de_score'
   | 'total';
 
@@ -61,6 +63,10 @@ export default function OverallScoresDisplay({
         case 'raw_seed_score':
           aVal = a.raw_seed_score;
           bVal = b.raw_seed_score;
+          break;
+        case 'raw_double_seed_score':
+          aVal = a.raw_double_seed_score ?? 0;
+          bVal = b.raw_double_seed_score ?? 0;
           break;
         case 'weighted_de_score':
           aVal = a.weighted_de_score;
@@ -162,6 +168,17 @@ export default function OverallScoresDisplay({
       { kind: 'separator', id: 'sep-plus-2', symbol: '+' },
       {
         kind: 'data',
+        id: 'raw_double_seed_score',
+        sortable: true,
+        header: { full: 'Raw Double Seeding', short: '2x Seed' },
+        headerClassName: 'overall-raw-double-seed-col doc-sortable',
+        cellClassName: 'overall-raw-double-seed-cell',
+        sortAriaLabel: 'Sort by raw double seed score',
+        renderCell: (row) => formatScore(row.raw_double_seed_score ?? 0),
+      },
+      { kind: 'separator', id: 'sep-plus-3', symbol: '+' },
+      {
+        kind: 'data',
         id: 'weighted_de_score',
         sortable: true,
         header: { full: 'Weighted DE', short: 'DE' },
@@ -195,8 +212,8 @@ export default function OverallScoresDisplay({
     >
       <h3>Overall Scores</h3>
       <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
-        Combined score per team: Documentation + Raw Seeding (0&ndash;1) +
-        Weighted DE. Sorted by total descending.
+        Combined score per team: Documentation + Raw Seeding (0&ndash;1) + Raw
+        Double Seeding (0&ndash;1) + Weighted DE. Sorted by total descending.
       </p>
       {sortedRows.length === 0 ? (
         <p style={{ color: 'var(--secondary-color)' }}>

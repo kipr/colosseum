@@ -13,7 +13,8 @@ interface QueueItem {
   bracket_game_id: number | null;
   seeding_team_id: number | null;
   seeding_round: number | null;
-  queue_type: 'seeding' | 'bracket';
+  double_seeding_match_id: number | null;
+  queue_type: 'seeding' | 'bracket' | 'double_seeding';
   queue_position: number;
   status: QueueStatus;
   table_number: number | null;
@@ -34,6 +35,17 @@ interface QueueItem {
   seeding_team_number: number | null;
   seeding_team_name: string | null;
   seeding_team_display: string | null;
+  // Double-seeding match info
+  double_seeding_round: number | null;
+  double_seeding_match_number: number | null;
+  double_seeding_team1_id: number | null;
+  double_seeding_team2_id: number | null;
+  double_seeding_team1_number: number | null;
+  double_seeding_team1_name: string | null;
+  double_seeding_team1_display: string | null;
+  double_seeding_team2_number: number | null;
+  double_seeding_team2_name: string | null;
+  double_seeding_team2_display: string | null;
 }
 
 interface Bracket {
@@ -74,7 +86,7 @@ const STATUS_ORDER: QueueStatus[] = [
   'scored',
 ];
 
-type QueueType = 'seeding' | 'bracket';
+type QueueType = 'seeding' | 'bracket' | 'double_seeding';
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';
 
@@ -82,10 +94,17 @@ const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'all', label: 'All Types' },
   { value: 'seeding', label: 'Seeding' },
   { value: 'bracket', label: 'Bracket' },
+  { value: 'double_seeding', label: 'Double Seeding' },
 ];
 
+const TYPE_BADGE_LABELS: Record<QueueType, string> = {
+  seeding: 'seeding',
+  bracket: 'bracket',
+  double_seeding: '2x seeding',
+};
+
 function getTypeClass(type: QueueType): string {
-  return `queue-type-${type}`;
+  return `queue-type-${type.replace(/_/g, '-')}`;
 }
 
 function getStatusClass(status: QueueStatus): string {
@@ -557,6 +576,15 @@ export default function QueueTab() {
       return item.seeding_team_number ?? '-';
     }
 
+    if (item.queue_type === 'double_seeding') {
+      const team1Number = item.double_seeding_team1_number ?? '-';
+      if (item.double_seeding_team2_id == null) {
+        return `${team1Number} (solo)`;
+      }
+      const team2Number = item.double_seeding_team2_number ?? '-';
+      return `${team1Number} vs ${team2Number}`;
+    }
+
     const team1Number = item.team1_number ?? '-';
     const team2Number = item.team2_number ?? '-';
     return `${team1Number} vs ${team2Number}`;
@@ -569,6 +597,25 @@ export default function QueueTab() {
         <div className="queue-game-details">
           <span className="queue-game-title">{teamName}</span>
           <span className="queue-game-teams">Round {item.seeding_round}</span>
+        </div>
+      );
+    }
+
+    if (item.queue_type === 'double_seeding') {
+      const team1Name = item.double_seeding_team1_name || '';
+      const team2Name =
+        item.double_seeding_team2_id == null
+          ? 'Solo run'
+          : item.double_seeding_team2_name || '';
+      return (
+        <div className="queue-game-details">
+          <span className="queue-game-title">
+            {team1Name} vs {team2Name}
+          </span>
+          <span className="queue-game-teams">
+            Round {item.double_seeding_round} · Match{' '}
+            {item.double_seeding_match_number}
+          </span>
         </div>
       );
     }
@@ -622,6 +669,12 @@ export default function QueueTab() {
     if (item.queue_type === 'seeding' && item.seeding_round !== null) {
       return item.seeding_round;
     }
+    if (
+      item.queue_type === 'double_seeding' &&
+      item.double_seeding_round !== null
+    ) {
+      return item.double_seeding_round;
+    }
     if (item.round_name) {
       const match = item.round_name.match(/\d+/);
       if (match) {
@@ -635,6 +688,11 @@ export default function QueueTab() {
     if (item.queue_type === 'seeding') {
       return (item.seeding_team_name || '').toLowerCase();
     }
+    if (item.queue_type === 'double_seeding') {
+      const team1 = (item.double_seeding_team1_name || '').toLowerCase();
+      const team2 = (item.double_seeding_team2_name || '').toLowerCase();
+      return `${team1} ${team2}`.trim();
+    }
     const team1 = (item.team1_name || '').toLowerCase();
     const team2 = (item.team2_name || '').toLowerCase();
     return `${team1} ${team2}`.trim();
@@ -643,6 +701,12 @@ export default function QueueTab() {
   const getTeamNumberSortValue = (item: QueueItem): number => {
     if (item.queue_type === 'seeding') {
       return item.seeding_team_number ?? Number.MAX_SAFE_INTEGER;
+    }
+    if (item.queue_type === 'double_seeding') {
+      return Math.min(
+        item.double_seeding_team1_number ?? Number.MAX_SAFE_INTEGER,
+        item.double_seeding_team2_number ?? Number.MAX_SAFE_INTEGER,
+      );
     }
     return Math.min(
       item.team1_number ?? Number.MAX_SAFE_INTEGER,
@@ -831,7 +895,7 @@ export default function QueueTab() {
                   <span
                     className={`queue-type-badge ${getTypeClass(item.queue_type)}`}
                   >
-                    {item.queue_type}
+                    {TYPE_BADGE_LABELS[item.queue_type]}
                   </span>
                 ),
               },

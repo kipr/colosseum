@@ -582,7 +582,11 @@ export async function acceptEventScore(
     );
 
     if (!match) {
-      return { ok: false, status: 404, error: 'Double-seeding match not found' };
+      return {
+        ok: false,
+        status: 404,
+        error: 'Double-seeding match not found',
+      };
     }
 
     if (match.event_id !== score.event_id) {
@@ -666,7 +670,14 @@ export async function acceptEventScore(
           `INSERT INTO double_seeding_scores
              (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
            VALUES (?, ?, ?, ?, 'team1', ?, ?, CURRENT_TIMESTAMP)`,
-          [score.event_id, matchId, match.team1_id, match.round_number, teamAScore, id],
+          [
+            score.event_id,
+            matchId,
+            match.team1_id,
+            match.round_number,
+            teamAScore,
+            id,
+          ],
         );
       }
       if (match.team2_id != null) {
@@ -674,7 +685,14 @@ export async function acceptEventScore(
           `INSERT INTO double_seeding_scores
              (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
            VALUES (?, ?, ?, ?, 'team2', ?, ?, CURRENT_TIMESTAMP)`,
-          [score.event_id, matchId, match.team2_id, match.round_number, teamBScore, id],
+          [
+            score.event_id,
+            matchId,
+            match.team2_id,
+            match.round_number,
+            teamBScore,
+            id,
+          ],
         );
       }
 

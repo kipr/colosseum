@@ -24,9 +24,10 @@ interface ScoreSubmission {
   score_data: any;
   // Event-scoped fields
   event_id?: number;
-  score_type?: 'seeding' | 'bracket';
+  score_type?: 'seeding' | 'bracket' | 'double_seeding';
   bracket_game_id?: number;
   seeding_score_id?: number;
+  double_seeding_match_id?: number;
   game_queue_id?: number;
   // Joined display fields from by-event endpoint
   submitted_by?: string;
@@ -50,6 +51,17 @@ interface ScoreSubmission {
   bracket_winner_number?: number | null;
   bracket_winner_name?: string | null;
   bracket_winner_display?: string | null;
+  // Double-seeding joined display fields
+  double_seeding_round?: number | null;
+  double_seeding_match_number?: number | null;
+  double_seeding_team1_id?: number | null;
+  double_seeding_team2_id?: number | null;
+  double_seeding_team1_number?: number | null;
+  double_seeding_team1_name?: string | null;
+  double_seeding_team1_display?: string | null;
+  double_seeding_team2_number?: number | null;
+  double_seeding_team2_name?: string | null;
+  double_seeding_team2_display?: string | null;
 }
 
 interface EventScoresResponse {
@@ -472,6 +484,52 @@ export default function ScoringTab() {
     };
   };
 
+  const getDoubleSeedingRowDisplay = (score: ScoreSubmission) => {
+    const data = score.score_data || {};
+
+    const team1Label =
+      score.double_seeding_team1_display ||
+      score.double_seeding_team1_name ||
+      (score.double_seeding_team1_number != null
+        ? String(score.double_seeding_team1_number)
+        : null) ||
+      data.team_a_name?.value ||
+      data.team_a_number?.value ||
+      'TBD';
+    const hasTeam2 =
+      score.double_seeding_team2_id != null ||
+      data.team_b_id?.value != null ||
+      (data.team_b_number?.value && data.team_b_number.value !== 'None');
+    const team2Label = hasTeam2
+      ? score.double_seeding_team2_display ||
+        score.double_seeding_team2_name ||
+        (score.double_seeding_team2_number != null
+          ? String(score.double_seeding_team2_number)
+          : null) ||
+        data.team_b_name?.value ||
+        data.team_b_number?.value ||
+        'TBD'
+      : 'Solo run';
+
+    const round = score.double_seeding_round ?? data.round?.value;
+    const roundLabel = round ? `Round ${round}` : '-';
+    const matchNum =
+      score.double_seeding_match_number ?? data.match_number?.value;
+    const matchLabel = matchNum != null ? `Match ${matchNum}` : '-';
+
+    const teamATotal = data.team_a_total?.value ?? null;
+    const teamBTotal = data.team_b_total?.value ?? null;
+    const scoreLabel = hasTeam2
+      ? teamATotal != null || teamBTotal != null
+        ? `${teamATotal ?? '-'} – ${teamBTotal ?? '-'}`
+        : '-'
+      : teamATotal != null
+        ? String(teamATotal)
+        : '-';
+
+    return { team1Label, team2Label, roundLabel, matchLabel, scoreLabel };
+  };
+
   const getStatusBadge = (score: ScoreSubmission) => {
     const { status, reviewed_by } = score;
     switch (status) {
@@ -499,6 +557,10 @@ export default function ScoringTab() {
   );
   const bracketScores = useMemo(
     () => scores.filter((s) => s.score_type === 'bracket'),
+    [scores],
+  );
+  const doubleSeedingScores = useMemo(
+    () => scores.filter((s) => s.score_type === 'double_seeding'),
     [scores],
   );
 
@@ -681,6 +743,96 @@ export default function ScoringTab() {
     return cols;
   };
 
+  const buildDoubleSeedingColumns = (
+    showType: boolean,
+  ): UnifiedColumnDef<ScoreSubmission>[] => {
+    const cols: UnifiedColumnDef<ScoreSubmission>[] = [];
+    if (showType) {
+      cols.push({
+        kind: 'data',
+        id: 'type',
+        header: { full: 'Type' },
+        renderCell: () => (
+          <span className="badge badge-info">Double Seeding</span>
+        ),
+      });
+    }
+    cols.push(
+      {
+        kind: 'data',
+        id: 'matchup',
+        header: { full: 'Matchup' },
+        renderCell: (score) => {
+          const { team1Label, team2Label } = getDoubleSeedingRowDisplay(score);
+          return (
+            <div className="bracket-matchup-cell">
+              <span>{team1Label}</span>
+              <span className="bracket-vs">vs</span>
+              <span>{team2Label}</span>
+            </div>
+          );
+        },
+      },
+      {
+        kind: 'data',
+        id: 'round',
+        header: { full: 'Round' },
+        renderCell: (score) => getDoubleSeedingRowDisplay(score).roundLabel,
+      },
+      {
+        kind: 'data',
+        id: 'match',
+        header: { full: 'Match' },
+        renderCell: (score) => getDoubleSeedingRowDisplay(score).matchLabel,
+      },
+      {
+        kind: 'data',
+        id: 'score',
+        header: { full: 'Score' },
+        renderCell: (score) => (
+          <strong style={{ color: 'var(--primary-color)' }}>
+            {getDoubleSeedingRowDisplay(score).scoreLabel}
+          </strong>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'submitted',
+        header: { full: 'Submitted' },
+        renderCell: (score) => formatDateTime(score.created_at),
+      },
+      {
+        kind: 'data',
+        id: 'status',
+        header: { full: 'Status' },
+        renderCell: (score) => getStatusBadge(score),
+      },
+      {
+        kind: 'data',
+        id: 'reviewed',
+        header: { full: 'Reviewed' },
+        renderCell: (score) => (
+          <>
+            {score.reviewer_name || '-'}
+            {score.reviewed_at && (
+              <>
+                <br />
+                <small>{formatDateTime(score.reviewed_at)}</small>
+              </>
+            )}
+          </>
+        ),
+      },
+      {
+        kind: 'data',
+        id: 'actions',
+        header: { full: 'Actions' },
+        renderCell: (score) => renderEventActions(score),
+      },
+    );
+    return cols;
+  };
+
   const renderSeedingTable = (rows: ScoreSubmission[], showType: boolean) => (
     <UnifiedTable
       columns={buildSeedingColumns(showType)}
@@ -699,12 +851,27 @@ export default function ScoringTab() {
     />
   );
 
+  const renderDoubleSeedingTable = (
+    rows: ScoreSubmission[],
+    showType: boolean,
+  ) => (
+    <UnifiedTable
+      columns={buildDoubleSeedingColumns(showType)}
+      rows={rows}
+      getRowKey={(s) => s.id}
+      headerLabelVariant="none"
+    />
+  );
+
   const renderEventTables = () => {
     if (eventFilterType === 'seeding') {
       return renderSeedingTable(scores, false);
     }
     if (eventFilterType === 'bracket') {
       return renderBracketTable(scores, false);
+    }
+    if (eventFilterType === 'double_seeding') {
+      return renderDoubleSeedingTable(scores, false);
     }
     // "All" — show stacked sections so columns stay stable
     return (
@@ -716,9 +883,15 @@ export default function ScoringTab() {
           </div>
         )}
         {bracketScores.length > 0 && (
-          <div>
+          <div style={{ marginBottom: '1.5rem' }}>
             <h4 style={{ margin: '0.5rem 0' }}>Bracket Scores</h4>
             {renderBracketTable(bracketScores, false)}
+          </div>
+        )}
+        {doubleSeedingScores.length > 0 && (
+          <div>
+            <h4 style={{ margin: '0.5rem 0' }}>Double Seeding Scores</h4>
+            {renderDoubleSeedingTable(doubleSeedingScores, false)}
           </div>
         )}
       </>
@@ -868,6 +1041,7 @@ export default function ScoringTab() {
               <option value="">All</option>
               <option value="seeding">Seeding</option>
               <option value="bracket">Bracket</option>
+              <option value="double_seeding">Double Seeding</option>
             </select>
           </div>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem' }}>
@@ -1002,6 +1176,26 @@ export default function ScoringTab() {
                         <span className="bulk-accept-detail">
                           {team1Label} vs {team2Label} — {scoreLabel} →{' '}
                           {winnerLabel}
+                        </span>
+                      </label>
+                    );
+                  }
+
+                  if (scoreType === 'double_seeding') {
+                    const { team1Label, team2Label, roundLabel, scoreLabel } =
+                      getDoubleSeedingRowDisplay(score);
+                    return (
+                      <label key={score.id} className="bulk-accept-item">
+                        <input
+                          type="checkbox"
+                          checked={bulkAcceptSelected.has(score.id)}
+                          onChange={() => handleToggleBulkAcceptScore(score.id)}
+                        />
+                        <span className="bulk-accept-context">
+                          {roundLabel}
+                        </span>
+                        <span className="bulk-accept-detail">
+                          {team1Label} vs {team2Label} — {scoreLabel}
                         </span>
                       </label>
                     );

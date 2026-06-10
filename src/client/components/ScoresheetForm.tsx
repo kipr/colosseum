@@ -26,6 +26,8 @@ interface ScoresheetFormProps {
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const schema = template.schema;
   const isHeadToHead = schema.mode === 'head-to-head';
+  // Explicit marker only: head-to-head means bracket scoring with a winner.
+  const isDoubleSeeding = schema.scoreKind === 'double_seeding';
   const gameAreasImage = schema.gameAreasImage;
   const isEventScopedBracket = isEventScopedBracketSource(
     schema.bracketSource,
@@ -38,7 +40,14 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   // Use queue for DB-backed seeding: replace team+round selection with queue picker
   const useQueueForSeeding =
-    schema.eventId && schema.scoreDestination === 'db' && !isHeadToHead;
+    schema.eventId &&
+    schema.scoreDestination === 'db' &&
+    !isHeadToHead &&
+    !isDoubleSeeding;
+
+  // Double-seeding matches are always selected from the queue
+  const useQueueForDoubleSeeding =
+    isDoubleSeeding && schema.eventId && schema.scoreDestination === 'db';
 
   // Helper to get initial form data with default values from schema
   const getInitialFormData = () => {
@@ -93,10 +102,19 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     Array<{
       id: number;
       queue_type: string;
-      seeding_team_id: number;
-      seeding_round: number;
-      seeding_team_number: number;
-      seeding_team_name: string;
+      seeding_team_id?: number;
+      seeding_round?: number;
+      seeding_team_number?: number;
+      seeding_team_name?: string;
+      double_seeding_match_id?: number;
+      double_seeding_round?: number;
+      double_seeding_match_number?: number;
+      double_seeding_team1_id?: number | null;
+      double_seeding_team2_id?: number | null;
+      double_seeding_team1_number?: number | null;
+      double_seeding_team1_name?: string | null;
+      double_seeding_team2_number?: number | null;
+      double_seeding_team2_name?: string | null;
       queue_position: number;
       status: string;
     }>
@@ -146,8 +164,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     // Load dynamic dropdown data (skip team_number when using queue)
     loadDynamicData();
 
-    // Load queue for DB-backed seeding
-    if (useQueueForSeeding && schema.eventId) {
+    // Load queue for DB-backed seeding / double seeding
+    if ((useQueueForSeeding || useQueueForDoubleSeeding) && schema.eventId) {
       loadQueue();
       const interval = setInterval(() => loadQueue(), 5000);
       return () => clearInterval(interval);
@@ -165,7 +183,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
       return () => clearInterval(interval);
     }
-  }, [schema, useQueueForSeeding, isHeadToHead]);
+  }, [schema, useQueueForSeeding, useQueueForDoubleSeeding, isHeadToHead]);
 
   const loadQueue = async () => {
     if (!schema.eventId) return;
@@ -177,7 +195,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         'on_table',
         'scored',
       ].join(',');
-      const url = `/queue/event/${schema.eventId}?queue_type=seeding&status=${statuses}&sync=1`;
+      const queueType = isDoubleSeeding ? 'double_seeding' : 'seeding';
+      const url = `/queue/event/${schema.eventId}?queue_type=${queueType}&status=${statuses}&sync=1`;
       const response = await fetch(url);
       if (!response.ok) return;
       const data = await response.json();
@@ -447,6 +466,80 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       team_id: item.seeding_team_id,
       game_queue_id: item.id,
     }));
+  };
+
+  const handleDoubleSeedingQueueSelect = (queueId: string) => {
+    if (!queueId) {
+      setFormData((prev) => {
+        const next = { ...prev };
+        delete next.team_a_number;
+        delete next.team_a_name;
+        delete next.team_a_id;
+        delete next.team_b_number;
+        delete next.team_b_name;
+        delete next.team_b_id;
+        delete next.round;
+        delete next.match_number;
+        delete next.double_seeding_match_id;
+        delete next.game_queue_id;
+        return next;
+      });
+      return;
+    }
+    const item = queueItems.find((q) => q.id === Number(queueId));
+    if (!item || item.double_seeding_match_id == null) return;
+
+    const updates: Record<string, any> = {
+      double_seeding_match_id: item.double_seeding_match_id,
+      game_queue_id: item.id,
+      round: item.double_seeding_round,
+      match_number: item.double_seeding_match_number,
+    };
+
+    updates.team_a_number =
+      item.double_seeding_team1_number != null
+        ? String(item.double_seeding_team1_number)
+        : '';
+    updates.team_a_name =
+      item.double_seeding_team1_name ||
+      (item.double_seeding_team1_number != null
+        ? `Team ${item.double_seeding_team1_number}`
+        : '');
+    updates.team_a_id = item.double_seeding_team1_id ?? undefined;
+
+    if (item.double_seeding_team2_id != null) {
+      updates.team_b_number =
+        item.double_seeding_team2_number != null
+          ? String(item.double_seeding_team2_number)
+          : '';
+      updates.team_b_name =
+        item.double_seeding_team2_name ||
+        (item.double_seeding_team2_number != null
+          ? `Team ${item.double_seeding_team2_number}`
+          : '');
+      updates.team_b_id = item.double_seeding_team2_id;
+    } else {
+      // Odd-team lone run: no second team on this match
+      updates.team_b_number = 'None';
+      updates.team_b_name = 'None (solo run)';
+      updates.team_b_id = undefined;
+    }
+
+    setFormData((prev) => ({ ...prev, ...updates }));
+  };
+
+  const formatDoubleSeedingQueueLabel = (
+    item: (typeof queueItems)[number],
+  ): string => {
+    const team1 =
+      item.double_seeding_team1_number != null
+        ? `#${item.double_seeding_team1_number} ${item.double_seeding_team1_name ?? ''}`.trim()
+        : 'TBD';
+    const team2 =
+      item.double_seeding_team2_id != null
+        ? `#${item.double_seeding_team2_number} ${item.double_seeding_team2_name ?? ''}`.trim()
+        : 'Solo run';
+    return `Round ${item.double_seeding_round} M${item.double_seeding_match_number}: ${team1} vs ${team2}`;
   };
 
   const handleBracketGameSelect = (selectedValue: string) => {
@@ -789,6 +882,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return;
     }
 
+    // Validate match selection for double seeding
+    if (useQueueForDoubleSeeding && formData.double_seeding_match_id == null) {
+      alert('Please select a match from the queue before submitting.');
+      return;
+    }
+
     const scoreData: Record<string, any> = {};
     const submitCalculatedValues = calculateFormulaValues(formData);
     const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
@@ -881,6 +980,16 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           formatBracketDisplay(winnerTeam.number, winnerTeam.name),
         type: 'text',
       };
+    } else if (isDoubleSeeding) {
+      const teamALabel = formData.team_a_number
+        ? `${formData.team_a_number} - ${formData.team_a_name}`
+        : '';
+      const teamBLabel =
+        formData.team_b_id != null
+          ? `${formData.team_b_number} - ${formData.team_b_name}`
+          : 'Solo run';
+      participantName = `${teamALabel} vs ${teamBLabel}`;
+      matchId = formData.round != null ? `Round ${formData.round}` : '';
     } else {
       participantName = scoreData['team_name']?.value || '';
       matchId = scoreData['round']?.value || '';
@@ -889,8 +998,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     // For DB-backed seeding: include event_id, team_id for correct storage
     const eventId = schema.eventId ?? null;
     const scoreDestination = schema.scoreDestination;
+    const isDbBackedDoubleSeeding =
+      isDoubleSeeding &&
+      scoreDestination === 'db' &&
+      eventId &&
+      formData.double_seeding_match_id != null;
     const isDbBackedSeeding =
-      scoreDestination === 'db' && eventId && !isHeadToHead;
+      scoreDestination === 'db' && eventId && !isHeadToHead && !isDoubleSeeding;
     const isDbBackedBracket =
       isHeadToHead &&
       scoreDestination === 'db' &&
@@ -949,6 +1063,45 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       };
     }
 
+    if (isDbBackedDoubleSeeding) {
+      // Side totals: each team only receives its own side's score
+      const teamATotal =
+        submitCalculatedValues.team_a_total ?? formData.team_a_score ?? 0;
+      const teamBTotal =
+        submitCalculatedValues.team_b_total ?? formData.team_b_score ?? 0;
+      scoreData.team_a_total = {
+        label: 'Team A Total',
+        value: teamATotal,
+        type: 'number',
+      };
+      scoreData.team_b_total = {
+        label: 'Team B Total',
+        value: teamBTotal,
+        type: 'number',
+      };
+      if (formData.team_a_id != null) {
+        scoreData.team_a_id = {
+          label: 'Team A ID',
+          value: formData.team_a_id,
+          type: 'number',
+        };
+      }
+      if (formData.team_b_id != null) {
+        scoreData.team_b_id = {
+          label: 'Team B ID',
+          value: formData.team_b_id,
+          type: 'number',
+        };
+      }
+      if (formData.round != null) {
+        scoreData.round = {
+          label: 'Round',
+          value: formData.round,
+          type: 'number',
+        };
+      }
+    }
+
     try {
       const response = await fetch('/api/scores/submit', {
         method: 'POST',
@@ -960,15 +1113,23 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           scoreData,
           isHeadToHead,
           bracketSource: isHeadToHead ? schema.bracketSource : null,
-          eventId: isDbBackedSeeding || isDbBackedBracket ? eventId : undefined,
+          eventId:
+            isDbBackedSeeding || isDbBackedBracket || isDbBackedDoubleSeeding
+              ? eventId
+              : undefined,
           scoreType: isDbBackedSeeding
             ? 'seeding'
             : isDbBackedBracket
               ? 'bracket'
-              : undefined,
+              : isDbBackedDoubleSeeding
+                ? 'double_seeding'
+                : undefined,
           game_queue_id: formData.game_queue_id ?? undefined,
           bracket_game_id: isDbBackedBracket
             ? formData.bracket_game_id
+            : undefined,
+          double_seeding_match_id: isDbBackedDoubleSeeding
+            ? formData.double_seeding_match_id
             : undefined,
         }),
       });
@@ -1001,8 +1162,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         setFormData({});
         // Reload bracket games in case some are now decided
         loadBracketGames();
-      } else if (useQueueForSeeding) {
-        // For queue-based seeding, reset and reload queue
+      } else if (useQueueForSeeding || useQueueForDoubleSeeding) {
+        // For queue-based seeding/double seeding, reset and reload queue
         setFormData({});
         loadQueue();
       } else {
@@ -1824,6 +1985,47 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
               >
                 Team {formData.team_number} – {formData.team_name} (Round{' '}
                 {formData.round})
+              </div>
+            )}
+          </div>
+        )}
+
+        {useQueueForDoubleSeeding && (
+          <div className="score-field" style={{ marginBottom: '1rem' }}>
+            <label className="score-label">Select Match from Queue</label>
+            <select
+              className="score-input"
+              value={formData.game_queue_id ?? ''}
+              onChange={(e) => handleDoubleSeedingQueueSelect(e.target.value)}
+              required
+              style={{ width: '100%', maxWidth: '400px' }}
+            >
+              <option value="">Select match...</option>
+              {queueItems.length === 0 ? (
+                <option value="" disabled>
+                  No queue items available
+                </option>
+              ) : (
+                queueItems.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {formatDoubleSeedingQueueLabel(item)}
+                  </option>
+                ))
+              )}
+            </select>
+            {formData.double_seeding_match_id && (
+              <div
+                style={{
+                  marginTop: '0.5rem',
+                  fontSize: '0.9rem',
+                  color: 'var(--secondary-color)',
+                }}
+              >
+                Round {formData.round}, Match {formData.match_number}:{' '}
+                {formData.team_a_number} {formData.team_a_name} vs{' '}
+                {formData.team_b_id != null
+                  ? `${formData.team_b_number} ${formData.team_b_name}`
+                  : 'Solo run'}
               </div>
             )}
           </div>

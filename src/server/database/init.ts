@@ -270,14 +270,18 @@ async function migrateDoubleSeedingSQLite(db: Database): Promise<void> {
     );
   }
 
-  if (!(await tableSql('score_submissions')).includes('double_seeding_match_id')) {
+  if (
+    !(await tableSql('score_submissions')).includes('double_seeding_match_id')
+  ) {
     await db.exec(
       `ALTER TABLE score_submissions ADD COLUMN double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE SET NULL`,
     );
   }
 
   // Rebuild event_scoresheet_templates when template_type CHECK lacks double_seeding.
-  if (!(await tableSql('event_scoresheet_templates')).includes('double_seeding')) {
+  if (
+    !(await tableSql('event_scoresheet_templates')).includes('double_seeding')
+  ) {
     await db.exec(`PRAGMA foreign_keys=OFF`);
     try {
       await db.transaction(async (tx) => {

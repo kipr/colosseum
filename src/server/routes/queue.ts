@@ -341,8 +341,7 @@ async function syncDoubleSeedingQueue(
   await db.transaction(async (tx) => {
     for (const match of matches) {
       const hasTeam = match.team1_id != null || match.team2_id != null;
-      const isEligible =
-        hasTeam && ['ready', 'pending'].includes(match.status);
+      const isEligible = hasTeam && ['ready', 'pending'].includes(match.status);
       const isCompleted =
         match.status === 'completed' || acceptedSet.has(match.id);
       const existing = existingByMatchId.get(match.id);
