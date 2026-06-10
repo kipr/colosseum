@@ -275,6 +275,115 @@ async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
   });
 }
 
+/** Non-destructive sync: ensure game_queue has eligible double-seeding matches, with correct status. */
+async function syncDoubleSeedingQueue(
+  db: Database,
+  eventId: number,
+): Promise<void> {
+  const matches = await db.all<{
+    id: number;
+    status: string;
+    team1_id: number | null;
+    team2_id: number | null;
+  }>(
+    `SELECT id, status, team1_id, team2_id FROM double_seeding_matches
+     WHERE event_id = ?
+     ORDER BY round_number ASC, match_number ASC`,
+    [eventId],
+  );
+  if (matches.length === 0) return;
+
+  const acceptedMatches = await db.all<{ double_seeding_match_id: number }>(
+    `SELECT DISTINCT double_seeding_match_id
+     FROM score_submissions
+     WHERE event_id = ?
+       AND score_type = 'double_seeding'
+       AND status = 'accepted'
+       AND double_seeding_match_id IS NOT NULL`,
+    [eventId],
+  );
+  const acceptedSet = new Set(
+    acceptedMatches.map((row) => row.double_seeding_match_id),
+  );
+
+  const pendingMatches = await db.all<{ double_seeding_match_id: number }>(
+    `SELECT DISTINCT double_seeding_match_id
+     FROM score_submissions
+     WHERE event_id = ?
+       AND score_type = 'double_seeding'
+       AND status = 'pending'
+       AND double_seeding_match_id IS NOT NULL`,
+    [eventId],
+  );
+  const pendingSet = new Set(
+    pendingMatches.map((row) => row.double_seeding_match_id),
+  );
+
+  const existingRows = await db.all<{
+    id: number;
+    double_seeding_match_id: number;
+    status: string;
+  }>(
+    `SELECT id, double_seeding_match_id, status FROM game_queue
+     WHERE event_id = ? AND queue_type = 'double_seeding'`,
+    [eventId],
+  );
+  const existingByMatchId = new Map(
+    existingRows.map((e) => [e.double_seeding_match_id, e]),
+  );
+
+  const maxPos = await db.get<{ max_pos: number | null }>(
+    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+    [eventId],
+  );
+  let nextPos = (maxPos?.max_pos ?? 0) + 1;
+
+  await db.transaction(async (tx) => {
+    for (const match of matches) {
+      const hasTeam = match.team1_id != null || match.team2_id != null;
+      const isEligible = hasTeam && ['ready', 'pending'].includes(match.status);
+      const isCompleted =
+        match.status === 'completed' || acceptedSet.has(match.id);
+      const existing = existingByMatchId.get(match.id);
+
+      if (existing) {
+        if (isCompleted) {
+          if (pendingSet.has(match.id)) {
+            await tx.run(
+              `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
+              [existing.id],
+            );
+          } else {
+            await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+          }
+        } else if (
+          isEligible &&
+          existing.status === 'scored' &&
+          !pendingSet.has(match.id)
+        ) {
+          await tx.run(
+            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
+            [existing.id],
+          );
+        } else if (!isEligible && !isCompleted && !hasTeam) {
+          await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+        }
+      } else if (isEligible && !isCompleted) {
+        await tx.run(
+          `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
+           VALUES (?, ?, 'double_seeding', ?, ?)`,
+          [
+            eventId,
+            match.id,
+            nextPos++,
+            pendingSet.has(match.id) ? 'scored' : 'queued',
+          ],
+        );
+      }
+    }
+  });
+}
+
 // GET /queue/event/:eventId - Get queue for event (public for judges)
 router.get(
   '/event/:eventId',
@@ -298,6 +407,9 @@ router.get(
         if (!qt || qt === 'bracket') {
           await syncBracketQueue(db, eventIdNum);
         }
+        if (!qt || qt === 'double_seeding') {
+          await syncDoubleSeedingQueue(db, eventIdNum);
+        }
       }
 
       let query = `
@@ -306,13 +418,20 @@ router.get(
              b.name as bracket_name,
              t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
              t2.team_number as team2_number, t2.team_name as team2_name, t2.display_name as team2_display,
-             st.team_number as seeding_team_number, st.team_name as seeding_team_name, st.display_name as seeding_team_display
+             st.team_number as seeding_team_number, st.team_name as seeding_team_name, st.display_name as seeding_team_display,
+             dsm.round_number as double_seeding_round, dsm.match_number as double_seeding_match_number,
+             dsm.team1_id as double_seeding_team1_id, dsm.team2_id as double_seeding_team2_id,
+             dst1.team_number as double_seeding_team1_number, dst1.team_name as double_seeding_team1_name, dst1.display_name as double_seeding_team1_display,
+             dst2.team_number as double_seeding_team2_number, dst2.team_name as double_seeding_team2_name, dst2.display_name as double_seeding_team2_display
       FROM game_queue gq
       LEFT JOIN bracket_games bg ON gq.bracket_game_id = bg.id
       LEFT JOIN brackets b ON bg.bracket_id = b.id
       LEFT JOIN teams t1 ON bg.team1_id = t1.id
       LEFT JOIN teams t2 ON bg.team2_id = t2.id
       LEFT JOIN teams st ON gq.seeding_team_id = st.id
+      LEFT JOIN double_seeding_matches dsm ON gq.double_seeding_match_id = dsm.id
+      LEFT JOIN teams dst1 ON dsm.team1_id = dst1.id
+      LEFT JOIN teams dst2 ON dsm.team2_id = dst2.id
       WHERE gq.event_id = ?
     `;
       const params: (string | number)[] = [eventId];
@@ -362,6 +481,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       bracket_game_id,
       seeding_team_id,
       seeding_round,
+      double_seeding_match_id,
       queue_type,
       queue_position,
       table_number,
@@ -385,10 +505,16 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
           'seeding_team_id and seeding_round are required for seeding queue type',
       });
     }
+    if (queue_type === 'double_seeding' && !double_seeding_match_id) {
+      return res.status(400).json({
+        error:
+          'double_seeding_match_id is required for double_seeding queue type',
+      });
+    }
 
     const db = await getDatabase();
 
-    // Application-level constraint: never queue the same game/seeding round twice
+    // Application-level constraint: never queue the same game/seeding round/match twice
     if (queue_type === 'bracket') {
       const existing = await db.get(
         'SELECT id FROM game_queue WHERE bracket_game_id = ?',
@@ -398,6 +524,16 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
         return res
           .status(409)
           .json({ error: 'This game is already in the queue' });
+      }
+    } else if (queue_type === 'double_seeding') {
+      const existing = await db.get(
+        'SELECT id FROM game_queue WHERE double_seeding_match_id = ?',
+        [double_seeding_match_id],
+      );
+      if (existing) {
+        return res
+          .status(409)
+          .json({ error: 'This match is already in the queue' });
       }
     } else {
       const existing = await db.get(
@@ -423,14 +559,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const result = await db.run(
       `INSERT INTO game_queue (
-         event_id, bracket_game_id, seeding_team_id, seeding_round,
+         event_id, bracket_game_id, seeding_team_id, seeding_round, double_seeding_match_id,
          queue_type, queue_position, status, table_number
-       ) VALUES (?, ?, ?, ?, ?, ?, 'queued', ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
       [
         event_id,
         queue_type === 'bracket' ? bracket_game_id : null,
         queue_type === 'seeding' ? seeding_team_id : null,
         queue_type === 'seeding' ? seeding_round : null,
+        queue_type === 'double_seeding' ? double_seeding_match_id : null,
         queue_type,
         position,
         table_number ?? null,

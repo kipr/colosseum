@@ -20,6 +20,7 @@ export interface Event {
   location: string | null;
   status: EventStatus;
   seeding_rounds: number;
+  double_seeding_rounds: number;
   score_accept_mode: ScoreAcceptMode;
   spectator_results_released: boolean;
   created_by: number | null;

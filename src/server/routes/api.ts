@@ -12,6 +12,7 @@ import {
   acceptEventScore,
   updateBracketQueueItem,
   updateSeedingQueueItem,
+  updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
 
 const router = express.Router();
@@ -34,6 +35,7 @@ router.post(
         scoreType,
         game_queue_id,
         bracket_game_id,
+        double_seeding_match_id,
       } = req.body;
 
       if (!templateId || !scoreData) {
@@ -97,7 +99,39 @@ router.post(
         });
       }
 
-      const isDbBacked = isDbBackedSeeding || isDbBackedBracket;
+      // DB-backed double-seeding submission: validate the match belongs to the event
+      const attemptingDbBackedDoubleSeeding =
+        eventId &&
+        scoreType === 'double_seeding' &&
+        double_seeding_match_id != null;
+      let isDbBackedDoubleSeeding = false;
+      if (attemptingDbBackedDoubleSeeding) {
+        const match = await db.get(
+          `SELECT id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
+          [double_seeding_match_id, eventId],
+        );
+        if (!match) {
+          return res.status(400).json({
+            error:
+              'Double-seeding match not found or does not belong to this event. Invalid event.',
+          });
+        }
+        isDbBackedDoubleSeeding = true;
+      }
+
+      if (
+        eventId &&
+        scoreType === 'double_seeding' &&
+        double_seeding_match_id == null
+      ) {
+        return res.status(400).json({
+          error:
+            'double_seeding_match_id is required for DB-backed double-seeding submission',
+        });
+      }
+
+      const isDbBacked =
+        isDbBackedSeeding || isDbBackedBracket || isDbBackedDoubleSeeding;
 
       // Single event validation for seeding (bracket already validated via game query)
       if (attemptingDbBackedSeeding) {
@@ -127,7 +161,7 @@ router.post(
       if (!isDbBacked) {
         return res.status(400).json({
           error:
-            'Event-scoped submission is required. Provide eventId and scoreType (seeding or bracket) with bracket_game_id for bracket scores.',
+            'Event-scoped submission is required. Provide eventId and scoreType (seeding, bracket, or double_seeding) with bracket_game_id for bracket scores and double_seeding_match_id for double-seeding scores.',
         });
       }
 
@@ -147,8 +181,8 @@ router.post(
 
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null,
           templateId,
@@ -159,6 +193,7 @@ router.post(
           isDbBacked ? scoreType : null,
           game_queue_id ?? null,
           isDbBackedBracket ? bracket_game_id : null,
+          isDbBackedDoubleSeeding ? double_seeding_match_id : null,
         ],
       );
 
@@ -205,6 +240,16 @@ router.post(
             db,
             eventId,
             Number(bracket_game_id),
+            true,
+          );
+        } else if (
+          scoreType === 'double_seeding' &&
+          double_seeding_match_id != null
+        ) {
+          await updateDoubleSeedingQueueItem(
+            db,
+            eventId,
+            Number(double_seeding_match_id),
             true,
           );
         }

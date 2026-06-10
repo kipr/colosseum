@@ -17,6 +17,9 @@ const TeamsTab = lazy(() => import('../components/admin/TeamsTab'));
 const ScoreSheetsTab = lazy(() => import('../components/admin/ScoreSheetsTab'));
 const ScoringTab = lazy(() => import('../components/admin/ScoringTab'));
 const SeedingTab = lazy(() => import('../components/admin/SeedingTab'));
+const DoubleSeedingTab = lazy(
+  () => import('../components/admin/DoubleSeedingTab'),
+);
 const BracketsTab = lazy(() => import('../components/admin/BracketsTab'));
 const QueueTab = lazy(() => import('../components/admin/QueueTab'));
 const JudgeChatTab = lazy(() => import('../components/admin/JudgeChatTab'));
@@ -36,6 +39,7 @@ const TAB_LABELS: Record<AdminView, string> = {
   scoresheets: 'Score Sheets',
   scoring: 'Scoring',
   seeding: 'Seeding',
+  'double-seeding': 'Double Seeding',
   brackets: 'Brackets',
   queue: 'Queue',
   'judge-chat': 'Judge Chat',
@@ -52,6 +56,7 @@ const TAB_ICONS: Record<AdminView, string> = {
   scoresheets: '📝',
   scoring: '🏆',
   seeding: '🌱',
+  'double-seeding': '🌿',
   brackets: '🏅',
   queue: '🎟️',
   'judge-chat': '💬',
@@ -234,6 +239,7 @@ export default function Admin() {
               {activeTab === 'scoresheets' && <ScoreSheetsTab />}
               {activeTab === 'scoring' && <ScoringTab />}
               {activeTab === 'seeding' && <SeedingTab />}
+              {activeTab === 'double-seeding' && <DoubleSeedingTab />}
               {activeTab === 'brackets' && <BracketsTab />}
               {activeTab === 'queue' && <QueueTab />}
               {activeTab === 'judge-chat' && <JudgeChatTab />}

@@ -34,6 +34,7 @@ export interface SeedEventData {
   location?: string;
   status?: string;
   seeding_rounds?: number;
+  double_seeding_rounds?: number;
   score_accept_mode?: string;
   created_by?: number;
 }
@@ -43,8 +44,8 @@ export async function seedEvent(
   data: SeedEventData = {},
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, score_accept_mode, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, double_seeding_rounds, score_accept_mode, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.name ?? 'Test Event',
       data.description ?? null,
@@ -52,6 +53,7 @@ export async function seedEvent(
       data.location ?? null,
       data.status ?? 'setup',
       data.seeding_rounds ?? 3,
+      data.double_seeding_rounds ?? 0,
       data.score_accept_mode ?? 'manual',
       data.created_by ?? null,
     ],
@@ -147,11 +149,12 @@ export async function seedBracketGame(
 
 export interface SeedQueueItemData {
   event_id: number;
-  queue_type: 'seeding' | 'bracket';
+  queue_type: 'seeding' | 'bracket' | 'double_seeding';
   queue_position: number;
   bracket_game_id?: number | null;
   seeding_team_id?: number | null;
   seeding_round?: number | null;
+  double_seeding_match_id?: number | null;
   status?: string;
   table_number?: number | null;
 }
@@ -161,13 +164,14 @@ export async function seedQueueItem(
   data: SeedQueueItemData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO game_queue (event_id, bracket_game_id, seeding_team_id, seeding_round, queue_type, queue_position, status, table_number)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO game_queue (event_id, bracket_game_id, seeding_team_id, seeding_round, double_seeding_match_id, queue_type, queue_position, status, table_number)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.event_id,
       data.bracket_game_id ?? null,
       data.seeding_team_id ?? null,
       data.seeding_round ?? null,
+      data.double_seeding_match_id ?? null,
       data.queue_type,
       data.queue_position,
       data.status ?? 'queued',
@@ -222,7 +226,7 @@ export async function seedScoresheetTemplate(
 export interface SeedEventScoresheetTemplateData {
   event_id: number;
   template_id: number;
-  template_type: 'seeding' | 'bracket';
+  template_type: 'seeding' | 'bracket' | 'double_seeding';
   is_default?: boolean;
 }
 
@@ -255,6 +259,7 @@ export interface SeedScoreSubmissionData {
   seeding_score_id?: number | null;
   score_type?: string | null;
   game_queue_id?: number | null;
+  double_seeding_match_id?: number | null;
 }
 
 export async function seedScoreSubmission(
@@ -262,8 +267,8 @@ export async function seedScoreSubmission(
   data: SeedScoreSubmissionData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO score_submissions (user_id, template_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO score_submissions (user_id, template_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id, double_seeding_match_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.user_id ?? null,
       data.template_id,
@@ -276,6 +281,7 @@ export async function seedScoreSubmission(
       data.seeding_score_id ?? null,
       data.score_type ?? null,
       data.game_queue_id ?? null,
+      data.double_seeding_match_id ?? null,
     ],
   );
   return { id: result.lastID! };
@@ -406,6 +412,68 @@ export async function seedDocumentationSubScore(
     `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
      VALUES (?, ?, ?)`,
     [data.documentation_score_id, data.category_id, data.score],
+  );
+  return { id: result.lastID! };
+}
+
+// ── Double seeding ──
+
+export interface SeedDoubleSeedingMatchData {
+  event_id: number;
+  round_number: number;
+  match_number?: number | null;
+  team1_id?: number | null;
+  team2_id?: number | null;
+  status?: string;
+  score_submission_id?: number | null;
+}
+
+export async function seedDoubleSeedingMatch(
+  db: Database,
+  data: SeedDoubleSeedingMatchData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO double_seeding_matches (event_id, round_number, match_number, team1_id, team2_id, status, score_submission_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      data.event_id,
+      data.round_number,
+      data.match_number ?? null,
+      data.team1_id ?? null,
+      data.team2_id ?? null,
+      data.status ?? 'ready',
+      data.score_submission_id ?? null,
+    ],
+  );
+  return { id: result.lastID! };
+}
+
+export interface SeedDoubleSeedingScoreData {
+  event_id: number;
+  match_id: number;
+  team_id: number;
+  round_number: number;
+  side: 'team1' | 'team2';
+  score?: number | null;
+  score_submission_id?: number | null;
+}
+
+export async function seedDoubleSeedingScore(
+  db: Database,
+  data: SeedDoubleSeedingScoreData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO double_seeding_scores (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+    [
+      data.event_id,
+      data.match_id,
+      data.team_id,
+      data.round_number,
+      data.side,
+      data.score ?? null,
+      data.score_submission_id ?? null,
+    ],
   );
   return { id: result.lastID! };
 }

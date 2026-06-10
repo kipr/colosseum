@@ -374,6 +374,15 @@ export default function EventsTab() {
     },
     {
       kind: 'data',
+      id: 'double_seeding',
+      header: { full: 'Double Seeding' },
+      renderCell: (event) =>
+        event.double_seeding_rounds > 0
+          ? `${event.double_seeding_rounds} round${event.double_seeding_rounds === 1 ? '' : 's'}`
+          : 'Disabled',
+    },
+    {
+      kind: 'data',
       id: 'created',
       header: { full: 'Created' },
       renderCell: (event) => formatDate(event.created_at),
@@ -504,6 +513,12 @@ export default function EventsTab() {
                 <span>
                   <strong>Seeding Rounds:</strong>{' '}
                   {selectedEvent.seeding_rounds}
+                </span>
+                <span>
+                  <strong>Double Seeding:</strong>{' '}
+                  {selectedEvent.double_seeding_rounds > 0
+                    ? `${selectedEvent.double_seeding_rounds} round${selectedEvent.double_seeding_rounds === 1 ? '' : 's'}`
+                    : 'Disabled'}
                 </span>
               </div>
             </div>

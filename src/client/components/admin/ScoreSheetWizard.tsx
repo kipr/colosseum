@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect } from 'react';
 import { useEvent } from '../../contexts/EventContext';
-import { buildDoubleEliminationSchema } from '../scoresheetUtils';
+import {
+  buildDoubleEliminationSchema,
+  buildDoubleSeedingSchema,
+} from '../scoresheetUtils';
 import '../Modal.css';
 
 interface FieldTemplate {
@@ -22,7 +25,7 @@ interface ScoreSheetWizardProps {
 }
 
 type StepType = 'type' | 'template' | 'basic' | 'review';
-type SheetType = 'seeding' | 'de';
+type SheetType = 'seeding' | 'double_seeding' | 'de';
 
 export default function ScoreSheetWizard({
   onComplete,
@@ -73,6 +76,8 @@ export default function ScoreSheetWizard({
   const generateSchema = () => {
     if (sheetType === 'seeding') {
       return generateSeedingSchema();
+    } else if (sheetType === 'double_seeding') {
+      return generateDoubleSeedingSchema();
     } else {
       return generateDESchema();
     }
@@ -198,6 +203,14 @@ export default function ScoreSheetWizard({
     });
   };
 
+  const generateDoubleSeedingSchema = () => {
+    return buildDoubleSeedingSchema({
+      title: name || 'Double Seeding Score Sheet',
+      eventId: selectedEvent?.id ?? null,
+      templateFields: selectedTemplate?.fields ?? null,
+    });
+  };
+
   const handleNext = () => {
     if (currentStep === 'type') {
       setCurrentStep('template');
@@ -296,6 +309,24 @@ export default function ScoreSheetWizard({
                 <div style={{ fontWeight: 'bold' }}>Seeding</div>
                 <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
                   For qualification rounds
+                </div>
+              </button>
+
+              <button
+                className={`btn ${sheetType === 'double_seeding' ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setSheetType('double_seeding')}
+                style={{
+                  flex: 1,
+                  padding: '2rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                }}
+              >
+                <div style={{ fontSize: '2rem' }}>👥</div>
+                <div style={{ fontWeight: 'bold' }}>Double Seeding</div>
+                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                  Paired rounds, per-side scores
                 </div>
               </button>
 
@@ -504,7 +535,11 @@ export default function ScoreSheetWizard({
             >
               <div style={{ marginBottom: '0.75rem' }}>
                 <strong>Type:</strong>{' '}
-                {sheetType === 'seeding' ? 'Seeding' : 'Double Elimination'}
+                {sheetType === 'seeding'
+                  ? 'Seeding'
+                  : sheetType === 'double_seeding'
+                    ? 'Double Seeding'
+                    : 'Double Elimination'}
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
                 <strong>Name:</strong> {name}
@@ -528,6 +563,13 @@ export default function ScoreSheetWizard({
               {sheetType === 'seeding' && (
                 <div style={{ marginBottom: '0.75rem' }}>
                   <strong>Score Destination:</strong> Database ( seeding_scores)
+                </div>
+              )}
+              {sheetType === 'double_seeding' && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <strong>Score Destination:</strong> Database
+                  (double_seeding_scores) — matches selected from the
+                  double-seeding queue
                 </div>
               )}
               {sheetType === 'de' && (

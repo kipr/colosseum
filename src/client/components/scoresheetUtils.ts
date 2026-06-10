@@ -27,6 +27,24 @@ export interface DbBracketSource {
   bracketId?: number | null;
 }
 
+export function shouldHideSoloDoubleSeedingField(
+  fieldId: string | undefined,
+  formData: Record<string, any>,
+  isDoubleSeeding: boolean,
+): boolean {
+  if (
+    !isDoubleSeeding ||
+    formData.double_seeding_match_id == null ||
+    formData.team_b_id != null
+  ) {
+    return false;
+  }
+
+  return ['team_b_team_initials', 'side_b_team_initials'].includes(
+    fieldId ?? '',
+  );
+}
+
 const REPEATABLE_GROUP_TEXT_TYPES = new Set(['text', 'dropdown', 'buttons']);
 
 function isBlankRepeatableGroupValue(value: any, field?: any): boolean {
@@ -564,6 +582,130 @@ export function buildDoubleEliminationSchema(options: {
   });
 
   if (templateFields && templateFields.length > 0) {
+    schema.fields.push(...adaptDoubleEliminationFields(templateFields));
+    return schema;
+  }
+
+  schema.fields.push({
+    id: 'section_header_team_a',
+    label: 'TEAM A',
+    type: 'section_header',
+    column: 'left',
+  });
+
+  schema.fields.push({
+    id: 'team_a_score',
+    label: 'Team A Score',
+    type: 'number',
+    column: 'left',
+    required: false,
+    min: 0,
+    step: 1,
+  });
+
+  schema.fields.push({
+    id: 'team_a_total',
+    label: 'TEAM A TOTAL',
+    type: 'calculated',
+    column: 'left',
+    isTotal: true,
+    formula: 'team_a_score',
+  });
+
+  schema.fields.push({
+    id: 'section_header_team_b',
+    label: 'TEAM B',
+    type: 'section_header',
+    column: 'right',
+  });
+
+  schema.fields.push({
+    id: 'team_b_score',
+    label: 'Team B Score',
+    type: 'number',
+    column: 'right',
+    required: false,
+    min: 0,
+    step: 1,
+  });
+
+  schema.fields.push({
+    id: 'team_b_total',
+    label: 'TEAM B TOTAL',
+    type: 'calculated',
+    column: 'right',
+    isTotal: true,
+    formula: 'team_b_score',
+  });
+
+  return schema;
+}
+
+/**
+ * Build a double-seeding scoresheet schema. Two teams share one match and
+ * scoresheet, but each team only receives its own side total — so there is no
+ * winner selection and no combined grand total. The match is selected from the
+ * double-seeding queue (handled by ScoresheetForm via `scoreKind`).
+ */
+export function buildDoubleSeedingSchema(options: {
+  title: string;
+  eventId: number | null;
+  templateFields?: any[] | null;
+}): any {
+  const { title, eventId, templateFields } = options;
+  const schema: any = {
+    layout: 'two-column',
+    scoreKind: 'double_seeding',
+    title: title || 'Double Seeding Score Sheet',
+    eventId,
+    scoreDestination: 'db',
+    teamsDataSource: {
+      type: 'db',
+      eventId,
+      teamNumberField: 'team_number',
+      teamNameField: 'team_name',
+    },
+    fields: [],
+  };
+
+  schema.fields.push({
+    id: 'team_a_number',
+    label: 'Team A Number',
+    type: 'text',
+    required: true,
+    autoPopulated: true,
+    placeholder: 'Select match first',
+  });
+
+  schema.fields.push({
+    id: 'team_a_name',
+    label: 'Team A Name',
+    type: 'text',
+    required: true,
+    autoPopulated: true,
+    placeholder: 'Select match first',
+  });
+
+  schema.fields.push({
+    id: 'team_b_number',
+    label: 'Team B Number',
+    type: 'text',
+    required: false,
+    autoPopulated: true,
+    placeholder: 'Select match first',
+  });
+
+  schema.fields.push({
+    id: 'team_b_name',
+    label: 'Team B Name',
+    type: 'text',
+    required: false,
+    autoPopulated: true,
+    placeholder: 'Select match first',
+  });
+
+  if (templateFields && templateFields.length > 0) {
+    // Reuse the side A/B field adaptation from DE; side totals stay separate.
     schema.fields.push(...adaptDoubleEliminationFields(templateFields));
     return schema;
   }

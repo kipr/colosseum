@@ -2,6 +2,11 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import SeedingDisplay from '../components/seeding/SeedingDisplay';
+import DoubleSeedingDisplay from '../components/doubleSeeding/DoubleSeedingDisplay';
+import type {
+  DoubleSeedingScore,
+  DoubleSeedingRanking,
+} from '../components/doubleSeeding/DoubleSeedingScoresTable';
 import BracketLikeView from '../components/bracket/BracketLikeView';
 import BracketRankingView from '../components/bracket/BracketRankingView';
 import DocumentationScoresDisplay from '../components/documentation/DocumentationScoresDisplay';
@@ -54,11 +59,13 @@ interface PublicEvent {
   event_date: string | null;
   location: string | null;
   seeding_rounds: number;
+  double_seeding_rounds: number;
   final_scores_available: boolean;
 }
 
 type EffectiveTab =
   | 'seeding'
+  | 'double-seeding'
   | 'bracket'
   | 'documentation'
   | 'awards'
@@ -81,6 +88,16 @@ export default function Spectator() {
   const [scores, setScores] = useState<SeedingScore[]>([]);
   const [rankings, setRankings] = useState<SeedingRanking[]>([]);
   const [seedingLoading, setSeedingLoading] = useState(false);
+
+  // Double-seeding state (lazy-loaded)
+  const [doubleSeedingScores, setDoubleSeedingScores] = useState<
+    DoubleSeedingScore[]
+  >([]);
+  const [doubleSeedingRankings, setDoubleSeedingRankings] = useState<
+    DoubleSeedingRanking[]
+  >([]);
+  const [doubleSeedingLoading, setDoubleSeedingLoading] = useState(false);
+  const [doubleSeedingLoaded, setDoubleSeedingLoaded] = useState(false);
 
   // Bracket state
   const [brackets, setBrackets] = useState<Bracket[]>([]);
@@ -173,6 +190,28 @@ export default function Spectator() {
     [selectedEvent],
   );
 
+  const doubleSeedingRounds = selectedEvent?.double_seeding_rounds ?? 0;
+  const doubleSeedingAvailable = doubleSeedingRounds > 0;
+
+  useEffect(() => {
+    if (
+      selectedEventId &&
+      selectedEvent &&
+      activeTab === 'double-seeding' &&
+      !doubleSeedingAvailable
+    ) {
+      navigate(spectatorEventPath(selectedEventId, 'seeding'), {
+        replace: true,
+      });
+    }
+  }, [
+    activeTab,
+    doubleSeedingAvailable,
+    navigate,
+    selectedEvent,
+    selectedEventId,
+  ]);
+
   // If no eventId in URL, redirect to event selection page
   useEffect(() => {
     if (!eventIdParam) {
@@ -207,6 +246,9 @@ export default function Spectator() {
 
   // Clear lazy-loaded state when event changes
   useEffect(() => {
+    setDoubleSeedingLoaded(false);
+    setDoubleSeedingScores([]);
+    setDoubleSeedingRankings([]);
     setDocLoaded(false);
     setDocCategories([]);
     setDocScores([]);
@@ -250,6 +292,29 @@ export default function Spectator() {
   useEffect(() => {
     loadSeeding();
   }, [loadSeeding]);
+
+  // Lazy-load double-seeding data when tab is opened
+  useEffect(() => {
+    if (
+      activeTab !== 'double-seeding' ||
+      !selectedEventId ||
+      doubleSeedingLoaded
+    )
+      return;
+    setDoubleSeedingLoading(true);
+    Promise.all([
+      fetch(`/double-seeding/scores/event/${selectedEventId}`),
+      fetch(`/double-seeding/rankings/event/${selectedEventId}`),
+    ])
+      .then(async ([scoresRes, rankingsRes]) => {
+        if (!scoresRes.ok || !rankingsRes.ok) throw new Error('Failed');
+        setDoubleSeedingScores(await scoresRes.json());
+        setDoubleSeedingRankings(await rankingsRes.json());
+        setDoubleSeedingLoaded(true);
+      })
+      .catch((err) => console.error('Error loading double-seeding data:', err))
+      .finally(() => setDoubleSeedingLoading(false));
+  }, [activeTab, selectedEventId, doubleSeedingLoaded]);
 
   // Load brackets list when event changes
   useEffect(() => {
@@ -492,6 +557,14 @@ export default function Spectator() {
                 >
                   Seeding
                 </button>
+                {doubleSeedingAvailable && (
+                  <button
+                    className={`spectator-tab-btn ${activeTab === 'double-seeding' ? 'active' : ''}`}
+                    onClick={() => navigateToTab('double-seeding')}
+                  >
+                    Double Seeding
+                  </button>
+                )}
                 <button
                   className={`spectator-tab-btn ${activeTab === 'bracket' ? 'active' : ''}`}
                   onClick={() => navigateToTab('bracket')}
@@ -538,6 +611,22 @@ export default function Spectator() {
                       scores={scores}
                       rankings={rankings}
                       effectiveRounds={effectiveRounds}
+                      variant="spectator"
+                    />
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'double-seeding' && doubleSeedingAvailable && (
+                <div className="spectator-seeding-view">
+                  {doubleSeedingLoading ? (
+                    <p>Loading double-seeding data...</p>
+                  ) : (
+                    <DoubleSeedingDisplay
+                      teams={teams}
+                      scores={doubleSeedingScores}
+                      rankings={doubleSeedingRankings}
+                      effectiveRounds={doubleSeedingRounds}
                       variant="spectator"
                     />
                   )}

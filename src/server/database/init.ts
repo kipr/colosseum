@@ -246,6 +246,269 @@ async function migrateRemoveSpreadsheetArtifactsSQLite(
   }
 }
 
+/**
+ * SQLite: add double-seeding columns and widen CHECK constraints on existing
+ * databases. Fresh databases get the final schema from CREATE TABLE directly,
+ * so every step here is guarded by a schema inspection and no-ops when the
+ * schema is already current.
+ *
+ * Must run after the double_seeding_* tables exist (new columns reference
+ * double_seeding_matches).
+ */
+async function migrateDoubleSeedingSQLite(db: Database): Promise<void> {
+  const tableSql = async (table: string): Promise<string> => {
+    const row = await db.get<{ sql: string | null }>(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name=?`,
+      [table],
+    );
+    return row?.sql ?? '';
+  };
+
+  if (!(await tableSql('events')).includes('double_seeding_rounds')) {
+    await db.exec(
+      `ALTER TABLE events ADD COLUMN double_seeding_rounds INTEGER DEFAULT 0`,
+    );
+  }
+
+  if (
+    !(await tableSql('score_submissions')).includes('double_seeding_match_id')
+  ) {
+    await db.exec(
+      `ALTER TABLE score_submissions ADD COLUMN double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE SET NULL`,
+    );
+  }
+
+  // Rebuild event_scoresheet_templates when template_type CHECK lacks double_seeding.
+  if (
+    !(await tableSql('event_scoresheet_templates')).includes('double_seeding')
+  ) {
+    await db.exec(`PRAGMA foreign_keys=OFF`);
+    try {
+      await db.transaction(async (tx) => {
+        await tx.exec(`DROP TABLE IF EXISTS event_scoresheet_templates_new`);
+        await tx.exec(`
+          CREATE TABLE event_scoresheet_templates_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            template_id INTEGER NOT NULL REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
+            template_type TEXT NOT NULL
+              CHECK (template_type IN ('seeding', 'bracket', 'double_seeding')),
+            is_default BOOLEAN DEFAULT FALSE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(event_id, template_id, template_type)
+          )
+        `);
+        await tx.exec(`
+          INSERT INTO event_scoresheet_templates_new (
+            id, event_id, template_id, template_type, is_default, created_at
+          )
+          SELECT id, event_id, template_id, template_type, is_default, created_at
+          FROM event_scoresheet_templates
+        `);
+        await tx.exec(`DROP TABLE event_scoresheet_templates`);
+        await tx.exec(
+          `ALTER TABLE event_scoresheet_templates_new RENAME TO event_scoresheet_templates`,
+        );
+      });
+    } finally {
+      await db.exec(`PRAGMA foreign_keys=ON`);
+    }
+  }
+
+  // Rebuild game_queue when queue_type CHECK lacks double_seeding.
+  if (!(await tableSql('game_queue')).includes('double_seeding')) {
+    await db.exec(`PRAGMA foreign_keys=OFF`);
+    try {
+      await db.transaction(async (tx) => {
+        await tx.exec(`DROP TABLE IF EXISTS game_queue_new`);
+        await tx.exec(`
+          CREATE TABLE game_queue_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+            bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
+            seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+            seeding_round INTEGER,
+            double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE CASCADE,
+            queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket', 'double_seeding')),
+            queue_position INTEGER NOT NULL,
+            status TEXT DEFAULT 'queued'
+              CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
+            called_at DATETIME,
+            table_number INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            CHECK (
+              (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL AND double_seeding_match_id IS NULL)
+              OR
+              (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL AND double_seeding_match_id IS NULL)
+              OR
+              (queue_type = 'double_seeding' AND double_seeding_match_id IS NOT NULL AND bracket_game_id IS NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
+            )
+          )
+        `);
+        await tx.exec(`
+          INSERT INTO game_queue_new (
+            id, event_id, bracket_game_id, seeding_team_id, seeding_round,
+            queue_type, queue_position, status, called_at, table_number, created_at, updated_at
+          )
+          SELECT
+            id, event_id, bracket_game_id, seeding_team_id, seeding_round,
+            queue_type, queue_position, status, called_at, table_number, created_at, updated_at
+          FROM game_queue
+        `);
+        await tx.exec(`DROP TABLE game_queue`);
+        await tx.exec(`ALTER TABLE game_queue_new RENAME TO game_queue`);
+      });
+    } finally {
+      await db.exec(`PRAGMA foreign_keys=ON`);
+    }
+
+    await db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event ON game_queue(event_id)`,
+    );
+    await db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_position ON game_queue(event_id, queue_position)`,
+    );
+    await db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
+    );
+  }
+}
+
+/**
+ * PostgreSQL: add double-seeding columns and widen CHECK constraints.
+ * Idempotent: column additions use IF NOT EXISTS and the constraint rewrite
+ * only runs when the existing constraint lacks 'double_seeding'.
+ *
+ * Must run after the double_seeding_* tables exist.
+ */
+async function migrateDoubleSeedingPostgres(db: Database): Promise<void> {
+  await db.exec(
+    `ALTER TABLE events ADD COLUMN IF NOT EXISTS double_seeding_rounds INTEGER DEFAULT 0`,
+  );
+
+  await db.exec(
+    `ALTER TABLE score_submissions ADD COLUMN IF NOT EXISTS double_seeding_match_id INTEGER`,
+  );
+  await db.exec(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE constraint_name = 'score_submissions_double_seeding_match_id_fkey'
+          AND table_name = 'score_submissions'
+      ) THEN
+        ALTER TABLE score_submissions
+          ADD CONSTRAINT score_submissions_double_seeding_match_id_fkey
+          FOREIGN KEY (double_seeding_match_id) REFERENCES double_seeding_matches(id) ON DELETE SET NULL;
+      END IF;
+    END $$
+  `);
+
+  await db.exec(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'game_queue' AND column_name = 'double_seeding_match_id'
+      ) THEN
+        ALTER TABLE game_queue
+          ADD COLUMN double_seeding_match_id INTEGER
+            REFERENCES double_seeding_matches(id) ON DELETE CASCADE;
+      END IF;
+    END $$
+  `);
+
+  // Widen game_queue queue_type + identity CHECK constraints.
+  await db.exec(`
+    DO $$
+    DECLARE
+      r RECORD;
+      needs_migration BOOLEAN := FALSE;
+    BEGIN
+      FOR r IN (
+        SELECT c.conname, pg_get_constraintdef(c.oid) AS condef
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE t.relname = 'game_queue'
+          AND c.contype = 'c'
+          AND pg_get_constraintdef(c.oid) ILIKE '%queue_type%'
+      ) LOOP
+        IF r.condef NOT ILIKE '%double_seeding%' THEN
+          needs_migration := TRUE;
+        END IF;
+      END LOOP;
+
+      IF needs_migration THEN
+        FOR r IN (
+          SELECT c.conname
+          FROM pg_constraint c
+          JOIN pg_class t ON c.conrelid = t.oid
+          WHERE t.relname = 'game_queue'
+            AND c.contype = 'c'
+            AND pg_get_constraintdef(c.oid) ILIKE '%queue_type%'
+        ) LOOP
+          EXECUTE format(
+            'ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS %I',
+            r.conname
+          );
+        END LOOP;
+
+        ALTER TABLE game_queue ADD CONSTRAINT game_queue_queue_type_check
+          CHECK (queue_type IN ('seeding', 'bracket', 'double_seeding'));
+        ALTER TABLE game_queue ADD CONSTRAINT game_queue_identity_check
+          CHECK (
+            (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL AND double_seeding_match_id IS NULL)
+            OR
+            (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL AND double_seeding_match_id IS NULL)
+            OR
+            (queue_type = 'double_seeding' AND double_seeding_match_id IS NOT NULL AND bracket_game_id IS NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
+          );
+      END IF;
+    END $$;
+  `);
+
+  // Widen event_scoresheet_templates template_type CHECK.
+  await db.exec(`
+    DO $$
+    DECLARE
+      r RECORD;
+      needs_migration BOOLEAN := FALSE;
+    BEGIN
+      FOR r IN (
+        SELECT c.conname, pg_get_constraintdef(c.oid) AS condef
+        FROM pg_constraint c
+        JOIN pg_class t ON c.conrelid = t.oid
+        WHERE t.relname = 'event_scoresheet_templates'
+          AND c.contype = 'c'
+          AND pg_get_constraintdef(c.oid) ILIKE '%template_type%'
+      ) LOOP
+        IF r.condef NOT ILIKE '%double_seeding%' THEN
+          needs_migration := TRUE;
+        END IF;
+      END LOOP;
+
+      IF needs_migration THEN
+        FOR r IN (
+          SELECT c.conname
+          FROM pg_constraint c
+          JOIN pg_class t ON c.conrelid = t.oid
+          WHERE t.relname = 'event_scoresheet_templates'
+            AND c.contype = 'c'
+            AND pg_get_constraintdef(c.oid) ILIKE '%template_type%'
+        ) LOOP
+          EXECUTE format(
+            'ALTER TABLE event_scoresheet_templates DROP CONSTRAINT IF EXISTS %I',
+            r.conname
+          );
+        END LOOP;
+
+        ALTER TABLE event_scoresheet_templates
+          ADD CONSTRAINT event_scoresheet_templates_template_type_check
+          CHECK (template_type IN ('seeding', 'bracket', 'double_seeding'));
+      END IF;
+    END $$;
+  `);
+}
+
 export {
   migrateRemoveSpreadsheetArtifactsSQLite,
   migrateRemoveSpreadsheetArtifactsPostgres,
@@ -346,6 +609,7 @@ export async function initializePostgres(db: Database): Promise<void> {
       location TEXT,
       status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
       seeding_rounds INTEGER DEFAULT 3,
+      double_seeding_rounds INTEGER DEFAULT 0,
       score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
       spectator_results_released INTEGER NOT NULL DEFAULT 0,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -719,6 +983,66 @@ export async function initializePostgres(db: Database): Promise<void> {
   }
 
   // ============================================================================
+  // DOUBLE SEEDING
+  // ============================================================================
+
+  // Pre-paired double-seeding matches (one row per match per round).
+  // team2_id is NULL for odd-team single-team runs.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS double_seeding_matches (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL CHECK (round_number > 0),
+      match_number INTEGER,
+      team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'ready'
+        CHECK (status IN ('pending', 'ready', 'in_progress', 'completed', 'bye')),
+      score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
+      scheduled_time TIMESTAMP,
+      started_at TIMESTAMP,
+      completed_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, round_number, team1_id, team2_id)
+    )
+  `);
+
+  // Accepted per-team double-seeding scores (one row per participating side).
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS double_seeding_scores (
+      id SERIAL PRIMARY KEY,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      match_id INTEGER NOT NULL REFERENCES double_seeding_matches(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL CHECK (round_number > 0),
+      side TEXT NOT NULL CHECK (side IN ('team1', 'team2')),
+      score INTEGER,
+      score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
+      scored_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(match_id, side),
+      UNIQUE(event_id, team_id, round_number)
+    )
+  `);
+
+  // Computed/cached double-seeding results per team (recalculated when scores change).
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS double_seeding_rankings (
+      id SERIAL PRIMARY KEY,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      seed_average REAL,
+      seed_rank INTEGER CHECK (seed_rank > 0),
+      raw_double_seed_score REAL,
+      tiebreaker_value REAL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(team_id)
+    )
+  `);
+
+  // ============================================================================
   // MIGRATION: game_queue.status enum v2 (Postgres)
   // Maps legacy values, then replaces CHECK constraint with queued/called/arrived/on_table/scored.
   // ============================================================================
@@ -726,6 +1050,15 @@ export async function initializePostgres(db: Database): Promise<void> {
     await migrateGameQueueStatusV2Postgres(db);
   } catch (e) {
     console.warn('game_queue status v2 migration (Postgres):', e);
+  }
+
+  // ============================================================================
+  // MIGRATION: double seeding (new columns + widened CHECK constraints)
+  // ============================================================================
+  try {
+    await migrateDoubleSeedingPostgres(db);
+  } catch (e) {
+    console.warn('double seeding migration (Postgres):', e);
   }
 
   // ============================================================================
@@ -901,6 +1234,9 @@ export async function initializePostgres(db: Database): Promise<void> {
     'teams',
     'seeding_scores',
     'seeding_rankings',
+    'double_seeding_matches',
+    'double_seeding_scores',
+    'double_seeding_rankings',
     'brackets',
     'bracket_games',
     'game_queue',
@@ -1030,6 +1366,26 @@ export async function initializePostgres(db: Database): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_seeding_rankings_rank ON seeding_rankings(seed_rank)`,
   );
 
+  // Double seeding indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_matches_event_round ON double_seeding_matches(event_id, round_number)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_matches_team1 ON double_seeding_matches(team1_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_matches_team2 ON double_seeding_matches(team2_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_scores_event_team_round ON double_seeding_scores(event_id, team_id, round_number)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_scores_match ON double_seeding_scores(match_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_rankings_rank ON double_seeding_rankings(seed_rank)`,
+  );
+
   // Bracket indexes
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_brackets_event ON brackets(event_id)`,
@@ -1068,6 +1424,9 @@ export async function initializePostgres(db: Database): Promise<void> {
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
   );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_double_seeding_match ON game_queue(double_seeding_match_id)`,
+  );
 
   // Score submissions event-scoped indexes
   await db.exec(
@@ -1084,6 +1443,9 @@ export async function initializePostgres(db: Database): Promise<void> {
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_score_submissions_seeding_score ON score_submissions(seeding_score_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_double_seeding_match ON score_submissions(double_seeding_match_id)`,
   );
 
   // Other indexes
@@ -1202,6 +1564,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       seeding_score_id INTEGER REFERENCES seeding_scores(id) ON DELETE SET NULL,
       score_type TEXT,
       game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
+      double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE SET NULL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -1237,6 +1600,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       location TEXT,
       status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
       seeding_rounds INTEGER DEFAULT 3,
+      double_seeding_rounds INTEGER DEFAULT 0,
       score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
       spectator_results_released INTEGER NOT NULL DEFAULT 0,
       created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -1294,6 +1658,66 @@ export async function initializeSQLite(db: Database): Promise<void> {
       seed_average REAL,
       seed_rank INTEGER CHECK (seed_rank > 0),
       raw_seed_score REAL,
+      tiebreaker_value REAL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(team_id)
+    )
+  `);
+
+  // ============================================================================
+  // DOUBLE SEEDING
+  // ============================================================================
+
+  // Pre-paired double-seeding matches (one row per match per round).
+  // team2_id is NULL for odd-team single-team runs.
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS double_seeding_matches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL CHECK (round_number > 0),
+      match_number INTEGER,
+      team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      status TEXT NOT NULL DEFAULT 'ready'
+        CHECK (status IN ('pending', 'ready', 'in_progress', 'completed', 'bye')),
+      score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
+      scheduled_time DATETIME,
+      started_at DATETIME,
+      completed_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(event_id, round_number, team1_id, team2_id)
+    )
+  `);
+
+  // Accepted per-team double-seeding scores (one row per participating side).
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS double_seeding_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
+      match_id INTEGER NOT NULL REFERENCES double_seeding_matches(id) ON DELETE CASCADE,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      round_number INTEGER NOT NULL CHECK (round_number > 0),
+      side TEXT NOT NULL CHECK (side IN ('team1', 'team2')),
+      score INTEGER,
+      score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
+      scored_at DATETIME,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(match_id, side),
+      UNIQUE(event_id, team_id, round_number)
+    )
+  `);
+
+  // Computed/cached double-seeding results per team (recalculated when scores change).
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS double_seeding_rankings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      seed_average REAL,
+      seed_rank INTEGER CHECK (seed_rank > 0),
+      raw_double_seed_score REAL,
       tiebreaker_value REAL,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -1471,7 +1895,7 @@ export async function initializeSQLite(db: Database): Promise<void> {
       event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,
       template_id INTEGER NOT NULL REFERENCES scoresheet_templates(id) ON DELETE CASCADE,
       template_type TEXT NOT NULL
-        CHECK (template_type IN ('seeding', 'bracket')),
+        CHECK (template_type IN ('seeding', 'bracket', 'double_seeding')),
       is_default BOOLEAN DEFAULT FALSE,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(event_id, template_id, template_type)
@@ -1491,7 +1915,8 @@ export async function initializeSQLite(db: Database): Promise<void> {
       bracket_game_id INTEGER REFERENCES bracket_games(id) ON DELETE CASCADE,
       seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
       seeding_round INTEGER,
-      queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket')),
+      double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE CASCADE,
+      queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket', 'double_seeding')),
       queue_position INTEGER NOT NULL,
       status TEXT DEFAULT 'queued'
         CHECK (status IN ('queued', 'called', 'arrived', 'on_table', 'scored')),
@@ -1500,9 +1925,11 @@ export async function initializeSQLite(db: Database): Promise<void> {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       CHECK (
-        (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
+        (queue_type = 'bracket' AND bracket_game_id IS NOT NULL AND seeding_team_id IS NULL AND seeding_round IS NULL AND double_seeding_match_id IS NULL)
         OR
-        (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL)
+        (queue_type = 'seeding' AND bracket_game_id IS NULL AND seeding_team_id IS NOT NULL AND seeding_round IS NOT NULL AND double_seeding_match_id IS NULL)
+        OR
+        (queue_type = 'double_seeding' AND double_seeding_match_id IS NOT NULL AND bracket_game_id IS NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
       )
     )
   `);
@@ -1524,6 +1951,15 @@ export async function initializeSQLite(db: Database): Promise<void> {
     await migrateRemoveSpreadsheetArtifactsSQLite(db);
   } catch (e) {
     console.warn('spreadsheet artifacts removal migration (SQLite):', e);
+  }
+
+  // ============================================================================
+  // MIGRATION: double seeding (new columns + widened CHECK constraints)
+  // ============================================================================
+  try {
+    await migrateDoubleSeedingSQLite(db);
+  } catch (e) {
+    console.warn('double seeding migration (SQLite):', e);
   }
 
   // ============================================================================
@@ -1655,6 +2091,9 @@ export async function initializeSQLite(db: Database): Promise<void> {
     'teams',
     'seeding_scores',
     'seeding_rankings',
+    'double_seeding_matches',
+    'double_seeding_scores',
+    'double_seeding_rankings',
     'brackets',
     'bracket_games',
     'game_queue',
@@ -1773,6 +2212,26 @@ export async function initializeSQLite(db: Database): Promise<void> {
     `CREATE INDEX IF NOT EXISTS idx_seeding_rankings_rank ON seeding_rankings(seed_rank)`,
   );
 
+  // Double seeding indexes
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_matches_event_round ON double_seeding_matches(event_id, round_number)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_matches_team1 ON double_seeding_matches(team1_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_matches_team2 ON double_seeding_matches(team2_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_scores_event_team_round ON double_seeding_scores(event_id, team_id, round_number)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_scores_match ON double_seeding_scores(match_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_double_seeding_rankings_rank ON double_seeding_rankings(seed_rank)`,
+  );
+
   // Bracket indexes
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_brackets_event ON brackets(event_id)`,
@@ -1811,6 +2270,9 @@ export async function initializeSQLite(db: Database): Promise<void> {
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
   );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_game_queue_double_seeding_match ON game_queue(double_seeding_match_id)`,
+  );
 
   // Score submissions event-scoped indexes (Phase 6)
   await db.exec(
@@ -1827,6 +2289,9 @@ export async function initializeSQLite(db: Database): Promise<void> {
   );
   await db.exec(
     `CREATE INDEX IF NOT EXISTS idx_score_submissions_seeding_score ON score_submissions(seeding_score_id)`,
+  );
+  await db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_score_submissions_double_seeding_match ON score_submissions(double_seeding_match_id)`,
   );
 
   // Other indexes

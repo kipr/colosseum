@@ -10,7 +10,7 @@ import { computeOverallScores } from '../services/overallScores';
 import { calculateEventBracketRankingsIfReady } from '../services/bracketRankings';
 
 const PUBLIC_EVENT_FIELDS =
-  'id, name, status, event_date, location, seeding_rounds, spectator_results_released';
+  'id, name, status, event_date, location, seeding_rounds, double_seeding_rounds, spectator_results_released';
 
 const router = express.Router();
 
@@ -22,6 +22,7 @@ const ALLOWED_UPDATE_FIELDS = [
   'location',
   'status',
   'seeding_rounds',
+  'double_seeding_rounds',
   'score_accept_mode',
   'spectator_results_released',
 ];

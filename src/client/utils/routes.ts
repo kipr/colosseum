@@ -4,6 +4,7 @@ export const ADMIN_VIEWS = [
   'scoresheets',
   'scoring',
   'seeding',
+  'double-seeding',
   'brackets',
   'queue',
   'judge-chat',
@@ -18,6 +19,7 @@ export type AdminView = (typeof ADMIN_VIEWS)[number];
 
 export const SPECTATOR_VIEWS = [
   'seeding',
+  'double-seeding',
   'bracket',
   'documentation',
   'awards',
