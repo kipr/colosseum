@@ -4,7 +4,11 @@
  */
 
 import { getDatabase } from '../database/connection';
-import { computeOverallScores } from './overallScores';
+import {
+  computeOverallScores,
+  BRACKET_OVERALL_TOTAL_SQL,
+  BRACKET_OVERALL_JOINS_SQL,
+} from './overallScores';
 
 export interface PublicAwardTeam {
   team_number: number;
@@ -150,14 +154,11 @@ async function fetchBracketOverallRows(
   const db = await getDatabase();
   return db.all(
     `SELECT be.final_rank,
-            COALESCE(ds.overall_score, 0) + COALESCE(sr.raw_seed_score, 0) +
-              COALESCE(be.weighted_bracket_raw_score, 0) AS total,
+            ${BRACKET_OVERALL_TOTAL_SQL} AS total,
             t.team_number, t.team_name, t.display_name
      FROM bracket_entries be
      LEFT JOIN teams t ON be.team_id = t.id
-     LEFT JOIN documentation_scores ds
-       ON ds.team_id = be.team_id AND ds.event_id = ?
-     LEFT JOIN seeding_rankings sr ON sr.team_id = be.team_id
+     ${BRACKET_OVERALL_JOINS_SQL}
      WHERE be.bracket_id = ?
        AND be.is_bye = ?
        AND be.team_id IS NOT NULL`,

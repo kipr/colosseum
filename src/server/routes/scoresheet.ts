@@ -10,7 +10,16 @@ import { getDatabase } from '../database/connection';
 
 const router = express.Router();
 
-function inferTemplateType(schema: unknown): 'seeding' | 'bracket' {
+function inferTemplateType(
+  schema: unknown,
+): 'seeding' | 'bracket' | 'double_seeding' {
+  // Explicit schema marker takes precedence; do not infer double seeding from
+  // mode (head-to-head means bracket scoring with a winner).
+  if (schema && typeof schema === 'object' && 'scoreKind' in schema) {
+    if ((schema as { scoreKind?: string }).scoreKind === 'double_seeding') {
+      return 'double_seeding';
+    }
+  }
   if (schema && typeof schema === 'object' && 'mode' in schema) {
     if ((schema as { mode?: string }).mode === 'head-to-head') return 'bracket';
   }

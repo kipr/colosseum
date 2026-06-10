@@ -12,6 +12,10 @@ import {
   isEventArchived,
   areFinalScoresReleased,
 } from '../utils/eventVisibility';
+import {
+  BRACKET_OVERALL_TOTAL_SQL,
+  BRACKET_OVERALL_JOINS_SQL,
+} from '../services/overallScores';
 
 const router = express.Router();
 
@@ -271,14 +275,12 @@ router.get('/:id/rankings/public', async (req: Request, res: Response) => {
                 be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
                 COALESCE(ds.overall_score, 0) AS doc_score,
                 COALESCE(sr.raw_seed_score, 0) AS raw_seed_score,
-                COALESCE(ds.overall_score, 0) + COALESCE(sr.raw_seed_score, 0) +
-                  COALESCE(be.weighted_bracket_raw_score, 0) AS total,
+                COALESCE(dsr.raw_double_seed_score, 0) AS raw_double_seed_score,
+                ${BRACKET_OVERALL_TOTAL_SQL} AS total,
                 t.team_number, t.team_name, t.display_name
          FROM bracket_entries be
          LEFT JOIN teams t ON be.team_id = t.id
-         LEFT JOIN documentation_scores ds
-           ON ds.team_id = be.team_id AND ds.event_id = ?
-         LEFT JOIN seeding_rankings sr ON sr.team_id = be.team_id
+         ${BRACKET_OVERALL_JOINS_SQL}
          WHERE be.bracket_id = ?
          ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
       [bracket.event_id, id],
@@ -317,14 +319,12 @@ router.get(
                 be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
                 COALESCE(ds.overall_score, 0) AS doc_score,
                 COALESCE(sr.raw_seed_score, 0) AS raw_seed_score,
-                COALESCE(ds.overall_score, 0) + COALESCE(sr.raw_seed_score, 0) +
-                  COALESCE(be.weighted_bracket_raw_score, 0) AS total,
+                COALESCE(dsr.raw_double_seed_score, 0) AS raw_double_seed_score,
+                ${BRACKET_OVERALL_TOTAL_SQL} AS total,
                 t.team_number, t.team_name, t.display_name
          FROM bracket_entries be
          LEFT JOIN teams t ON be.team_id = t.id
-         LEFT JOIN documentation_scores ds
-           ON ds.team_id = be.team_id AND ds.event_id = ?
-         LEFT JOIN seeding_rankings sr ON sr.team_id = be.team_id
+         ${BRACKET_OVERALL_JOINS_SQL}
          WHERE be.bracket_id = ?
          ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
         [bracket.event_id, id],

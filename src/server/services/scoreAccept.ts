@@ -3,6 +3,7 @@ import { createAuditEntry } from '../routes/audit';
 import { toAuditJson } from '../utils/auditJson';
 import { resolveBracketByes } from './bracketByeResolver';
 import { recalculateSeedingRankings } from './seedingRankings';
+import { recalculateDoubleSeedingRankings } from './doubleSeedingRankings';
 
 /**
  * Pending score submission: set queue to `scored`. Revert/reject: `queued`.
@@ -137,6 +138,86 @@ export async function deleteBracketQueueItemForAcceptedScore(
   );
 }
 
+/**
+ * Pending score submission: set queue to `scored`. Revert/reject: `queued` or delete.
+ * Accept path removes the row via deleteDoubleSeedingQueueItemForAcceptedScore.
+ */
+export async function updateDoubleSeedingQueueItem(
+  db: Database,
+  eventId: number,
+  matchId: number,
+  pendingSubmission: boolean,
+): Promise<void> {
+  const existing = await db.get<{ id: number }>(
+    `SELECT id FROM game_queue WHERE event_id = ? AND double_seeding_match_id = ? AND queue_type = 'double_seeding'`,
+    [eventId, matchId],
+  );
+
+  if (pendingSubmission) {
+    if (existing) {
+      await db.run(
+        `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
+        [existing.id],
+      );
+    } else {
+      const maxPos = await db.get<{ max_pos: number | null }>(
+        'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+        [eventId],
+      );
+      const pos = (maxPos?.max_pos ?? 0) + 1;
+      await db.run(
+        `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
+         VALUES (?, ?, 'double_seeding', ?, 'scored')`,
+        [eventId, matchId, pos],
+      );
+    }
+    return;
+  }
+
+  const match = await db.get<{
+    team1_id: number | null;
+    team2_id: number | null;
+  }>('SELECT team1_id, team2_id FROM double_seeding_matches WHERE id = ?', [
+    matchId,
+  ]);
+  const hasTeam =
+    match != null && (match.team1_id != null || match.team2_id != null);
+
+  if (existing) {
+    if (hasTeam) {
+      await db.run(
+        `UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?`,
+        [existing.id],
+      );
+    } else {
+      await db.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
+    }
+  } else if (hasTeam) {
+    const maxPos = await db.get<{ max_pos: number | null }>(
+      'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+      [eventId],
+    );
+    const pos = (maxPos?.max_pos ?? 0) + 1;
+    await db.run(
+      `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
+       VALUES (?, ?, 'double_seeding', ?, 'queued')`,
+      [eventId, matchId, pos],
+    );
+  }
+}
+
+/** Remove double-seeding queue row after a score is accepted. */
+export async function deleteDoubleSeedingQueueItemForAcceptedScore(
+  db: Database,
+  eventId: number,
+  matchId: number,
+): Promise<void> {
+  await db.run(
+    `DELETE FROM game_queue WHERE event_id = ? AND double_seeding_match_id = ? AND queue_type = 'double_seeding'`,
+    [eventId, matchId],
+  );
+}
+
 export interface AcceptEventScoreParams {
   db: Database;
   submissionId: number;
@@ -149,9 +230,10 @@ export interface AcceptEventScoreParams {
 export interface AcceptEventScoreSuccess {
   ok: true;
   success: true;
-  scoreType: 'seeding' | 'bracket';
+  scoreType: 'seeding' | 'bracket' | 'double_seeding';
   seedingScoreId?: number;
   bracketGameId?: number;
+  doubleSeedingMatchId?: number;
   winnerId?: number;
   loserId?: number;
   advanced?: boolean;
@@ -483,9 +565,185 @@ export async function acceptEventScore(
     };
   }
 
+  if (scoreType === 'double_seeding') {
+    const matchId = score.double_seeding_match_id;
+
+    if (!matchId) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Double-seeding score must have double_seeding_match_id linked',
+      };
+    }
+
+    const match = await db.get(
+      'SELECT * FROM double_seeding_matches WHERE id = ?',
+      [matchId],
+    );
+
+    if (!match) {
+      return { ok: false, status: 404, error: 'Double-seeding match not found' };
+    }
+
+    if (match.event_id !== score.event_id) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Double-seeding match does not belong to the submission event',
+      };
+    }
+
+    if (match.team1_id == null && match.team2_id == null) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Double-seeding match has no participating teams',
+      };
+    }
+
+    // Submitted team ids, when present, must match the stored match teams.
+    const submittedTeamAId = scoreData.team_a_id?.value;
+    const submittedTeamBId = scoreData.team_b_id?.value;
+    if (
+      submittedTeamAId != null &&
+      Number(submittedTeamAId) !== match.team1_id
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Submitted Team A does not match the stored match teams',
+      };
+    }
+    if (
+      submittedTeamBId != null &&
+      Number(submittedTeamBId) !== match.team2_id
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Submitted Team B does not match the stored match teams',
+      };
+    }
+
+    const teamAScore =
+      scoreData.team_a_total?.value ?? scoreData.team1_score?.value ?? null;
+    const teamBScore =
+      scoreData.team_b_total?.value ?? scoreData.team2_score?.value ?? null;
+
+    // Conflict detection: existing score rows for this match, or for any
+    // participating team in the same round (possibly from another match).
+    const participatingTeamIds = [match.team1_id, match.team2_id].filter(
+      (t): t is number => t != null,
+    );
+    const teamPlaceholders = participatingTeamIds.map(() => '?').join(',');
+    const conflicts = await db.all(
+      `SELECT * FROM double_seeding_scores
+       WHERE match_id = ?
+          OR (event_id = ? AND round_number = ? AND team_id IN (${teamPlaceholders}))`,
+      [matchId, score.event_id, match.round_number, ...participatingTeamIds],
+    );
+
+    if (conflicts.length > 0 && !force) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          'A double-seeding score already exists for this match or team/round. Use force=true to override.',
+      };
+    }
+
+    await db.transaction(async (tx) => {
+      if (conflicts.length > 0) {
+        for (const conflict of conflicts) {
+          await tx.run('DELETE FROM double_seeding_scores WHERE id = ?', [
+            conflict.id,
+          ]);
+        }
+      }
+
+      if (match.team1_id != null) {
+        await tx.run(
+          `INSERT INTO double_seeding_scores
+             (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
+           VALUES (?, ?, ?, ?, 'team1', ?, ?, CURRENT_TIMESTAMP)`,
+          [score.event_id, matchId, match.team1_id, match.round_number, teamAScore, id],
+        );
+      }
+      if (match.team2_id != null) {
+        await tx.run(
+          `INSERT INTO double_seeding_scores
+             (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
+           VALUES (?, ?, ?, ?, 'team2', ?, ?, CURRENT_TIMESTAMP)`,
+          [score.event_id, matchId, match.team2_id, match.round_number, teamBScore, id],
+        );
+      }
+
+      await tx.run(
+        `UPDATE double_seeding_matches SET
+           status = 'completed',
+           completed_at = CURRENT_TIMESTAMP,
+           score_submission_id = ?
+         WHERE id = ?`,
+        [id, matchId],
+      );
+
+      await tx.run(
+        `UPDATE score_submissions
+         SET status = 'accepted', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP,
+             double_seeding_match_id = ?
+         WHERE id = ?`,
+        [reviewedBy, matchId, id],
+      );
+    });
+
+    const updatedScore = await db.get(
+      'SELECT * FROM score_submissions WHERE id = ?',
+      [id],
+    );
+    const updatedMatch = await db.get(
+      'SELECT * FROM double_seeding_matches WHERE id = ?',
+      [matchId],
+    );
+
+    await createAuditEntry(db, {
+      event_id: score.event_id,
+      user_id: reviewedBy,
+      action: auditAction,
+      entity_type: 'score_submission',
+      entity_id: Number(id),
+      old_value: toAuditJson(score),
+      new_value: toAuditJson(updatedScore),
+      ip_address: ipAddress,
+    });
+    await createAuditEntry(db, {
+      event_id: score.event_id,
+      user_id: reviewedBy,
+      action: 'double_seeding_match_completed',
+      entity_type: 'double_seeding_match',
+      entity_id: matchId,
+      old_value: toAuditJson(match),
+      new_value: toAuditJson(updatedMatch),
+      ip_address: ipAddress,
+    });
+
+    await deleteDoubleSeedingQueueItemForAcceptedScore(
+      db,
+      score.event_id,
+      matchId,
+    );
+    await recalculateDoubleSeedingRankings(score.event_id);
+
+    return {
+      ok: true,
+      success: true,
+      scoreType: 'double_seeding',
+      doubleSeedingMatchId: matchId,
+    };
+  }
+
   return {
     ok: false,
     status: 400,
-    error: `Unknown score_type: ${scoreType}. Expected 'seeding' or 'bracket'.`,
+    error: `Unknown score_type: ${scoreType}. Expected 'seeding', 'bracket', or 'double_seeding'.`,
   };
 }
