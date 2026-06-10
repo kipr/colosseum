@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
+import {
+  adminEventPath,
+  adminEventsPath,
+  isAdminView,
+} from '../../utils/routes';
 import { formatDate, toDateOnlyString } from '../../utils/dateUtils';
 import {
   Event,
@@ -35,7 +41,9 @@ const defaultFormData: EventFormData = {
 };
 
 export default function EventsTab() {
-  const { events, refreshEvents, selectedEvent, selectEventById } = useEvent();
+  const { events, refreshEvents, selectedEvent, setSelectedEvent } = useEvent();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [formData, setFormData] = useState<EventFormData>(defaultFormData);
@@ -46,6 +54,20 @@ export default function EventsTab() {
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
+
+  const getCurrentAdminView = () => {
+    const rawView = searchParams.get('view');
+    return isAdminView(rawView) ? rawView : 'events';
+  };
+
+  const handleSelectEvent = (event: Event | null) => {
+    setSelectedEvent(event);
+    if (event) {
+      navigate(adminEventPath(event.id, getCurrentAdminView()));
+    } else {
+      navigate(adminEventsPath(getCurrentAdminView()));
+    }
+  };
 
   // Filter events based on selected status
   const filteredEvents =
@@ -116,7 +138,7 @@ export default function EventsTab() {
 
       // If this is a new event, select it
       if (!editingEvent && savedEvent.id) {
-        selectEventById(savedEvent.id);
+        handleSelectEvent(savedEvent);
       }
     } catch (error) {
       console.error('Error saving event:', error);
@@ -241,9 +263,15 @@ export default function EventsTab() {
       const fallbackEventId = isDeletingSelected
         ? getFallbackSelectionAfterDelete(event.id)
         : (selectedEvent?.id ?? null);
+      const fallbackEvent =
+        fallbackEventId == null
+          ? null
+          : (events.find(
+              (remainingEvent) => remainingEvent.id === fallbackEventId,
+            ) ?? null);
 
       await refreshEvents();
-      selectEventById(fallbackEventId);
+      handleSelectEvent(fallbackEvent);
       toast.success('Event deleted!');
     } catch (error) {
       console.error('Error deleting event:', error);
@@ -401,7 +429,7 @@ export default function EventsTab() {
         >
           <button
             className="btn btn-primary"
-            onClick={() => selectEventById(event.id)}
+            onClick={() => handleSelectEvent(event)}
             title="Select this event to work on"
           >
             Select
@@ -479,7 +507,7 @@ export default function EventsTab() {
                 </span>
               </div>
               <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1.5rem' }}>
-                {selectedEvent.name}
+                <strong>{selectedEvent.name}</strong>
               </h3>
               {selectedEvent.description && (
                 <p

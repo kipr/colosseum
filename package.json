@@ -4,7 +4,7 @@
   "description": "Colosseum - Tournament management and scoring platform",
   "main": "dist/server/server.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev": "sh -c 'npm run dev:server & server=$!; trap \"kill $server\" EXIT INT TERM; npm run dev:client'",
     "dev:server": "nodemon --watch src/server --exec ts-node src/server/server.ts",
     "dev:client": "wait-on http://localhost:3000/health && vite --host 0.0.0.0",
     "build": "npm run clean && npm run build:client && npm run build:server",
@@ -59,7 +59,6 @@
     "@vitejs/plugin-react": "^5.1.1",
     "@vitest/coverage-v8": "^4.0.18",
     "baseline-browser-mapping": "^2.9.19",
-    "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
     "diff": "^8.0.3",
     "eslint": "^9.39.2",
