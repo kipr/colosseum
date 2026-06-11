@@ -113,16 +113,22 @@ export const chatReadLimiter = rateLimit({
 });
 
 /**
- * Queue sync requests: 60 req / 1 min per IP (expensive DB sync).
+ * Queue sync requests: 120 req / 1 min per IP+event+queue type.
  * Only applied when the request includes sync=1|true; plain reads skip it.
- * Kept below chat polling limits but high enough for admin UI (filters, tabs, scoresheet).
+ * Sync work is coalesced server-side, but this still guards repair traffic.
  */
 export const queueSyncLimiter = rateLimit({
   windowMs: 60 * 1000,
-  limit: 60,
+  limit: 120,
   standardHeaders: 'draft-6',
   legacyHeaders: false,
   store: queueSyncStore,
+  keyGenerator: (req: Request) => {
+    const queueType =
+      typeof req.query.queue_type === 'string' ? req.query.queue_type : 'all';
+    return `${req.ip}:${req.params.eventId}:${queueType}`;
+  },
+  validate: { keyGeneratorIpFallback: false },
   skip: (req: Request) => {
     const sync = req.query.sync;
     return sync !== '1' && sync !== 'true';

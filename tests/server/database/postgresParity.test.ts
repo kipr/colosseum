@@ -1,10 +1,9 @@
 /**
  * Postgres schema parity test.
  *
- * Runs initializePostgres() against a recording adapter that captures all
- * emitted SQL, then asserts every feature-critical table, column, index,
- * and trigger that initializeSQLite() already creates is also present in
- * the Postgres path.
+ * Runs initializePostgres() against a recording adapter that captures emitted
+ * SQL, then asserts feature-critical tables, columns, indexes, and triggers
+ * from the current SQLite baseline are also present in the Postgres path.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
 import type {
@@ -23,12 +22,7 @@ function createRecordingAdapter(): { db: Database; sql: string[] } {
       sql.push(s);
     },
     run: async () => noop,
-    get: async (query: string) => {
-      if (query.includes('spreadsheet_configs')) {
-        return { exists: true };
-      }
-      return undefined;
-    },
+    get: async () => undefined,
     all: async () => [],
     transaction: async <T>(fn: (tx: Transaction) => Promise<T>) => {
       const tx: Transaction = {
@@ -37,15 +31,7 @@ function createRecordingAdapter(): { db: Database; sql: string[] } {
           sql.push(s);
         },
       };
-      sql.push('__BEGIN_TRANSACTION__');
-      try {
-        const result = await fn(tx);
-        sql.push('__COMMIT_TRANSACTION__');
-        return result;
-      } catch (error) {
-        sql.push('__ROLLBACK_TRANSACTION__');
-        throw error;
-      }
+      return fn(tx);
     },
   };
   return { db, sql };
@@ -64,137 +50,97 @@ describe('initializePostgres parity with SQLite', () => {
     allSql = joined(sql);
   });
 
-  // =========================================================================
-  // events.spectator_results_released
-  // =========================================================================
-  describe('events table', () => {
-    it('CREATE TABLE includes spectator_results_released', () => {
+  describe('baseline schema', () => {
+    it('creates events with current public-result and score-accept columns', () => {
       expect(allSql).toMatch(
-        /CREATE TABLE.*events[\s\S]*spectator_results_released/i,
+        /CREATE TABLE.*events[\s\S]*double_seeding_rounds INTEGER DEFAULT 0/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*events[\s\S]*score_accept_mode TEXT NOT NULL DEFAULT 'manual'/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*events[\s\S]*spectator_results_released INTEGER NOT NULL DEFAULT 0/i,
       );
     });
 
-    it('has ALTER TABLE migration for spectator_results_released', () => {
-      expect(allSql).toMatch(
-        /ALTER TABLE events.*ADD COLUMN.*spectator_results_released/i,
-      );
-    });
-  });
-
-  // =========================================================================
-  // brackets.weight
-  // =========================================================================
-  describe('brackets table', () => {
-    it('CREATE TABLE includes weight column with CHECK constraint', () => {
+    it('creates bracket baseline ranking columns', () => {
       expect(allSql).toMatch(/CREATE TABLE.*brackets[\s\S]*weight REAL/i);
-    });
-
-    it('has ALTER TABLE migration for weight', () => {
-      expect(allSql).toMatch(/ALTER TABLE brackets.*ADD COLUMN.*weight/i);
-    });
-  });
-
-  // =========================================================================
-  // bracket_entries ranking columns
-  // =========================================================================
-  describe('bracket_entries table', () => {
-    it('CREATE TABLE includes final_rank', () => {
       expect(allSql).toMatch(/CREATE TABLE.*bracket_entries[\s\S]*final_rank/i);
-    });
-
-    it('CREATE TABLE includes bracket_raw_score', () => {
       expect(allSql).toMatch(
         /CREATE TABLE.*bracket_entries[\s\S]*bracket_raw_score/i,
       );
-    });
-
-    it('CREATE TABLE includes weighted_bracket_raw_score', () => {
       expect(allSql).toMatch(
         /CREATE TABLE.*bracket_entries[\s\S]*weighted_bracket_raw_score/i,
       );
     });
+  });
 
-    it('has ALTER TABLE migrations for ranking columns', () => {
+  describe('double-seeding baseline', () => {
+    it('creates double-seeding tables', () => {
+      expect(allSql).toMatch(/CREATE TABLE.*double_seeding_matches/i);
+      expect(allSql).toMatch(/CREATE TABLE.*double_seeding_scores/i);
+      expect(allSql).toMatch(/CREATE TABLE.*double_seeding_rankings/i);
+    });
+
+    it('creates score_submissions with double_seeding_match_id', () => {
       expect(allSql).toMatch(
-        /ALTER TABLE bracket_entries.*ADD COLUMN.*final_rank/i,
+        /CREATE TABLE.*score_submissions[\s\S]*double_seeding_match_id INTEGER/i,
       );
       expect(allSql).toMatch(
-        /ALTER TABLE bracket_entries.*ADD COLUMN.*bracket_raw_score/i,
+        /CONSTRAINT score_submissions_double_seeding_match_id_fkey[\s\S]*REFERENCES double_seeding_matches\(id\) ON DELETE SET NULL/i,
+      );
+    });
+
+    it('allows double_seeding event scoresheet templates', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*event_scoresheet_templates[\s\S]*template_type IN \('seeding', 'bracket', 'double_seeding'\)/i,
+      );
+    });
+
+    it('creates game_queue with arrived status and double_seeding identity', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*game_queue[\s\S]*status IN \('queued', 'called', 'arrived', 'on_table', 'scored'\)/i,
       );
       expect(allSql).toMatch(
-        /ALTER TABLE bracket_entries.*ADD COLUMN.*weighted_bracket_raw_score/i,
+        /CREATE TABLE.*game_queue[\s\S]*queue_type IN \('seeding', 'bracket', 'double_seeding'\)/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*game_queue[\s\S]*double_seeding_match_id INTEGER REFERENCES double_seeding_matches\(id\) ON DELETE CASCADE/i,
       );
     });
   });
 
-  // =========================================================================
-  // Documentation scoring tables
-  // =========================================================================
-  describe('documentation scoring tables', () => {
-    it('creates documentation_categories', () => {
+  describe('documentation scoring', () => {
+    it('creates documentation tables and indexes', () => {
       expect(allSql).toMatch(/CREATE TABLE.*documentation_categories/i);
-    });
-
-    it('creates event_documentation_categories', () => {
       expect(allSql).toMatch(/CREATE TABLE.*event_documentation_categories/i);
-    });
-
-    it('creates documentation_scores', () => {
       expect(allSql).toMatch(/CREATE TABLE.*documentation_scores/i);
-    });
-
-    it('creates documentation_sub_scores', () => {
       expect(allSql).toMatch(/CREATE TABLE.*documentation_sub_scores/i);
-    });
-  });
-
-  // =========================================================================
-  // Documentation indexes
-  // =========================================================================
-  describe('documentation indexes', () => {
-    it('creates idx_event_doc_categories_event', () => {
       expect(allSql).toContain('idx_event_doc_categories_event');
-    });
-
-    it('creates idx_event_doc_categories_category', () => {
       expect(allSql).toContain('idx_event_doc_categories_category');
-    });
-
-    it('creates idx_doc_scores_event', () => {
       expect(allSql).toContain('idx_doc_scores_event');
-    });
-
-    it('creates idx_doc_scores_team', () => {
       expect(allSql).toContain('idx_doc_scores_team');
-    });
-
-    it('creates idx_doc_sub_scores_doc', () => {
       expect(allSql).toContain('idx_doc_sub_scores_doc');
     });
   });
 
-  // =========================================================================
-  // Triggers
-  // =========================================================================
-  describe('updated_at triggers', () => {
+  describe('triggers', () => {
     it('includes documentation_scores in updated_at trigger set', () => {
       expect(allSql).toMatch(/documentation_scores_updated_at/i);
     });
+
+    it('keeps judge_chat_messages out of the updated_at trigger set', () => {
+      expect(allSql).not.toMatch(/judge_chat_messages_updated_at/i);
+    });
   });
 
-  // =========================================================================
-  // judge_chat_messages (event-scoped judge chat)
-  // =========================================================================
-  describe('judge_chat_messages table', () => {
-    it('creates judge_chat_messages with conversation_key and sender_role CHECK', () => {
-      expect(allSql).toMatch(
-        /CREATE TABLE.*judge_chat_messages[\s\S]*conversation_key TEXT NOT NULL[\s\S]*sender_role TEXT NOT NULL CHECK \(sender_role IN \('judge', 'admin'\)\)/i,
-      );
-    });
-
-    it('scopes event_id with ON DELETE CASCADE', () => {
+  describe('judge_chat_messages', () => {
+    it('creates judge_chat_messages with event scope and sender-role check', () => {
       expect(allSql).toMatch(
         /CREATE TABLE.*judge_chat_messages[\s\S]*event_id INTEGER NOT NULL REFERENCES events\(id\) ON DELETE CASCADE/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*judge_chat_messages[\s\S]*conversation_key TEXT NOT NULL[\s\S]*sender_role TEXT NOT NULL CHECK \(sender_role IN \('judge', 'admin'\)\)/i,
       );
     });
 
@@ -211,82 +157,26 @@ describe('initializePostgres parity with SQLite', () => {
       expect(allSql).toContain('idx_judge_chat_thread');
       expect(allSql).toContain('idx_judge_chat_event_created');
     });
-
-    it('is excluded from the updated_at trigger set', () => {
-      expect(allSql).not.toMatch(/judge_chat_messages_updated_at/i);
-    });
   });
 
-  describe('game_queue status v2 migration', () => {
-    it('runs startup migrations inside one transaction', () => {
-      const beginIndex = allSql.indexOf('__BEGIN_TRANSACTION__');
-      const statusMigrationIndex = allSql.indexOf(
-        'UPDATE game_queue\n      SET status = CASE status',
-      );
-      const doubleSeedingMigrationIndex = allSql.indexOf(
-        'ALTER TABLE events ADD COLUMN IF NOT EXISTS double_seeding_rounds',
-      );
-      const spreadsheetMigrationIndex = allSql.indexOf(
-        'ALTER TABLE score_submissions DROP COLUMN IF EXISTS spreadsheet_config_id',
-      );
-      const commitIndex = allSql.indexOf('__COMMIT_TRANSACTION__');
-
-      expect(beginIndex).toBeGreaterThan(-1);
-      expect(allSql.match(/__BEGIN_TRANSACTION__/g) ?? []).toHaveLength(1);
-      expect(allSql.match(/__COMMIT_TRANSACTION__/g) ?? []).toHaveLength(1);
-      expect(statusMigrationIndex).toBeGreaterThan(beginIndex);
-      expect(doubleSeedingMigrationIndex).toBeGreaterThan(beginIndex);
-      expect(spreadsheetMigrationIndex).toBeGreaterThan(beginIndex);
-      expect(commitIndex).toBeGreaterThan(statusMigrationIndex);
-      expect(commitIndex).toBeGreaterThan(doubleSeedingMigrationIndex);
-      expect(commitIndex).toBeGreaterThan(spreadsheetMigrationIndex);
-    });
-
-    it('drops status check constraints before remapping legacy queue statuses', () => {
-      const dropIndex = allSql.indexOf(
-        'ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS',
-      );
-      const updateIndex = allSql.indexOf(
-        'UPDATE game_queue\n      SET status = CASE status',
-      );
-
-      expect(dropIndex).toBeGreaterThan(-1);
-      expect(updateIndex).toBeGreaterThan(dropIndex);
-    });
-
-    it('recreates the canonical status check with arrived support', () => {
-      expect(allSql).toMatch(
-        /ADD CONSTRAINT game_queue_status_check[\s\S]*CHECK \(status IN \('queued', 'called', 'arrived', 'on_table', 'scored'\)\)/i,
+  describe('migration removal', () => {
+    it('does not emit historical migration SQL', () => {
+      expect(allSql).not.toMatch(/ALTER TABLE .* ADD COLUMN IF NOT EXISTS/i);
+      expect(allSql).not.toMatch(/DROP TABLE IF EXISTS chat_messages/i);
+      expect(allSql).not.toMatch(/DROP TABLE IF EXISTS spreadsheet_configs/i);
+      expect(allSql).not.toMatch(
+        /UPDATE game_queue[\s\S]*SET status = CASE status/i,
       );
     });
-  });
 
-  describe('legacy spreadsheet artifact removal', () => {
-    it('does not create spreadsheet_configs or chat_messages tables', () => {
+    it('does not create legacy spreadsheet artifacts', () => {
       expect(allSql).not.toMatch(
         /CREATE TABLE IF NOT EXISTS spreadsheet_configs/i,
       );
       expect(allSql).not.toMatch(/CREATE TABLE IF NOT EXISTS chat_messages/i);
-    });
-
-    it('does not create spreadsheet-related indexes', () => {
       expect(allSql).not.toContain('idx_spreadsheet_configs_user');
       expect(allSql).not.toContain('idx_chat_messages_spreadsheet');
       expect(allSql).not.toContain('idx_chat_messages_created');
-    });
-
-    it('emits migration SQL to drop legacy spreadsheet artifacts', () => {
-      expect(allSql).toMatch(/DROP TABLE IF EXISTS chat_messages/i);
-      expect(allSql).toMatch(
-        /ALTER TABLE score_submissions DROP COLUMN IF EXISTS spreadsheet_config_id/i,
-      );
-      expect(allSql).toMatch(
-        /ALTER TABLE score_submissions DROP COLUMN IF EXISTS submitted_to_sheet/i,
-      );
-      expect(allSql).toMatch(
-        /ALTER TABLE scoresheet_templates DROP COLUMN IF EXISTS spreadsheet_config_id/i,
-      );
-      expect(allSql).toMatch(/DROP TABLE IF EXISTS spreadsheet_configs/i);
     });
   });
 });

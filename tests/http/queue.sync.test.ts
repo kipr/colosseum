@@ -142,6 +142,53 @@ describe('Queue Routes – sync edge cases', () => {
     });
   });
 
+  describe('queue reads without sync', () => {
+    it('does not populate missing seeding queue rows', async () => {
+      const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
+      await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+
+      const res = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=seeding`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.json).toEqual([]);
+    });
+  });
+
+  describe('queue sync coalescing', () => {
+    it('skips repeated same event/type repair work within the freshness window', async () => {
+      const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+
+      const first = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=seeding&sync=1`,
+      );
+      expect(first.status).toBe(200);
+      expect((first.json as unknown[]).length).toBe(1);
+
+      await testDb.db.run(
+        `DELETE FROM game_queue
+         WHERE event_id = ? AND queue_type = 'seeding'
+           AND seeding_team_id = ? AND seeding_round = 1`,
+        [event.id, team.id],
+      );
+
+      const second = await http.get(
+        `${baseUrl}/queue/event/${event.id}?queue_type=seeding&sync=1`,
+      );
+
+      expect(second.status).toBe(200);
+      expect(second.json).toEqual([]);
+    });
+  });
+
   describe('bracket sync – completed game status', () => {
     it('removes bracket queue item when bracket game is completed', async () => {
       const event = await seedEvent(testDb.db);

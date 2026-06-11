@@ -24,6 +24,9 @@ interface ScoresheetFormProps {
   template: any;
 }
 
+const QUEUE_POLL_INTERVAL_MS = 5_000;
+const QUEUE_REPAIR_SYNC_INTERVAL_MS = 30_000;
+
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const schema = template.schema;
   const isHeadToHead = schema.mode === 'head-to-head';
@@ -175,9 +178,19 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     // Load queue for DB-backed seeding / double seeding
     if ((useQueueForSeeding || useQueueForDoubleSeeding) && schema.eventId) {
-      loadQueue();
-      const interval = setInterval(() => loadQueue(), 5000);
-      return () => clearInterval(interval);
+      loadQueue({ sync: true });
+      const pollInterval = setInterval(
+        () => loadQueue(),
+        QUEUE_POLL_INTERVAL_MS,
+      );
+      const repairSyncInterval = setInterval(
+        () => loadQueue({ sync: true }),
+        QUEUE_REPAIR_SYNC_INTERVAL_MS,
+      );
+      return () => {
+        clearInterval(pollInterval);
+        clearInterval(repairSyncInterval);
+      };
     }
 
     // Load bracket games if head-to-head mode
@@ -194,7 +207,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
   }, [schema, useQueueForSeeding, useQueueForDoubleSeeding, isHeadToHead]);
 
-  const loadQueue = async () => {
+  const loadQueue = async (options: { sync?: boolean } = {}) => {
     if (!schema.eventId) return;
     try {
       const statuses = [
@@ -205,8 +218,17 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         'scored',
       ].join(',');
       const queueType = isDoubleSeeding ? 'double_seeding' : 'seeding';
-      const url = `/queue/event/${schema.eventId}?queue_type=${queueType}&status=${statuses}&sync=1`;
+      const params = new URLSearchParams({
+        queue_type: queueType,
+        status: statuses,
+      });
+      if (options.sync) params.set('sync', '1');
+      const url = `/queue/event/${schema.eventId}?${params.toString()}`;
       const response = await fetch(url);
+      if (response.status === 429 && options.sync) {
+        await loadQueue();
+        return;
+      }
       if (!response.ok) return;
       const data = await response.json();
       setQueueItems(data);
