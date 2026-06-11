@@ -56,6 +56,10 @@ export const queueSchema: SchemaModule = {
       `CREATE INDEX IF NOT EXISTS idx_game_queue_position ON game_queue(event_id, queue_position)`,
       `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
       `CREATE INDEX IF NOT EXISTS idx_game_queue_double_seeding_match ON game_queue(double_seeding_match_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_seeding ON game_queue(event_id, queue_type, seeding_team_id, seeding_round)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_bracket ON game_queue(event_id, queue_type, bracket_game_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_double_seeding ON game_queue(event_id, queue_type, double_seeding_match_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_status_position ON game_queue(event_id, queue_type, status, queue_position)`,
     ],
   },
   sqlite: {
@@ -104,6 +108,10 @@ export const queueSchema: SchemaModule = {
       `CREATE INDEX IF NOT EXISTS idx_game_queue_position ON game_queue(event_id, queue_position)`,
       `CREATE INDEX IF NOT EXISTS idx_game_queue_status ON game_queue(status)`,
       `CREATE INDEX IF NOT EXISTS idx_game_queue_double_seeding_match ON game_queue(double_seeding_match_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_seeding ON game_queue(event_id, queue_type, seeding_team_id, seeding_round)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_bracket ON game_queue(event_id, queue_type, bracket_game_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_double_seeding ON game_queue(event_id, queue_type, double_seeding_match_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_game_queue_event_type_status_position ON game_queue(event_id, queue_type, status, queue_position)`,
     ],
   },
 };

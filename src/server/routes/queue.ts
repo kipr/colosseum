@@ -9,6 +9,98 @@ const router = express.Router();
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
+const QUEUE_SYNC_FRESH_MS = 5_000;
+const QUEUE_SYNC_TYPES = ['seeding', 'bracket', 'double_seeding'] as const;
+
+type QueueSyncType = (typeof QUEUE_SYNC_TYPES)[number];
+
+interface QueueSyncState {
+  lastSyncedAt: number;
+  inFlight?: Promise<void>;
+}
+
+const queueSyncStates = new WeakMap<object, Map<string, QueueSyncState>>();
+
+function getQueueSyncStateMap(db: Database): Map<string, QueueSyncState> {
+  let stateMap = queueSyncStates.get(db as object);
+  if (!stateMap) {
+    stateMap = new Map<string, QueueSyncState>();
+    queueSyncStates.set(db as object, stateMap);
+  }
+  return stateMap;
+}
+
+function queueSyncKey(eventId: number, queueType: QueueSyncType): string {
+  return `${eventId}:${queueType}`;
+}
+
+async function runQueueTypeSync(
+  db: Database,
+  eventId: number,
+  queueType: QueueSyncType,
+): Promise<void> {
+  if (queueType === 'seeding') {
+    await syncSeedingQueue(db, eventId);
+    return;
+  }
+  if (queueType === 'bracket') {
+    await syncBracketQueue(db, eventId);
+    return;
+  }
+  await syncDoubleSeedingQueue(db, eventId);
+}
+
+async function syncQueueTypeCoalesced(
+  db: Database,
+  eventId: number,
+  queueType: QueueSyncType,
+): Promise<void> {
+  const now = Date.now();
+  const stateMap = getQueueSyncStateMap(db);
+  const key = queueSyncKey(eventId, queueType);
+  const state = stateMap.get(key);
+
+  if (state?.inFlight) {
+    await state.inFlight;
+    return;
+  }
+
+  if (state && now - state.lastSyncedAt < QUEUE_SYNC_FRESH_MS) {
+    return;
+  }
+
+  const syncState: QueueSyncState = {
+    lastSyncedAt: state?.lastSyncedAt ?? 0,
+  };
+  const inFlight = runQueueTypeSync(db, eventId, queueType)
+    .then(() => {
+      syncState.lastSyncedAt = Date.now();
+    })
+    .finally(() => {
+      syncState.inFlight = undefined;
+    });
+
+  syncState.inFlight = inFlight;
+  stateMap.set(key, syncState);
+  await inFlight;
+}
+
+async function syncQueueCoalesced(
+  db: Database,
+  eventId: number,
+  queueType: string | null,
+): Promise<void> {
+  if (queueType && QUEUE_SYNC_TYPES.includes(queueType as QueueSyncType)) {
+    await syncQueueTypeCoalesced(db, eventId, queueType as QueueSyncType);
+    return;
+  }
+
+  if (queueType) return;
+
+  for (const type of QUEUE_SYNC_TYPES) {
+    await syncQueueTypeCoalesced(db, eventId, type);
+  }
+}
 
 /** Non-destructive sync: ensure game_queue has all team×round items for seeding, with correct status from seeding_scores. */
 async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
@@ -401,15 +493,7 @@ router.get(
 
       if (sync === '1' || sync === 'true') {
         const qt = typeof queue_type === 'string' ? queue_type : null;
-        if (!qt || qt === 'seeding') {
-          await syncSeedingQueue(db, eventIdNum);
-        }
-        if (!qt || qt === 'bracket') {
-          await syncBracketQueue(db, eventIdNum);
-        }
-        if (!qt || qt === 'double_seeding') {
-          await syncDoubleSeedingQueue(db, eventIdNum);
-        }
+        await syncQueueCoalesced(db, eventIdNum, qt);
       }
 
       let query = `

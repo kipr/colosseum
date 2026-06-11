@@ -21,6 +21,7 @@ import {
 import apiRoutes from '../../src/server/routes/api';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
 import chatRoutes from '../../src/server/routes/chat';
+import queueRoutes from '../../src/server/routes/queue';
 import { resetAllRateLimiters } from '../../src/server/middleware/rateLimit';
 
 interface ErrorBody {
@@ -262,6 +263,86 @@ describe('Rate Limiting', () => {
       const res = await http.get(`${baseUrl}/chat/events/${eventId}/messages`);
       expect(res.headers.has('ratelimit-limit')).toBe(true);
       expect(res.headers.get('ratelimit-limit')).toBe('120');
+    });
+  });
+
+  // ==========================================================================
+  // GET /queue/event/:eventId?sync=1 – queueSyncLimiter (120 req / 1 min)
+  // ==========================================================================
+  describe('queueSyncLimiter – GET /queue/event/:eventId?sync=1', () => {
+    let eventId: number;
+    let otherEventId: number;
+
+    beforeEach(async () => {
+      testDb = await createTestDb();
+      __setTestDatabaseAdapter(testDb.db);
+      resetAllRateLimiters();
+
+      const event = await seedEvent(testDb.db);
+      const otherEvent = await seedEvent(testDb.db);
+      eventId = event.id;
+      otherEventId = otherEvent.id;
+
+      const app = createTestApp();
+      app.use('/queue', queueRoutes);
+      server = await startServer(app);
+      baseUrl = server.baseUrl;
+    });
+
+    it('includes the raised sync rate-limit headers', async () => {
+      const res = await http.get(
+        `${baseUrl}/queue/event/${eventId}?queue_type=seeding&sync=1`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.has('ratelimit-limit')).toBe(true);
+      expect(res.headers.get('ratelimit-limit')).toBe('120');
+    });
+
+    it('isolates sync limits per event id', async () => {
+      for (let i = 0; i < 120; i++) {
+        await http.get(
+          `${baseUrl}/queue/event/${eventId}?queue_type=seeding&sync=1`,
+        );
+      }
+
+      const blocked = await http.get<ErrorBody>(
+        `${baseUrl}/queue/event/${eventId}?queue_type=seeding&sync=1`,
+      );
+      expect(blocked.status).toBe(429);
+      expect(blocked.json.limiter).toBe('queueSync');
+
+      const otherEventAllowed = await http.get(
+        `${baseUrl}/queue/event/${otherEventId}?queue_type=seeding&sync=1`,
+      );
+      expect(otherEventAllowed.status).not.toBe(429);
+    });
+
+    it('isolates sync limits per queue type', async () => {
+      for (let i = 0; i < 120; i++) {
+        await http.get(
+          `${baseUrl}/queue/event/${eventId}?queue_type=seeding&sync=1`,
+        );
+      }
+
+      const blockedSeeding = await http.get<ErrorBody>(
+        `${baseUrl}/queue/event/${eventId}?queue_type=seeding&sync=1`,
+      );
+      expect(blockedSeeding.status).toBe(429);
+
+      const bracketAllowed = await http.get(
+        `${baseUrl}/queue/event/${eventId}?queue_type=bracket&sync=1`,
+      );
+      expect(bracketAllowed.status).not.toBe(429);
+    });
+
+    it('skips the limiter for plain queue reads', async () => {
+      const res = await http.get(
+        `${baseUrl}/queue/event/${eventId}?queue_type=seeding`,
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.headers.has('ratelimit-limit')).toBe(false);
     });
   });
 
