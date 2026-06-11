@@ -37,7 +37,15 @@ function createRecordingAdapter(): { db: Database; sql: string[] } {
           sql.push(s);
         },
       };
-      return fn(tx);
+      sql.push('__BEGIN_TRANSACTION__');
+      try {
+        const result = await fn(tx);
+        sql.push('__COMMIT_TRANSACTION__');
+        return result;
+      } catch (error) {
+        sql.push('__ROLLBACK_TRANSACTION__');
+        throw error;
+      }
     },
   };
   return { db, sql };
@@ -210,6 +218,30 @@ describe('initializePostgres parity with SQLite', () => {
   });
 
   describe('game_queue status v2 migration', () => {
+    it('runs startup migrations inside one transaction', () => {
+      const beginIndex = allSql.indexOf('__BEGIN_TRANSACTION__');
+      const statusMigrationIndex = allSql.indexOf(
+        'UPDATE game_queue\n      SET status = CASE status',
+      );
+      const doubleSeedingMigrationIndex = allSql.indexOf(
+        'ALTER TABLE events ADD COLUMN IF NOT EXISTS double_seeding_rounds',
+      );
+      const spreadsheetMigrationIndex = allSql.indexOf(
+        'ALTER TABLE score_submissions DROP COLUMN IF EXISTS spreadsheet_config_id',
+      );
+      const commitIndex = allSql.indexOf('__COMMIT_TRANSACTION__');
+
+      expect(beginIndex).toBeGreaterThan(-1);
+      expect(allSql.match(/__BEGIN_TRANSACTION__/g) ?? []).toHaveLength(1);
+      expect(allSql.match(/__COMMIT_TRANSACTION__/g) ?? []).toHaveLength(1);
+      expect(statusMigrationIndex).toBeGreaterThan(beginIndex);
+      expect(doubleSeedingMigrationIndex).toBeGreaterThan(beginIndex);
+      expect(spreadsheetMigrationIndex).toBeGreaterThan(beginIndex);
+      expect(commitIndex).toBeGreaterThan(statusMigrationIndex);
+      expect(commitIndex).toBeGreaterThan(doubleSeedingMigrationIndex);
+      expect(commitIndex).toBeGreaterThan(spreadsheetMigrationIndex);
+    });
+
     it('drops status check constraints before remapping legacy queue statuses', () => {
       const dropIndex = allSql.indexOf(
         'ALTER TABLE game_queue DROP CONSTRAINT IF EXISTS',

@@ -405,14 +405,14 @@ export default function DoubleSeedingTab() {
                               {formatMatchTeam(
                                 match.team1_id,
                                 match.team1_number,
-                                match.team1_display || match.team1_name,
+                                match.team1_name,
                               )}
                             </td>
                             <td>
                               {formatMatchTeam(
                                 match.team2_id,
                                 match.team2_number,
-                                match.team2_display || match.team2_name,
+                                match.team2_name,
                               )}
                             </td>
                             <td>{getMatchStatusBadge(match.status)}</td>

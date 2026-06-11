@@ -79,7 +79,9 @@ async function migrateGameQueueStatusV2SQLite(db: Database): Promise<void> {
  * PostgreSQL: replace any legacy `game_queue.status` CHECK before rewriting
  * old values so existing production rows can be migrated atomically.
  */
-async function migrateGameQueueStatusV2Postgres(db: Database): Promise<void> {
+async function migrateGameQueueStatusV2Postgres(
+  db: Pick<Database, 'exec'>,
+): Promise<void> {
   await db.exec(`
     DO $$
     DECLARE
@@ -119,16 +121,8 @@ async function migrateGameQueueStatusV2Postgres(db: Database): Promise<void> {
  * Idempotent: no-ops when spreadsheet_configs is already absent.
  */
 async function migrateRemoveSpreadsheetArtifactsPostgres(
-  db: Database,
+  db: Pick<Database, 'exec'>,
 ): Promise<void> {
-  const row = await db.get<{ exists: boolean }>(
-    `SELECT EXISTS (
-       SELECT 1 FROM information_schema.tables
-       WHERE table_schema = 'public' AND table_name = 'spreadsheet_configs'
-     ) AS exists`,
-  );
-  if (!row?.exists) return;
-
   await db.exec(`DROP TABLE IF EXISTS chat_messages`);
   await db.exec(
     `ALTER TABLE score_submissions DROP COLUMN IF EXISTS spreadsheet_config_id`,
@@ -382,7 +376,9 @@ async function migrateDoubleSeedingSQLite(db: Database): Promise<void> {
  *
  * Must run after the double_seeding_* tables exist.
  */
-async function migrateDoubleSeedingPostgres(db: Database): Promise<void> {
+async function migrateDoubleSeedingPostgres(
+  db: Pick<Database, 'exec'>,
+): Promise<void> {
   await db.exec(
     `ALTER TABLE events ADD COLUMN IF NOT EXISTS double_seeding_rounds INTEGER DEFAULT 0`,
   );
@@ -507,6 +503,14 @@ async function migrateDoubleSeedingPostgres(db: Database): Promise<void> {
       END IF;
     END $$;
   `);
+}
+
+async function runPostgresStartupMigrations(db: Database): Promise<void> {
+  await db.transaction(async (tx) => {
+    await migrateGameQueueStatusV2Postgres(tx);
+    await migrateDoubleSeedingPostgres(tx);
+    await migrateRemoveSpreadsheetArtifactsPostgres(tx);
+  });
 }
 
 export {
@@ -1043,31 +1047,14 @@ export async function initializePostgres(db: Database): Promise<void> {
   `);
 
   // ============================================================================
-  // MIGRATION: game_queue.status enum v2 (Postgres)
-  // Maps legacy values, then replaces CHECK constraint with queued/called/arrived/on_table/scored.
+  // MIGRATIONS (Postgres)
+  // Run as one transaction so a failed step rolls back the whole startup
+  // migration group. The caller still logs and continues on failure.
   // ============================================================================
   try {
-    await migrateGameQueueStatusV2Postgres(db);
+    await runPostgresStartupMigrations(db);
   } catch (e) {
-    console.warn('game_queue status v2 migration (Postgres):', e);
-  }
-
-  // ============================================================================
-  // MIGRATION: double seeding (new columns + widened CHECK constraints)
-  // ============================================================================
-  try {
-    await migrateDoubleSeedingPostgres(db);
-  } catch (e) {
-    console.warn('double seeding migration (Postgres):', e);
-  }
-
-  // ============================================================================
-  // MIGRATION: remove legacy Google Sheets / spreadsheet-scoped chat artifacts
-  // ============================================================================
-  try {
-    await migrateRemoveSpreadsheetArtifactsPostgres(db);
-  } catch (e) {
-    console.warn('spreadsheet artifacts removal migration (Postgres):', e);
+    console.warn('Postgres startup migrations:', e);
   }
 
   // ============================================================================
