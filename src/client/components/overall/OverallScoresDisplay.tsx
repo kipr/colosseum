@@ -17,6 +17,7 @@ export interface OverallRow {
 interface OverallScoresDisplayProps {
   rows: OverallRow[];
   variant?: 'default' | 'spectator';
+  showDoubleSeeding?: boolean;
 }
 
 type SortField =
@@ -37,6 +38,7 @@ function formatScore(val: number): string {
 export default function OverallScoresDisplay({
   rows,
   variant = 'default',
+  showDoubleSeeding = false,
 }: OverallScoresDisplayProps) {
   const isSpectator = variant === 'spectator';
   const [sortField, setSortField] = useState<SortField>('total');
@@ -165,17 +167,21 @@ export default function OverallScoresDisplay({
         sortAriaLabel: 'Sort by raw seed score',
         renderCell: (row) => formatScore(row.raw_seed_score),
       },
-      { kind: 'separator', id: 'sep-plus-2', symbol: '+' },
-      {
-        kind: 'data',
-        id: 'raw_double_seed_score',
-        sortable: true,
-        header: { full: 'Raw Double Seeding', short: '2x Seed' },
-        headerClassName: 'overall-raw-double-seed-col doc-sortable',
-        cellClassName: 'overall-raw-double-seed-cell',
-        sortAriaLabel: 'Sort by raw double seed score',
-        renderCell: (row) => formatScore(row.raw_double_seed_score ?? 0),
-      },
+      ...(showDoubleSeeding
+        ? [
+            { kind: 'separator' as const, id: 'sep-plus-2', symbol: '+' },
+            {
+              kind: 'data' as const,
+              id: 'raw_double_seed_score',
+              sortable: true,
+              header: { full: 'Raw Double Seeding', short: '2x Seed' },
+              headerClassName: 'overall-raw-double-seed-col doc-sortable',
+              cellClassName: 'overall-raw-double-seed-cell',
+              sortAriaLabel: 'Sort by raw double seed score',
+              renderCell: (row) => formatScore(row.raw_double_seed_score ?? 0),
+            },
+          ]
+        : []),
       { kind: 'separator', id: 'sep-plus-3', symbol: '+' },
       {
         kind: 'data',
@@ -203,8 +209,12 @@ export default function OverallScoresDisplay({
         ),
       },
     ],
-    [stickyName, stickyNameCell, stickyNum, stickyNumCell],
+    [showDoubleSeeding, stickyName, stickyNameCell, stickyNum, stickyNumCell],
   );
+
+  const formulaText = showDoubleSeeding
+    ? 'Documentation + Raw Seeding (0-1) + Raw Double Seeding (0-1) + Weighted DE'
+    : 'Documentation + Raw Seeding (0-1) + Weighted DE';
 
   return (
     <div
@@ -212,8 +222,7 @@ export default function OverallScoresDisplay({
     >
       <h3>Overall Scores</h3>
       <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
-        Combined score per team: Documentation + Raw Seeding (0&ndash;1) + Raw
-        Double Seeding (0&ndash;1) + Weighted DE. Sorted by total descending.
+        Combined score per team: {formulaText}. Sorted by total descending.
       </p>
       {sortedRows.length === 0 ? (
         <p style={{ color: 'var(--secondary-color)' }}>
