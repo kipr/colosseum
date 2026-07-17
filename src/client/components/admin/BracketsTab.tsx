@@ -43,21 +43,16 @@ interface CreateModalTeam {
   display_name: string | null;
 }
 
-interface CreateModalScore {
-  team_id: number;
-  round_number: number;
-  score: number | null;
-  team_number: number;
-  team_name: string;
-}
-
 interface CreateModalRanking {
   team_id: number;
   seed_average: number | null;
   seed_rank: number | null;
-  raw_seed_score: number | null;
-  team_number: number;
-  team_name: string;
+}
+
+interface CreateModalDoubleSeedingRanking {
+  team_id: number;
+  seed_average: number | null;
+  seed_rank: number | null;
 }
 
 interface AssignedTeam {
@@ -70,8 +65,8 @@ interface AssignedTeam {
 
 interface BracketCreateMatrixRow {
   team: CreateModalTeam;
-  scoreMap: Map<number, number | null>;
   ranking: CreateModalRanking | undefined;
+  doubleSeedingRanking: CreateModalDoubleSeedingRanking | undefined;
   assigned: AssignedTeam | undefined;
   hasOverlap: boolean;
 }
@@ -94,6 +89,7 @@ const defaultFormData: BracketFormData = {
 export default function BracketsTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
+  const doubleSeedingEnabled = (selectedEvent?.double_seeding_rounds ?? 0) > 0;
   const navigate = useNavigate();
   const { bracketId: bracketIdParam } = useParams<{ bracketId?: string }>();
   const [searchParams] = useSearchParams();
@@ -127,10 +123,11 @@ export default function BracketsTab() {
   const [saving, setSaving] = useState(false);
 
   const [createTeams, setCreateTeams] = useState<CreateModalTeam[]>([]);
-  const [createScores, setCreateScores] = useState<CreateModalScore[]>([]);
   const [createRankings, setCreateRankings] = useState<CreateModalRanking[]>(
     [],
   );
+  const [createDoubleSeedingRankings, setCreateDoubleSeedingRankings] =
+    useState<CreateModalDoubleSeedingRanking[]>([]);
   const [createAssigned, setCreateAssigned] = useState<AssignedTeam[]>([]);
   const [createDataLoading, setCreateDataLoading] = useState(false);
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<number>>(
@@ -261,32 +258,35 @@ export default function BracketsTab() {
     setSelectedTeamIds(new Set());
     Promise.all([
       fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
-      fetch(`/seeding/scores/event/${selectedEventId}`, {
-        credentials: 'include',
-      }),
       fetch(`/seeding/rankings/event/${selectedEventId}`, {
         credentials: 'include',
       }),
+      doubleSeedingEnabled
+        ? fetch(`/double-seeding/rankings/event/${selectedEventId}`, {
+            credentials: 'include',
+          })
+        : null,
       fetch(`/brackets/event/${selectedEventId}/assigned-teams`, {
         credentials: 'include',
       }),
     ])
-      .then(async ([teamsRes, scoresRes, rankingsRes, assignedRes]) => {
+      .then(async ([teamsRes, rankingsRes, dsRankingsRes, assignedRes]) => {
         if (cancelled) return;
         if (!teamsRes.ok) throw new Error('Failed to fetch teams');
-        if (!scoresRes.ok) throw new Error('Failed to fetch scores');
         if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
+        if (dsRankingsRes && !dsRankingsRes.ok)
+          throw new Error('Failed to fetch double-seeding rankings');
         if (!assignedRes.ok) throw new Error('Failed to fetch assigned teams');
-        const [teams, scores, rankings, assigned] = await Promise.all([
+        const [teams, rankings, dsRankings, assigned] = await Promise.all([
           teamsRes.json(),
-          scoresRes.json(),
           rankingsRes.json(),
+          dsRankingsRes?.json() ?? [],
           assignedRes.json(),
         ]);
         if (cancelled) return;
         setCreateTeams(teams);
-        setCreateScores(scores);
         setCreateRankings(rankings);
+        setCreateDoubleSeedingRankings(dsRankings);
         setCreateAssigned(assigned);
       })
       .catch((err) => {
@@ -303,7 +303,7 @@ export default function BracketsTab() {
     return () => {
       cancelled = true;
     };
-  }, [showCreateModal, selectedEventId]);
+  }, [showCreateModal, selectedEventId, doubleSeedingEnabled]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -676,37 +676,58 @@ export default function BracketsTab() {
 
   const bracketCreateMatrixRows = useMemo((): BracketCreateMatrixRow[] => {
     return [...createTeams]
-      .sort((a, b) => {
-        const rankA = createRankings.find((r) => r.team_id === a.id)?.seed_rank;
-        const rankB = createRankings.find((r) => r.team_id === b.id)?.seed_rank;
-        if (rankA == null && rankB == null)
-          return a.team_number - b.team_number;
-        if (rankA == null) return 1;
-        if (rankB == null) return -1;
-        return rankA - rankB;
-      })
       .map((team) => {
-        const scoreMap = new Map<number, number | null>();
-        for (const s of createScores) {
-          if (s.team_id === team.id) scoreMap.set(s.round_number, s.score);
-        }
         const ranking = createRankings.find((r) => r.team_id === team.id);
+        const doubleSeedingRanking = createDoubleSeedingRankings.find(
+          (r) => r.team_id === team.id,
+        );
         const assigned = createAssigned.find((a) => a.team_id === team.id);
         const isSelected = selectedTeamIds.has(team.id);
         const hasOverlap = isSelected && !!assigned;
-        return { team, scoreMap, ranking, assigned, hasOverlap };
+        return {
+          team,
+          ranking,
+          doubleSeedingRanking,
+          assigned,
+          hasOverlap,
+        };
+      })
+      .sort((a, b) => {
+        if (doubleSeedingEnabled) {
+          const combinedA =
+            a.ranking?.seed_average != null &&
+            a.doubleSeedingRanking?.seed_average != null
+              ? a.ranking.seed_average + a.doubleSeedingRanking.seed_average
+              : null;
+          const combinedB =
+            b.ranking?.seed_average != null &&
+            b.doubleSeedingRanking?.seed_average != null
+              ? b.ranking.seed_average + b.doubleSeedingRanking.seed_average
+              : null;
+          if (combinedA != null && combinedB != null && combinedA !== combinedB)
+            return combinedB - combinedA;
+          if (combinedA == null && combinedB != null) return 1;
+          if (combinedA != null && combinedB == null) return -1;
+        }
+        const rankA = a.ranking?.seed_rank;
+        const rankB = b.ranking?.seed_rank;
+        if (rankA == null && rankB == null)
+          return a.team.team_number - b.team.team_number;
+        if (rankA == null) return 1;
+        if (rankB == null) return -1;
+        return rankA - rankB;
       });
   }, [
     createTeams,
-    createScores,
     createRankings,
+    createDoubleSeedingRankings,
     createAssigned,
     selectedTeamIds,
+    doubleSeedingEnabled,
   ]);
 
   const bracketCreateMatrixColumns =
     useMemo((): UnifiedColumnDef<BracketCreateMatrixRow>[] => {
-      const rounds = selectedEvent?.seeding_rounds ?? 3;
       const cols: UnifiedColumnDef<BracketCreateMatrixRow>[] = [
         {
           kind: 'data',
@@ -750,14 +771,6 @@ export default function BracketsTab() {
           renderCell: (r) => r.team.team_name,
         },
       ];
-      for (let i = 0; i < rounds; i++) {
-        cols.push({
-          kind: 'data',
-          id: `r${i + 1}`,
-          header: { full: `R${i + 1}` },
-          renderCell: (r) => r.scoreMap.get(i + 1) ?? '—',
-        });
-      }
       cols.push(
         {
           kind: 'data',
@@ -774,34 +787,56 @@ export default function BracketsTab() {
           header: { full: 'Rank' },
           renderCell: (r) => r.ranking?.seed_rank ?? '—',
         },
-        {
-          kind: 'data',
-          id: 'raw',
-          header: { full: 'Raw' },
-          renderCell: (r) =>
-            r.ranking?.raw_seed_score != null
-              ? r.ranking.raw_seed_score.toFixed(4)
-              : '—',
-        },
-        {
-          kind: 'data',
-          id: 'assigned',
-          header: { full: 'Assigned' },
-          renderCell: (r) =>
-            r.assigned ? (
-              <span
-                className="bracket-create-assigned"
-                title={`In ${r.assigned.bracket_name}`}
-              >
-                {r.assigned.bracket_name}
-              </span>
-            ) : (
-              '—'
-            ),
-        },
       );
+      if (doubleSeedingEnabled) {
+        cols.push(
+          {
+            kind: 'data',
+            id: 'ds_avg',
+            header: { full: 'DS Avg' },
+            renderCell: (r) =>
+              r.doubleSeedingRanking?.seed_average?.toFixed(2) ?? '—',
+          },
+          {
+            kind: 'data',
+            id: 'ds_rank',
+            header: { full: 'DS Rank' },
+            renderCell: (r) => r.doubleSeedingRanking?.seed_rank ?? '—',
+          },
+          {
+            kind: 'data',
+            id: 'combined_avg',
+            header: { full: 'Combined Avg' },
+            renderCell: (r) =>
+              r.ranking?.seed_average != null &&
+              r.doubleSeedingRanking?.seed_average != null
+                ? (
+                    (r.ranking.seed_average +
+                      r.doubleSeedingRanking.seed_average) /
+                    2
+                  ).toFixed(2)
+                : '—',
+          },
+        );
+      }
+      cols.push({
+        kind: 'data',
+        id: 'assigned',
+        header: { full: 'Assigned' },
+        renderCell: (r) =>
+          r.assigned ? (
+            <span
+              className="bracket-create-assigned"
+              title={`In ${r.assigned.bracket_name}`}
+            >
+              {r.assigned.bracket_name}
+            </span>
+          ) : (
+            '—'
+          ),
+      });
       return cols;
-    }, [selectedEvent?.seeding_rounds, selectedTeamIds]);
+    }, [doubleSeedingEnabled, selectedTeamIds]);
 
   return (
     <div className="brackets-tab">
