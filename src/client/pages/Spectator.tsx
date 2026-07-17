@@ -799,6 +799,7 @@ export default function Spectator() {
                     <OverallScoresDisplay
                       rows={overallRows}
                       variant="spectator"
+                      showDoubleSeeding={doubleSeedingAvailable}
                     />
                   )}
                 </div>

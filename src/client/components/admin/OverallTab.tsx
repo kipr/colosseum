@@ -58,7 +58,10 @@ export default function OverallTab() {
   return (
     <div className="documentation-tab">
       {loading && <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>}
-      <OverallScoresDisplay rows={rows} />
+      <OverallScoresDisplay
+        rows={rows}
+        showDoubleSeeding={(selectedEvent?.double_seeding_rounds ?? 0) > 0}
+      />
     </div>
   );
 }
