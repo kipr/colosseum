@@ -274,8 +274,8 @@
       "label": "Subtotal",
       "column": "left",
       "type": "calculated",
-      "formula": "((side_a_pom_unsorted * 5) + (side_a_pom_sorted * 10)) * (side_a_pom_sorted_baskets > 0 ? side_a_pom_sorted_baskets : 1) * (side_a_pom_returned_baskets > 0 ? side_a_pom_returned_baskets : 1)",
-      "description": "Pom points × sorted baskets × returned baskets"
+      "formula": "((side_a_pom_unsorted * 5) + (side_a_pom_sorted * 10)) * ((side_a_pom_sorted_baskets > 0 ? side_a_pom_sorted_baskets : 1) + (side_a_pom_returned_baskets > 0 ? side_a_pom_returned_baskets : 1))",
+      "description": "Pom points × combined sorted and returned basket multiplier"
     },
     {
       "id": "side_a_upper_storage_header",
@@ -669,8 +669,8 @@
       "label": "Subtotal",
       "column": "right",
       "type": "calculated",
-      "formula": "((side_b_pom_unsorted * 5) + (side_b_pom_sorted * 10)) * (side_b_pom_sorted_baskets > 0 ? side_b_pom_sorted_baskets : 1) * (side_b_pom_returned_baskets > 0 ? side_b_pom_returned_baskets : 1)",
-      "description": "Pom points × sorted baskets × returned baskets"
+      "formula": "((side_b_pom_unsorted * 5) + (side_b_pom_sorted * 10)) * ((side_b_pom_sorted_baskets > 0 ? side_b_pom_sorted_baskets : 1) + (side_b_pom_returned_baskets > 0 ? side_b_pom_returned_baskets : 1))",
+      "description": "Pom points × combined sorted and returned basket multiplier"
     },
     {
       "id": "side_b_upper_storage_header",

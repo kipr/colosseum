@@ -102,7 +102,7 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_ls_poms * 2) + (side_a_ls_cubes * 5) + (side_a_ls_cubes_pallets * 10) + (side_a_ls_drums * 25) + (side_a_ls_traffic_cone * 50) + (side_a_ls_botguy * 100)) * (side_a_ls_drum_mult === '1' ? 2 : 1) * (side_a_ls_botguy_mult === '1' ? 2 : 1)"
+    "formula": "((side_a_ls_poms * 2) + (side_a_ls_cubes * 5) + (side_a_ls_cubes_pallets * 10) + (side_a_ls_drums * 25) + (side_a_ls_traffic_cone * 50) + (side_a_ls_botguy * 100)) * ((side_a_ls_drum_mult === '1' ? 2 : 1) + (side_a_ls_botguy_mult === '1' ? 2 : 1))"
   },
   {
     "id": "side_a_us_header",
@@ -427,7 +427,7 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_pb_non_matched_poms * 10) + (side_a_pb_matched_poms * 20) + (side_a_pb_botguy * 150)) * ((side_a_pb_sorted_baskets_mult ? side_a_pb_sorted_baskets_mult : 0) + 1) * (side_a_pb_returned_baskets_mult > 0 ? side_a_pb_returned_baskets_mult : 1)"
+    "formula": "((side_a_pb_non_matched_poms * 10) + (side_a_pb_matched_poms * 20) + (side_a_pb_botguy * 150)) * (((side_a_pb_sorted_baskets_mult ? side_a_pb_sorted_baskets_mult : 0) + 1) + (side_a_pb_returned_baskets_mult > 0 ? side_a_pb_returned_baskets_mult : 1))"
   },
   {
     "id": "side_a_uw_header",
@@ -649,7 +649,7 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_ls_poms * 2) + (side_b_ls_cubes * 5) + (side_b_ls_cubes_pallets * 10) + (side_b_ls_drums * 25) + (side_b_ls_traffic_cone * 50) + (side_b_ls_botguy * 100)) * (side_b_ls_drum_mult === '1' ? 2 : 1) * (side_b_ls_botguy_mult === '1' ? 2 : 1)"
+    "formula": "((side_b_ls_poms * 2) + (side_b_ls_cubes * 5) + (side_b_ls_cubes_pallets * 10) + (side_b_ls_drums * 25) + (side_b_ls_traffic_cone * 50) + (side_b_ls_botguy * 100)) * ((side_b_ls_drum_mult === '1' ? 2 : 1) + (side_b_ls_botguy_mult === '1' ? 2 : 1))"
   },
   {
     "id": "side_b_us_header",
@@ -974,7 +974,7 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_pb_non_matched_poms * 10) + (side_b_pb_matched_poms * 20) + (side_b_pb_botguy * 150)) * ((side_b_pb_sorted_baskets_mult ? side_b_pb_sorted_baskets_mult : 0) + 1) * (side_b_pb_returned_baskets_mult > 0 ? side_b_pb_returned_baskets_mult : 1)"
+    "formula": "((side_b_pb_non_matched_poms * 10) + (side_b_pb_matched_poms * 20) + (side_b_pb_botguy * 150)) * (((side_b_pb_sorted_baskets_mult ? side_b_pb_sorted_baskets_mult : 0) + 1) + (side_b_pb_returned_baskets_mult > 0 ? side_b_pb_returned_baskets_mult : 1))"
   },
   {
     "id": "side_b_uw_header",
