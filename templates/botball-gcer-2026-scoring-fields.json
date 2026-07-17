@@ -764,11 +764,22 @@
     }
   },
   {
+    "id": "side_a_eld_pallets_mult",
+    "label": "# of Pallets with Cubes",
+    "suffix": "× __ + 1",
+    "column": "left",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1
+  },
+  {
     "id": "side_a_eld_subtotal",
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "(side_a_eld_unsorted_cubes * 15) + (side_a_eld_sorted_cubes * 45)"
+    "formula": "((side_a_eld_unsorted_cubes * 15) + (side_a_eld_sorted_cubes * 45)) * ((side_a_eld_pallets_mult ? side_a_eld_pallets_mult : 0) + 1)"
   },
   {
     "id": "side_a_total",
@@ -1551,11 +1562,22 @@
     }
   },
   {
+    "id": "side_b_eld_pallets_mult",
+    "label": "# of Pallets with Cubes",
+    "suffix": "× __ + 1",
+    "column": "right",
+    "type": "number",
+    "required": false,
+    "isMultiplier": true,
+    "min": 0,
+    "step": 1
+  },
+  {
     "id": "side_b_eld_subtotal",
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "(side_b_eld_unsorted_cubes * 15) + (side_b_eld_sorted_cubes * 45)"
+    "formula": "((side_b_eld_unsorted_cubes * 15) + (side_b_eld_sorted_cubes * 45)) * ((side_b_eld_pallets_mult ? side_b_eld_pallets_mult : 0) + 1)"
   },
   {
     "id": "side_b_total",
