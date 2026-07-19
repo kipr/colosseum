@@ -119,7 +119,7 @@ describe('Brackets CRUD & Game Management', () => {
 
   describe('GET /brackets/:id/rankings', () => {
     it('returns entries with rank and per-bracket overall scoring fields for authenticated admin', async () => {
-      const event = await seedEvent(testDb.db);
+      const event = await seedEvent(testDb.db, { double_seeding_rounds: 1 });
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -129,6 +129,10 @@ describe('Brackets CRUD & Game Management', () => {
       await testDb.db.run(
         `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, 0, 2, 0.75, 0.75)`,
         [bracket.id, team.id],
+      );
+      await testDb.db.run(
+        `INSERT INTO double_seeding_rankings (team_id, raw_double_seed_score) VALUES (?, ?)`,
+        [team.id, 0.5],
       );
 
       const res = await http.get(`${baseUrl}/brackets/${bracket.id}/rankings`);
@@ -145,7 +149,18 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.entries[0].weighted_bracket_raw_score).toBe(0.75);
       expect(body.entries[0].doc_score).toBe(0);
       expect(body.entries[0].raw_seed_score).toBe(0);
-      expect(body.entries[0].total).toBe(0.75);
+      expect(body.entries[0].raw_double_seed_score).toBe(0.5);
+      expect(body.entries[0].total).toBe(1.25);
+
+      await testDb.db.run(
+        'UPDATE events SET double_seeding_rounds = 0 WHERE id = ?',
+        [event.id],
+      );
+      const disabled = await http.get(
+        `${baseUrl}/brackets/${bracket.id}/rankings`,
+      );
+      expect(disabled.json.entries[0].raw_double_seed_score).toBe(0);
+      expect(disabled.json.entries[0].total).toBe(0.75);
     });
 
     it('returns 404 for non-existent bracket', async () => {
