@@ -40,6 +40,7 @@ type SortField =
   | 'raw_score'
   | 'doc_score'
   | 'raw_seeding'
+  | 'raw_double_seeding'
   | 'weighted_de'
   | 'total';
 type SortDirection = 'asc' | 'desc';
@@ -105,6 +106,9 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
           break;
         case 'raw_seeding':
           compare = a.raw_seed_score - b.raw_seed_score;
+          break;
+        case 'raw_double_seeding':
+          compare = a.raw_double_seed_score - b.raw_double_seed_score;
           break;
         case 'weighted_de':
           compare =
@@ -237,6 +241,17 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
       },
       {
         kind: 'data',
+        id: 'raw_double_seeding',
+        sortable: true,
+        header: { full: 'Raw Double Seeding', short: '2x Seed' },
+        headerClassName: 'ranking-metric-col sortable',
+        cellClassName: 'ranking-metric-cell',
+        title: 'Raw Double Seeding',
+        sortAriaLabel: 'Sort by raw double seeding',
+        renderCell: (entry) => formatScore(entry.raw_double_seed_score),
+      },
+      {
+        kind: 'data',
         id: 'weighted_de',
         sortable: true,
         header: { full: 'DE', short: 'DE' },
@@ -256,7 +271,8 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         header: { full: 'Overall', short: 'Total' },
         headerClassName: 'ranking-metric-col sortable',
         cellClassName: 'ranking-metric-cell',
-        title: 'Sum of doc score, raw seeding, and weighted DE',
+        title:
+          'Sum of doc score, raw seeding, raw double seeding, and weighted DE',
         sortAriaLabel: 'Sort by overall score',
         renderCell: (entry) => (
           <strong style={{ color: 'var(--primary-color)' }}>
@@ -302,7 +318,8 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         <div>
           <h3>Rankings ({rankedCount} placed)</h3>
           <p className="seeding-section-description">
-            Overall is the sum of doc score, raw seeding, and weighted DE.
+            Overall is the sum of doc score, raw seeding, raw double seeding,
+            and weighted DE.
           </p>
         </div>
       </div>
