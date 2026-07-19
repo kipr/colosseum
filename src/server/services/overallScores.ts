@@ -27,7 +27,12 @@ export const BRACKET_OVERALL_TOTAL_SQL = `COALESCE(ds.overall_score, 0) + COALES
 export const BRACKET_OVERALL_JOINS_SQL = `LEFT JOIN documentation_scores ds
            ON ds.team_id = be.team_id AND ds.event_id = ?
          LEFT JOIN seeding_rankings sr ON sr.team_id = be.team_id
-         LEFT JOIN double_seeding_rankings dsr ON dsr.team_id = be.team_id`;
+         LEFT JOIN double_seeding_rankings dsr ON dsr.team_id = be.team_id
+           AND EXISTS (
+             SELECT 1 FROM brackets b
+             JOIN events e ON e.id = b.event_id
+             WHERE b.id = be.bracket_id AND e.double_seeding_rounds > 0
+           )`;
 
 /**
  * Compute overall scores for all teams in an event.
