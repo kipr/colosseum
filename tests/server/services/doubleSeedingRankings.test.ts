@@ -1,8 +1,9 @@
 /**
  * Tests for double-seeding ranking recalculation.
  *
- * Raw double seed score: (2/3)*((n-rank+1)/n) + (1/3)*(avg/max)
- * where n = number of teams at the event and max = max tournament average.
+ * Raw double seed score: (2/3)*((n-rank+1)/n) + (1/3)*(avg/maxSingleRound)
+ * where n = number of teams at the event and maxSingleRound = highest
+ * single-round double-seeding score in the event (legacy events use max average).
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../../sql/helpers/testDb';
@@ -84,12 +85,12 @@ describe('recalculateDoubleSeedingRankings', () => {
     expect(second.team_id).toBe(teamA.id);
     expect(second.seed_average).toBeCloseTo(50);
 
-    // n = 2 teams at event; max average = 90
+    // n = 2 teams at event; max single round = 100
     expect(first.raw_double_seed_score).toBeCloseTo(
-      (2 / 3) * ((2 - 1 + 1) / 2) + (1 / 3) * (90 / 90),
+      (2 / 3) * ((2 - 1 + 1) / 2) + (1 / 3) * (90 / 100),
     );
     expect(second.raw_double_seed_score).toBeCloseTo(
-      (2 / 3) * ((2 - 2 + 1) / 2) + (1 / 3) * (50 / 90),
+      (2 / 3) * ((2 - 2 + 1) / 2) + (1 / 3) * (50 / 100),
     );
   });
 
@@ -182,5 +183,39 @@ describe('recalculateDoubleSeedingRankings', () => {
     expect(rankA?.seed_rank).toBe(1);
     expect(rankB?.seed_rank).toBeNull();
     expect(rankB?.seed_average).toBeNull();
+  });
+
+  it('keeps the legacy maxAverage denominator for events created before the cutoff', async () => {
+    const event = await seedEvent(testDb.db);
+    await testDb.db.run(
+      `UPDATE events SET created_at = '2020-01-01 00:00:00' WHERE id = ?`,
+      [event.id],
+    );
+    const teamA = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    const teamB = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 2,
+    });
+
+    // Team A: 100, 0, 50 -> avg 50; Team B: 90 -> avg 90; max average = 90
+    await addScore(event.id, teamA.id, 1, 100);
+    await addScore(event.id, teamA.id, 2, 0);
+    await addScore(event.id, teamA.id, 3, 50);
+    await addScore(event.id, teamB.id, 1, 90);
+
+    await recalculateDoubleSeedingRankings(event.id);
+
+    const rankings = await testDb.db.all(
+      `SELECT * FROM double_seeding_rankings ORDER BY seed_rank ASC`,
+    );
+    expect(rankings[0].raw_double_seed_score).toBeCloseTo(
+      (2 / 3) * ((2 - 1 + 1) / 2) + (1 / 3) * (90 / 90),
+    );
+    expect(rankings[1].raw_double_seed_score).toBeCloseTo(
+      (2 / 3) * ((2 - 2 + 1) / 2) + (1 / 3) * (50 / 90),
+    );
   });
 });

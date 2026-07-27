@@ -1,16 +1,21 @@
 /**
  * Service for recalculating double-seeding rankings.
  *
- * Raw double seed score: (2/3) * ((n - rank + 1) / n) + (1/3) * (avg / max)
- * - n    = number of teams at the event
- * - rank = team's ordinal double-seeding ranking
- * - avg  = team's average double-seeding score (no rounds dropped; missing
- *          scores are ignored, zeros count as zeros)
- * - max  = max tournament double-seeding average
+ * Raw double seed score:
+ *   (2/3) * ((n - rank + 1) / n) + (1/3) * (avg / denominator)
+ *
+ * - n            = number of teams at the event
+ * - rank         = team's ordinal double-seeding ranking
+ * - avg          = team's average double-seeding score (no rounds dropped; missing
+ *                  scores are ignored, zeros count as zeros)
+ * - denominator  = for new events: max single-round double-seeding score in the event
+ *                  for legacy events (created before RAW_SCORE_FORMULA_V2_CUTOFF):
+ *                  max tournament double-seeding average
  * Internal tiebreaker for tied averages: the team's lowest score (higher wins).
  */
 
 import { getDatabase } from '../database/connection';
+import { usesLegacyRawScoreFormula } from './rawScoreFormula';
 
 interface RankingData {
   teamId: number;
@@ -70,6 +75,14 @@ export async function recalculateDoubleSeedingRankings(
     rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
   const n = teams.length;
 
+  const legacy = await usesLegacyRawScoreFormula(eventId);
+  let denominator = maxAverage;
+  if (!legacy) {
+    const maxSingleRound =
+      scoreRows.length > 0 ? Math.max(...scoreRows.map((r) => r.score)) : 0;
+    denominator = maxSingleRound || 1;
+  }
+
   await db.transaction(async (tx) => {
     for (let i = 0; i < rankings.length; i++) {
       const r = rankings[i];
@@ -78,7 +91,7 @@ export async function recalculateDoubleSeedingRankings(
       let rawScore: number | null = null;
       if (r.seedAverage !== null && seedRank !== null && n > 0) {
         const rankComponent = (2 / 3) * ((n - seedRank + 1) / n);
-        const scoreComponent = (1 / 3) * (r.seedAverage / maxAverage);
+        const scoreComponent = (1 / 3) * (r.seedAverage / denominator);
         rawScore = rankComponent + scoreComponent;
       }
 

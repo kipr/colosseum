@@ -275,7 +275,7 @@ export default function SeedingScoresTable({
           <p className="seeding-section-description">
             Per-round scores and final seed metrics. Rankings use seed averages
             (e.g. top 2 of 3 scores). Raw seed score: 75% rank position + 25%
-            score ratio.
+            score ratio against the event&apos;s best single round.
           </p>
         </div>
       </div>
