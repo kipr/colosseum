@@ -133,7 +133,10 @@ const NO_DEFAULT_TYPES = new Set<ScoresheetFieldType>([
   'winner-select',
 ]);
 
-function fieldPath(path: string, field: { id?: string; type?: string }): string {
+function fieldPath(
+  path: string,
+  field: { id?: string; type?: string },
+): string {
   if (path) return path;
   if (field.id) return `fields[${field.id}]`;
   if (field.type) return `fields[<${field.type}>]`;
@@ -356,9 +359,7 @@ function validateFieldNode(field: unknown, path: string): string[] {
   if (field.type === 'repeatableGroup' && Array.isArray(field.fields)) {
     field.fields.forEach((child, index) => {
       const childPath = `${fieldPath(path, field as { id?: string; type?: string })}.fields[${
-        isPlainObject(child) && typeof child.id === 'string'
-          ? child.id
-          : index
+        isPlainObject(child) && typeof child.id === 'string' ? child.id : index
       }]`;
       errors.push(...validateFieldNode(child, childPath));
     });
@@ -371,7 +372,9 @@ function validateFieldNode(field: unknown, path: string): string[] {
  * Validate defaultValue / startValue rules for a list of field definitions
  * (full schema fields or field-template arrays).
  */
-export function validateScoresheetFields(fields: unknown): SchemaValidationResult {
+export function validateScoresheetFields(
+  fields: unknown,
+): SchemaValidationResult {
   if (!Array.isArray(fields)) {
     return { ok: false, errors: ['fields must be an array.'] };
   }
@@ -393,7 +396,9 @@ export function validateScoresheetFields(fields: unknown): SchemaValidationResul
  * Schemas without a fields array remain accepted for backward-compatible markers
  * (e.g. mode / bracketSource inference payloads).
  */
-export function validateScoresheetSchema(schema: unknown): SchemaValidationResult {
+export function validateScoresheetSchema(
+  schema: unknown,
+): SchemaValidationResult {
   if (!isPlainObject(schema)) {
     return { ok: false, errors: ['schema must be an object.'] };
   }
