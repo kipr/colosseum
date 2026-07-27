@@ -34,12 +34,22 @@ The input JSON can be one of:
 
 - Seeding-style calculator behavior
 - `text`, `number`, `dropdown`, `buttons`, `checkbox`, `calculated`, `section_header`, `group_header`
+- Official `defaultValue` on interactive fields (`text`, `number`, `dropdown`, `buttons`, `checkbox`)
 - `two-column` layout
 - Formula recalculation
-- Reset button
+- Reset button (restores each field to its schema `defaultValue`, or the type empty default when omitted)
 - Optional `gameAreasImage`
 - Draft autosave in `localStorage`
 - Download entered/calculated values as JSON
+
+## Default Values
+
+Portable scoresheets honor the same `defaultValue` rules as the main app:
+
+- Values are applied on first load and again when **Reset** is clicked
+- Typed defaults are validated at export time (wrong types, out-of-range numbers, and unknown option values fail the export)
+- `startValue` is rejected
+- When `defaultValue` is omitted: checkbox → `false`, buttons → first option, other inputs → empty
 
 ## V1 Rejected Features (fail-fast)
 
@@ -49,6 +59,7 @@ The input JSON can be one of:
 - `dataSource.type === "bracket"`
 - `scoreDestination === "db"`
 - Queue-specific schema assumptions
+- Invalid or unsupported `defaultValue` / `startValue` entries
 
 ## Distribution Notes
 

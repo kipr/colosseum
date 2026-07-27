@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
 import { scoreBotballStartBoxCubes } from '../scoring/botballStartBoxCubes';
+import { getBlankFieldValue } from '../../shared/scoresheetSchema';
 
 export interface BracketTeamDisplay {
   teamNumber: string;
@@ -131,19 +132,7 @@ function getRepeatableGroupMinRows(field: any): number {
 }
 
 function getBlankRepeatableGroupValue(field: any): any {
-  if (field.defaultValue !== undefined) {
-    return field.defaultValue;
-  }
-
-  if (field.startValue !== undefined) {
-    return field.startValue;
-  }
-
-  if (field.type === 'checkbox') {
-    return false;
-  }
-
-  return '';
+  return getBlankFieldValue(field);
 }
 
 export function createBlankRepeatableGroupRow(field: any): Record<string, any> {

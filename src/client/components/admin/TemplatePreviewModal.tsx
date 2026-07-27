@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from 'react';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
+import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 
@@ -38,8 +39,7 @@ export default function TemplatePreviewModal({
   };
 
   const getPreviewRepeatableGroupRows = (field: any) => {
-    const startingValue =
-      field.defaultValue !== undefined ? field.defaultValue : field.startValue;
+    const startingValue = getFieldDefaultValue(field);
 
     return normalizeRepeatableGroupRows(startingValue, field);
   };
