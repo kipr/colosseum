@@ -10,7 +10,7 @@ npm run export:scoresheet -- \
   --output dist/portable/botball-seeding.html
 ```
 
-For a small demo that pre-fills controls with `defaultValue`:
+For a small demo that pre-fills controls with `defaultValue` (a bare fields array, also pasteable into Admin → Field Templates):
 
 ```bash
 npm run export:scoresheet -- \
