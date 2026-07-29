@@ -1,0 +1,76 @@
+{
+  "name": "Portable Defaults Fixture",
+  "description": "Exercises defaultValue across portable interactive field types",
+  "schema": {
+    "title": "Portable Defaults Fixture",
+    "layout": "two-column",
+    "fields": [
+      {
+        "id": "judge_name",
+        "label": "Judge Name",
+        "type": "text",
+        "defaultValue": "Ada Lovelace",
+        "column": "left"
+      },
+      {
+        "id": "technical_score",
+        "label": "Technical Score",
+        "type": "number",
+        "min": 0,
+        "max": 50,
+        "step": 0.5,
+        "defaultValue": 12.5,
+        "column": "left"
+      },
+      {
+        "id": "division",
+        "label": "Division",
+        "type": "dropdown",
+        "options": [
+          { "label": "Junior", "value": "junior" },
+          { "label": "Senior", "value": "senior" },
+          { "label": "Professional", "value": "pro" }
+        ],
+        "defaultValue": "senior",
+        "column": "left"
+      },
+      {
+        "id": "performance_rating",
+        "label": "Performance Rating",
+        "type": "buttons",
+        "options": [
+          { "label": "Excellent", "value": "5" },
+          { "label": "Good", "value": "4" },
+          { "label": "Fair", "value": "3" }
+        ],
+        "defaultValue": "4",
+        "column": "right"
+      },
+      {
+        "id": "time_violation",
+        "label": "Time Violation",
+        "type": "checkbox",
+        "checkboxLabel": "Exceeded time limit",
+        "defaultValue": true,
+        "column": "right"
+      },
+      {
+        "id": "bonus",
+        "label": "Bonus",
+        "type": "number",
+        "min": 0,
+        "max": 10,
+        "defaultValue": 2,
+        "column": "right"
+      },
+      {
+        "id": "grand_total",
+        "label": "Grand Total",
+        "type": "calculated",
+        "formula": "technical_score + bonus",
+        "isGrandTotal": true,
+        "column": "right"
+      }
+    ]
+  }
+}

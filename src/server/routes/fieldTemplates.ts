@@ -1,6 +1,10 @@
 import express, { Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import {
+  formatSchemaValidationError,
+  validateScoresheetFields,
+} from '../../shared/scoresheetSchema';
 
 const router = express.Router();
 
@@ -56,6 +60,14 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Fields must be an array' });
     }
 
+    const fieldsValidation = validateScoresheetFields(fields);
+    if (!fieldsValidation.ok) {
+      return res.status(400).json({
+        error: formatSchemaValidationError(fieldsValidation.errors),
+        errors: fieldsValidation.errors,
+      });
+    }
+
     const db = await getDatabase();
     const result = await db.run(
       `INSERT INTO scoresheet_field_templates (name, description, fields_json, created_by)
@@ -86,6 +98,18 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 
     if (!name || !fields) {
       return res.status(400).json({ error: 'Name and fields are required' });
+    }
+
+    if (!Array.isArray(fields)) {
+      return res.status(400).json({ error: 'Fields must be an array' });
+    }
+
+    const fieldsValidation = validateScoresheetFields(fields);
+    if (!fieldsValidation.ok) {
+      return res.status(400).json({
+        error: formatSchemaValidationError(fieldsValidation.errors),
+        errors: fieldsValidation.errors,
+      });
     }
 
     const db = await getDatabase();

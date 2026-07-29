@@ -300,6 +300,61 @@ describe('Scoresheet Routes – extra coverage', () => {
       );
       expect(link.template_type).toBe('bracket');
     });
+
+    it('rejects invalid defaultValue types', async () => {
+      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Bad Defaults',
+        accessCode: 'bad-defaults',
+        schema: {
+          fields: [
+            { id: 'score', type: 'number', min: 0, max: 10, defaultValue: 99 },
+          ],
+        },
+      });
+      expect(res.status).toBe(400);
+      const body = res.json as { error: string; errors: string[] };
+      expect(body.error).toContain('above max');
+      expect(body.errors.some((e) => e.includes('above max'))).toBe(true);
+    });
+
+    it('rejects legacy startValue', async () => {
+      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Legacy Start Value',
+        accessCode: 'legacy-start',
+        schema: {
+          fields: [{ id: 'name', type: 'text', startValue: 'Ada' }],
+        },
+      });
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain('startValue');
+    });
+
+    it('persists templates with valid typed defaults', async () => {
+      const schema = {
+        fields: [
+          { id: 'name', type: 'text', defaultValue: 'Ada' },
+          { id: 'score', type: 'number', min: 0, max: 10, defaultValue: 7 },
+          {
+            id: 'division',
+            type: 'dropdown',
+            options: [
+              { label: 'Junior', value: 'junior' },
+              { label: 'Senior', value: 'senior' },
+            ],
+            defaultValue: 'senior',
+          },
+          { id: 'dq', type: 'checkbox', defaultValue: true },
+        ],
+      };
+      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Good Defaults',
+        accessCode: 'good-defaults',
+        schema,
+      });
+      expect(res.status).toBe(200);
+      const body = res.json as { schema: { fields: Array<{ id: string }> } };
+      expect(body.schema).toEqual(schema);
+    });
   });
 
   describe('PUT /scoresheet/templates/:id', () => {
@@ -363,6 +418,37 @@ describe('Scoresheet Routes – extra coverage', () => {
         [template.id],
       );
       expect(link).toBeUndefined();
+    });
+
+    it('rejects invalid defaultValue on update', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Original',
+        schema: JSON.stringify({ fields: [] }),
+        access_code: 'old',
+        created_by: userId,
+      });
+
+      const res = await http.put(
+        `${baseUrl}/scoresheet/templates/${template.id}`,
+        {
+          name: 'Updated',
+          schema: {
+            fields: [
+              {
+                id: 'division',
+                type: 'dropdown',
+                options: [{ label: 'Junior', value: 'junior' }],
+                defaultValue: 'senior',
+              },
+            ],
+          },
+          accessCode: 'new',
+        },
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain(
+        'match one of the declared options',
+      );
     });
   });
 

@@ -15,6 +15,7 @@ import {
   shouldHideSoloDoubleSeedingField,
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
+import { getFieldDefaultValue } from '../../shared/scoresheetSchema';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -64,21 +65,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     // Initialize fields with their default values if specified
     template.schema.fields.forEach((field: any) => {
       if (field.type === 'repeatableGroup') {
-        const startingValue =
-          field.defaultValue !== undefined
-            ? field.defaultValue
-            : field.startValue;
+        const startingValue = getFieldDefaultValue(field);
         initial[field.id] =
           startingValue !== undefined
             ? Array.isArray(startingValue)
               ? startingValue.map((row: any) => ({ ...row }))
               : startingValue
             : normalizeRepeatableGroupRows(undefined, field);
-      } else if (field.defaultValue !== undefined) {
-        initial[field.id] = field.defaultValue;
-      } else if (field.startValue !== undefined) {
-        // Support both defaultValue and startValue
-        initial[field.id] = field.startValue;
+      } else {
+        const startingValue = getFieldDefaultValue(field);
+        if (startingValue !== undefined) {
+          initial[field.id] = startingValue;
+        }
       }
     });
 
@@ -754,13 +752,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     setFormData((prev) => ({ ...prev, ...updates }));
   };
 
-  const getFieldStartingValue = (field: any) => {
-    if (field.defaultValue !== undefined) {
-      return field.defaultValue;
-    }
-
-    return field.startValue;
-  };
+  const getFieldStartingValue = (field: any) => getFieldDefaultValue(field);
 
   const shouldShowNumberPlaceholder = (field: any, value: any) => {
     const startingValue = getFieldStartingValue(field);
