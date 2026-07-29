@@ -10,7 +10,15 @@ npm run export:scoresheet -- \
   --output dist/portable/botball-seeding.html
 ```
 
-Then share `dist/portable/botball-seeding.html`. The recipient can open it directly using `file://` in a browser.
+For a small demo that pre-fills controls with `defaultValue`:
+
+```bash
+npm run export:scoresheet -- \
+  --input templates/demo-default-values.json \
+  --output dist/portable/demo-default-values.html
+```
+
+Then share the generated HTML. The recipient can open it directly using `file://` in a browser.
 
 ## Accepted Input Shapes
 

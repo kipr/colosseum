@@ -1,0 +1,89 @@
+{
+  "name": "Demo: Default Values",
+  "description": "Simple scoresheet showing how defaultValue pre-fills text, number, dropdown, buttons, and checkbox fields.",
+  "schema": {
+    "title": "Default Values Demo",
+    "description": "Open this sheet to see each control start with its schema defaultValue.",
+    "layout": "two-column",
+    "fields": [
+      {
+        "id": "header_left",
+        "label": "Team Info",
+        "type": "section_header",
+        "column": "left"
+      },
+      {
+        "id": "team_name",
+        "label": "Team Name",
+        "type": "text",
+        "placeholder": "Enter team name",
+        "defaultValue": "Demo Team",
+        "column": "left"
+      },
+      {
+        "id": "division",
+        "label": "Division",
+        "type": "dropdown",
+        "options": [
+          { "label": "Junior", "value": "junior" },
+          { "label": "Senior", "value": "senior" }
+        ],
+        "defaultValue": "junior",
+        "column": "left"
+      },
+      {
+        "id": "base_score",
+        "label": "Base Score",
+        "type": "number",
+        "min": 0,
+        "max": 100,
+        "step": 1,
+        "defaultValue": 10,
+        "column": "left"
+      },
+      {
+        "id": "header_right",
+        "label": "Judging",
+        "type": "section_header",
+        "column": "right"
+      },
+      {
+        "id": "effort",
+        "label": "Effort",
+        "type": "buttons",
+        "options": [
+          { "label": "High", "value": "3" },
+          { "label": "Medium", "value": "2" },
+          { "label": "Low", "value": "1" }
+        ],
+        "defaultValue": "2",
+        "column": "right"
+      },
+      {
+        "id": "completed_on_time",
+        "label": "On Time",
+        "type": "checkbox",
+        "checkboxLabel": "Finished within the time limit",
+        "defaultValue": true,
+        "column": "right"
+      },
+      {
+        "id": "bonus",
+        "label": "Bonus",
+        "type": "number",
+        "min": 0,
+        "max": 20,
+        "defaultValue": 5,
+        "column": "right"
+      },
+      {
+        "id": "grand_total",
+        "label": "Total",
+        "type": "calculated",
+        "formula": "base_score + bonus",
+        "isGrandTotal": true,
+        "column": "right"
+      }
+    ]
+  }
+}
