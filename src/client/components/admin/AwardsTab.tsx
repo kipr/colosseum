@@ -4,7 +4,20 @@ import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
+import {
+  DEFAULT_AUTOMATIC_AWARD_SETTINGS,
+  type AutomaticAwardSettings,
+  type AutomaticAwardsPreviewResponse,
+  type ZeroScoreComponent,
+} from '@shared/automaticAwards';
 import '../Modal.css';
+
+const ZERO_COMPONENT_LABELS: Record<ZeroScoreComponent, string> = {
+  documentation: 'documentation',
+  seeding: 'seeding',
+  double_seeding: 'double seeding',
+  weighted_de: 'weighted DE',
+};
 
 interface AwardTemplate {
   id: number;
@@ -74,6 +87,18 @@ export default function AwardsTab() {
   });
   const [savingAward, setSavingAward] = useState(false);
   const [applyingAutomatic, setApplyingAutomatic] = useState(false);
+
+  // Automatic awards modal
+  const [showAutomaticModal, setShowAutomaticModal] = useState(false);
+  const [automaticForm, setAutomaticForm] = useState<AutomaticAwardSettings>({
+    ...DEFAULT_AUTOMATIC_AWARD_SETTINGS,
+  });
+  const [automaticPreview, setAutomaticPreview] =
+    useState<AutomaticAwardsPreviewResponse | null>(null);
+  const [loadingAutomaticPreview, setLoadingAutomaticPreview] = useState(false);
+  const [automaticPreviewError, setAutomaticPreviewError] = useState<
+    string | null
+  >(null);
 
   // Recipient controls
   const [addingRecipientForAwardId, setAddingRecipientForAwardId] = useState<
@@ -291,18 +316,113 @@ export default function AwardsTab() {
     }
   };
 
+  const fetchAutomaticPreview = useCallback(
+    async (settings: AutomaticAwardSettings) => {
+      if (!selectedEventId) return;
+      setLoadingAutomaticPreview(true);
+      setAutomaticPreviewError(null);
+      try {
+        const params = new URLSearchParams({
+          de_top_n: String(settings.de_top_n),
+          per_bracket_overall_top_n: String(settings.per_bracket_overall_top_n),
+          seeding_top_n: String(settings.seeding_top_n),
+        });
+        const res = await fetch(
+          `/awards/event/${selectedEventId}/automatic/preview?${params}`,
+          { credentials: 'include' },
+        );
+        const data = (await res.json()) as AutomaticAwardsPreviewResponse & {
+          error?: string;
+        };
+        if (!res.ok) {
+          throw new Error(data.error ?? 'Failed to preview automatic awards');
+        }
+        setAutomaticPreview(data);
+      } catch (err) {
+        setAutomaticPreview(null);
+        setAutomaticPreviewError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to preview automatic awards',
+        );
+      } finally {
+        setLoadingAutomaticPreview(false);
+      }
+    },
+    [selectedEventId],
+  );
+
+  const openAutomaticModal = async () => {
+    if (!selectedEventId) return;
+    setShowAutomaticModal(true);
+    setAutomaticPreview(null);
+    setAutomaticPreviewError(null);
+    setLoadingAutomaticPreview(true);
+    try {
+      const res = await fetch(
+        `/awards/event/${selectedEventId}/automatic/preview`,
+        { credentials: 'include' },
+      );
+      const data = (await res.json()) as AutomaticAwardsPreviewResponse & {
+        error?: string;
+      };
+      if (!res.ok) {
+        throw new Error(
+          data.error ?? 'Failed to load automatic award settings',
+        );
+      }
+      setAutomaticForm({ ...data.settings });
+      setAutomaticPreview(data);
+    } catch (err) {
+      setAutomaticPreviewError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load automatic award settings',
+      );
+    } finally {
+      setLoadingAutomaticPreview(false);
+    }
+  };
+
+  const handleAutomaticFormChange = (
+    key: keyof AutomaticAwardSettings,
+    value: number,
+  ) => {
+    const next = { ...automaticForm, [key]: value };
+    setAutomaticForm(next);
+    void fetchAutomaticPreview(next);
+  };
+
+  const countPlannedAwards = (
+    preview: AutomaticAwardsPreviewResponse | null,
+  ): number => {
+    if (!preview) return 0;
+    const auto = preview.automatic;
+    let count = 0;
+    for (const b of auto.de) count += b.placements.length;
+    for (const b of auto.perBracketOverall) count += b.placements.length;
+    count += auto.seeding?.placements.length ?? 0;
+    return count;
+  };
+
   const handleApplyAutomaticAwards = async () => {
     if (!selectedEventId) return;
     setApplyingAutomatic(true);
     try {
       const res = await fetch(`/awards/event/${selectedEventId}/automatic`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
+        body: JSON.stringify({
+          ...automaticForm,
+          acknowledge_warnings: Boolean(automaticPreview?.hasWarnings),
+        }),
       });
       const data = (await res.json()) as {
         created?: number;
         removed?: number;
         error?: string;
+        requires_acknowledgement?: boolean;
       };
       if (!res.ok) {
         throw new Error(data.error ?? 'Failed to apply automatic awards');
@@ -322,6 +442,7 @@ export default function AwardsTab() {
             : `Added ${created} automatic award(s).`,
         );
       }
+      setShowAutomaticModal(false);
       await fetchEventAwards();
     } catch (err) {
       toast.error(
@@ -680,12 +801,10 @@ export default function AwardsTab() {
               type="button"
               className="btn btn-secondary"
               disabled={applyingAutomatic}
-              onClick={handleApplyAutomaticAwards}
+              onClick={() => void openAutomaticModal()}
               style={{ marginBottom: '0.5rem' }}
             >
-              {applyingAutomatic
-                ? 'Applying…'
-                : 'Add automatic awards (from results)'}
+              Add automatic awards (from results)
             </button>
             <p
               style={{
@@ -695,10 +814,10 @@ export default function AwardsTab() {
               }}
             >
               Automatic awards use the same rules as the spectator view (DE
-              placement, per-bracket overall, event overall). They are stored as
-              event awards whose names start with &quot;Auto:&quot;; clicking
-              the button replaces previous automatic awards with a fresh
-              calculation.
+              placement, per-bracket overall, seeding). Configure top-N counts
+              in the modal. They are stored as event awards whose names start
+              with &quot;Auto:&quot;; applying replaces previous automatic
+              awards with a fresh calculation.
             </p>
 
             {automaticAwards.length === 0 ? (
@@ -804,6 +923,322 @@ export default function AwardsTab() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Automatic awards modal */}
+      {showAutomaticModal && (
+        <div
+          className="modal show"
+          onClick={() => !applyingAutomatic && setShowAutomaticModal(false)}
+        >
+          <div
+            className="modal-content"
+            style={{ maxWidth: '640px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span
+              className="close"
+              onClick={() => !applyingAutomatic && setShowAutomaticModal(false)}
+            >
+              &times;
+            </span>
+            <h3>Automatic awards</h3>
+            <p
+              style={{
+                color: 'var(--secondary-color)',
+                marginBottom: '1rem',
+                lineHeight: 1.5,
+              }}
+            >
+              Choose how many top places to generate for each category. Use 0 to
+              disable a category. Applying replaces existing &quot;Auto:&quot;
+              awards for this event.
+            </p>
+
+            {(() => {
+              const maxN = automaticPreview?.teamCount ?? teams.length;
+              const options = Array.from({ length: maxN + 1 }, (_, i) => i);
+              const selectStyle = { maxWidth: '12rem' } as const;
+              return (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="auto-de-top-n">Top N DE placements</label>
+                    <select
+                      id="auto-de-top-n"
+                      className="field-input"
+                      style={selectStyle}
+                      value={automaticForm.de_top_n}
+                      disabled={loadingAutomaticPreview && !automaticPreview}
+                      onChange={(e) =>
+                        handleAutomaticFormChange(
+                          'de_top_n',
+                          Number(e.target.value),
+                        )
+                      }
+                    >
+                      {options.map((n) => (
+                        <option key={`de-${n}`} value={n}>
+                          {n === 0 ? '0 (disabled)' : n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="auto-bracket-top-n">
+                      Top N per-bracket overall placements
+                    </label>
+                    <select
+                      id="auto-bracket-top-n"
+                      className="field-input"
+                      style={selectStyle}
+                      value={automaticForm.per_bracket_overall_top_n}
+                      disabled={loadingAutomaticPreview && !automaticPreview}
+                      onChange={(e) =>
+                        handleAutomaticFormChange(
+                          'per_bracket_overall_top_n',
+                          Number(e.target.value),
+                        )
+                      }
+                    >
+                      {options.map((n) => (
+                        <option key={`ob-${n}`} value={n}>
+                          {n === 0 ? '0 (disabled)' : n}
+                        </option>
+                      ))}
+                    </select>
+                    <p
+                      style={{
+                        color: 'var(--secondary-color)',
+                        fontSize: '0.85rem',
+                        marginTop: '0.35rem',
+                      }}
+                    >
+                      Only generated when the event has multiple brackets and
+                      each bracket is fully ranked.
+                    </p>
+                  </div>
+                  <div className="form-group">
+                    <label htmlFor="auto-seeding-top-n">
+                      Top N seeding places
+                    </label>
+                    <select
+                      id="auto-seeding-top-n"
+                      className="field-input"
+                      style={selectStyle}
+                      value={automaticForm.seeding_top_n}
+                      disabled={loadingAutomaticPreview && !automaticPreview}
+                      onChange={(e) =>
+                        handleAutomaticFormChange(
+                          'seeding_top_n',
+                          Number(e.target.value),
+                        )
+                      }
+                    >
+                      {options.map((n) => (
+                        <option key={`seed-${n}`} value={n}>
+                          {n === 0 ? '0 (disabled)' : n}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              );
+            })()}
+
+            {loadingAutomaticPreview && (
+              <p style={{ color: 'var(--secondary-color)' }}>
+                Updating preview…
+              </p>
+            )}
+            {automaticPreviewError && (
+              <p style={{ color: 'var(--danger-color, #b00020)' }}>
+                {automaticPreviewError}
+              </p>
+            )}
+
+            {automaticPreview && !automaticPreviewError && (
+              <div
+                style={{
+                  marginTop: '0.75rem',
+                  marginBottom: '1rem',
+                  padding: '0.75rem 1rem',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '4px',
+                  background: 'var(--surface-color, transparent)',
+                }}
+              >
+                <p style={{ margin: '0 0 0.5rem' }}>
+                  Preview: {countPlannedAwards(automaticPreview)} award
+                  {countPlannedAwards(automaticPreview) === 1 ? '' : 's'} will
+                  be created
+                  {automaticPreview.teamCount === 0
+                    ? ' (event has no teams).'
+                    : '.'}
+                </p>
+                <ul
+                  style={{
+                    margin: 0,
+                    paddingLeft: '1.25rem',
+                    color: 'var(--secondary-color)',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  <li>
+                    DE:{' '}
+                    {automaticPreview.automatic.de.reduce(
+                      (sum, b) => sum + b.placements.length,
+                      0,
+                    )}{' '}
+                    placement
+                    {automaticPreview.automatic.de.reduce(
+                      (sum, b) => sum + b.placements.length,
+                      0,
+                    ) === 1
+                      ? ''
+                      : 's'}
+                  </li>
+                  <li>
+                    Per-bracket overall:{' '}
+                    {automaticPreview.automatic.perBracketOverall.reduce(
+                      (sum, b) => sum + b.placements.length,
+                      0,
+                    )}{' '}
+                    placement
+                    {automaticPreview.automatic.perBracketOverall.reduce(
+                      (sum, b) => sum + b.placements.length,
+                      0,
+                    ) === 1
+                      ? ''
+                      : 's'}
+                  </li>
+                  <li>
+                    Seeding:{' '}
+                    {automaticPreview.automatic.seeding?.placements.length ?? 0}{' '}
+                    place
+                    {(automaticPreview.automatic.seeding?.placements.length ??
+                      0) === 1
+                      ? ''
+                      : 's'}
+                  </li>
+                </ul>
+              </div>
+            )}
+
+            {automaticPreview?.hasWarnings && (
+              <div
+                style={{
+                  marginBottom: '1rem',
+                  padding: '0.75rem 1rem',
+                  border: '1px solid var(--warning-border, #c9a227)',
+                  borderRadius: '4px',
+                  background: 'var(--warning-bg, rgba(201, 162, 39, 0.12))',
+                }}
+              >
+                <strong>Warnings</strong>
+                <p
+                  style={{
+                    margin: '0.35rem 0 0.75rem',
+                    fontSize: '0.9rem',
+                    lineHeight: 1.45,
+                  }}
+                >
+                  Review these common issues before applying. You can still
+                  apply anyway.
+                </p>
+                {automaticPreview.diagnostics.zeroScoreIssues.length > 0 && (
+                  <div style={{ marginBottom: '0.75rem' }}>
+                    <p style={{ margin: '0 0 0.35rem', fontWeight: 600 }}>
+                      Teams with a zero or missing score component
+                    </p>
+                    <ul
+                      style={{
+                        margin: 0,
+                        paddingLeft: '1.25rem',
+                        maxHeight: '10rem',
+                        overflowY: 'auto',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      {automaticPreview.diagnostics.zeroScoreIssues.map(
+                        (issue) => (
+                          <li key={issue.team_id}>
+                            #{issue.team_number} {issue.team_name}:{' '}
+                            {issue.components
+                              .map((c) => ZERO_COMPONENT_LABELS[c])
+                              .join(', ')}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
+                )}
+                {automaticPreview.diagnostics.duplicateBracketWeights.length >
+                  0 && (
+                  <div>
+                    <p style={{ margin: '0 0 0.35rem', fontWeight: 600 }}>
+                      Multiple brackets share the same weight
+                    </p>
+                    <ul
+                      style={{
+                        margin: 0,
+                        paddingLeft: '1.25rem',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      {automaticPreview.diagnostics.duplicateBracketWeights.map(
+                        (group) => (
+                          <li key={group.weight}>
+                            Weight {group.weight}:{' '}
+                            {group.brackets.map((b) => b.name).join(', ')}
+                          </li>
+                        ),
+                      )}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1rem',
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowAutomaticModal(false)}
+                disabled={applyingAutomatic}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={
+                  automaticPreview?.hasWarnings
+                    ? 'btn btn-warning'
+                    : 'btn btn-primary'
+                }
+                disabled={
+                  applyingAutomatic ||
+                  loadingAutomaticPreview ||
+                  Boolean(automaticPreviewError) ||
+                  !automaticPreview
+                }
+                onClick={() => void handleApplyAutomaticAwards()}
+              >
+                {applyingAutomatic
+                  ? 'Applying…'
+                  : automaticPreview?.hasWarnings
+                    ? 'Apply anyway'
+                    : 'Apply automatic awards'}
+              </button>
+            </div>
           </div>
         </div>
       )}
