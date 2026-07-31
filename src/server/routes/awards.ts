@@ -215,6 +215,18 @@ router.get(
         [eventId],
       );
 
+      const individualRecipients = await db.all(
+        `SELECT eair.id, eair.event_award_id, eair.name, eair.team_id,
+                t.team_number, t.team_name, t.display_name
+         FROM event_award_individual_recipients eair
+         LEFT JOIN teams t ON eair.team_id = t.id
+         WHERE eair.event_award_id IN (
+           SELECT id FROM event_awards WHERE event_id = ?
+         )
+         ORDER BY eair.id ASC`,
+        [eventId],
+      );
+
       const recipientsByAward = new Map<number, typeof recipients>();
       for (const r of recipients) {
         const awardId = (r as Record<string, unknown>).event_award_id as number;
@@ -224,9 +236,23 @@ router.get(
         recipientsByAward.get(awardId)!.push(r);
       }
 
+      const individualRecipientsByAward = new Map<
+        number,
+        typeof individualRecipients
+      >();
+      for (const r of individualRecipients) {
+        const awardId = (r as Record<string, unknown>).event_award_id as number;
+        if (!individualRecipientsByAward.has(awardId)) {
+          individualRecipientsByAward.set(awardId, []);
+        }
+        individualRecipientsByAward.get(awardId)!.push(r);
+      }
+
       const result = awards.map((a: Record<string, unknown>) => ({
         ...a,
         recipients: recipientsByAward.get(a.id as number) ?? [],
+        individual_recipients:
+          individualRecipientsByAward.get(a.id as number) ?? [],
       }));
 
       res.json(result);
@@ -438,7 +464,11 @@ router.post(
       const created = await db.get('SELECT * FROM event_awards WHERE id = ?', [
         result.lastID,
       ]);
-      res.status(201).json({ ...(created as object), recipients: [] });
+      res.status(201).json({
+        ...(created as object),
+        recipients: [],
+        individual_recipients: [],
+      });
     } catch (error) {
       console.error('Error creating event award:', error);
       res.status(500).json({ error: 'Failed to create event award' });
@@ -614,6 +644,110 @@ router.delete(
 );
 
 // ============================================================================
+// EVENT AWARD INDIVIDUAL RECIPIENTS
+// ============================================================================
+
+const MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH = 200;
+
+// POST /awards/event-awards/:id/individual-recipients
+router.post(
+  '/event-awards/:id/individual-recipients',
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { name, team_id } = req.body;
+
+      const trimmedName =
+        name === undefined || name === null ? '' : String(name).trim();
+      if (!trimmedName) {
+        return res.status(400).json({ error: 'Name is required' });
+      }
+      if (trimmedName.length > MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH) {
+        return res.status(400).json({
+          error: `Name must be at most ${MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH} characters`,
+        });
+      }
+
+      const db = await getDatabase();
+      const award = await db.get(
+        'SELECT id, event_id FROM event_awards WHERE id = ?',
+        [id],
+      );
+      if (!award) {
+        return res.status(404).json({ error: 'Event award not found' });
+      }
+
+      let resolvedTeamId: number | null = null;
+      if (team_id !== undefined && team_id !== null && team_id !== '') {
+        const awardEventId = (award as Record<string, unknown>)
+          .event_id as number;
+        const team = await db.get(
+          'SELECT id, event_id FROM teams WHERE id = ?',
+          [team_id],
+        );
+        if (!team) {
+          return res.status(404).json({ error: 'Team not found' });
+        }
+        if ((team as Record<string, unknown>).event_id !== awardEventId) {
+          return res
+            .status(400)
+            .json({ error: 'Team does not belong to the same event' });
+        }
+        resolvedTeamId = Number(team_id);
+      }
+
+      const result = await db.run(
+        `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
+         VALUES (?, ?, ?)`,
+        [id, trimmedName, resolvedTeamId],
+      );
+
+      const recipient = await db.get(
+        `SELECT eair.id, eair.event_award_id, eair.name, eair.team_id,
+                t.team_number, t.team_name, t.display_name
+         FROM event_award_individual_recipients eair
+         LEFT JOIN teams t ON eair.team_id = t.id
+         WHERE eair.id = ?`,
+        [result.lastID],
+      );
+      res.status(201).json(recipient);
+    } catch (error) {
+      console.error('Error adding individual award recipient:', error);
+      res
+        .status(500)
+        .json({ error: 'Failed to add individual award recipient' });
+    }
+  },
+);
+
+// DELETE /awards/event-awards/:awardId/individual-recipients/:recipientId
+router.delete(
+  '/event-awards/:awardId/individual-recipients/:recipientId',
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { awardId, recipientId } = req.params;
+      const db = await getDatabase();
+      const result = await db.run(
+        `DELETE FROM event_award_individual_recipients
+         WHERE event_award_id = ? AND id = ?`,
+        [awardId, recipientId],
+      );
+      if (!result.changes) {
+        return res.status(404).json({ error: 'Recipient not found' });
+      }
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error removing individual award recipient:', error);
+      res
+        .status(500)
+        .json({ error: 'Failed to remove individual award recipient' });
+    }
+  },
+);
+
+// ============================================================================
 // PUBLIC ENDPOINT (release-gated)
 // ============================================================================
 
@@ -649,6 +783,18 @@ router.get(
         [eventId, `${AUTO_AWARD_NAME_PREFIX}%`],
       );
 
+      const individualRecipients = await db.all(
+        `SELECT eair.event_award_id, eair.name,
+                t.team_number, t.team_name, t.display_name
+         FROM event_award_individual_recipients eair
+         LEFT JOIN teams t ON eair.team_id = t.id
+         WHERE eair.event_award_id IN (
+           SELECT id FROM event_awards WHERE event_id = ? AND name NOT LIKE ?
+         )
+         ORDER BY eair.id ASC`,
+        [eventId, `${AUTO_AWARD_NAME_PREFIX}%`],
+      );
+
       const recipientsByAward = new Map<
         number,
         {
@@ -670,11 +816,36 @@ router.get(
         });
       }
 
+      const individualRecipientsByAward = new Map<
+        number,
+        {
+          name: string;
+          team_number: number | null;
+          team_name: string | null;
+          display_name: string | null;
+        }[]
+      >();
+      for (const r of individualRecipients) {
+        const row = r as Record<string, unknown>;
+        const awardId = row.event_award_id as number;
+        if (!individualRecipientsByAward.has(awardId)) {
+          individualRecipientsByAward.set(awardId, []);
+        }
+        individualRecipientsByAward.get(awardId)!.push({
+          name: row.name as string,
+          team_number: (row.team_number as number | null) ?? null,
+          team_name: (row.team_name as string | null) ?? null,
+          display_name: (row.display_name as string | null) ?? null,
+        });
+      }
+
       const manual = awards.map((a: Record<string, unknown>) => ({
         name: a.name,
         description: a.description,
         sort_order: a.sort_order,
         recipients: recipientsByAward.get(a.id as number) ?? [],
+        individual_recipients:
+          individualRecipientsByAward.get(a.id as number) ?? [],
       }));
 
       const automatic = await computeAutomaticAwards(Number(eventId));

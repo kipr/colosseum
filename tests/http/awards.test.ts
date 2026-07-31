@@ -20,6 +20,7 @@ import {
   seedAwardTemplate,
   seedEventAward,
   seedEventAwardRecipient,
+  seedEventAwardIndividualRecipient,
   seedDocumentationScore,
 } from './helpers/seed';
 import awardsRoutes from '../../src/server/routes/awards';
@@ -134,6 +135,9 @@ describe('Awards API', () => {
       expect(res.status).toBe(201);
       expect((res.json as Record<string, unknown>).name).toBe('Innovation');
       expect((res.json as Record<string, unknown>).recipients).toEqual([]);
+      expect(
+        (res.json as Record<string, unknown>).individual_recipients,
+      ).toEqual([]);
     });
 
     it('creates an event award from template', async () => {
@@ -183,13 +187,18 @@ describe('Awards API', () => {
       });
 
       const res = await http.get<
-        { name: string; recipients: { team_number: number }[] }[]
+        {
+          name: string;
+          recipients: { team_number: number }[];
+          individual_recipients: unknown[];
+        }[]
       >(`${baseUrl}/awards/event/${event.id}`);
       expect(res.status).toBe(200);
       expect(res.json).toHaveLength(1);
       expect(res.json[0].name).toBe('MVP');
       expect(res.json[0].recipients).toHaveLength(1);
       expect(res.json[0].recipients[0].team_number).toBe(1);
+      expect(res.json[0].individual_recipients).toEqual([]);
     });
 
     it('updates an event award', async () => {
@@ -340,6 +349,376 @@ describe('Awards API', () => {
     });
   });
 
+  // ── Individual Recipients ──
+
+  describe('Event Award Individual Recipients', () => {
+    it('adds an individual recipient with a team', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 7,
+        team_name: 'Circuit Breakers',
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Outstanding Programming',
+      });
+
+      const res = await http.post(`${baseUrl}/awards/event-awards/${award.id}/individual-recipients`, {
+        name: 'Ada Lovelace',
+        team_id: team.id,
+      });
+      expect(res.status).toBe(201);
+      const body = res.json as Record<string, unknown>;
+      expect(body.id).toBeDefined();
+      expect(body.event_award_id).toBe(award.id);
+      expect(body.name).toBe('Ada Lovelace');
+      expect(body.team_id).toBe(team.id);
+      expect(body.team_number).toBe(7);
+      expect(body.team_name).toBe('Circuit Breakers');
+      expect(body.display_name).toBeNull();
+    });
+
+    it('adds an individual recipient without a team', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Volunteer of the Year',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: 'Grace Hopper' },
+      );
+      expect(res.status).toBe(201);
+      const body = res.json as Record<string, unknown>;
+      expect(body.name).toBe('Grace Hopper');
+      expect(body.team_id).toBeNull();
+      expect(body.team_number).toBeNull();
+      expect(body.team_name).toBeNull();
+    });
+
+    it('trims the individual recipient name', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Trim test',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: '  Katherine Johnson  ' },
+      );
+      expect(res.status).toBe(201);
+      expect((res.json as Record<string, unknown>).name).toBe(
+        'Katherine Johnson',
+      );
+    });
+
+    it('rejects blank individual recipient names', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Blank name test',
+      });
+
+      const missing = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        {},
+      );
+      expect(missing.status).toBe(400);
+
+      const blank = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: '   ' },
+      );
+      expect(blank.status).toBe(400);
+    });
+
+    it('rejects individual recipient names longer than 200 characters', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Long name test',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: 'a'.repeat(201) },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 404 when the award does not exist', async () => {
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/99999/individual-recipients`,
+        { name: 'Nobody' },
+      );
+      expect(res.status).toBe(404);
+    });
+
+    it('returns 404 when the associated team does not exist', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Missing team',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: 'Ada Lovelace', team_id: 99999 },
+      );
+      expect(res.status).toBe(404);
+      expect((res.json as Record<string, unknown>).error).toMatch(/team/i);
+    });
+
+    it('rejects an associated team from another event', async () => {
+      const event1 = await seedEvent(testDb.db, {
+        name: 'Event 1',
+        status: 'active',
+      });
+      const event2 = await seedEvent(testDb.db, {
+        name: 'Event 2',
+        status: 'active',
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event2.id,
+        team_number: 99,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event1.id,
+        name: 'Cross-event individual',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: 'Ada Lovelace', team_id: team2.id },
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as Record<string, unknown>).error).toMatch(
+        /same event/i,
+      );
+    });
+
+    it('allows two people with the same name on one award', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Duplicate names',
+      });
+
+      const r1 = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: 'Alex Smith' },
+      );
+      const r2 = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: 'Alex Smith' },
+      );
+      expect(r1.status).toBe(201);
+      expect(r2.status).toBe(201);
+      expect((r1.json as Record<string, unknown>).id).not.toBe(
+        (r2.json as Record<string, unknown>).id,
+      );
+    });
+
+    it('lists team and individual recipients together', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 7,
+        team_name: 'Circuit Breakers',
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Mixed',
+      });
+      await seedEventAwardRecipient(testDb.db, {
+        event_award_id: award.id,
+        team_id: team.id,
+      });
+      await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award.id,
+        name: 'Ada Lovelace',
+        team_id: team.id,
+      });
+
+      const res = await http.get<
+        {
+          recipients: { team_id: number; team_number: number }[];
+          individual_recipients: {
+            id: number;
+            name: string;
+            team_id: number | null;
+            team_number: number | null;
+          }[];
+        }[]
+      >(`${baseUrl}/awards/event/${event.id}`);
+      expect(res.status).toBe(200);
+      expect(res.json[0].recipients).toHaveLength(1);
+      expect(res.json[0].recipients[0].team_number).toBe(7);
+      expect(res.json[0].individual_recipients).toHaveLength(1);
+      expect(res.json[0].individual_recipients[0].name).toBe('Ada Lovelace');
+      expect(res.json[0].individual_recipients[0].team_id).toBe(team.id);
+      expect(res.json[0].individual_recipients[0].team_number).toBe(7);
+    });
+
+    it('removes an individual recipient by recipient id', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Remove individual',
+      });
+      const recipient = await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award.id,
+        name: 'To Remove',
+      });
+
+      const res = await http.delete(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients/${recipient.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      const listRes = await http.get<
+        { individual_recipients: unknown[] }[]
+      >(`${baseUrl}/awards/event/${event.id}`);
+      expect(listRes.json[0].individual_recipients).toEqual([]);
+    });
+
+    it('returns 404 when deleting a recipient that belongs to another award', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award1 = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Award 1',
+      });
+      const award2 = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Award 2',
+      });
+      const recipient = await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award1.id,
+        name: 'Wrong Award',
+      });
+
+      const res = await http.delete(
+        `${baseUrl}/awards/event-awards/${award2.id}/individual-recipients/${recipient.id}`,
+      );
+      expect(res.status).toBe(404);
+
+      const remaining = await testDb.db.get(
+        `SELECT id FROM event_award_individual_recipients WHERE id = ?`,
+        [recipient.id],
+      );
+      expect(remaining).toBeTruthy();
+    });
+
+    it('preserves the individual recipient and nulls team_id after team deletion', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 7,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Team deleted',
+      });
+      const recipient = await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award.id,
+        name: 'Ada Lovelace',
+        team_id: team.id,
+      });
+
+      await testDb.db.run(`DELETE FROM teams WHERE id = ?`, [team.id]);
+
+      const row = (await testDb.db.get(
+        `SELECT id, name, team_id FROM event_award_individual_recipients WHERE id = ?`,
+        [recipient.id],
+      )) as Record<string, unknown>;
+      expect(row.name).toBe('Ada Lovelace');
+      expect(row.team_id).toBeNull();
+
+      const listRes = await http.get<
+        {
+          individual_recipients: {
+            name: string;
+            team_id: number | null;
+            team_number: number | null;
+          }[];
+        }[]
+      >(`${baseUrl}/awards/event/${event.id}`);
+      expect(listRes.json[0].individual_recipients).toHaveLength(1);
+      expect(listRes.json[0].individual_recipients[0].name).toBe(
+        'Ada Lovelace',
+      );
+      expect(listRes.json[0].individual_recipients[0].team_id).toBeNull();
+      expect(listRes.json[0].individual_recipients[0].team_number).toBeNull();
+    });
+
+    it('cascades deletion of individual recipients when the award is deleted', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Cascade',
+      });
+      await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award.id,
+        name: 'Ada Lovelace',
+      });
+
+      const res = await http.delete(
+        `${baseUrl}/awards/event-awards/${award.id}`,
+      );
+      expect(res.status).toBe(200);
+
+      const remaining = await testDb.db.all(
+        `SELECT id FROM event_award_individual_recipients WHERE event_award_id = ?`,
+        [award.id],
+      );
+      expect(remaining).toHaveLength(0);
+    });
+
+    it('keeps team-recipient responses unchanged when individuals are also present', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 42,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Regression',
+      });
+
+      const teamRes = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/recipients`,
+        { team_id: team.id },
+      );
+      expect(teamRes.status).toBe(201);
+      expect((teamRes.json as Record<string, unknown>).team_number).toBe(42);
+      expect((teamRes.json as Record<string, unknown>).name).toBeUndefined();
+
+      await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        { name: 'Ada Lovelace', team_id: team.id },
+      );
+
+      const listRes = await http.get<
+        {
+          recipients: {
+            team_id: number;
+            team_number: number;
+            name?: string;
+          }[];
+          individual_recipients: { name: string }[];
+        }[]
+      >(`${baseUrl}/awards/event/${event.id}`);
+      expect(listRes.json[0].recipients).toHaveLength(1);
+      expect(listRes.json[0].recipients[0].team_id).toBe(team.id);
+      expect(listRes.json[0].recipients[0].team_number).toBe(42);
+      expect(listRes.json[0].recipients[0].name).toBeUndefined();
+      expect(listRes.json[0].individual_recipients).toHaveLength(1);
+    });
+  });
+
   // ── Public endpoint + release gating ──
 
   describe('GET /awards/event/:eventId/public', () => {
@@ -386,12 +765,25 @@ describe('Awards API', () => {
         event_award_id: award.id,
         team_id: team.id,
       });
+      await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award.id,
+        name: 'Ada Lovelace',
+        team_id: team.id,
+      });
 
       const res = await http.get<{
         manual: {
           name: string;
           description: string;
           recipients: { team_number: number; team_name: string }[];
+          individual_recipients: {
+            name: string;
+            team_number: number | null;
+            team_name: string | null;
+            display_name: string | null;
+            id?: number;
+            team_id?: number;
+          }[];
         }[];
       }>(`${baseUrl}/awards/event/${event.id}/public`);
 
@@ -402,13 +794,41 @@ describe('Awards API', () => {
       expect(res.json.manual[0].recipients).toHaveLength(1);
       expect(res.json.manual[0].recipients[0].team_number).toBe(7);
       expect(res.json.manual[0].recipients[0].team_name).toBe('Winners');
+      expect(res.json.manual[0].individual_recipients).toHaveLength(1);
+      expect(res.json.manual[0].individual_recipients[0].name).toBe(
+        'Ada Lovelace',
+      );
+      expect(res.json.manual[0].individual_recipients[0].team_number).toBe(7);
+      expect(res.json.manual[0].individual_recipients[0].team_name).toBe(
+        'Winners',
+      );
+      expect(res.json.manual[0].individual_recipients[0].display_name).toBeNull();
+      expect(res.json.manual[0].individual_recipients[0]).not.toHaveProperty(
+        'id',
+      );
+      expect(res.json.manual[0].individual_recipients[0]).not.toHaveProperty(
+        'team_id',
+      );
+      expect(res.json.manual[0].individual_recipients[0]).not.toHaveProperty(
+        'event_award_id',
+      );
     });
 
     it('does not expose internal IDs in public response', async () => {
       const event = await createReleasedEvent();
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 7,
+        team_name: 'Winners',
+      });
       const award = await seedEventAward(testDb.db, {
         event_id: event.id,
         name: 'No IDs',
+      });
+      await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award.id,
+        name: 'Ada Lovelace',
+        team_id: team.id,
       });
 
       const res = await http.get<{
@@ -420,8 +840,47 @@ describe('Awards API', () => {
       expect(first).not.toHaveProperty('event_id');
       expect(first).not.toHaveProperty('template_award_id');
       expect(first).not.toHaveProperty('created_at');
-      // Silence unused variable warning
-      void award;
+      const individuals = first.individual_recipients as Record<
+        string,
+        unknown
+      >[];
+      expect(individuals).toHaveLength(1);
+      expect(individuals[0]).not.toHaveProperty('id');
+      expect(individuals[0]).not.toHaveProperty('event_award_id');
+      expect(individuals[0]).not.toHaveProperty('team_id');
+      expect(individuals[0].name).toBe('Ada Lovelace');
+    });
+
+    it('gates individual recipients behind final score release', async () => {
+      const event = await seedEvent(testDb.db, {
+        status: 'complete',
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Secret',
+      });
+      await seedEventAwardIndividualRecipient(testDb.db, {
+        event_award_id: award.id,
+        name: 'Ada Lovelace',
+      });
+
+      const unreleased = await http.get(
+        `${baseUrl}/awards/event/${event.id}/public`,
+      );
+      expect(unreleased.status).toBe(404);
+
+      await testDb.db.run(
+        `UPDATE events SET spectator_results_released = 1 WHERE id = ?`,
+        [event.id],
+      );
+
+      const released = await http.get<{
+        manual: { individual_recipients: { name: string }[] }[];
+      }>(`${baseUrl}/awards/event/${event.id}/public`);
+      expect(released.status).toBe(200);
+      expect(released.json.manual[0].individual_recipients[0].name).toBe(
+        'Ada Lovelace',
+      );
     });
 
     it('returns empty manual list for released event with no manual awards', async () => {

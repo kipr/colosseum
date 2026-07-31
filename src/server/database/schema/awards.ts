@@ -40,6 +40,15 @@ export const awardsSchema: SchemaModule = {
         )
       `,
       `
+        CREATE TABLE IF NOT EXISTS event_award_individual_recipients (
+          id SERIAL PRIMARY KEY,
+          event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `,
+      `
         CREATE TABLE IF NOT EXISTS event_automatic_award_settings (
           id SERIAL PRIMARY KEY,
           event_id INTEGER NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
@@ -57,6 +66,8 @@ export const awardsSchema: SchemaModule = {
       `CREATE INDEX IF NOT EXISTS idx_event_awards_template ON event_awards(template_award_id)`,
       `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_award ON event_award_recipients(event_award_id)`,
       `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_team ON event_award_recipients(team_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_event_award_individual_recipients_award ON event_award_individual_recipients(event_award_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_event_award_individual_recipients_team ON event_award_individual_recipients(team_id)`,
     ],
   },
   sqlite: {
@@ -92,6 +103,15 @@ export const awardsSchema: SchemaModule = {
         )
       `,
       `
+        CREATE TABLE IF NOT EXISTS event_award_individual_recipients (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
+          name TEXT NOT NULL,
+          team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `,
+      `
         CREATE TABLE IF NOT EXISTS event_automatic_award_settings (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           event_id INTEGER NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
@@ -109,6 +129,8 @@ export const awardsSchema: SchemaModule = {
       `CREATE INDEX IF NOT EXISTS idx_event_awards_template ON event_awards(template_award_id)`,
       `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_award ON event_award_recipients(event_award_id)`,
       `CREATE INDEX IF NOT EXISTS idx_event_award_recipients_team ON event_award_recipients(team_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_event_award_individual_recipients_award ON event_award_individual_recipients(event_award_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_event_award_individual_recipients_team ON event_award_individual_recipients(team_id)`,
     ],
   },
 };
