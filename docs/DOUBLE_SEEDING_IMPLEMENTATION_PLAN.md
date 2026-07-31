@@ -141,7 +141,8 @@ Raw double seed score is calculated as: `(2/3)*((n-rank+1)/n)+(1/3)*(avg/max)`, 
 - n = number of teams at event.
 - rank = team's ordinal double seeding ranking.
 - avg = team's average double seeding score.
-- max = max tournament double seeding score.
+- max = max single-round double seeding score in the event (legacy events created
+  before RAW_SCORE_FORMULA_V2_CUTOFF use the max tournament double seeding average).
 
 - No rounds are dropped.
 - Missing scores are ignored and zeros are zeros.

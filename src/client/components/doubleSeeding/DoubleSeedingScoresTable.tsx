@@ -273,7 +273,8 @@ export default function DoubleSeedingScoresTable({
           <p className="seeding-section-description">
             Each team&apos;s own side score per round. Rankings use the average
             of all rounds (no rounds dropped). Raw double seed score: 2/3 rank
-            position + 1/3 score ratio.
+            position + 1/3 score ratio against the event&apos;s best single
+            round.
           </p>
         </div>
       </div>

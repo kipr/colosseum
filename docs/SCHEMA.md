@@ -13,7 +13,11 @@ I want to transition from google sheets to a full DB backend. The first step is 
 - Seed 3: int
 - Seed average: Average of two highest of seed 1, 2, 3
 - Seed rank: Rank among participating teams
-- Raw seed score: Normalized seed score computed from seed_rank and seed_average as compared to other participants.
+- Raw seed score: Normalized seed score computed from seed_rank and seed_average
+  as compared to other participants. Formula:
+  `(3/4)*((n-rank+1)/n)+(1/4)*(avg/maxSingleRound)`, where maxSingleRound is the
+  highest single-round seeding score in the event. Events created before the
+  RAW_SCORE_FORMULA_V2_CUTOFF keep the legacy denominator (max team average).
 
 Each team runs three seeding rounds, then we move on to a double elimiation tournament.
 The head judge would manually sort the teams into brackets. Depending on the number of participants, there are generally 1-4 brackets.

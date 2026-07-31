@@ -1,9 +1,20 @@
 /**
  * Service for recalculating seeding rankings.
  * Can be called from seeding routes or bracket generation.
+ *
+ * Raw seed score:
+ *   (3/4) * ((n - rank + 1) / n) + (1/4) * (seedAvg / denominator)
+ *
+ * - n            = number of ranked teams
+ * - rank         = team's ordinal seeding ranking
+ * - seedAvg      = average of top 2 of 3 scores (or fewer if incomplete)
+ * - denominator  = for new events: max single-round seeding score in the event
+ *                  for legacy events (created before RAW_SCORE_FORMULA_V2_CUTOFF):
+ *                  max tournament seed average
  */
 
 import { getDatabase } from '../database/connection';
+import { usesLegacyRawScoreFormula } from './rawScoreFormula';
 
 interface RankingData {
   teamId: number;
@@ -77,6 +88,19 @@ export async function recalculateSeedingRankings(
   const rankedTeams = rankings.filter((r) => r.seedAverage !== null);
   const n = rankedTeams.length;
 
+  const legacy = await usesLegacyRawScoreFormula(eventId);
+  let denominator = maxAverage;
+  if (!legacy) {
+    const maxRow = await db.get<{ max_score: number | null }>(
+      `SELECT MAX(ss.score) AS max_score
+       FROM seeding_scores ss
+       JOIN teams t ON ss.team_id = t.id
+       WHERE t.event_id = ? AND ss.score IS NOT NULL`,
+      [eventId],
+    );
+    denominator = maxRow?.max_score || 1;
+  }
+
   // Update rankings in database using a single transaction
   await db.transaction(async (tx) => {
     for (let i = 0; i < rankings.length; i++) {
@@ -87,7 +111,7 @@ export async function recalculateSeedingRankings(
       let rawSeedScore: number | null = null;
       if (r.seedAverage !== null && seedRank !== null && n > 0) {
         const rankComponent = (3 / 4) * ((n - seedRank + 1) / n);
-        const scoreComponent = (1 / 4) * (r.seedAverage / maxAverage);
+        const scoreComponent = (1 / 4) * (r.seedAverage / denominator);
         rawSeedScore = rankComponent + scoreComponent;
       }
 

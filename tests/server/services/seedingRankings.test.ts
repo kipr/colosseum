@@ -103,4 +103,70 @@ describe('recalculateSeedingRankings', () => {
     expect(rankA?.seed_rank).toBe(2);
     expect(totalRows?.count).toBe(2);
   });
+
+  it('gives raw seed score of 1.0 when the leader is perfectly consistent', async () => {
+    const teamA = await createTeam(1);
+    const teamB = await createTeam(2);
+
+    // Team A: 100, 100 -> avg 100, max single round 100
+    await addScore(teamA, 1, 100);
+    await addScore(teamA, 2, 100);
+    await addScore(teamB, 1, 80);
+    await addScore(teamB, 2, 70);
+
+    await recalculateSeedingRankings(eventId);
+
+    const ranking = await testDb.db.get<{ raw_seed_score: number }>(
+      `SELECT raw_seed_score FROM seeding_rankings WHERE team_id = ?`,
+      [teamA],
+    );
+    // n = 2, rank 1: (3/4)*1 + (1/4)*(100/100) = 1.0
+    expect(ranking?.raw_seed_score).toBeCloseTo(1.0, 5);
+  });
+
+  it('gives the inconsistent leader a raw seed score below 1.0', async () => {
+    const teamA = await createTeam(1);
+    const teamB = await createTeam(2);
+
+    // Team A: 120, 80 -> avg 100, max single round 120
+    await addScore(teamA, 1, 120);
+    await addScore(teamA, 2, 80);
+    await addScore(teamB, 1, 90);
+    await addScore(teamB, 2, 70);
+
+    await recalculateSeedingRankings(eventId);
+
+    const ranking = await testDb.db.get<{ raw_seed_score: number }>(
+      `SELECT raw_seed_score FROM seeding_rankings WHERE team_id = ?`,
+      [teamA],
+    );
+    // n = 2, rank 1: (3/4)*1 + (1/4)*(100/120) = 0.75 + 0.208333... ≈ 0.958333
+    expect(ranking?.raw_seed_score).toBeCloseTo(0.958333, 4);
+    expect(ranking!.raw_seed_score).toBeLessThan(1);
+  });
+
+  it('keeps the legacy maxAverage denominator for events created before the cutoff', async () => {
+    await testDb.db.run(
+      `UPDATE events SET created_at = '2020-01-01 00:00:00' WHERE id = ?`,
+      [eventId],
+    );
+
+    const teamA = await createTeam(1);
+    const teamB = await createTeam(2);
+
+    // Same inconsistent scores as above; legacy formula uses maxAverage = 100
+    await addScore(teamA, 1, 120);
+    await addScore(teamA, 2, 80);
+    await addScore(teamB, 1, 90);
+    await addScore(teamB, 2, 70);
+
+    await recalculateSeedingRankings(eventId);
+
+    const ranking = await testDb.db.get<{ raw_seed_score: number }>(
+      `SELECT raw_seed_score FROM seeding_rankings WHERE team_id = ?`,
+      [teamA],
+    );
+    // Legacy: (3/4)*1 + (1/4)*(100/100) = 1.0
+    expect(ranking?.raw_seed_score).toBeCloseTo(1.0, 5);
+  });
 });
