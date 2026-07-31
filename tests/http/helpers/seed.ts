@@ -537,3 +537,21 @@ export async function seedEventAwardRecipient(
   );
   return { id: result.lastID! };
 }
+
+export interface SeedEventAwardIndividualRecipientData {
+  event_award_id: number;
+  name: string;
+  team_id?: number | null;
+}
+
+export async function seedEventAwardIndividualRecipient(
+  db: Database,
+  data: SeedEventAwardIndividualRecipientData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
+     VALUES (?, ?, ?)`,
+    [data.event_award_id, data.name, data.team_id ?? null],
+  );
+  return { id: result.lastID! };
+}

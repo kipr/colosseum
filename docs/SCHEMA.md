@@ -462,6 +462,23 @@ CREATE TABLE IF NOT EXISTS event_award_recipients (
 CREATE INDEX IF NOT EXISTS idx_event_award_recipients_award ON event_award_recipients(event_award_id);
 CREATE INDEX IF NOT EXISTS idx_event_award_recipients_team ON event_award_recipients(team_id);
 
+-- Individual (person) recipients of an event award
+-- Names are award-specific free text (no event-wide participant roster).
+-- team_id is optional (contestants, judges, volunteers, etc.).
+-- ON DELETE SET NULL preserves the person's award if their associated team is deleted.
+-- Duplicate names on the same award are allowed; identity is the row id.
+-- An award may have team recipients, individual recipients, or both.
+CREATE TABLE IF NOT EXISTS event_award_individual_recipients (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_event_award_individual_recipients_award ON event_award_individual_recipients(event_award_id);
+CREATE INDEX IF NOT EXISTS idx_event_award_individual_recipients_team ON event_award_individual_recipients(team_id);
+
 -- Per-event top-N configuration for automatic awards (DE / per-bracket overall / seeding).
 -- 0 disables a category. Defaults are 3 when no row exists.
 CREATE TABLE IF NOT EXISTS event_automatic_award_settings (
