@@ -179,7 +179,9 @@ export default function AwardRecipientModal({
             checked={r.alreadyRecipient || selectedTeamIds.has(r.team_id)}
             disabled={r.alreadyRecipient}
             title={
-              r.alreadyRecipient ? 'Already a recipient of this award' : undefined
+              r.alreadyRecipient
+                ? 'Already a recipient of this award'
+                : undefined
             }
             onChange={(e) => {
               setSelectedTeamIds((prev) => {
@@ -342,7 +344,9 @@ export default function AwardRecipientModal({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={saving || selectedTeamIds.size === 0 || selectableCount === 0}
+            disabled={
+              saving || selectedTeamIds.size === 0 || selectableCount === 0
+            }
             onClick={() => void handleSubmit()}
           >
             {saving

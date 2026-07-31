@@ -378,11 +378,7 @@ router.get(
             'de_top_n, per_bracket_overall_top_n, and seeding_top_n must be integers',
         });
       }
-      if (
-        deType === null ||
-        perBracketType === null ||
-        seedingType === null
-      ) {
+      if (deType === null || perBracketType === null || seedingType === null) {
         return res.status(400).json({
           error:
             'de_award_type, per_bracket_overall_award_type, and seeding_award_type must be "certificate" or "trophy"',

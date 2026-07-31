@@ -654,8 +654,7 @@ export default function AwardsTab() {
       kind: 'data',
       id: 'award_type',
       header: { full: 'Type' },
-      renderCell: (t) =>
-        AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE],
+      renderCell: (t) => AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE],
     },
     {
       kind: 'data',
@@ -1548,8 +1547,7 @@ export default function AwardsTab() {
                       setAwardForm({
                         ...awardForm,
                         template_award_id: templateId,
-                        award_type:
-                          tmpl?.award_type ?? awardForm.award_type,
+                        award_type: tmpl?.award_type ?? awardForm.award_type,
                       });
                     }}
                     required
@@ -1557,7 +1555,8 @@ export default function AwardsTab() {
                     <option value="">— Select —</option>
                     {templates.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name} ({AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE]})
+                        {t.name} (
+                        {AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE]})
                       </option>
                     ))}
                   </select>
