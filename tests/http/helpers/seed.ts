@@ -178,6 +178,14 @@ export async function seedQueueItem(
       data.table_number ?? null,
     ],
   );
+  // Real queue writes go through routes/services that bump the event's queue
+  // version. Mirror that here so reads treat the seeded state as clean
+  // (a missing queue_versions row means "dirty" and triggers a repair sync).
+  await db.run(
+    `INSERT INTO queue_versions (event_id, version, dirty) VALUES (?, 1, 0)
+     ON CONFLICT (event_id) DO UPDATE SET version = queue_versions.version + 1, dirty = 0`,
+    [data.event_id],
+  );
   return { id: result.lastID! };
 }
 

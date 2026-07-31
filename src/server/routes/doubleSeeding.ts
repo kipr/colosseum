@@ -11,6 +11,7 @@ import { recalculateDoubleSeedingRankings } from '../services/doubleSeedingRanki
 import { isEventArchived } from '../utils/eventVisibility';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
+import { markQueueDirty } from '../services/queueVersion';
 
 const router = express.Router();
 
@@ -128,6 +129,8 @@ router.post(
           ip_address: req.ip ?? null,
         });
 
+        await markQueueDirty(db, eventIdNum);
+
         return res.json({
           message: 'Double seeding disabled',
           rounds: 0,
@@ -189,6 +192,9 @@ router.post(
         new_value: toAuditJson(result),
         ip_address: req.ip ?? null,
       });
+
+      // New matches join the double-seeding queue on the next queue read.
+      await markQueueDirty(db, eventIdNum);
 
       const matches = await db.all(
         `${MATCHES_SELECT}
@@ -262,6 +268,9 @@ router.delete(
         ip_address: req.ip ?? null,
       });
 
+      // Queue rows cascaded away with the matches; bump so pollers refresh.
+      await markQueueDirty(db, eventIdNum);
+
       res.json({ success: true, deleted: result.changes ?? 0 });
     } catch (error) {
       console.error('Error deleting double-seeding matches:', error);
@@ -316,6 +325,8 @@ router.delete(
         new_value: toAuditJson({ rounds: result.remainingRounds }),
         ip_address: req.ip ?? null,
       });
+
+      await markQueueDirty(db, eventIdNum);
 
       res.json({ success: true, ...result });
     } catch (error) {

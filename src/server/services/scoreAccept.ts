@@ -4,6 +4,7 @@ import { toAuditJson } from '../utils/auditJson';
 import { resolveBracketByes } from './bracketByeResolver';
 import { recalculateSeedingRankings } from './seedingRankings';
 import { recalculateDoubleSeedingRankings } from './doubleSeedingRankings';
+import { bumpQueueVersion, markQueueDirty } from './queueVersion';
 
 /**
  * Pending score submission: set queue to `scored`. Revert/reject: `queued`.
@@ -43,6 +44,7 @@ export async function updateSeedingQueueItem(
       ],
     );
   }
+  await bumpQueueVersion(db, eventId);
 }
 
 /** Remove seeding queue row after a score is accepted (no longer in queue). */
@@ -52,10 +54,13 @@ export async function deleteSeedingQueueItemForAcceptedScore(
   teamId: number,
   roundNumber: number,
 ): Promise<void> {
-  await db.run(
+  const result = await db.run(
     `DELETE FROM game_queue WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = ? AND queue_type = 'seeding'`,
     [eventId, teamId, roundNumber],
   );
+  if (result.changes) {
+    await bumpQueueVersion(db, eventId);
+  }
 }
 
 /**
@@ -91,6 +96,7 @@ export async function updateBracketQueueItem(
         [eventId, bracketGameId, pos],
       );
     }
+    await bumpQueueVersion(db, eventId);
     return;
   }
 
@@ -124,6 +130,7 @@ export async function updateBracketQueueItem(
       [eventId, bracketGameId, pos],
     );
   }
+  await bumpQueueVersion(db, eventId);
 }
 
 /** Remove bracket queue row after a score is accepted. */
@@ -132,10 +139,13 @@ export async function deleteBracketQueueItemForAcceptedScore(
   eventId: number,
   bracketGameId: number,
 ): Promise<void> {
-  await db.run(
+  const result = await db.run(
     `DELETE FROM game_queue WHERE event_id = ? AND bracket_game_id = ? AND queue_type = 'bracket'`,
     [eventId, bracketGameId],
   );
+  if (result.changes) {
+    await bumpQueueVersion(db, eventId);
+  }
 }
 
 /**
@@ -171,6 +181,7 @@ export async function updateDoubleSeedingQueueItem(
         [eventId, matchId, pos],
       );
     }
+    await bumpQueueVersion(db, eventId);
     return;
   }
 
@@ -204,6 +215,7 @@ export async function updateDoubleSeedingQueueItem(
       [eventId, matchId, pos],
     );
   }
+  await bumpQueueVersion(db, eventId);
 }
 
 /** Remove double-seeding queue row after a score is accepted. */
@@ -212,10 +224,13 @@ export async function deleteDoubleSeedingQueueItemForAcceptedScore(
   eventId: number,
   matchId: number,
 ): Promise<void> {
-  await db.run(
+  const result = await db.run(
     `DELETE FROM game_queue WHERE event_id = ? AND double_seeding_match_id = ? AND queue_type = 'double_seeding'`,
     [eventId, matchId],
   );
+  if (result.changes) {
+    await bumpQueueVersion(db, eventId);
+  }
 }
 
 export interface AcceptEventScoreParams {
@@ -551,6 +566,9 @@ export async function acceptEventScore(
       score.event_id,
       bracketGameId,
     );
+    // Advancement / bye resolution can make new games eligible for the queue;
+    // flag the queue so the next read repairs it.
+    await markQueueDirty(db, score.event_id);
 
     return {
       ok: true,

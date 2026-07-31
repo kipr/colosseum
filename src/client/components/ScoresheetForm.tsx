@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   BracketGameOption,
   buildRepeatableGroupDerivedScoreEntries,
@@ -25,8 +25,10 @@ interface ScoresheetFormProps {
   template: any;
 }
 
-const QUEUE_POLL_INTERVAL_MS = 5_000;
-const QUEUE_REPAIR_SYNC_INTERVAL_MS = 30_000;
+// Queue reads are cheap on the server (version ETag + 304 when unchanged),
+// so a 10s cadence keeps judges fresh without hammering the backend.
+const QUEUE_POLL_INTERVAL_MS = 10_000;
+const BRACKET_POLL_INTERVAL_MS = 10_000;
 
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const schema = template.schema;
@@ -174,20 +176,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     // Load dynamic dropdown data (skip team_number when using queue)
     loadDynamicData();
 
-    // Load queue for DB-backed seeding / double seeding
+    // Load queue for DB-backed seeding / double seeding.
+    // The server keeps the queue fresh (mutations flag it for repair), so
+    // clients just poll; unchanged polls are 304s answered from the version
+    // ETag and skipped client-side.
     if ((useQueueForSeeding || useQueueForDoubleSeeding) && schema.eventId) {
-      loadQueue({ sync: true });
-      const pollInterval = setInterval(
-        () => loadQueue(),
-        QUEUE_POLL_INTERVAL_MS,
-      );
-      const repairSyncInterval = setInterval(
-        () => loadQueue({ sync: true }),
-        QUEUE_REPAIR_SYNC_INTERVAL_MS,
-      );
+      loadQueue();
+      const pollInterval = setInterval(() => {
+        if (document.hidden) return;
+        loadQueue();
+      }, QUEUE_POLL_INTERVAL_MS);
       return () => {
         clearInterval(pollInterval);
-        clearInterval(repairSyncInterval);
       };
     }
 
@@ -196,16 +196,20 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       loadBracketGames();
       loadTeamsData();
 
-      // Poll for bracket updates every 5 seconds so new games appear as winners are decided
+      // Poll for bracket updates so new games appear as winners are decided
       const interval = setInterval(() => {
+        if (document.hidden) return;
         loadBracketGames();
-      }, 5000);
+      }, BRACKET_POLL_INTERVAL_MS);
 
       return () => clearInterval(interval);
     }
   }, [schema, useQueueForSeeding, useQueueForDoubleSeeding, isHeadToHead]);
 
-  const loadQueue = async (options: { sync?: boolean } = {}) => {
+  const lastQueueEtagRef = useRef<string | null>(null);
+  const lastBracketEtagRef = useRef<string | null>(null);
+
+  const loadQueue = async () => {
     if (!schema.eventId) return;
     try {
       const statuses = [
@@ -220,15 +224,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         queue_type: queueType,
         status: statuses,
       });
-      if (options.sync) params.set('sync', '1');
       const url = `/queue/event/${schema.eventId}?${params.toString()}`;
       const response = await fetch(url);
-      if (response.status === 429 && options.sync) {
-        await loadQueue();
-        return;
-      }
       if (!response.ok) return;
+      // Version-based ETag: skip the state update (and re-render) when the
+      // queue has not changed since the last poll.
+      const etag = response.headers.get('ETag');
+      if (etag && etag === lastQueueEtagRef.current) return;
       const data = await response.json();
+      lastQueueEtagRef.current = etag;
       setQueueItems(data);
     } catch (error) {
       console.error('Error loading queue:', error);
@@ -254,6 +258,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           console.error('Failed to load bracket games from DB:', errorData);
           return;
         }
+        // Version-based ETag: skip re-render when nothing changed.
+        const etag = response.headers.get('ETag');
+        if (etag && etag === lastBracketEtagRef.current) return;
+        lastBracketEtagRef.current = etag;
         const dbGames = await response.json();
         const mapped: BracketGameOption[] = dbGames.map((g: any) => {
           const team1 =

@@ -8,6 +8,7 @@ import {
 } from '../utils/eventVisibility';
 import { computeOverallScores } from '../services/overallScores';
 import { calculateEventBracketRankingsIfReady } from '../services/bracketRankings';
+import { markQueueDirty } from '../services/queueVersion';
 
 const PUBLIC_EVENT_FIELDS =
   'id, name, status, event_date, location, seeding_rounds, double_seeding_rounds, spectator_results_released';
@@ -244,6 +245,11 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
 
     if (result.changes === 0) {
       return res.status(404).json({ error: 'Event not found' });
+    }
+
+    // Changing seeding_rounds adds/removes seeding queue slots.
+    if (updates.some(([key]) => key === 'seeding_rounds')) {
+      await markQueueDirty(db, Number(id));
     }
 
     const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
