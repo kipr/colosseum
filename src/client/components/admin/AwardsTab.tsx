@@ -10,7 +10,14 @@ import {
   type AutomaticAwardsPreviewResponse,
   type ZeroScoreComponent,
 } from '@shared/automaticAwards';
+import {
+  AWARD_TYPE_LABELS,
+  DEFAULT_AWARD_TYPE,
+  type AwardType,
+} from '@shared/awards';
+import AwardRecipientModal from './AwardRecipientModal';
 import '../Modal.css';
+import './AwardsTab.css';
 
 const ZERO_COMPONENT_LABELS: Record<ZeroScoreComponent, string> = {
   documentation: 'documentation',
@@ -23,6 +30,7 @@ interface AwardTemplate {
   id: number;
   name: string;
   description: string | null;
+  award_type: AwardType;
 }
 
 interface Recipient {
@@ -49,6 +57,7 @@ interface EventAward {
   template_award_id: number | null;
   name: string;
   description: string | null;
+  award_type: AwardType;
   sort_order: number;
   recipients: Recipient[];
   individual_recipients: IndividualRecipient[];
@@ -81,6 +90,7 @@ function formatIndividualRecipient(r: IndividualRecipient): string {
 function normalizeEventAward(award: EventAward): EventAward {
   return {
     ...award,
+    award_type: award.award_type ?? DEFAULT_AWARD_TYPE,
     recipients: award.recipients ?? [],
     individual_recipients: award.individual_recipients ?? [],
   };
@@ -103,6 +113,7 @@ export default function AwardsTab() {
   const [templateForm, setTemplateForm] = useState({
     name: '',
     description: '',
+    award_type: DEFAULT_AWARD_TYPE as AwardType,
   });
   const [savingTemplate, setSavingTemplate] = useState(false);
 
@@ -113,10 +124,15 @@ export default function AwardsTab() {
     name: '',
     description: '',
     template_award_id: '',
+    award_type: DEFAULT_AWARD_TYPE as AwardType,
     mode: 'manual' as 'manual' | 'template',
   });
   const [savingAward, setSavingAward] = useState(false);
   const [applyingAutomatic, setApplyingAutomatic] = useState(false);
+
+  // Team recipient modal
+  const [recipientModalAward, setRecipientModalAward] =
+    useState<EventAward | null>(null);
 
   // Automatic awards modal
   const [showAutomaticModal, setShowAutomaticModal] = useState(false);
@@ -130,11 +146,7 @@ export default function AwardsTab() {
     string | null
   >(null);
 
-  // Recipient controls
-  const [addingRecipientForAwardId, setAddingRecipientForAwardId] = useState<
-    number | null
-  >(null);
-  const [recipientTeamId, setRecipientTeamId] = useState('');
+  // Individual recipient controls
   const [addingIndividualForAwardId, setAddingIndividualForAwardId] = useState<
     number | null
   >(null);
@@ -205,13 +217,21 @@ export default function AwardsTab() {
 
   const handleCreateTemplate = () => {
     setEditingTemplate(null);
-    setTemplateForm({ name: '', description: '' });
+    setTemplateForm({
+      name: '',
+      description: '',
+      award_type: DEFAULT_AWARD_TYPE,
+    });
     setShowTemplateModal(true);
   };
 
   const handleEditTemplate = (t: AwardTemplate) => {
     setEditingTemplate(t);
-    setTemplateForm({ name: t.name, description: t.description ?? '' });
+    setTemplateForm({
+      name: t.name,
+      description: t.description ?? '',
+      award_type: t.award_type ?? DEFAULT_AWARD_TYPE,
+    });
     setShowTemplateModal(true);
   };
 
@@ -226,6 +246,7 @@ export default function AwardsTab() {
       const body = {
         name: templateForm.name.trim(),
         description: templateForm.description.trim() || null,
+        award_type: templateForm.award_type,
       };
       if (editingTemplate) {
         const res = await fetch(`/awards/templates/${editingTemplate.id}`, {
@@ -284,6 +305,7 @@ export default function AwardsTab() {
       name: '',
       description: '',
       template_award_id: '',
+      award_type: DEFAULT_AWARD_TYPE,
       mode: 'manual',
     });
     setShowAwardModal(true);
@@ -295,6 +317,7 @@ export default function AwardsTab() {
       name: a.name,
       description: a.description ?? '',
       template_award_id: '',
+      award_type: a.award_type ?? DEFAULT_AWARD_TYPE,
       mode: 'manual',
     });
     setShowAwardModal(true);
@@ -317,6 +340,7 @@ export default function AwardsTab() {
         const body = {
           name: awardForm.name.trim(),
           description: awardForm.description.trim() || null,
+          award_type: awardForm.award_type,
         };
         const res = await fetch(`/awards/event-awards/${editingAward.id}`, {
           method: 'PATCH',
@@ -327,7 +351,9 @@ export default function AwardsTab() {
         if (!res.ok) throw new Error((await res.json()).error);
         toast.success('Award updated');
       } else {
-        const body: Record<string, unknown> = {};
+        const body: Record<string, unknown> = {
+          award_type: awardForm.award_type,
+        };
         if (awardForm.mode === 'template') {
           body.template_award_id = Number(awardForm.template_award_id);
         } else {
@@ -362,6 +388,10 @@ export default function AwardsTab() {
           de_top_n: String(settings.de_top_n),
           per_bracket_overall_top_n: String(settings.per_bracket_overall_top_n),
           seeding_top_n: String(settings.seeding_top_n),
+          de_award_type: settings.de_award_type,
+          per_bracket_overall_award_type:
+            settings.per_bracket_overall_award_type,
+          seeding_award_type: settings.seeding_award_type,
         });
         const res = await fetch(
           `/awards/event/${selectedEventId}/automatic/preview?${params}`,
@@ -420,9 +450,9 @@ export default function AwardsTab() {
     }
   };
 
-  const handleAutomaticFormChange = (
-    key: keyof AutomaticAwardSettings,
-    value: number,
+  const handleAutomaticFormChange = <K extends keyof AutomaticAwardSettings>(
+    key: K,
+    value: AutomaticAwardSettings[K],
   ) => {
     const next = { ...automaticForm, [key]: value };
     setAutomaticForm(next);
@@ -543,28 +573,6 @@ export default function AwardsTab() {
 
   // ── Recipients ──
 
-  const handleAddRecipient = async (awardId: number) => {
-    if (!recipientTeamId) return;
-    try {
-      const res = await fetch(`/awards/event-awards/${awardId}/recipients`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ team_id: Number(recipientTeamId) }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
-      }
-      toast.success('Recipient added');
-      setRecipientTeamId('');
-      setAddingRecipientForAwardId(null);
-      await fetchEventAwards();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Failed to add');
-    }
-  };
-
   const handleRemoveRecipient = async (awardId: number, teamId: number) => {
     try {
       const res = await fetch(
@@ -644,6 +652,12 @@ export default function AwardsTab() {
     },
     {
       kind: 'data',
+      id: 'award_type',
+      header: { full: 'Type' },
+      renderCell: (t) => AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE],
+    },
+    {
+      kind: 'data',
       id: 'description',
       header: { full: 'Description' },
       renderCell: (t) => (
@@ -700,6 +714,9 @@ export default function AwardsTab() {
       >
         <div>
           <strong>{award.name}</strong>
+          <span className="award-type-badge">
+            {AWARD_TYPE_LABELS[award.award_type ?? DEFAULT_AWARD_TYPE]}
+          </span>
           {award.description && (
             <p
               style={{
@@ -784,63 +801,16 @@ export default function AwardsTab() {
             </ul>
           )}
 
-          {addingRecipientForAwardId === award.id ? (
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                marginTop: '0.5rem',
-                alignItems: 'center',
-                flexWrap: 'wrap',
-              }}
-            >
-              <select
-                className="field-input"
-                value={recipientTeamId}
-                onChange={(e) => setRecipientTeamId(e.target.value)}
-                style={{ maxWidth: '250px' }}
-              >
-                <option value="">— Select team —</option>
-                {teams
-                  .filter(
-                    (t) => !award.recipients.some((r) => r.team_id === t.id),
-                  )
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      #{t.team_number} {t.team_name}
-                    </option>
-                  ))}
-              </select>
-              <button
-                className="btn btn-primary"
-                disabled={!recipientTeamId}
-                onClick={() => handleAddRecipient(award.id)}
-              >
-                Add
-              </button>
-              <button
-                className="btn btn-secondary"
-                onClick={() => {
-                  setAddingRecipientForAwardId(null);
-                  setRecipientTeamId('');
-                }}
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              className="btn btn-secondary"
-              style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
-              onClick={() => {
-                setAddingRecipientForAwardId(award.id);
-                setRecipientTeamId('');
-                setAddingIndividualForAwardId(null);
-              }}
-            >
-              + Add team
-            </button>
-          )}
+          <button
+            className="btn btn-secondary"
+            style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
+            onClick={() => {
+              setRecipientModalAward(award);
+              setAddingIndividualForAwardId(null);
+            }}
+          >
+            + Add team
+          </button>
         </div>
 
         <div style={{ marginTop: '0.75rem' }}>
@@ -940,7 +910,6 @@ export default function AwardsTab() {
                 setAddingIndividualForAwardId(award.id);
                 setIndividualName('');
                 setIndividualTeamId('');
-                setAddingRecipientForAwardId(null);
               }}
             >
               + Add individual
@@ -1096,6 +1065,23 @@ export default function AwardsTab() {
                   }
                 />
               </div>
+              <div className="form-group">
+                <label htmlFor="tmpl-type">Award type *</label>
+                <select
+                  id="tmpl-type"
+                  className="field-input"
+                  value={templateForm.award_type}
+                  onChange={(e) =>
+                    setTemplateForm({
+                      ...templateForm,
+                      award_type: e.target.value as AwardType,
+                    })
+                  }
+                >
+                  <option value="trophy">Trophy</option>
+                  <option value="certificate">Certificate</option>
+                </select>
+              </div>
               <div
                 style={{
                   display: 'flex',
@@ -1159,6 +1145,34 @@ export default function AwardsTab() {
               const maxN = automaticPreview?.teamCount ?? teams.length;
               const options = Array.from({ length: maxN + 1 }, (_, i) => i);
               const selectStyle = { maxWidth: '12rem' } as const;
+              const typeSelect = (
+                id: string,
+                key:
+                  | 'de_award_type'
+                  | 'per_bracket_overall_award_type'
+                  | 'seeding_award_type',
+                value: AwardType,
+              ) => (
+                <div className="form-group">
+                  <label htmlFor={id}>Award type</label>
+                  <select
+                    id={id}
+                    className="field-input"
+                    style={selectStyle}
+                    value={value}
+                    disabled={loadingAutomaticPreview && !automaticPreview}
+                    onChange={(e) =>
+                      handleAutomaticFormChange(
+                        key,
+                        e.target.value as AwardType,
+                      )
+                    }
+                  >
+                    <option value="trophy">Trophy</option>
+                    <option value="certificate">Certificate</option>
+                  </select>
+                </div>
+              );
               return (
                 <>
                   <div className="form-group">
@@ -1183,6 +1197,11 @@ export default function AwardsTab() {
                       ))}
                     </select>
                   </div>
+                  {typeSelect(
+                    'auto-de-award-type',
+                    'de_award_type',
+                    automaticForm.de_award_type,
+                  )}
                   <div className="form-group">
                     <label htmlFor="auto-bracket-top-n">
                       Top N per-bracket overall placements
@@ -1217,6 +1236,11 @@ export default function AwardsTab() {
                       each bracket is fully ranked.
                     </p>
                   </div>
+                  {typeSelect(
+                    'auto-bracket-award-type',
+                    'per_bracket_overall_award_type',
+                    automaticForm.per_bracket_overall_award_type,
+                  )}
                   <div className="form-group">
                     <label htmlFor="auto-seeding-top-n">
                       Top N seeding places
@@ -1241,6 +1265,11 @@ export default function AwardsTab() {
                       ))}
                     </select>
                   </div>
+                  {typeSelect(
+                    'auto-seeding-award-type',
+                    'seeding_award_type',
+                    automaticForm.seeding_award_type,
+                  )}
                 </>
               );
             })()}
@@ -1510,18 +1539,24 @@ export default function AwardsTab() {
                     id="award-tmpl"
                     className="field-input"
                     value={awardForm.template_award_id}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const templateId = e.target.value;
+                      const tmpl = templates.find(
+                        (t) => String(t.id) === templateId,
+                      );
                       setAwardForm({
                         ...awardForm,
-                        template_award_id: e.target.value,
-                      })
-                    }
+                        template_award_id: templateId,
+                        award_type: tmpl?.award_type ?? awardForm.award_type,
+                      });
+                    }}
                     required
                   >
                     <option value="">— Select —</option>
                     {templates.map((t) => (
                       <option key={t.id} value={t.id}>
-                        {t.name}
+                        {t.name} (
+                        {AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE]})
                       </option>
                     ))}
                   </select>
@@ -1561,6 +1596,24 @@ export default function AwardsTab() {
                 </>
               )}
 
+              <div className="form-group">
+                <label htmlFor="award-type">Award type *</label>
+                <select
+                  id="award-type"
+                  className="field-input"
+                  value={awardForm.award_type}
+                  onChange={(e) =>
+                    setAwardForm({
+                      ...awardForm,
+                      award_type: e.target.value as AwardType,
+                    })
+                  }
+                >
+                  <option value="trophy">Trophy</option>
+                  <option value="certificate">Certificate</option>
+                </select>
+              </div>
+
               <div
                 style={{
                   display: 'flex',
@@ -1588,6 +1641,21 @@ export default function AwardsTab() {
             </form>
           </div>
         </div>
+      )}
+
+      {recipientModalAward && selectedEventId != null && (
+        <AwardRecipientModal
+          eventId={selectedEventId}
+          awardId={recipientModalAward.id}
+          awardName={recipientModalAward.name}
+          existingRecipientTeamIds={recipientModalAward.recipients.map(
+            (r) => r.team_id,
+          )}
+          onClose={() => setRecipientModalAward(null)}
+          onAdded={fetchEventAwards}
+          onError={(msg) => toast.error(msg)}
+          onSuccess={(msg) => toast.success(msg)}
+        />
       )}
 
       {ConfirmDialog}

@@ -98,6 +98,33 @@ describe('Awards API', () => {
       expect(listRes.json).toHaveLength(0);
     });
 
+    it('creates and updates award_type on templates', async () => {
+      const created = await http.post<Record<string, unknown>>(
+        `${baseUrl}/awards/templates`,
+        {
+          name: 'Paper Prize',
+          award_type: 'certificate',
+        },
+      );
+      expect(created.status).toBe(201);
+      expect(created.json.award_type).toBe('certificate');
+
+      const updated = await http.patch<Record<string, unknown>>(
+        `${baseUrl}/awards/templates/${created.json.id}`,
+        { award_type: 'trophy' },
+      );
+      expect(updated.status).toBe(200);
+      expect(updated.json.award_type).toBe('trophy');
+    });
+
+    it('rejects invalid award_type on templates', async () => {
+      const res = await http.post(`${baseUrl}/awards/templates`, {
+        name: 'Bad Type',
+        award_type: 'medal',
+      });
+      expect(res.status).toBe(400);
+    });
+
     it('template edit does not mutate existing event awards', async () => {
       const event = await seedEvent(testDb.db, { status: 'active' });
       const t = await seedAwardTemplate(testDb.db, {
@@ -145,6 +172,7 @@ describe('Awards API', () => {
       const t = await seedAwardTemplate(testDb.db, {
         name: 'Sportsmanship',
         description: 'Fair play',
+        award_type: 'certificate',
       });
       const res = await http.post(`${baseUrl}/awards/event/${event.id}`, {
         template_award_id: t.id,
@@ -154,6 +182,35 @@ describe('Awards API', () => {
       expect((res.json as Record<string, unknown>).template_award_id).toBe(
         t.id,
       );
+      expect((res.json as Record<string, unknown>).award_type).toBe(
+        'certificate',
+      );
+    });
+
+    it('creates and updates event award award_type', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const created = await http.post<Record<string, unknown>>(
+        `${baseUrl}/awards/event/${event.id}`,
+        { name: 'Spirit', award_type: 'certificate' },
+      );
+      expect(created.status).toBe(201);
+      expect(created.json.award_type).toBe('certificate');
+
+      const updated = await http.patch<Record<string, unknown>>(
+        `${baseUrl}/awards/event-awards/${created.json.id}`,
+        { award_type: 'trophy' },
+      );
+      expect(updated.status).toBe(200);
+      expect(updated.json.award_type).toBe('trophy');
+    });
+
+    it('rejects invalid award_type on event awards', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const res = await http.post(`${baseUrl}/awards/event/${event.id}`, {
+        name: 'Bad',
+        award_type: 'ribbon',
+      });
+      expect(res.status).toBe(400);
     });
 
     it('allows duplicate event awards', async () => {
@@ -346,6 +403,161 @@ describe('Awards API', () => {
         `${baseUrl}/awards/event-awards/${award.id}/recipients/${team.id}`,
       );
       expect(res.status).toBe(200);
+    });
+
+    it('adds multiple recipients via team_ids', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const t1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const t2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Bulk recipients',
+      });
+
+      const res = await http.post<{ team_id: number }[]>(
+        `${baseUrl}/awards/event-awards/${award.id}/recipients`,
+        { team_ids: [t1.id, t2.id] },
+      );
+      expect(res.status).toBe(201);
+      expect(res.json).toHaveLength(2);
+      expect(res.json.map((r) => r.team_id).sort()).toEqual(
+        [t1.id, t2.id].sort(),
+      );
+    });
+
+    it('rejects bulk team_ids with a cross-event team', async () => {
+      const event1 = await seedEvent(testDb.db, {
+        name: 'Event 1',
+        status: 'active',
+      });
+      const event2 = await seedEvent(testDb.db, {
+        name: 'Event 2',
+        status: 'active',
+      });
+      const local = await seedTeam(testDb.db, {
+        event_id: event1.id,
+        team_number: 1,
+      });
+      const foreign = await seedTeam(testDb.db, {
+        event_id: event2.id,
+        team_number: 2,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event1.id,
+        name: 'Bulk cross-event',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/recipients`,
+        { team_ids: [local.id, foreign.id] },
+      );
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects bulk team_ids containing any non-integer', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Bulk invalid id',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/recipients`,
+        { team_ids: [team.id, 'invalid'] },
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toMatch(/integers/i);
+
+      const recipients = await testDb.db.all(
+        'SELECT team_id FROM event_award_recipients WHERE event_award_id = ?',
+        [award.id],
+      );
+      expect(recipients).toHaveLength(0);
+    });
+  });
+
+  describe('GET /awards/event/:eventId/team-award-counts', () => {
+    it('returns per-team certificate and trophy counts including Auto awards', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const t1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+        team_name: 'Alpha',
+      });
+      const t2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+        team_name: 'Beta',
+      });
+      const t3 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 3,
+        team_name: 'Gamma',
+      });
+
+      const cert = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Spirit',
+        award_type: 'certificate',
+      });
+      const trophy = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Champion',
+        award_type: 'trophy',
+      });
+      const auto = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Auto: DE — Main — 1st',
+        award_type: 'trophy',
+      });
+
+      await seedEventAwardRecipient(testDb.db, {
+        event_award_id: cert.id,
+        team_id: t1.id,
+      });
+      await seedEventAwardRecipient(testDb.db, {
+        event_award_id: trophy.id,
+        team_id: t1.id,
+      });
+      await seedEventAwardRecipient(testDb.db, {
+        event_award_id: auto.id,
+        team_id: t2.id,
+      });
+
+      const res = await http.get<
+        {
+          team_id: number;
+          team_number: number;
+          certificate_count: number;
+          trophy_count: number;
+        }[]
+      >(`${baseUrl}/awards/event/${event.id}/team-award-counts`);
+      expect(res.status).toBe(200);
+      expect(res.json).toHaveLength(3);
+
+      const byId = new Map(res.json.map((r) => [r.team_id, r]));
+      expect(byId.get(t1.id)).toMatchObject({
+        certificate_count: 1,
+        trophy_count: 1,
+      });
+      expect(byId.get(t2.id)).toMatchObject({
+        certificate_count: 0,
+        trophy_count: 1,
+      });
+      expect(byId.get(t3.id)).toMatchObject({
+        certificate_count: 0,
+        trophy_count: 0,
+      });
     });
   });
 
@@ -907,6 +1119,9 @@ describe('Awards API', () => {
         de_top_n: 3,
         per_bracket_overall_top_n: 3,
         seeding_top_n: 3,
+        de_award_type: 'trophy',
+        per_bracket_overall_award_type: 'trophy',
+        seeding_award_type: 'trophy',
       });
     });
 
@@ -1077,6 +1292,9 @@ describe('Awards API', () => {
         de_top_n: 2,
         per_bracket_overall_top_n: 0,
         seeding_top_n: 4,
+        de_award_type: 'trophy',
+        per_bracket_overall_award_type: 'trophy',
+        seeding_award_type: 'trophy',
       });
       expect(res.json.automatic.de[0].placements.map((p) => p.place)).toEqual([
         1, 2,
@@ -1239,6 +1457,38 @@ describe('Awards API', () => {
       expect(listRes.json.some((a) => a.name.includes('Seeding'))).toBe(true);
     });
 
+    it('applies configured award types to Auto: event awards', async () => {
+      const event = await createReleasedEventForApply();
+      await seedCompleteResults(event.id);
+
+      const applyRes = await http.post<{
+        created: number;
+        settings: {
+          de_award_type: string;
+          seeding_award_type: string;
+        };
+      }>(`${baseUrl}/awards/event/${event.id}/automatic`, {
+        de_top_n: 1,
+        per_bracket_overall_top_n: 0,
+        seeding_top_n: 1,
+        de_award_type: 'trophy',
+        seeding_award_type: 'certificate',
+      });
+      expect(applyRes.status).toBe(200);
+      expect(applyRes.json.settings.de_award_type).toBe('trophy');
+      expect(applyRes.json.settings.seeding_award_type).toBe('certificate');
+
+      const listRes = await http.get<{ name: string; award_type: string }[]>(
+        `${baseUrl}/awards/event/${event.id}`,
+      );
+      const deAward = listRes.json.find((a) => a.name.includes('DE —'));
+      const seedingAward = listRes.json.find((a) =>
+        a.name.includes('Seeding'),
+      );
+      expect(deAward?.award_type).toBe('trophy');
+      expect(seedingAward?.award_type).toBe('certificate');
+    });
+
     it('persists settings, disables categories with 0, and replaces prior Auto awards', async () => {
       const event = await createReleasedEventForApply();
       await seedCompleteResults(event.id);
@@ -1274,6 +1524,9 @@ describe('Awards API', () => {
         de_top_n: 1,
         per_bracket_overall_top_n: 0,
         seeding_top_n: 0,
+        de_award_type: 'trophy',
+        per_bracket_overall_award_type: 'trophy',
+        seeding_award_type: 'trophy',
       });
 
       const listRes = await http.get<{ name: string }[]>(

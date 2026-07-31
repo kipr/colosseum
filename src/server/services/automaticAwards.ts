@@ -11,6 +11,11 @@ import {
 } from './overallScores';
 import { computeAutomaticAwardDiagnostics } from './eventScoreDiagnostics';
 import {
+  DEFAULT_AWARD_TYPE,
+  isAwardType,
+  type AwardType,
+} from '../../shared/awards';
+import {
   DEFAULT_AUTOMATIC_AWARD_SETTINGS,
   diagnosticsHaveWarnings,
   medalForPlace,
@@ -214,6 +219,10 @@ export async function getEventTeamCount(eventId: number): Promise<number> {
   return Number(row?.count ?? 0);
 }
 
+function normalizeAwardType(value: unknown): AwardType {
+  return isAwardType(value) ? value : DEFAULT_AWARD_TYPE;
+}
+
 export async function loadAutomaticAwardSettings(
   eventId: number,
 ): Promise<AutomaticAwardSettings> {
@@ -222,8 +231,12 @@ export async function loadAutomaticAwardSettings(
     de_top_n: number;
     per_bracket_overall_top_n: number;
     seeding_top_n: number;
+    de_award_type: string;
+    per_bracket_overall_award_type: string;
+    seeding_award_type: string;
   }>(
-    `SELECT de_top_n, per_bracket_overall_top_n, seeding_top_n
+    `SELECT de_top_n, per_bracket_overall_top_n, seeding_top_n,
+            de_award_type, per_bracket_overall_award_type, seeding_award_type
      FROM event_automatic_award_settings WHERE event_id = ?`,
     [eventId],
   );
@@ -234,6 +247,11 @@ export async function loadAutomaticAwardSettings(
     de_top_n: row.de_top_n,
     per_bracket_overall_top_n: row.per_bracket_overall_top_n,
     seeding_top_n: row.seeding_top_n,
+    de_award_type: normalizeAwardType(row.de_award_type),
+    per_bracket_overall_award_type: normalizeAwardType(
+      row.per_bracket_overall_award_type,
+    ),
+    seeding_award_type: normalizeAwardType(row.seeding_award_type),
   };
 }
 
@@ -244,17 +262,24 @@ export async function saveAutomaticAwardSettings(
   const db = await getDatabase();
   await db.run(
     `INSERT INTO event_automatic_award_settings
-       (event_id, de_top_n, per_bracket_overall_top_n, seeding_top_n)
-     VALUES (?, ?, ?, ?)
+       (event_id, de_top_n, per_bracket_overall_top_n, seeding_top_n,
+        de_award_type, per_bracket_overall_award_type, seeding_award_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(event_id) DO UPDATE SET
        de_top_n = excluded.de_top_n,
        per_bracket_overall_top_n = excluded.per_bracket_overall_top_n,
-       seeding_top_n = excluded.seeding_top_n`,
+       seeding_top_n = excluded.seeding_top_n,
+       de_award_type = excluded.de_award_type,
+       per_bracket_overall_award_type = excluded.per_bracket_overall_award_type,
+       seeding_award_type = excluded.seeding_award_type`,
     [
       eventId,
       settings.de_top_n,
       settings.per_bracket_overall_top_n,
       settings.seeding_top_n,
+      settings.de_award_type,
+      settings.per_bracket_overall_award_type,
+      settings.seeding_award_type,
     ],
   );
 }
@@ -268,6 +293,9 @@ export function clampAutomaticAwardSettings(
     de_top_n: clamp(settings.de_top_n),
     per_bracket_overall_top_n: clamp(settings.per_bracket_overall_top_n),
     seeding_top_n: clamp(settings.seeding_top_n),
+    de_award_type: settings.de_award_type,
+    per_bracket_overall_award_type: settings.per_bracket_overall_award_type,
+    seeding_award_type: settings.seeding_award_type,
   };
 }
 
@@ -275,12 +303,12 @@ export function validateAutomaticAwardSettings(
   settings: AutomaticAwardSettings,
   teamCount: number,
 ): string | null {
-  const fields: (keyof AutomaticAwardSettings)[] = [
+  const topNFields: (keyof AutomaticAwardSettings)[] = [
     'de_top_n',
     'per_bracket_overall_top_n',
     'seeding_top_n',
   ];
-  for (const key of fields) {
+  for (const key of topNFields) {
     const value = settings[key];
     if (
       typeof value !== 'number' ||
@@ -291,16 +319,34 @@ export function validateAutomaticAwardSettings(
       return `${key} must be an integer from 0 through ${teamCount}`;
     }
   }
+  const typeFields: {
+    key: keyof AutomaticAwardSettings;
+    value: unknown;
+  }[] = [
+    { key: 'de_award_type', value: settings.de_award_type },
+    {
+      key: 'per_bracket_overall_award_type',
+      value: settings.per_bracket_overall_award_type,
+    },
+    { key: 'seeding_award_type', value: settings.seeding_award_type },
+  ];
+  for (const { key, value } of typeFields) {
+    if (!isAwardType(value)) {
+      return `${key} must be "certificate" or "trophy"`;
+    }
+  }
   return null;
 }
 
 export async function computeAutomaticAwards(
   eventId: number,
-  settingsOverride?: AutomaticAwardSettings,
+  settingsOverride?: Partial<AutomaticAwardSettings>,
 ): Promise<AutomaticAwardsPublic> {
   const db = await getDatabase();
-  const settings =
-    settingsOverride ?? (await loadAutomaticAwardSettings(eventId));
+  const settings: AutomaticAwardSettings = {
+    ...DEFAULT_AUTOMATIC_AWARD_SETTINGS,
+    ...(settingsOverride ?? (await loadAutomaticAwardSettings(eventId))),
+  };
 
   const brackets = await db.all<{ id: number; name: string }>(
     `SELECT id, name FROM brackets WHERE event_id = ? ORDER BY id ASC`,
@@ -416,12 +462,14 @@ type PlannedAutoAward = {
   name: string;
   description: string | null;
   teamNumbers: number[];
+  awardType: AwardType;
 };
 
 function collectPlannedAutoAwards(
   auto: AutomaticAwardsPublic,
 ): PlannedAutoAward[] {
   const planned: PlannedAutoAward[] = [];
+  const settings = auto.settings;
 
   for (const b of auto.de) {
     for (const p of b.placements) {
@@ -429,6 +477,7 @@ function collectPlannedAutoAwards(
         name: `${AUTO_AWARD_NAME_PREFIX}DE — ${b.bracket_name} — ${ordinalLabel(p.place)}`,
         description: 'Double elimination placement (computed).',
         teamNumbers: p.recipients.map((r) => r.team_number),
+        awardType: settings.de_award_type,
       });
     }
   }
@@ -440,6 +489,7 @@ function collectPlannedAutoAwards(
         description:
           'Documentation + seeding + weighted DE within this bracket (computed).',
         teamNumbers: p.recipients.map((r) => r.team_number),
+        awardType: settings.per_bracket_overall_award_type,
       });
     }
   }
@@ -450,6 +500,7 @@ function collectPlannedAutoAwards(
         name: `${AUTO_AWARD_NAME_PREFIX}Seeding — ${ordinalLabel(p.place)}`,
         description: 'Standalone seeding place (computed).',
         teamNumbers: p.recipients.map((r) => r.team_number),
+        awardType: settings.seeding_award_type,
       });
     }
   }
@@ -529,17 +580,24 @@ export async function applyAutomaticAwardsAsEventAwards(
   const result = await db.transaction(async (tx) => {
     await tx.run(
       `INSERT INTO event_automatic_award_settings
-         (event_id, de_top_n, per_bracket_overall_top_n, seeding_top_n)
-       VALUES (?, ?, ?, ?)
+         (event_id, de_top_n, per_bracket_overall_top_n, seeding_top_n,
+          de_award_type, per_bracket_overall_award_type, seeding_award_type)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(event_id) DO UPDATE SET
          de_top_n = excluded.de_top_n,
          per_bracket_overall_top_n = excluded.per_bracket_overall_top_n,
-         seeding_top_n = excluded.seeding_top_n`,
+         seeding_top_n = excluded.seeding_top_n,
+         de_award_type = excluded.de_award_type,
+         per_bracket_overall_award_type = excluded.per_bracket_overall_award_type,
+         seeding_award_type = excluded.seeding_award_type`,
       [
         eventId,
         settings.de_top_n,
         settings.per_bracket_overall_top_n,
         settings.seeding_top_n,
+        settings.de_award_type,
+        settings.per_bracket_overall_award_type,
+        settings.seeding_award_type,
       ],
     );
 
@@ -556,9 +614,9 @@ export async function applyAutomaticAwardsAsEventAwards(
     let created = 0;
     for (const a of planned) {
       const ins = await tx.run(
-        `INSERT INTO event_awards (event_id, template_award_id, name, description, sort_order)
-         VALUES (?, NULL, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM event_awards WHERE event_id = ?))`,
-        [eventId, a.name, a.description, eventId],
+        `INSERT INTO event_awards (event_id, template_award_id, name, description, award_type, sort_order)
+         VALUES (?, NULL, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM event_awards WHERE event_id = ?))`,
+        [eventId, a.name, a.description, a.awardType, eventId],
       );
       const awardId = ins.lastID;
       if (awardId == null) {

@@ -483,6 +483,7 @@ export async function seedDoubleSeedingScore(
 export interface SeedAwardTemplateData {
   name?: string;
   description?: string | null;
+  award_type?: 'certificate' | 'trophy';
 }
 
 export async function seedAwardTemplate(
@@ -490,8 +491,12 @@ export async function seedAwardTemplate(
   data: SeedAwardTemplateData = {},
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO award_templates (name, description) VALUES (?, ?)`,
-    [data.name ?? 'Test Award', data.description ?? null],
+    `INSERT INTO award_templates (name, description, award_type) VALUES (?, ?, ?)`,
+    [
+      data.name ?? 'Test Award',
+      data.description ?? null,
+      data.award_type ?? 'trophy',
+    ],
   );
   return { id: result.lastID! };
 }
@@ -501,6 +506,7 @@ export interface SeedEventAwardData {
   name?: string;
   description?: string | null;
   template_award_id?: number | null;
+  award_type?: 'certificate' | 'trophy';
   sort_order?: number;
 }
 
@@ -509,13 +515,14 @@ export async function seedEventAward(
   data: SeedEventAwardData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO event_awards (event_id, template_award_id, name, description, sort_order)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT INTO event_awards (event_id, template_award_id, name, description, award_type, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?)`,
     [
       data.event_id,
       data.template_award_id ?? null,
       data.name ?? 'Test Event Award',
       data.description ?? null,
+      data.award_type ?? 'trophy',
       data.sort_order ?? 0,
     ],
   );

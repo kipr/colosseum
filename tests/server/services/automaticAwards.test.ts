@@ -166,7 +166,14 @@ describe('validateAutomaticAwardSettings', () => {
   it('accepts 0 through team count', () => {
     expect(
       validateAutomaticAwardSettings(
-        { de_top_n: 0, per_bracket_overall_top_n: 2, seeding_top_n: 5 },
+        {
+          de_top_n: 0,
+          per_bracket_overall_top_n: 2,
+          seeding_top_n: 5,
+          de_award_type: 'trophy',
+          per_bracket_overall_award_type: 'trophy',
+          seeding_award_type: 'trophy',
+        },
         5,
       ),
     ).toBeNull();
@@ -175,9 +182,32 @@ describe('validateAutomaticAwardSettings', () => {
   it('rejects values above team count', () => {
     expect(
       validateAutomaticAwardSettings(
-        { de_top_n: 6, per_bracket_overall_top_n: 0, seeding_top_n: 0 },
+        {
+          de_top_n: 6,
+          per_bracket_overall_top_n: 0,
+          seeding_top_n: 0,
+          de_award_type: 'trophy',
+          per_bracket_overall_award_type: 'trophy',
+          seeding_award_type: 'trophy',
+        },
         5,
       ),
     ).toMatch(/de_top_n/);
+  });
+
+  it('rejects invalid award types', () => {
+    expect(
+      validateAutomaticAwardSettings(
+        {
+          de_top_n: 1,
+          per_bracket_overall_top_n: 0,
+          seeding_top_n: 0,
+          de_award_type: 'medal' as 'trophy',
+          per_bracket_overall_award_type: 'trophy',
+          seeding_award_type: 'trophy',
+        },
+        5,
+      ),
+    ).toMatch(/de_award_type/);
   });
 });

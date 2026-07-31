@@ -17,6 +17,11 @@ import {
 } from '../services/automaticAwards';
 import { diagnosticsHaveWarnings } from '../../shared/automaticAwards';
 import { computeAutomaticAwardDiagnostics } from '../services/eventScoreDiagnostics';
+import {
+  DEFAULT_AWARD_TYPE,
+  isAwardType,
+  type AwardType,
+} from '../../shared/awards';
 
 function parseTopNParam(value: unknown, fallback: number): number | null {
   if (value === undefined || value === null || value === '') {
@@ -30,6 +35,19 @@ function parseTopNParam(value: unknown, fallback: number): number | null {
   return n;
 }
 
+function parseAwardTypeParam(
+  value: unknown,
+  fallback: AwardType,
+): AwardType | null {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  if (!isAwardType(value)) {
+    return null;
+  }
+  return value;
+}
+
 function parseSettingsFromBody(
   body: Record<string, unknown>,
   fallback: AutomaticAwardSettings,
@@ -40,13 +58,35 @@ function parseSettingsFromBody(
     fallback.per_bracket_overall_top_n,
   );
   const seeding = parseTopNParam(body.seeding_top_n, fallback.seeding_top_n);
-  if (de === null || perBracket === null || seeding === null) {
+  const deType = parseAwardTypeParam(
+    body.de_award_type,
+    fallback.de_award_type,
+  );
+  const perBracketType = parseAwardTypeParam(
+    body.per_bracket_overall_award_type,
+    fallback.per_bracket_overall_award_type,
+  );
+  const seedingType = parseAwardTypeParam(
+    body.seeding_award_type,
+    fallback.seeding_award_type,
+  );
+  if (
+    de === null ||
+    perBracket === null ||
+    seeding === null ||
+    deType === null ||
+    perBracketType === null ||
+    seedingType === null
+  ) {
     return null;
   }
   return {
     de_top_n: de,
     per_bracket_overall_top_n: perBracket,
     seeding_top_n: seeding,
+    de_award_type: deType,
+    per_bracket_overall_award_type: perBracketType,
+    seeding_award_type: seedingType,
   };
 }
 
@@ -64,7 +104,7 @@ router.get(
     try {
       const db = await getDatabase();
       const templates = await db.all(
-        'SELECT id, name, description, created_at, updated_at FROM award_templates ORDER BY name ASC',
+        'SELECT id, name, description, award_type, created_at, updated_at FROM award_templates ORDER BY name ASC',
       );
       res.json(templates);
     } catch (error) {
@@ -80,17 +120,26 @@ router.post(
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { name, description } = req.body;
+      const { name, description, award_type } = req.body;
       if (!name || !String(name).trim()) {
         return res.status(400).json({ error: 'Name is required' });
       }
+      const resolvedType =
+        award_type === undefined || award_type === null || award_type === ''
+          ? DEFAULT_AWARD_TYPE
+          : award_type;
+      if (!isAwardType(resolvedType)) {
+        return res
+          .status(400)
+          .json({ error: 'award_type must be "certificate" or "trophy"' });
+      }
       const db = await getDatabase();
       const result = await db.run(
-        'INSERT INTO award_templates (name, description) VALUES (?, ?)',
-        [String(name).trim(), description ?? null],
+        'INSERT INTO award_templates (name, description, award_type) VALUES (?, ?, ?)',
+        [String(name).trim(), description ?? null, resolvedType],
       );
       const created = await db.get(
-        'SELECT id, name, description, created_at, updated_at FROM award_templates WHERE id = ?',
+        'SELECT id, name, description, award_type, created_at, updated_at FROM award_templates WHERE id = ?',
         [result.lastID],
       );
       res.status(201).json(created);
@@ -108,7 +157,7 @@ router.patch(
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const { name, description } = req.body;
+      const { name, description, award_type } = req.body;
       const db = await getDatabase();
       const existing = await db.get(
         'SELECT id FROM award_templates WHERE id = ?',
@@ -131,6 +180,15 @@ router.patch(
         updates.push('description = ?');
         values.push(description);
       }
+      if (award_type !== undefined) {
+        if (!isAwardType(award_type)) {
+          return res
+            .status(400)
+            .json({ error: 'award_type must be "certificate" or "trophy"' });
+        }
+        updates.push('award_type = ?');
+        values.push(award_type);
+      }
       if (updates.length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
       }
@@ -140,7 +198,7 @@ router.patch(
         values,
       );
       const updated = await db.get(
-        'SELECT id, name, description, created_at, updated_at FROM award_templates WHERE id = ?',
+        'SELECT id, name, description, award_type, created_at, updated_at FROM award_templates WHERE id = ?',
         [id],
       );
       res.json(updated);
@@ -195,8 +253,8 @@ router.get(
       }
 
       const awards = await db.all(
-        `SELECT ea.id, ea.event_id, ea.template_award_id, ea.name, ea.description, ea.sort_order,
-                ea.created_at, ea.updated_at
+        `SELECT ea.id, ea.event_id, ea.template_award_id, ea.name, ea.description, ea.award_type,
+                ea.sort_order, ea.created_at, ea.updated_at
          FROM event_awards ea
          WHERE ea.event_id = ?
          ORDER BY ea.sort_order ASC, ea.id ASC`,
@@ -288,7 +346,10 @@ router.get(
       const queryProvided =
         req.query.de_top_n !== undefined ||
         req.query.per_bracket_overall_top_n !== undefined ||
-        req.query.seeding_top_n !== undefined;
+        req.query.seeding_top_n !== undefined ||
+        req.query.de_award_type !== undefined ||
+        req.query.per_bracket_overall_award_type !== undefined ||
+        req.query.seeding_award_type !== undefined;
 
       const de = parseTopNParam(req.query.de_top_n, savedSettings.de_top_n);
       const perBracket = parseTopNParam(
@@ -299,10 +360,28 @@ router.get(
         req.query.seeding_top_n,
         savedSettings.seeding_top_n,
       );
+      const deType = parseAwardTypeParam(
+        req.query.de_award_type,
+        savedSettings.de_award_type,
+      );
+      const perBracketType = parseAwardTypeParam(
+        req.query.per_bracket_overall_award_type,
+        savedSettings.per_bracket_overall_award_type,
+      );
+      const seedingType = parseAwardTypeParam(
+        req.query.seeding_award_type,
+        savedSettings.seeding_award_type,
+      );
       if (de === null || perBracket === null || seeding === null) {
         return res.status(400).json({
           error:
             'de_top_n, per_bracket_overall_top_n, and seeding_top_n must be integers',
+        });
+      }
+      if (deType === null || perBracketType === null || seedingType === null) {
+        return res.status(400).json({
+          error:
+            'de_award_type, per_bracket_overall_award_type, and seeding_award_type must be "certificate" or "trophy"',
         });
       }
 
@@ -311,6 +390,9 @@ router.get(
             de_top_n: de,
             per_bracket_overall_top_n: perBracket,
             seeding_top_n: seeding,
+            de_award_type: deType,
+            per_bracket_overall_award_type: perBracketType,
+            seeding_award_type: seedingType,
           }
         : savedSettings;
       const validationError = validateAutomaticAwardSettings(
@@ -362,7 +444,10 @@ router.post(
       const bodyOmitsSettings =
         body.de_top_n === undefined &&
         body.per_bracket_overall_top_n === undefined &&
-        body.seeding_top_n === undefined;
+        body.seeding_top_n === undefined &&
+        body.de_award_type === undefined &&
+        body.per_bracket_overall_award_type === undefined &&
+        body.seeding_award_type === undefined;
       const fallback = clampAutomaticAwardSettings(
         await loadAutomaticAwardSettings(eventIdNum),
         teamCount,
@@ -371,7 +456,7 @@ router.post(
       if (!settings) {
         return res.status(400).json({
           error:
-            'de_top_n, per_bracket_overall_top_n, and seeding_top_n must be integers',
+            'de_top_n, per_bracket_overall_top_n, and seeding_top_n must be integers; award types must be "certificate" or "trophy"',
         });
       }
       const effectiveSettings = bodyOmitsSettings ? fallback : settings;
@@ -402,6 +487,56 @@ router.post(
   },
 );
 
+// GET /awards/event/:eventId/team-award-counts — per-team certificate/trophy tallies (admin)
+router.get(
+  '/event/:eventId/team-award-counts',
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      const db = await getDatabase();
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        eventId,
+      ]);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const rows = await db.all(
+        `SELECT t.id AS team_id, t.team_number, t.team_name, t.display_name,
+                COALESCE(SUM(CASE WHEN ea.award_type = 'certificate' THEN 1 ELSE 0 END), 0)
+                  AS certificate_count,
+                COALESCE(SUM(CASE WHEN ea.award_type = 'trophy' THEN 1 ELSE 0 END), 0)
+                  AS trophy_count
+         FROM teams t
+         LEFT JOIN event_award_recipients ear ON ear.team_id = t.id
+         LEFT JOIN event_awards ea ON ea.id = ear.event_award_id AND ea.event_id = t.event_id
+         WHERE t.event_id = ?
+         GROUP BY t.id, t.team_number, t.team_name, t.display_name
+         ORDER BY t.team_number ASC`,
+        [eventId],
+      );
+
+      res.json(
+        rows.map((r) => {
+          const row = r as Record<string, unknown>;
+          return {
+            team_id: row.team_id,
+            team_number: row.team_number,
+            team_name: row.team_name,
+            display_name: row.display_name ?? null,
+            certificate_count: Number(row.certificate_count ?? 0),
+            trophy_count: Number(row.trophy_count ?? 0),
+          };
+        }),
+      );
+    } catch (error) {
+      console.error('Error fetching team award counts:', error);
+      res.status(500).json({ error: 'Failed to fetch team award counts' });
+    }
+  },
+);
+
 // POST /awards/event/:eventId
 router.post(
   '/event/:eventId',
@@ -409,7 +544,8 @@ router.post(
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
-      const { template_award_id, name, description, sort_order } = req.body;
+      const { template_award_id, name, description, sort_order, award_type } =
+        req.body;
 
       const db = await getDatabase();
       const event = await db.get('SELECT id FROM events WHERE id = ?', [
@@ -421,10 +557,14 @@ router.post(
 
       let awardName = name;
       let awardDescription = description;
+      let awardType: AwardType | undefined =
+        award_type === undefined || award_type === null || award_type === ''
+          ? undefined
+          : award_type;
 
       if (template_award_id) {
         const template = await db.get(
-          'SELECT name, description FROM award_templates WHERE id = ?',
+          'SELECT name, description, award_type FROM award_templates WHERE id = ?',
           [template_award_id],
         );
         if (!template) {
@@ -433,10 +573,20 @@ router.post(
         const t = template as Record<string, unknown>;
         if (!awardName) awardName = t.name;
         if (awardDescription === undefined) awardDescription = t.description;
+        if (awardType === undefined && isAwardType(t.award_type)) {
+          awardType = t.award_type;
+        }
       }
 
       if (!awardName || !String(awardName).trim()) {
         return res.status(400).json({ error: 'Name is required' });
+      }
+
+      const resolvedType = awardType ?? DEFAULT_AWARD_TYPE;
+      if (!isAwardType(resolvedType)) {
+        return res
+          .status(400)
+          .json({ error: 'award_type must be "certificate" or "trophy"' });
       }
 
       const order =
@@ -450,13 +600,14 @@ router.post(
             ).next_order ?? 0);
 
       const result = await db.run(
-        `INSERT INTO event_awards (event_id, template_award_id, name, description, sort_order)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO event_awards (event_id, template_award_id, name, description, award_type, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
           eventId,
           template_award_id ?? null,
           String(awardName).trim(),
           awardDescription ?? null,
+          resolvedType,
           order,
         ],
       );
@@ -483,7 +634,7 @@ router.patch(
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const { name, description, sort_order } = req.body;
+      const { name, description, sort_order, award_type } = req.body;
       const db = await getDatabase();
       const existing = await db.get(
         'SELECT id FROM event_awards WHERE id = ?',
@@ -509,6 +660,15 @@ router.patch(
       if (sort_order !== undefined) {
         updates.push('sort_order = ?');
         values.push(sort_order);
+      }
+      if (award_type !== undefined) {
+        if (!isAwardType(award_type)) {
+          return res
+            .status(400)
+            .json({ error: 'award_type must be "certificate" or "trophy"' });
+        }
+        updates.push('award_type = ?');
+        values.push(award_type);
       }
       if (updates.length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
@@ -558,17 +718,14 @@ router.delete(
 // ============================================================================
 
 // POST /awards/event-awards/:id/recipients
+// Accepts either { team_id } (single) or { team_ids: number[] } (bulk).
 router.post(
   '/event-awards/:id/recipients',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { id } = req.params;
-      const { team_id } = req.body;
-
-      if (!team_id) {
-        return res.status(400).json({ error: 'team_id is required' });
-      }
+      const { team_id, team_ids } = req.body;
 
       const db = await getDatabase();
       const award = await db.get(
@@ -581,32 +738,73 @@ router.post(
 
       const awardEventId = (award as Record<string, unknown>)
         .event_id as number;
-      const team = await db.get('SELECT id, event_id FROM teams WHERE id = ?', [
-        team_id,
-      ]);
-      if (!team) {
-        return res.status(404).json({ error: 'Team not found' });
-      }
-      if ((team as Record<string, unknown>).event_id !== awardEventId) {
+
+      let ids: number[] = [];
+      if (Array.isArray(team_ids)) {
+        if (team_ids.length === 0) {
+          return res
+            .status(400)
+            .json({ error: 'team_ids must be a non-empty array of integers' });
+        }
+        ids = [];
+        for (const v of team_ids) {
+          const n = Number(v);
+          if (!Number.isInteger(n)) {
+            return res.status(400).json({
+              error: 'team_ids must be a non-empty array of integers',
+            });
+          }
+          ids.push(n);
+        }
+      } else if (team_id) {
+        ids = [Number(team_id)];
+      } else {
         return res
           .status(400)
-          .json({ error: 'Team does not belong to the same event' });
+          .json({ error: 'team_id or team_ids is required' });
       }
 
-      await db.run(
-        'INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?)',
-        [id, team_id],
+      const uniqueIds = Array.from(new Set(ids));
+      const placeholders = uniqueIds.map(() => '?').join(',');
+      const teams = await db.all<{ id: number; event_id: number }>(
+        `SELECT id, event_id FROM teams WHERE id IN (${placeholders})`,
+        uniqueIds,
       );
+      if (teams.length !== uniqueIds.length) {
+        return res.status(404).json({ error: 'One or more teams not found' });
+      }
+      for (const team of teams) {
+        if (team.event_id !== awardEventId) {
+          return res
+            .status(400)
+            .json({ error: 'Team does not belong to the same event' });
+        }
+      }
 
-      const recipient = await db.get(
+      await db.transaction(async (tx) => {
+        for (const tid of uniqueIds) {
+          await tx.run(
+            'INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?)',
+            [id, tid],
+          );
+        }
+      });
+
+      const recipients = await db.all(
         `SELECT ear.id, ear.event_award_id, ear.team_id,
                 t.team_number, t.team_name, t.display_name
          FROM event_award_recipients ear
          JOIN teams t ON ear.team_id = t.id
-         WHERE ear.event_award_id = ? AND ear.team_id = ?`,
-        [id, team_id],
+         WHERE ear.event_award_id = ? AND ear.team_id IN (${placeholders})
+         ORDER BY t.team_number ASC`,
+        [id, ...uniqueIds],
       );
-      res.status(201).json(recipient);
+
+      if (Array.isArray(team_ids)) {
+        res.status(201).json(recipients);
+      } else {
+        res.status(201).json(recipients[0] ?? null);
+      }
     } catch (error) {
       const errMsg = String(error);
       if (errMsg.includes('UNIQUE') || errMsg.includes('unique')) {
