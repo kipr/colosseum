@@ -1,50 +1,22 @@
 import React from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import {
+  hasAutomaticAwardsContent,
+  ordinalLabel,
+  type AutomaticAwardsPublic,
+  type MedalPlacement,
+  type PublicAwardTeam,
+} from '@shared/automaticAwards';
 import '../seeding/SeedingTables.css';
 import '../../pages/Spectator.css';
 
-export type MedalKind = 'gold' | 'silver' | 'bronze';
-
-export interface PublicAwardTeam {
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export interface MedalPlacement {
-  place: 1 | 2 | 3;
-  medal: MedalKind;
-  recipients: PublicAwardTeam[];
-}
-
-export interface DeBracketAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface PerBracketOverallAwards {
-  bracket_id: number;
-  bracket_name: string;
-  placements: MedalPlacement[];
-}
-
-export interface EventOverallAwards {
-  placements: MedalPlacement[];
-}
-
-export interface AutomaticAwardsPublic {
-  de: DeBracketAwards[];
-  perBracketOverall: PerBracketOverallAwards[];
-  eventOverall: EventOverallAwards | null;
-}
-
-function placeLabel(place: 1 | 2 | 3): string {
-  if (place === 1) return '1st';
-  if (place === 2) return '2nd';
-  return '3rd';
-}
+export type {
+  AutomaticAwardsPublic,
+  MedalPlacement,
+  PublicAwardTeam,
+} from '@shared/automaticAwards';
+export { hasAutomaticAwardsContent };
 
 /** Avoid "#113 #113 113 Name" when the list row already shows the team number in bold. */
 function stripRedundantLeadingTeamNumber(
@@ -71,7 +43,7 @@ const medalColumns: UnifiedColumnDef<MedalPlacement>[] = [
     header: { full: 'Place' },
     headerClassName: 'rank-cell spectator-awards-place',
     cellClassName: 'rank-cell spectator-awards-place',
-    renderCell: (p) => <strong>{placeLabel(p.place)}</strong>,
+    renderCell: (p) => <strong>{ordinalLabel(p.place)}</strong>,
   },
   {
     kind: 'data',
@@ -102,21 +74,10 @@ function MedalTable({ placements }: { placements: MedalPlacement[] }) {
       showHeader={false}
       columns={medalColumns}
       rows={placements}
-      getRowKey={(p) => `${p.place}-${p.medal}`}
-      rowClassName={(p) => `ranking-row-${p.medal}`}
+      getRowKey={(p) => `${p.place}-${p.medal ?? 'none'}`}
+      rowClassName={(p) => (p.medal ? `ranking-row-${p.medal}` : undefined)}
       tableClassName="seeding-table spectator-awards-medal-table"
     />
-  );
-}
-
-export function hasAutomaticAwardsContent(
-  auto: AutomaticAwardsPublic | null | undefined,
-): boolean {
-  if (!auto) return false;
-  return (
-    (auto.de?.length ?? 0) > 0 ||
-    (auto.perBracketOverall?.length ?? 0) > 0 ||
-    (auto.eventOverall?.placements?.length ?? 0) > 0
   );
 }
 
@@ -146,8 +107,7 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
               margin: '0 0 0.75rem',
             }}
           >
-            Placement in the bracket (1st / 2nd / 3rd) from completed DE
-            rankings.
+            Placement in the bracket from completed DE rankings.
           </p>
           {automatic.de.map((b) => (
             <div key={b.bracket_id} style={{ marginBottom: '1.25rem' }}>
@@ -199,32 +159,30 @@ export default function SpectatorAutomaticAwards({ automatic }: Props) {
         </section>
       )}
 
-      {automatic.eventOverall &&
-        automatic.eventOverall.placements.length > 0 && (
-          <section style={{ marginBottom: '1.5rem' }}>
-            <h4
-              className="spectator-awards-section-title"
-              style={{
-                margin: '0 0 0.75rem',
-                fontSize: '1.05rem',
-              }}
-            >
-              Event overall
-            </h4>
-            <p
-              className="spectator-awards-section-description"
-              style={{
-                color: 'var(--secondary-color)',
-                fontSize: '0.9rem',
-                margin: '0 0 0.75rem',
-              }}
-            >
-              Top teams by total score across documentation, seeding, and all
-              bracket DE contributions.
-            </p>
-            <MedalTable placements={automatic.eventOverall.placements} />
-          </section>
-        )}
+      {automatic.seeding && automatic.seeding.placements.length > 0 && (
+        <section style={{ marginBottom: '1.5rem' }}>
+          <h4
+            className="spectator-awards-section-title"
+            style={{
+              margin: '0 0 0.75rem',
+              fontSize: '1.05rem',
+            }}
+          >
+            Seeding
+          </h4>
+          <p
+            className="spectator-awards-section-description"
+            style={{
+              color: 'var(--secondary-color)',
+              fontSize: '0.9rem',
+              margin: '0 0 0.75rem',
+            }}
+          >
+            Top teams by standalone seeding rank.
+          </p>
+          <MedalTable placements={automatic.seeding.placements} />
+        </section>
+      )}
     </div>
   );
 }

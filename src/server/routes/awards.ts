@@ -6,8 +6,49 @@ import { areFinalScoresReleased } from '../utils/eventVisibility';
 import {
   computeAutomaticAwards,
   applyAutomaticAwardsAsEventAwards,
+  loadAutomaticAwardSettings,
+  getEventTeamCount,
+  validateAutomaticAwardSettings,
+  clampAutomaticAwardSettings,
+  AutomaticAwardsAcknowledgementRequiredError,
+  AutomaticAwardsValidationError,
   AUTO_AWARD_NAME_PREFIX,
+  type AutomaticAwardSettings,
 } from '../services/automaticAwards';
+import { diagnosticsHaveWarnings } from '../../shared/automaticAwards';
+import { computeAutomaticAwardDiagnostics } from '../services/eventScoreDiagnostics';
+
+function parseTopNParam(value: unknown, fallback: number): number | null {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+  const n =
+    typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    return null;
+  }
+  return n;
+}
+
+function parseSettingsFromBody(
+  body: Record<string, unknown>,
+  fallback: AutomaticAwardSettings,
+): AutomaticAwardSettings | null {
+  const de = parseTopNParam(body.de_top_n, fallback.de_top_n);
+  const perBracket = parseTopNParam(
+    body.per_bracket_overall_top_n,
+    fallback.per_bracket_overall_top_n,
+  );
+  const seeding = parseTopNParam(body.seeding_top_n, fallback.seeding_top_n);
+  if (de === null || perBracket === null || seeding === null) {
+    return null;
+  }
+  return {
+    de_top_n: de,
+    per_bracket_overall_top_n: perBracket,
+    seeding_top_n: seeding,
+  };
+}
 
 const router = express.Router();
 
@@ -196,13 +237,14 @@ router.get(
   },
 );
 
-// POST /awards/event/:eventId/automatic — Replace Auto:* event awards with computed placements (admin)
-router.post(
-  '/event/:eventId/automatic',
+// GET /awards/event/:eventId/automatic/preview — Preview top-N automatic awards + diagnostics (admin)
+router.get(
+  '/event/:eventId/automatic/preview',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
+      const eventIdNum = Number.parseInt(String(eventId), 10);
       const db = await getDatabase();
       const event = await db.get('SELECT id FROM events WHERE id = ?', [
         eventId,
@@ -211,11 +253,123 @@ router.post(
         return res.status(404).json({ error: 'Event not found' });
       }
 
+      const teamCount = await getEventTeamCount(eventIdNum);
+      const savedSettings = clampAutomaticAwardSettings(
+        await loadAutomaticAwardSettings(eventIdNum),
+        teamCount,
+      );
+
+      const queryProvided =
+        req.query.de_top_n !== undefined ||
+        req.query.per_bracket_overall_top_n !== undefined ||
+        req.query.seeding_top_n !== undefined;
+
+      const de = parseTopNParam(req.query.de_top_n, savedSettings.de_top_n);
+      const perBracket = parseTopNParam(
+        req.query.per_bracket_overall_top_n,
+        savedSettings.per_bracket_overall_top_n,
+      );
+      const seeding = parseTopNParam(
+        req.query.seeding_top_n,
+        savedSettings.seeding_top_n,
+      );
+      if (de === null || perBracket === null || seeding === null) {
+        return res.status(400).json({
+          error:
+            'de_top_n, per_bracket_overall_top_n, and seeding_top_n must be integers',
+        });
+      }
+
+      const settings: AutomaticAwardSettings = queryProvided
+        ? {
+            de_top_n: de,
+            per_bracket_overall_top_n: perBracket,
+            seeding_top_n: seeding,
+          }
+        : savedSettings;
+      const validationError = validateAutomaticAwardSettings(
+        settings,
+        teamCount,
+      );
+      if (validationError) {
+        return res.status(400).json({ error: validationError });
+      }
+
+      const [automatic, diagnostics] = await Promise.all([
+        computeAutomaticAwards(eventIdNum, settings),
+        computeAutomaticAwardDiagnostics(eventIdNum),
+      ]);
+
+      res.json({
+        teamCount,
+        settings,
+        savedSettings,
+        automatic,
+        diagnostics,
+        hasWarnings: diagnosticsHaveWarnings(diagnostics),
+      });
+    } catch (error) {
+      console.error('Error previewing automatic event awards:', error);
+      res.status(500).json({ error: 'Failed to preview automatic awards' });
+    }
+  },
+);
+
+// POST /awards/event/:eventId/automatic — Replace Auto:* event awards with computed placements (admin)
+router.post(
+  '/event/:eventId/automatic',
+  requireAdmin,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      const eventIdNum = Number.parseInt(String(eventId), 10);
+      const db = await getDatabase();
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        eventId,
+      ]);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const teamCount = await getEventTeamCount(eventIdNum);
+      const bodyOmitsSettings =
+        body.de_top_n === undefined &&
+        body.per_bracket_overall_top_n === undefined &&
+        body.seeding_top_n === undefined;
+      const fallback = clampAutomaticAwardSettings(
+        await loadAutomaticAwardSettings(eventIdNum),
+        teamCount,
+      );
+      const settings = parseSettingsFromBody(body, fallback);
+      if (!settings) {
+        return res.status(400).json({
+          error:
+            'de_top_n, per_bracket_overall_top_n, and seeding_top_n must be integers',
+        });
+      }
+      const effectiveSettings = bodyOmitsSettings ? fallback : settings;
+
+      const acknowledgeWarnings = Boolean(body.acknowledge_warnings);
+
       const result = await applyAutomaticAwardsAsEventAwards(
-        Number.parseInt(String(eventId), 10),
+        eventIdNum,
+        effectiveSettings,
+        { acknowledgeWarnings },
       );
       res.json(result);
     } catch (error) {
+      if (error instanceof AutomaticAwardsValidationError) {
+        return res.status(400).json({ error: error.message });
+      }
+      if (error instanceof AutomaticAwardsAcknowledgementRequiredError) {
+        return res.status(409).json({
+          error: error.message,
+          diagnostics: error.diagnostics,
+          hasWarnings: true,
+          requires_acknowledgement: true,
+        });
+      }
       console.error('Error applying automatic event awards:', error);
       res.status(500).json({ error: 'Failed to apply automatic awards' });
     }

@@ -2,7 +2,11 @@ import type { SchemaModule } from './types';
 
 export const awardsSchema: SchemaModule = {
   name: 'awards',
-  updatedAtTables: ['award_templates', 'event_awards'],
+  updatedAtTables: [
+    'award_templates',
+    'event_awards',
+    'event_automatic_award_settings',
+  ],
   postgres: {
     tables: [
       `
@@ -33,6 +37,18 @@ export const awardsSchema: SchemaModule = {
           team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           UNIQUE(event_award_id, team_id)
+        )
+      `,
+      `
+        CREATE TABLE IF NOT EXISTS event_automatic_award_settings (
+          id SERIAL PRIMARY KEY,
+          event_id INTEGER NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
+          de_top_n INTEGER NOT NULL DEFAULT 3 CHECK (de_top_n >= 0),
+          per_bracket_overall_top_n INTEGER NOT NULL DEFAULT 3
+            CHECK (per_bracket_overall_top_n >= 0),
+          seeding_top_n INTEGER NOT NULL DEFAULT 3 CHECK (seeding_top_n >= 0),
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
       `,
     ],
@@ -73,6 +89,18 @@ export const awardsSchema: SchemaModule = {
           team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           UNIQUE(event_award_id, team_id)
+        )
+      `,
+      `
+        CREATE TABLE IF NOT EXISTS event_automatic_award_settings (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          event_id INTEGER NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
+          de_top_n INTEGER NOT NULL DEFAULT 3 CHECK (de_top_n >= 0),
+          per_bracket_overall_top_n INTEGER NOT NULL DEFAULT 3
+            CHECK (per_bracket_overall_top_n >= 0),
+          seeding_top_n INTEGER NOT NULL DEFAULT 3 CHECK (seeding_top_n >= 0),
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
       `,
     ],

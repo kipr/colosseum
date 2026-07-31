@@ -461,4 +461,17 @@ CREATE TABLE IF NOT EXISTS event_award_recipients (
 
 CREATE INDEX IF NOT EXISTS idx_event_award_recipients_award ON event_award_recipients(event_award_id);
 CREATE INDEX IF NOT EXISTS idx_event_award_recipients_team ON event_award_recipients(team_id);
+
+-- Per-event top-N configuration for automatic awards (DE / per-bracket overall / seeding).
+-- 0 disables a category. Defaults are 3 when no row exists.
+CREATE TABLE IF NOT EXISTS event_automatic_award_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id INTEGER NOT NULL UNIQUE REFERENCES events(id) ON DELETE CASCADE,
+    de_top_n INTEGER NOT NULL DEFAULT 3 CHECK (de_top_n >= 0),
+    per_bracket_overall_top_n INTEGER NOT NULL DEFAULT 3
+      CHECK (per_bracket_overall_top_n >= 0),
+    seeding_top_n INTEGER NOT NULL DEFAULT 3 CHECK (seeding_top_n >= 0),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 ```

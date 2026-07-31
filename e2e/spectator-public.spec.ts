@@ -529,7 +529,7 @@ test.describe('Spectator Public Views & Release Gating', () => {
       timeout: 10_000,
     });
     await expect(page.getByText('Per-bracket overall')).toHaveCount(0);
-    await expect(page.getByText('Event overall')).toBeVisible();
+    await expect(page.getByText('Seeding')).toBeVisible();
     await expect(page.getByText('Other awards')).toBeVisible();
     const championAward = page
       .locator('div')
