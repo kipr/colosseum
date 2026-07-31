@@ -2,6 +2,9 @@
  * Shared contracts for automatic award computation, settings, and diagnostics.
  */
 
+import type { AwardType } from './awards';
+import { DEFAULT_AWARD_TYPE } from './awards';
+
 export type MedalKind = 'gold' | 'silver' | 'bronze';
 
 export interface PublicAwardTeam {
@@ -38,12 +41,18 @@ export interface AutomaticAwardSettings {
   de_top_n: number;
   per_bracket_overall_top_n: number;
   seeding_top_n: number;
+  de_award_type: AwardType;
+  per_bracket_overall_award_type: AwardType;
+  seeding_award_type: AwardType;
 }
 
 export const DEFAULT_AUTOMATIC_AWARD_SETTINGS: AutomaticAwardSettings = {
   de_top_n: 3,
   per_bracket_overall_top_n: 3,
   seeding_top_n: 3,
+  de_award_type: DEFAULT_AWARD_TYPE,
+  per_bracket_overall_award_type: DEFAULT_AWARD_TYPE,
+  seeding_award_type: DEFAULT_AWARD_TYPE,
 };
 
 export interface AutomaticAwardsPublic {

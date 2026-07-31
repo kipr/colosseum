@@ -110,6 +110,27 @@ describe('initializePostgres parity with SQLite', () => {
     });
   });
 
+  describe('awards schema', () => {
+    it('creates award tables with award_type columns', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*award_templates[\s\S]*award_type TEXT NOT NULL DEFAULT 'trophy'/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*event_awards[\s\S]*award_type TEXT NOT NULL DEFAULT 'trophy'/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*event_automatic_award_settings[\s\S]*de_award_type TEXT NOT NULL DEFAULT 'trophy'/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*event_automatic_award_settings[\s\S]*per_bracket_overall_award_type TEXT NOT NULL DEFAULT 'trophy'/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*event_automatic_award_settings[\s\S]*seeding_award_type TEXT NOT NULL DEFAULT 'trophy'/i,
+      );
+      expect(allSql).toContain('idx_event_awards_event_type');
+    });
+  });
+
   describe('documentation scoring', () => {
     it('creates documentation tables and indexes', () => {
       expect(allSql).toMatch(/CREATE TABLE.*documentation_categories/i);
