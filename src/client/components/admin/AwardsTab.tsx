@@ -696,8 +696,8 @@ export default function AwardsTab() {
             >
               Automatic awards use the same rules as the spectator view (DE
               placement, per-bracket overall, event overall). They are stored as
-              event awards whose names start with &quot;Auto:&quot;; clicking the
-              button replaces previous automatic awards with a fresh
+              event awards whose names start with &quot;Auto:&quot;; clicking
+              the button replaces previous automatic awards with a fresh
               calculation.
             </p>
 
