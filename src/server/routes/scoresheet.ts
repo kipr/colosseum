@@ -7,6 +7,10 @@ import {
 } from '../middleware/auth';
 import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import {
+  formatSchemaValidationError,
+  validateScoresheetSchema,
+} from '../../shared/scoresheetSchema';
 
 const router = express.Router();
 
@@ -239,6 +243,14 @@ router.post(
           .json({ error: 'Name, schema, and access code are required' });
       }
 
+      const schemaValidation = validateScoresheetSchema(schema);
+      if (!schemaValidation.ok) {
+        return res.status(400).json({
+          error: formatSchemaValidationError(schemaValidation.errors),
+          errors: schemaValidation.errors,
+        });
+      }
+
       const db = await getDatabase();
       const result = await db.run(
         `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by)
@@ -278,6 +290,16 @@ router.put(
     try {
       const { id } = req.params;
       const { name, description, schema, accessCode, eventId } = req.body;
+
+      if (schema !== undefined) {
+        const schemaValidation = validateScoresheetSchema(schema);
+        if (!schemaValidation.ok) {
+          return res.status(400).json({
+            error: formatSchemaValidationError(schemaValidation.errors),
+            errors: schemaValidation.errors,
+          });
+        }
+      }
 
       const db = await getDatabase();
       await db.transaction(async (tx) => {

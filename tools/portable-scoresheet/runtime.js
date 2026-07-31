@@ -31,6 +31,9 @@
   }
 
   function defaultValueFor(field) {
+    if (field.defaultValue !== undefined) {
+      return field.defaultValue;
+    }
     if (field.type === 'checkbox') return false;
     if (field.type === 'buttons') {
       return field.options?.[0]?.value ?? '';

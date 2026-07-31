@@ -446,3 +446,172 @@ test.describe('Scoresheet Field Rendering', () => {
     ).toHaveCount(0);
   });
 });
+
+/* ------------------------------------------------------------------ */
+/*  Default value rendering                                           */
+/* ------------------------------------------------------------------ */
+
+const DEFAULTS_ACCESS_CODE = 'e2e-field-defaults-code';
+const DEFAULTS_EVENT_NAME = 'E2E Field Defaults Event';
+const DEFAULTS_TEMPLATE_NAME = 'E2E Default Values';
+
+function buildDefaultValuesSchema() {
+  return {
+    title: DEFAULTS_TEMPLATE_NAME,
+    layout: 'two-column',
+    fields: [
+      {
+        id: 'judge_name',
+        label: 'Judge Name',
+        type: 'text',
+        defaultValue: 'Ada Lovelace',
+      },
+      {
+        id: 'division',
+        label: 'Division',
+        type: 'dropdown',
+        options: [
+          { label: 'Junior', value: 'junior' },
+          { label: 'Senior', value: 'senior' },
+          { label: 'Professional', value: 'pro' },
+        ],
+        defaultValue: 'senior',
+      },
+      {
+        id: 'technical_score',
+        label: 'Technical Score',
+        type: 'number',
+        min: 0,
+        max: 50,
+        step: 0.5,
+        defaultValue: 12.5,
+        column: 'left',
+      },
+      {
+        id: 'performance_rating',
+        label: 'Performance Rating',
+        type: 'buttons',
+        options: [
+          { label: 'Excellent', value: '5' },
+          { label: 'Good', value: '4' },
+          { label: 'Fair', value: '3' },
+        ],
+        defaultValue: '4',
+        column: 'left',
+      },
+      {
+        id: 'time_violation',
+        label: 'Time Violation',
+        type: 'checkbox',
+        checkboxLabel: 'Exceeded time limit',
+        defaultValue: true,
+        column: 'right',
+      },
+    ],
+  };
+}
+
+test.describe('Scoresheet Field Default Values', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  let defaultsEventId: number;
+  let defaultsTemplateId: number;
+
+  test.beforeAll(() => {
+    const db = new SQLite(DB_PATH);
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000');
+
+    const ev = db
+      .prepare(
+        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+       VALUES (?, 'active', 1, 'manual')`,
+      )
+      .run(DEFAULTS_EVENT_NAME);
+    defaultsEventId = Number(ev.lastInsertRowid);
+
+    const schema = buildDefaultValuesSchema();
+    const tpl = db
+      .prepare(
+        `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'E2E default values test', ?, ?, 1)`,
+      )
+      .run(DEFAULTS_TEMPLATE_NAME, JSON.stringify(schema), DEFAULTS_ACCESS_CODE);
+    defaultsTemplateId = Number(tpl.lastInsertRowid);
+
+    db.prepare(
+      `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
+       VALUES (?, ?, 'seeding')`,
+    ).run(defaultsEventId, defaultsTemplateId);
+
+    db.close();
+  });
+
+  test.afterAll(() => {
+    const db = new SQLite(DB_PATH);
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000');
+
+    db.prepare('DELETE FROM score_submissions WHERE template_id = ?').run(
+      defaultsTemplateId,
+    );
+    db.prepare(
+      'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
+    ).run(defaultsTemplateId);
+    db.prepare('DELETE FROM scoresheet_templates WHERE id = ?').run(
+      defaultsTemplateId,
+    );
+    db.prepare('DELETE FROM events WHERE id = ?').run(defaultsEventId);
+
+    db.close();
+  });
+
+  test('renders typed defaultValue into interactive controls', async ({
+    page,
+  }) => {
+    await page.goto('/judge');
+    await page
+      .locator('.template-card', { hasText: DEFAULTS_TEMPLATE_NAME })
+      .click();
+    await page
+      .getByPlaceholder('Enter code provided by administrator')
+      .fill(DEFAULTS_ACCESS_CODE);
+    await page.getByRole('button', { name: 'Access Scoresheet' }).click();
+    await page.waitForURL(/\/scoresheet/);
+    await expect(page.locator('.scoresheet-form')).toBeVisible();
+
+    const judgeInput = page
+      .locator('.score-field')
+      .filter({ hasText: 'Judge Name' })
+      .locator('input[type="text"]');
+    await expect(judgeInput).toHaveValue('Ada Lovelace');
+
+    const divisionSelect = page
+      .locator('.score-field')
+      .filter({ hasText: 'Division' })
+      .locator('select');
+    await expect(divisionSelect).toHaveValue('senior');
+
+    const techInput = page
+      .locator('.score-field')
+      .filter({ hasText: 'Technical Score' })
+      .locator('input[type="number"]');
+    await expect(techInput).toHaveValue('12.5');
+
+    const ratingField = page
+      .locator('.score-field')
+      .filter({ hasText: 'Performance Rating' });
+    await expect(
+      ratingField.locator('.score-option-button.selected'),
+    ).toHaveCount(1);
+    await expect(
+      ratingField.locator('.score-option-button', { hasText: 'Good' }),
+    ).toHaveClass(/selected/);
+
+    const checkbox = page
+      .locator('.score-field')
+      .filter({ hasText: 'Time Violation' })
+      .locator('input[type="checkbox"]');
+    await expect(checkbox).toBeChecked();
+  });
+});

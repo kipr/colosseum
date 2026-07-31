@@ -39,6 +39,7 @@ Free-form text input for names, comments, etc.
 - `required` (optional): Boolean, default false
 - `placeholder` (optional): Placeholder text
 - `description` (optional): Help text shown below field
+- `defaultValue` (optional): Initial string value shown when the scoresheet loads
 
 ### 2. Number Field
 
@@ -53,6 +54,7 @@ Numeric input with optional constraints.
   "min": 0,
   "max": 100,
   "step": 0.5,
+  "defaultValue": 0,
   "description": "Score out of 100"
 }
 ```
@@ -63,6 +65,7 @@ Numeric input with optional constraints.
 - `min` (optional): Minimum value
 - `max` (optional): Maximum value
 - `step` (optional): Step increment (default 1)
+- `defaultValue` (optional): Initial finite number; must be within `min`/`max` when those are set
 
 ### 3. Dropdown Field
 
@@ -79,6 +82,7 @@ Select from predefined options.
     { "label": "Senior", "value": "senior" },
     { "label": "Professional", "value": "pro" }
   ],
+  "defaultValue": "junior",
   "description": "Select competition division"
 }
 ```
@@ -86,7 +90,8 @@ Select from predefined options.
 **Properties:**
 
 - `id`, `label`, `type`, `required`, `description`: Same as above
-- `options` (required): Array of objects with `label` and `value`
+- `options` (required for static lists): Array of objects with `label` and `value`
+- `defaultValue` (optional): Must match one of the declared `options[].value` for static dropdowns. For dynamic dropdowns (`dataSource`), it must be a string, number, or boolean.
 
 ### 4. Button Field
 
@@ -105,6 +110,7 @@ Multiple choice with visual buttons (only one can be selected).
     { "label": "👎 Poor", "value": "2" },
     { "label": "❌ Very Poor", "value": "1" }
   ],
+  "defaultValue": "5",
   "description": "Rate overall performance"
 }
 ```
@@ -113,6 +119,7 @@ Multiple choice with visual buttons (only one can be selected).
 
 - `id`, `label`, `type`, `required`, `description`: Same as above
 - `options` (required): Array of objects with `label` and `value`
+- `defaultValue` (optional): Must match one of the declared `options[].value`
 
 **Note:** You can use emojis in labels for visual appeal!
 
@@ -126,6 +133,7 @@ Boolean (true/false) field.
   "label": "Disqualification",
   "type": "checkbox",
   "checkboxLabel": "Participant was disqualified",
+  "defaultValue": false,
   "description": "Check if participant violated rules"
 }
 ```
@@ -134,6 +142,7 @@ Boolean (true/false) field.
 
 - `id`, `label`, `type`, `description`: Same as above
 - `checkboxLabel` (optional): Text shown next to checkbox
+- `defaultValue` (optional): Boolean initial checked state
 
 ## Complete Example Templates
 
@@ -329,6 +338,42 @@ Boolean (true/false) field.
 }
 ```
 
+## Default Values
+
+Interactive fields may include an optional `defaultValue` that pre-fills the control when a scoresheet is opened (and when a portable scoresheet is reset).
+
+Accepted shapes:
+
+| Field type | `defaultValue` type | Extra rules |
+| --- | --- | --- |
+| `text` | `string` | — |
+| `number` | finite `number` | Must respect `min` / `max` when set |
+| `dropdown` | `string` \| `number` \| `boolean` | Must match an `options[].value` when options are static |
+| `buttons` | `string` \| `number` \| `boolean` | Must match an `options[].value` |
+| `checkbox` | `boolean` | — |
+| `repeatableGroup` | array of row objects | Each cell is validated against the child field type |
+
+`defaultValue` is **not** allowed on `calculated`, `section_header`, `group_header`, or `winner-select` fields.
+
+The legacy `startValue` property is no longer supported and will be rejected.
+
+### Repeatable group example
+
+```json
+{
+  "id": "stacks",
+  "label": "Stacks",
+  "type": "repeatableGroup",
+  "fields": [
+    { "id": "count", "label": "Count", "type": "number", "min": 0, "max": 5 },
+    { "id": "notes", "label": "Notes", "type": "text" }
+  ],
+  "defaultValue": [
+    { "count": 1, "notes": "Starter row" }
+  ]
+}
+```
+
 ## Best Practices
 
 1. **Use descriptive IDs**: Make field IDs clear and unique (e.g., `technical_score` not `ts1`)
@@ -343,7 +388,9 @@ Boolean (true/false) field.
 
 6. **Button labels**: Keep them concise but clear. Emojis can help with visual scanning
 
-7. **Test your schema**: Create a template in the admin panel and test it before deploying
+7. **Use `defaultValue` carefully**: Prefer defaults that match the real starting state of a match; invalid defaults are rejected when saving templates or exporting portable scoresheets
+
+8. **Test your schema**: Create a template in the admin panel and test it before deploying
 
 ## Tips for PDF Templates
 
@@ -358,12 +405,12 @@ When converting a PDF scoresheet to JSON:
 
 ## Schema Validation
 
-The system expects:
+When creating or updating templates (and when exporting portable HTML), the system validates:
 
 - Valid JSON syntax
-- A `fields` array at the root
-- Each field has at least `id`, `label`, and `type`
-- Option-based fields (dropdown, buttons) have an `options` array
-- All IDs are unique within the template
+- `schema` is an object; when `fields` is present it must be an array
+- `defaultValue` entries match the field type rules above
+- Option-based defaults match declared options
+- `startValue` is rejected (use `defaultValue`)
 
-Invalid schemas will be rejected with an error message.
+Invalid schemas are rejected with an actionable error message.

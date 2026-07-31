@@ -125,6 +125,108 @@ function validateSchema(template) {
     if (field.id === 'game_queue_id') {
       errors.push('Queue-specific field "game_queue_id" is unsupported in portable V1.');
     }
+
+    errors.push(...validateFieldDefaultValue(field));
+  }
+
+  return errors;
+}
+
+function fieldLabel(field) {
+  return field.id || field.label || field.type || '(unknown field)';
+}
+
+function optionMatches(optionValue, defaultValue) {
+  return Object.is(optionValue, defaultValue);
+}
+
+function validateFieldDefaultValue(field, path = '') {
+  const errors = [];
+  const label = path || `field "${fieldLabel(field)}"`;
+
+  if (field && Object.prototype.hasOwnProperty.call(field, 'startValue') && field.startValue !== undefined) {
+    errors.push(
+      `${label}: "startValue" is no longer supported; use "defaultValue" instead.`,
+    );
+  }
+
+  if (!field || field.defaultValue === undefined) {
+    return errors;
+  }
+
+  const { type, defaultValue } = field;
+
+  if (
+    type === 'calculated' ||
+    type === 'section_header' ||
+    type === 'group_header' ||
+    type === 'winner-select'
+  ) {
+    errors.push(`${label}: field type "${type}" does not support defaultValue.`);
+    return errors;
+  }
+
+  switch (type) {
+    case 'text':
+      if (typeof defaultValue !== 'string') {
+        errors.push(`${label}: defaultValue must be a string for text fields.`);
+      }
+      break;
+    case 'number':
+      if (typeof defaultValue !== 'number' || !Number.isFinite(defaultValue)) {
+        errors.push(
+          `${label}: defaultValue must be a finite number for number fields.`,
+        );
+        break;
+      }
+      if (typeof field.min === 'number' && defaultValue < field.min) {
+        errors.push(
+          `${label}: defaultValue ${defaultValue} is below min ${field.min}.`,
+        );
+      }
+      if (typeof field.max === 'number' && defaultValue > field.max) {
+        errors.push(
+          `${label}: defaultValue ${defaultValue} is above max ${field.max}.`,
+        );
+      }
+      break;
+    case 'checkbox':
+      if (typeof defaultValue !== 'boolean') {
+        errors.push(
+          `${label}: defaultValue must be a boolean for checkbox fields.`,
+        );
+      }
+      break;
+    case 'dropdown':
+    case 'buttons': {
+      const primitiveOk =
+        typeof defaultValue === 'string' ||
+        typeof defaultValue === 'number' ||
+        typeof defaultValue === 'boolean';
+      if (!primitiveOk) {
+        errors.push(
+          `${label}: defaultValue must be a string, number, or boolean for ${type} fields.`,
+        );
+        break;
+      }
+      if (Array.isArray(field.options)) {
+        const match = field.options.some((opt) =>
+          optionMatches(opt?.value, defaultValue),
+        );
+        if (!match) {
+          errors.push(
+            `${label}: defaultValue must match one of the declared options.`,
+          );
+        }
+      } else if (type === 'buttons') {
+        errors.push(
+          `${label}: buttons fields with defaultValue require an options array.`,
+        );
+      }
+      break;
+    }
+    default:
+      break;
   }
 
   return errors;
