@@ -26,6 +26,7 @@ let teamAId: number;
 let teamBId: number;
 let bracketId: number;
 let awardId: number;
+let individualOnlyAwardId: number;
 
 /* ------------------------------------------------------------------ */
 /*  Data lifecycle                                                    */
@@ -54,6 +55,17 @@ test.describe('Spectator Public Views & Release Gating', () => {
         // Column already exists
       }
     }
+
+    // Ensure individual-recipient table exists for older local DBs
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS event_award_individual_recipients (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
     // ── Active event (results NOT released) ──
 
@@ -230,6 +242,22 @@ test.describe('Spectator Public Views & Release Gating', () => {
       `INSERT INTO event_award_recipients (event_award_id, team_id)
        VALUES (?, ?)`,
     ).run(awardId, teamAId);
+    db.prepare(
+      `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
+       VALUES (?, 'Ada Lovelace', ?)`,
+    ).run(awardId, teamAId);
+
+    const individualAward = db
+      .prepare(
+        `INSERT INTO event_awards (event_id, name, description, sort_order)
+         VALUES (?, 'Volunteer Award', 'Outstanding volunteer', 1)`,
+      )
+      .run(releasedEventId);
+    individualOnlyAwardId = Number(individualAward.lastInsertRowid);
+    db.prepare(
+      `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
+       VALUES (?, 'Grace Hopper', NULL)`,
+    ).run(individualOnlyAwardId);
 
     db.close();
   });
@@ -240,6 +268,9 @@ test.describe('Spectator Public Views & Release Gating', () => {
     db.pragma('busy_timeout = 5000');
 
     // Clean up in reverse dependency order
+    db.prepare(
+      'DELETE FROM event_award_individual_recipients WHERE event_award_id IN (?, ?)',
+    ).run(awardId, individualOnlyAwardId);
     db.prepare(
       'DELETE FROM event_award_recipients WHERE event_award_id = ?',
     ).run(awardId);
@@ -542,16 +573,28 @@ test.describe('Spectator Public Views & Release Gating', () => {
     ).toBeVisible();
     await expect(page.getByText('Other awards')).toBeVisible();
     const championAward = page
-      .locator('div')
+      .locator('.spectator-manual-award')
       .filter({ hasText: 'Champion Award' })
       .filter({ hasText: 'Best overall team' })
-      .filter({ hasText: TEAM_A.name })
       .first();
     await expect(championAward).toBeVisible();
     await expect(
       championAward.getByText(`#${TEAM_A.number}`).first(),
     ).toBeVisible();
     await expect(championAward.getByText(TEAM_A.name).first()).toBeVisible();
+    await expect(championAward.getByText('Ada Lovelace')).toBeVisible();
+    await expect(
+      championAward.getByText(`· #${TEAM_A.number} ${TEAM_A.name}`),
+    ).toBeVisible();
+
+    const volunteerAward = page
+      .locator('.spectator-manual-award')
+      .filter({ hasText: 'Volunteer Award' })
+      .first();
+    await expect(volunteerAward).toBeVisible();
+    await expect(volunteerAward.getByText('Grace Hopper')).toBeVisible();
+    await expect(volunteerAward.getByText('No recipients')).toHaveCount(0);
+    await expect(volunteerAward.locator('text=/\\bid\\b/i')).toHaveCount(0);
   });
 
   /* ── 9. Bracket Rankings tab (release-gated) ─────────────────────── */

@@ -33,6 +33,16 @@ interface Recipient {
   team_name: string;
 }
 
+interface IndividualRecipient {
+  id: number;
+  event_award_id: number;
+  name: string;
+  team_id: number | null;
+  team_number: number | null;
+  team_name: string | null;
+  display_name?: string | null;
+}
+
 interface EventAward {
   id: number;
   event_id: number;
@@ -41,6 +51,7 @@ interface EventAward {
   description: string | null;
   sort_order: number;
   recipients: Recipient[];
+  individual_recipients: IndividualRecipient[];
 }
 
 interface Team {
@@ -51,9 +62,28 @@ interface Team {
 
 /** Matches server AUTO_AWARD_NAME_PREFIX in automaticAwards.ts */
 const AUTO_AWARD_NAME_PREFIX = 'Auto: ';
+const MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH = 200;
 
 function isAutomaticAward(award: EventAward): boolean {
   return award.name.startsWith(AUTO_AWARD_NAME_PREFIX);
+}
+
+function formatIndividualRecipient(r: IndividualRecipient): string {
+  if (r.team_number != null) {
+    const teamLabel = r.team_name
+      ? `#${r.team_number} ${r.team_name}`
+      : `#${r.team_number}`;
+    return `${r.name} (${teamLabel})`;
+  }
+  return r.name;
+}
+
+function normalizeEventAward(award: EventAward): EventAward {
+  return {
+    ...award,
+    recipients: award.recipients ?? [],
+    individual_recipients: award.individual_recipients ?? [],
+  };
 }
 
 export default function AwardsTab() {
@@ -105,6 +135,11 @@ export default function AwardsTab() {
     number | null
   >(null);
   const [recipientTeamId, setRecipientTeamId] = useState('');
+  const [addingIndividualForAwardId, setAddingIndividualForAwardId] = useState<
+    number | null
+  >(null);
+  const [individualName, setIndividualName] = useState('');
+  const [individualTeamId, setIndividualTeamId] = useState('');
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
@@ -130,7 +165,8 @@ export default function AwardsTab() {
         credentials: 'include',
       });
       if (!res.ok) throw new Error('Failed to fetch event awards');
-      setEventAwards(await res.json());
+      const awards = (await res.json()) as EventAward[];
+      setEventAwards(awards.map(normalizeEventAward));
     } catch (err) {
       console.error(err);
       toast.error('Failed to load event awards');
@@ -543,6 +579,57 @@ export default function AwardsTab() {
     }
   };
 
+  const handleAddIndividualRecipient = async (awardId: number) => {
+    const trimmedName = individualName.trim();
+    if (!trimmedName) {
+      toast.error('Name is required');
+      return;
+    }
+    try {
+      const body: { name: string; team_id?: number } = { name: trimmedName };
+      if (individualTeamId) {
+        body.team_id = Number(individualTeamId);
+      }
+      const res = await fetch(
+        `/awards/event-awards/${awardId}/individual-recipients`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        },
+      );
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error);
+      }
+      toast.success('Individual added');
+      setIndividualName('');
+      setIndividualTeamId('');
+      setAddingIndividualForAwardId(null);
+      await fetchEventAwards();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add');
+    }
+  };
+
+  const handleRemoveIndividualRecipient = async (
+    awardId: number,
+    recipientId: number,
+  ) => {
+    try {
+      const res = await fetch(
+        `/awards/event-awards/${awardId}/individual-recipients/${recipientId}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      if (!res.ok) throw new Error('Failed to remove');
+      toast.success('Individual removed');
+      await fetchEventAwards();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to remove');
+    }
+  };
+
   // ── Render ──
 
   const manualAwards = eventAwards.filter((a) => !isAutomaticAward(a));
@@ -658,97 +745,208 @@ export default function AwardsTab() {
 
       {/* Recipients */}
       <div style={{ marginTop: '0.75rem' }}>
-        <strong style={{ fontSize: '0.9rem' }}>Recipients:</strong>
-        {award.recipients.length === 0 ? (
-          <span
-            style={{
-              color: 'var(--secondary-color)',
-              marginLeft: '0.5rem',
-            }}
-          >
-            None
-          </span>
-        ) : (
-          <ul
-            style={{
-              margin: '0.25rem 0 0',
-              paddingLeft: '1.25rem',
-            }}
-          >
-            {award.recipients.map((r) => (
-              <li key={r.team_id}>
-                #{r.team_number} {r.team_name}
-                <button
-                  className="btn btn-danger"
-                  style={{
-                    marginLeft: '0.5rem',
-                    padding: '0.1rem 0.4rem',
-                    fontSize: '0.75rem',
-                  }}
-                  onClick={() => handleRemoveRecipient(award.id, r.team_id)}
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+        <strong style={{ fontSize: '0.9rem' }}>Recipients</strong>
 
-        {addingRecipientForAwardId === award.id ? (
-          <div
-            style={{
-              display: 'flex',
-              gap: '0.5rem',
-              marginTop: '0.5rem',
-              alignItems: 'center',
-            }}
-          >
-            <select
-              className="field-input"
-              value={recipientTeamId}
-              onChange={(e) => setRecipientTeamId(e.target.value)}
-              style={{ maxWidth: '250px' }}
+        <div style={{ marginTop: '0.5rem' }}>
+          <strong style={{ fontSize: '0.85rem' }}>Teams:</strong>
+          {award.recipients.length === 0 ? (
+            <span
+              style={{
+                color: 'var(--secondary-color)',
+                marginLeft: '0.5rem',
+              }}
             >
-              <option value="">— Select team —</option>
-              {teams
-                .filter(
-                  (t) => !award.recipients.some((r) => r.team_id === t.id),
-                )
-                .map((t) => (
+              None
+            </span>
+          ) : (
+            <ul
+              style={{
+                margin: '0.25rem 0 0',
+                paddingLeft: '1.25rem',
+              }}
+            >
+              {award.recipients.map((r) => (
+                <li key={r.team_id}>
+                  #{r.team_number} {r.team_name}
+                  <button
+                    className="btn btn-danger"
+                    style={{
+                      marginLeft: '0.5rem',
+                      padding: '0.1rem 0.4rem',
+                      fontSize: '0.75rem',
+                    }}
+                    onClick={() => handleRemoveRecipient(award.id, r.team_id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {addingRecipientForAwardId === award.id ? (
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                marginTop: '0.5rem',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <select
+                className="field-input"
+                value={recipientTeamId}
+                onChange={(e) => setRecipientTeamId(e.target.value)}
+                style={{ maxWidth: '250px' }}
+              >
+                <option value="">— Select team —</option>
+                {teams
+                  .filter(
+                    (t) => !award.recipients.some((r) => r.team_id === t.id),
+                  )
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      #{t.team_number} {t.team_name}
+                    </option>
+                  ))}
+              </select>
+              <button
+                className="btn btn-primary"
+                disabled={!recipientTeamId}
+                onClick={() => handleAddRecipient(award.id)}
+              >
+                Add
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setAddingRecipientForAwardId(null);
+                  setRecipientTeamId('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button
+              className="btn btn-secondary"
+              style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
+              onClick={() => {
+                setAddingRecipientForAwardId(award.id);
+                setRecipientTeamId('');
+                setAddingIndividualForAwardId(null);
+              }}
+            >
+              + Add team
+            </button>
+          )}
+        </div>
+
+        <div style={{ marginTop: '0.75rem' }}>
+          <strong style={{ fontSize: '0.85rem' }}>Individuals:</strong>
+          {award.individual_recipients.length === 0 ? (
+            <span
+              style={{
+                color: 'var(--secondary-color)',
+                marginLeft: '0.5rem',
+              }}
+            >
+              None
+            </span>
+          ) : (
+            <ul
+              style={{
+                margin: '0.25rem 0 0',
+                paddingLeft: '1.25rem',
+              }}
+            >
+              {award.individual_recipients.map((r) => (
+                <li key={r.id}>
+                  {formatIndividualRecipient(r)}
+                  <button
+                    className="btn btn-danger"
+                    style={{
+                      marginLeft: '0.5rem',
+                      padding: '0.1rem 0.4rem',
+                      fontSize: '0.75rem',
+                    }}
+                    onClick={() =>
+                      handleRemoveIndividualRecipient(award.id, r.id)
+                    }
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {addingIndividualForAwardId === award.id ? (
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                marginTop: '0.5rem',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <input
+                className="field-input"
+                type="text"
+                placeholder="Name"
+                value={individualName}
+                maxLength={MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH}
+                onChange={(e) => setIndividualName(e.target.value)}
+                style={{ maxWidth: '200px' }}
+              />
+              <select
+                className="field-input"
+                value={individualTeamId}
+                onChange={(e) => setIndividualTeamId(e.target.value)}
+                style={{ maxWidth: '220px' }}
+              >
+                <option value="">— No team —</option>
+                {teams.map((t) => (
                   <option key={t.id} value={t.id}>
                     #{t.team_number} {t.team_name}
                   </option>
                 ))}
-            </select>
-            <button
-              className="btn btn-primary"
-              disabled={!recipientTeamId}
-              onClick={() => handleAddRecipient(award.id)}
-            >
-              Add
-            </button>
+              </select>
+              <button
+                className="btn btn-primary"
+                disabled={!individualName.trim()}
+                onClick={() => handleAddIndividualRecipient(award.id)}
+              >
+                Add
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => {
+                  setAddingIndividualForAwardId(null);
+                  setIndividualName('');
+                  setIndividualTeamId('');
+                }}
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
             <button
               className="btn btn-secondary"
+              style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
               onClick={() => {
+                setAddingIndividualForAwardId(award.id);
+                setIndividualName('');
+                setIndividualTeamId('');
                 setAddingRecipientForAwardId(null);
-                setRecipientTeamId('');
               }}
             >
-              Cancel
+              + Add individual
             </button>
-          </div>
-        ) : (
-          <button
-            className="btn btn-secondary"
-            style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
-            onClick={() => {
-              setAddingRecipientForAwardId(award.id);
-              setRecipientTeamId('');
-            }}
-          >
-            + Add Recipient
-          </button>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

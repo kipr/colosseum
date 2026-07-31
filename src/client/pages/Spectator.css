@@ -217,8 +217,13 @@
 
 .spectator-awards-recipient-name,
 .spectator-manual-award-recipient-name,
+.spectator-manual-award-recipient-team,
 .spectator-manual-award-description {
   overflow-wrap: anywhere;
+}
+
+.spectator-manual-award-recipient-team {
+  color: var(--secondary-color);
 }
 
 .spectator-awards-section-title,

@@ -121,6 +121,12 @@ export default function Spectator() {
   >(null);
 
   // Awards state (lazy-loaded)
+  interface PublicIndividualRecipient {
+    name: string;
+    team_number: number | null;
+    team_name: string | null;
+    display_name: string | null;
+  }
   interface PublicManualAward {
     name: string;
     description: string | null;
@@ -130,6 +136,7 @@ export default function Spectator() {
       team_name: string;
       display_name?: string | null;
     }[];
+    individual_recipients: PublicIndividualRecipient[];
   }
   const [manualAwards, setManualAwards] = useState<PublicManualAward[]>([]);
   const [automaticAwards, setAutomaticAwards] =
@@ -396,7 +403,13 @@ export default function Spectator() {
           manual: PublicManualAward[];
           automatic: AutomaticAwardsPublic;
         } = await res.json();
-        setManualAwards(data.manual ?? []);
+        setManualAwards(
+          (data.manual ?? []).map((award) => ({
+            ...award,
+            recipients: award.recipients ?? [],
+            individual_recipients: award.individual_recipients ?? [],
+          })),
+        );
         setAutomaticAwards(data.automatic ?? null);
         setAwardsLoaded(true);
       })
@@ -740,19 +753,48 @@ export default function Spectator() {
                                   {award.description}
                                 </p>
                               )}
-                              {award.recipients.length > 0 ? (
+                              {award.recipients.length > 0 ||
+                              award.individual_recipients.length > 0 ? (
                                 <ul className="spectator-manual-award-recipients">
                                   {award.recipients.map((r, ri) => (
                                     <li
-                                      key={ri}
+                                      key={`team-${r.team_number}-${ri}`}
                                       className="spectator-manual-award-recipient"
                                     >
                                       <strong>#{r.team_number}</strong>{' '}
                                       <span className="spectator-manual-award-recipient-name">
-                                        {r.team_name}
+                                        {r.display_name?.trim()
+                                          ? r.display_name
+                                          : r.team_name}
                                       </span>
                                     </li>
                                   ))}
+                                  {award.individual_recipients.map((r, ri) => {
+                                    const teamLabel =
+                                      r.team_number != null
+                                        ? `#${r.team_number} ${
+                                            r.display_name?.trim()
+                                              ? r.display_name
+                                              : (r.team_name ?? '')
+                                          }`.trim()
+                                        : null;
+                                    return (
+                                      <li
+                                        key={`individual-${r.name}-${r.team_number ?? 'none'}-${ri}`}
+                                        className="spectator-manual-award-recipient"
+                                      >
+                                        <span className="spectator-manual-award-recipient-name">
+                                          {r.name}
+                                        </span>
+                                        {teamLabel && (
+                                          <span className="spectator-manual-award-recipient-team">
+                                            {' '}
+                                            · {teamLabel}
+                                          </span>
+                                        )}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
                               ) : (
                                 <p className="spectator-manual-award-empty">
