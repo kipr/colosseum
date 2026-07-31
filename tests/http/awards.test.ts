@@ -459,6 +459,31 @@ describe('Awards API', () => {
       );
       expect(res.status).toBe(400);
     });
+
+    it('rejects bulk team_ids containing any non-integer', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const award = await seedEventAward(testDb.db, {
+        event_id: event.id,
+        name: 'Bulk invalid id',
+      });
+
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/recipients`,
+        { team_ids: [team.id, 'invalid'] },
+      );
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toMatch(/integers/i);
+
+      const recipients = await testDb.db.all(
+        'SELECT team_id FROM event_award_recipients WHERE event_award_id = ?',
+        [award.id],
+      );
+      expect(recipients).toHaveLength(0);
+    });
   });
 
   describe('GET /awards/event/:eventId/team-award-counts', () => {

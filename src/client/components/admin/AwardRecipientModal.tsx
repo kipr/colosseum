@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   UnifiedTable,
   compareLocaleString,
@@ -54,6 +60,10 @@ export default function AwardRecipientModal({
   const [sortField, setSortField] = useState<SortField>('weighted');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
+  // Keep latest onError without reloading when the parent passes a new inline callback.
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+
   const existingSet = useMemo(
     () => new Set(existingRecipientTeamIds),
     [existingRecipientTeamIds],
@@ -75,7 +85,7 @@ export default function AwardRecipientModal({
       })
       .catch((err) => {
         if (!cancelled) {
-          onError(
+          onErrorRef.current(
             err instanceof Error
               ? err.message
               : 'Failed to load team award counts',
@@ -88,7 +98,7 @@ export default function AwardRecipientModal({
     return () => {
       cancelled = true;
     };
-  }, [eventId, onError]);
+  }, [eventId]);
 
   const handleSort = useCallback((sortId: string) => {
     const field = sortId as SortField;

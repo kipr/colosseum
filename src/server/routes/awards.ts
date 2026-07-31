@@ -741,11 +741,20 @@ router.post(
 
       let ids: number[] = [];
       if (Array.isArray(team_ids)) {
-        ids = team_ids.map((v) => Number(v)).filter((n) => Number.isInteger(n));
-        if (ids.length === 0) {
+        if (team_ids.length === 0) {
           return res
             .status(400)
             .json({ error: 'team_ids must be a non-empty array of integers' });
+        }
+        ids = [];
+        for (const v of team_ids) {
+          const n = Number(v);
+          if (!Number.isInteger(n)) {
+            return res.status(400).json({
+              error: 'team_ids must be a non-empty array of integers',
+            });
+          }
+          ids.push(n);
         }
       } else if (team_id) {
         ids = [Number(team_id)];
