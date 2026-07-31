@@ -36,6 +36,13 @@ interface Team {
   team_name: string;
 }
 
+/** Matches server AUTO_AWARD_NAME_PREFIX in automaticAwards.ts */
+const AUTO_AWARD_NAME_PREFIX = 'Auto: ';
+
+function isAutomaticAward(award: EventAward): boolean {
+  return award.name.startsWith(AUTO_AWARD_NAME_PREFIX);
+}
+
 export default function AwardsTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
@@ -346,12 +353,16 @@ export default function AwardsTab() {
     }
   };
 
-  const handleMoveAward = async (award: EventAward, direction: -1 | 1) => {
-    const idx = eventAwards.findIndex((a) => a.id === award.id);
+  const handleMoveAward = async (
+    award: EventAward,
+    direction: -1 | 1,
+    group: EventAward[],
+  ) => {
+    const idx = group.findIndex((a) => a.id === award.id);
     const swapIdx = idx + direction;
-    if (swapIdx < 0 || swapIdx >= eventAwards.length) return;
+    if (idx < 0 || swapIdx < 0 || swapIdx >= group.length) return;
 
-    const other = eventAwards[swapIdx];
+    const other = group[swapIdx];
     try {
       await Promise.all([
         fetch(`/awards/event-awards/${award.id}`, {
@@ -413,6 +424,9 @@ export default function AwardsTab() {
 
   // ── Render ──
 
+  const manualAwards = eventAwards.filter((a) => !isAutomaticAward(a));
+  const automaticAwards = eventAwards.filter(isAutomaticAward);
+
   const templateTableColumns: UnifiedColumnDef<AwardTemplate>[] = [
     {
       kind: 'data',
@@ -454,12 +468,256 @@ export default function AwardsTab() {
     },
   ];
 
+  const renderAwardCard = (
+    award: EventAward,
+    group: EventAward[],
+    idx: number,
+  ) => (
+    <div
+      key={award.id}
+      className="card"
+      style={{
+        marginBottom: '1rem',
+        border: '1px solid var(--border-color)',
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          flexWrap: 'wrap',
+          gap: '0.5rem',
+        }}
+      >
+        <div>
+          <strong>{award.name}</strong>
+          {award.description && (
+            <p
+              style={{
+                color: 'var(--secondary-color)',
+                margin: '0.25rem 0 0',
+              }}
+            >
+              {award.description}
+            </p>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '0.25rem' }}>
+          <button
+            className="btn btn-secondary"
+            disabled={idx === 0}
+            onClick={() => handleMoveAward(award, -1, group)}
+            title="Move up"
+          >
+            ▲
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={idx === group.length - 1}
+            onClick={() => handleMoveAward(award, 1, group)}
+            title="Move down"
+          >
+            ▼
+          </button>
+          <button
+            className="btn btn-secondary"
+            onClick={() => handleEditAward(award)}
+          >
+            Edit
+          </button>
+          <button
+            className="btn btn-danger"
+            onClick={() => handleDeleteAward(award)}
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+
+      {/* Recipients */}
+      <div style={{ marginTop: '0.75rem' }}>
+        <strong style={{ fontSize: '0.9rem' }}>Recipients:</strong>
+        {award.recipients.length === 0 ? (
+          <span
+            style={{
+              color: 'var(--secondary-color)',
+              marginLeft: '0.5rem',
+            }}
+          >
+            None
+          </span>
+        ) : (
+          <ul
+            style={{
+              margin: '0.25rem 0 0',
+              paddingLeft: '1.25rem',
+            }}
+          >
+            {award.recipients.map((r) => (
+              <li key={r.team_id}>
+                #{r.team_number} {r.team_name}
+                <button
+                  className="btn btn-danger"
+                  style={{
+                    marginLeft: '0.5rem',
+                    padding: '0.1rem 0.4rem',
+                    fontSize: '0.75rem',
+                  }}
+                  onClick={() => handleRemoveRecipient(award.id, r.team_id)}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {addingRecipientForAwardId === award.id ? (
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              marginTop: '0.5rem',
+              alignItems: 'center',
+            }}
+          >
+            <select
+              className="field-input"
+              value={recipientTeamId}
+              onChange={(e) => setRecipientTeamId(e.target.value)}
+              style={{ maxWidth: '250px' }}
+            >
+              <option value="">— Select team —</option>
+              {teams
+                .filter(
+                  (t) => !award.recipients.some((r) => r.team_id === t.id),
+                )
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    #{t.team_number} {t.team_name}
+                  </option>
+                ))}
+            </select>
+            <button
+              className="btn btn-primary"
+              disabled={!recipientTeamId}
+              onClick={() => handleAddRecipient(award.id)}
+            >
+              Add
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setAddingRecipientForAwardId(null);
+                setRecipientTeamId('');
+              }}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            className="btn btn-secondary"
+            style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
+            onClick={() => {
+              setAddingRecipientForAwardId(award.id);
+              setRecipientTeamId('');
+            }}
+          >
+            + Add Recipient
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="awards-tab">
       {loading && <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>}
 
-      {/* Section A: Global templates */}
-      <div className="card" style={{ marginBottom: '1.5rem' }}>
+      {/* Section A: Event awards */}
+      {!selectedEventId ? (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <p style={{ color: 'var(--secondary-color)' }}>
+            Select an event to manage awards.
+          </p>
+        </div>
+      ) : (
+        <div className="card" style={{ marginBottom: '1.5rem' }}>
+          <h3>Event Awards</h3>
+          <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
+            Awards for this event. Published alongside final scores.
+          </p>
+
+          <button
+            className="btn btn-primary"
+            onClick={handleCreateAward}
+            style={{ marginBottom: '1rem' }}
+          >
+            + Add Award
+          </button>
+
+          {manualAwards.length === 0 ? (
+            <p style={{ color: 'var(--secondary-color)' }}>No awards yet.</p>
+          ) : (
+            <div>
+              {manualAwards.map((award, idx) =>
+                renderAwardCard(award, manualAwards, idx),
+              )}
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: '1.5rem',
+              paddingTop: '1.5rem',
+              borderTop: '1px solid var(--border-color)',
+            }}
+          >
+            <h4 style={{ margin: '0 0 0.75rem' }}>Automatic awards</h4>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={applyingAutomatic}
+              onClick={handleApplyAutomaticAwards}
+              style={{ marginBottom: '0.5rem' }}
+            >
+              {applyingAutomatic
+                ? 'Applying…'
+                : 'Add automatic awards (from results)'}
+            </button>
+            <p
+              style={{
+                color: 'var(--secondary-color)',
+                fontSize: '0.9rem',
+                marginBottom: '1rem',
+              }}
+            >
+              Automatic awards use the same rules as the spectator view (DE
+              placement, per-bracket overall, event overall). They are stored as
+              event awards whose names start with &quot;Auto:&quot;; clicking the
+              button replaces previous automatic awards with a fresh
+              calculation.
+            </p>
+
+            {automaticAwards.length === 0 ? (
+              <p style={{ color: 'var(--secondary-color)' }}>
+                No automatic awards yet.
+              </p>
+            ) : (
+              <div>
+                {automaticAwards.map((award, idx) =>
+                  renderAwardCard(award, automaticAwards, idx),
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Section B: Global templates */}
+      <div className="card">
         <h3>Award Templates</h3>
         <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
           Reusable award definitions. Changes here do not affect awards already
@@ -479,235 +737,6 @@ export default function AwardsTab() {
           </div>
         )}
       </div>
-
-      {/* Section B: Event awards */}
-      {!selectedEventId ? (
-        <div className="card">
-          <p style={{ color: 'var(--secondary-color)' }}>
-            Select an event to manage awards.
-          </p>
-        </div>
-      ) : (
-        <div className="card">
-          <h3>Event Awards</h3>
-          <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
-            Awards for this event. Published alongside final scores.
-          </p>
-          <div
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.75rem',
-              alignItems: 'center',
-              marginBottom: '0.5rem',
-            }}
-          >
-            <button className="btn btn-primary" onClick={handleCreateAward}>
-              + Add Award
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              disabled={applyingAutomatic}
-              onClick={handleApplyAutomaticAwards}
-            >
-              {applyingAutomatic
-                ? 'Applying…'
-                : 'Add automatic awards (from results)'}
-            </button>
-          </div>
-          <p
-            style={{
-              color: 'var(--secondary-color)',
-              fontSize: '0.9rem',
-              marginBottom: '1rem',
-            }}
-          >
-            Automatic awards use the same rules as the spectator view (DE
-            placement, per-bracket overall, event overall). They are stored as
-            event awards whose names start with &quot;Auto:&quot;; clicking the
-            button replaces previous automatic awards with a fresh calculation.
-          </p>
-
-          {eventAwards.length === 0 ? (
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginTop: '1rem',
-              }}
-            >
-              No awards yet.
-            </p>
-          ) : (
-            <div style={{ marginTop: '1rem' }}>
-              {eventAwards.map((award, idx) => (
-                <div
-                  key={award.id}
-                  className="card"
-                  style={{
-                    marginBottom: '1rem',
-                    border: '1px solid var(--border-color)',
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      flexWrap: 'wrap',
-                      gap: '0.5rem',
-                    }}
-                  >
-                    <div>
-                      <strong>{award.name}</strong>
-                      {award.description && (
-                        <p
-                          style={{
-                            color: 'var(--secondary-color)',
-                            margin: '0.25rem 0 0',
-                          }}
-                        >
-                          {award.description}
-                        </p>
-                      )}
-                    </div>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button
-                        className="btn btn-secondary"
-                        disabled={idx === 0}
-                        onClick={() => handleMoveAward(award, -1)}
-                        title="Move up"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        disabled={idx === eventAwards.length - 1}
-                        onClick={() => handleMoveAward(award, 1)}
-                        title="Move down"
-                      >
-                        ▼
-                      </button>
-                      <button
-                        className="btn btn-secondary"
-                        onClick={() => handleEditAward(award)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="btn btn-danger"
-                        onClick={() => handleDeleteAward(award)}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Recipients */}
-                  <div style={{ marginTop: '0.75rem' }}>
-                    <strong style={{ fontSize: '0.9rem' }}>Recipients:</strong>
-                    {award.recipients.length === 0 ? (
-                      <span
-                        style={{
-                          color: 'var(--secondary-color)',
-                          marginLeft: '0.5rem',
-                        }}
-                      >
-                        None
-                      </span>
-                    ) : (
-                      <ul
-                        style={{
-                          margin: '0.25rem 0 0',
-                          paddingLeft: '1.25rem',
-                        }}
-                      >
-                        {award.recipients.map((r) => (
-                          <li key={r.team_id}>
-                            #{r.team_number} {r.team_name}
-                            <button
-                              className="btn btn-danger"
-                              style={{
-                                marginLeft: '0.5rem',
-                                padding: '0.1rem 0.4rem',
-                                fontSize: '0.75rem',
-                              }}
-                              onClick={() =>
-                                handleRemoveRecipient(award.id, r.team_id)
-                              }
-                            >
-                              ×
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-
-                    {addingRecipientForAwardId === award.id ? (
-                      <div
-                        style={{
-                          display: 'flex',
-                          gap: '0.5rem',
-                          marginTop: '0.5rem',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <select
-                          className="field-input"
-                          value={recipientTeamId}
-                          onChange={(e) => setRecipientTeamId(e.target.value)}
-                          style={{ maxWidth: '250px' }}
-                        >
-                          <option value="">— Select team —</option>
-                          {teams
-                            .filter(
-                              (t) =>
-                                !award.recipients.some(
-                                  (r) => r.team_id === t.id,
-                                ),
-                            )
-                            .map((t) => (
-                              <option key={t.id} value={t.id}>
-                                #{t.team_number} {t.team_name}
-                              </option>
-                            ))}
-                        </select>
-                        <button
-                          className="btn btn-primary"
-                          disabled={!recipientTeamId}
-                          onClick={() => handleAddRecipient(award.id)}
-                        >
-                          Add
-                        </button>
-                        <button
-                          className="btn btn-secondary"
-                          onClick={() => {
-                            setAddingRecipientForAwardId(null);
-                            setRecipientTeamId('');
-                          }}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="btn btn-secondary"
-                        style={{ marginTop: '0.5rem', fontSize: '0.85rem' }}
-                        onClick={() => {
-                          setAddingRecipientForAwardId(award.id);
-                          setRecipientTeamId('');
-                        }}
-                      >
-                        + Add Recipient
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Template modal */}
       {showTemplateModal && (
