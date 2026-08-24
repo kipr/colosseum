@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import passport from 'passport';
 import { oauthLimiter } from '../middleware/rateLimit';
+import { getValidAccessToken } from '../services/tokenRefresh';
 
 const router = express.Router();
 
@@ -181,9 +182,6 @@ router.get('/check-tokens', async (req: Request, res: Response) => {
   const user = req.user as { id: number };
 
   try {
-    // Import the token refresh function
-    const { getValidAccessToken } = await import('../services/tokenRefresh');
-
     // Try to get a valid token - this will refresh if needed
     await getValidAccessToken(user.id);
 
