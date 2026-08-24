@@ -17,7 +17,11 @@ import {
   BRACKET_OVERALL_JOINS_SQL,
 } from '../services/overallScores';
 import { ensureQueueFresh, scheduleQueueRepair } from '../services/queueSync';
-import { markQueueDirty, queueEtag } from '../services/queueVersion';
+import {
+  bumpQueueVersion,
+  markQueueDirty,
+  queueEtag,
+} from '../services/queueVersion';
 
 const router = express.Router();
 
@@ -654,6 +658,10 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
       await resolveBracketByes(db, bracketId);
 
+      // Integrated creation adds bracket games outside game_queue. Invalidate
+      // the shared ETag and repair the derived queue before the next poll.
+      await markQueueDirty(db, Number(event_id));
+
       const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
         bracketId,
       ]);
@@ -735,7 +743,13 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Bracket not found' });
     }
 
-    const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [id]);
+    const bracket = await db.get<
+      { event_id: number } & Record<string, unknown>
+    >('SELECT * FROM brackets WHERE id = ?', [id]);
+    if (!bracket) {
+      return res.status(404).json({ error: 'Bracket not found' });
+    }
+    await bumpQueueVersion(db, bracket.event_id);
     res.json(bracket);
   } catch (error) {
     console.error('Error updating bracket:', error);

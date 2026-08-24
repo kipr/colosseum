@@ -250,21 +250,29 @@ async function handleReorder(req: AuthRequest, res: Response) {
     );
 
     if (validItems.length > 0) {
+      const updatedItemIds = new Set<number>();
       await db.transaction(async (tx) => {
         for (const item of validItems) {
-          await tx.run(
+          const result = await tx.run(
             'UPDATE game_queue SET queue_position = ? WHERE id = ?',
             [item.queue_position, item.id],
           );
+          if ((result.changes ?? 0) > 0) {
+            updatedItemIds.add(Number(item.id));
+          }
         }
       });
 
-      const owner = await db.get<{ event_id: number }>(
-        'SELECT event_id FROM game_queue WHERE id = ?',
-        [validItems[0].id],
-      );
-      if (owner) {
-        await bumpQueueVersion(db, owner.event_id);
+      if (updatedItemIds.size > 0) {
+        const ids = [...updatedItemIds];
+        const placeholders = ids.map(() => '?').join(', ');
+        const owners = await db.all<{ event_id: number }>(
+          `SELECT DISTINCT event_id FROM game_queue WHERE id IN (${placeholders})`,
+          ids,
+        );
+        for (const owner of owners) {
+          await bumpQueueVersion(db, owner.event_id);
+        }
       }
     }
 

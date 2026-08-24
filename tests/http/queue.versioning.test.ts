@@ -183,6 +183,61 @@ describe('Queue versioning and conditional polling', () => {
     expect((JSON.parse(after.body) as unknown[]).length).toBe(2);
   });
 
+  it('reorder invalidates every event with an updated row', async () => {
+    const eventA = await seedEvent(testDb.db, { seeding_rounds: 1 });
+    const eventB = await seedEvent(testDb.db, {
+      name: 'Second Event',
+      seeding_rounds: 1,
+    });
+    const teamA = await seedTeam(testDb.db, {
+      event_id: eventA.id,
+      team_number: 1,
+    });
+    const teamB = await seedTeam(testDb.db, {
+      event_id: eventB.id,
+      team_number: 2,
+    });
+    const itemA = await seedQueueItem(testDb.db, {
+      event_id: eventA.id,
+      queue_type: 'seeding',
+      queue_position: 1,
+      seeding_team_id: teamA.id,
+      seeding_round: 1,
+    });
+    const itemB = await seedQueueItem(testDb.db, {
+      event_id: eventB.id,
+      queue_type: 'seeding',
+      queue_position: 1,
+      seeding_team_id: teamB.id,
+      seeding_round: 1,
+    });
+
+    const beforeA = await http.get(`${baseUrl}/queue/event/${eventA.id}`);
+    const beforeB = await http.get(`${baseUrl}/queue/event/${eventB.id}`);
+
+    const reordered = await http.post(`${baseUrl}/queue/reorder`, {
+      items: [
+        { id: 999_999, queue_position: 1 },
+        { id: itemA.id, queue_position: 2 },
+        { id: itemB.id, queue_position: 3 },
+      ],
+    });
+    expect(reordered.status).toBe(200);
+
+    const afterA = await conditionalGet(
+      `${baseUrl}/queue/event/${eventA.id}`,
+      beforeA.headers.get('ETag'),
+    );
+    const afterB = await conditionalGet(
+      `${baseUrl}/queue/event/${eventB.id}`,
+      beforeB.headers.get('ETag'),
+    );
+    expect(afterA.status).toBe(200);
+    expect(afterB.status).toBe(200);
+    expect(afterA.etag).not.toBe(beforeA.headers.get('ETag'));
+    expect(afterB.etag).not.toBe(beforeB.headers.get('ETag'));
+  });
+
   it('repair-syncs on read when the dirty flag is set', async () => {
     const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
     const team = await seedTeam(testDb.db, {
