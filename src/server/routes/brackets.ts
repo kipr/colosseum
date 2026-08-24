@@ -16,6 +16,12 @@ import {
   BRACKET_OVERALL_TOTAL_SQL,
   BRACKET_OVERALL_JOINS_SQL,
 } from '../services/overallScores';
+import { ensureQueueFresh, scheduleQueueRepair } from '../services/queueSync';
+import {
+  bumpQueueVersion,
+  markQueueDirty,
+  queueEtag,
+} from '../services/queueVersion';
 
 const router = express.Router();
 
@@ -95,6 +101,10 @@ router.get('/event/:eventId', async (req: Request, res: Response) => {
 });
 
 // GET /brackets/event/:eventId/games - List bracket games across an event (public)
+//
+// Polled by bracket judges; shares the queue version ETag so unchanged polls
+// are answered with a cheap 304 (queue rows drive the on-deck ordering, and
+// bracket game mutations mark the queue dirty / bump the version).
 router.get('/event/:eventId/games', async (req: Request, res: Response) => {
   try {
     const eventIdNum = parseInt(req.params.eventId, 10);
@@ -107,6 +117,15 @@ router.get('/event/:eventId/games', async (req: Request, res: Response) => {
     }
 
     const db = await getDatabase();
+
+    const version = await ensureQueueFresh(db, eventIdNum);
+    scheduleQueueRepair(db, eventIdNum);
+    res.set('ETag', queueEtag(version));
+    res.set('Cache-Control', 'no-cache');
+    if (req.fresh) {
+      return res.status(304).end();
+    }
+
     const { eligible } = req.query;
     const onlyScoreable = eligible === 'scoreable';
     const whereClauses = ['b.event_id = ?'];
@@ -639,6 +658,10 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
       await resolveBracketByes(db, bracketId);
 
+      // Integrated creation adds bracket games outside game_queue. Invalidate
+      // the shared ETag and repair the derived queue before the next poll.
+      await markQueueDirty(db, Number(event_id));
+
       const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
         bracketId,
       ]);
@@ -720,7 +743,13 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Bracket not found' });
     }
 
-    const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [id]);
+    const bracket = await db.get<
+      { event_id: number } & Record<string, unknown>
+    >('SELECT * FROM brackets WHERE id = ?', [id]);
+    if (!bracket) {
+      return res.status(404).json({ error: 'Bracket not found' });
+    }
+    await bumpQueueVersion(db, bracket.event_id);
     res.json(bracket);
   } catch (error) {
     console.error('Error updating bracket:', error);
@@ -740,7 +769,17 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    const bracket = await db.get<{ event_id: number }>(
+      'SELECT event_id FROM brackets WHERE id = ?',
+      [id],
+    );
+
     await db.run('DELETE FROM brackets WHERE id = ?', [id]);
+
+    if (bracket) {
+      // Queue rows for the bracket's games cascade away; repair on next read.
+      await markQueueDirty(db, bracket.event_id);
+    }
 
     res.status(204).send();
   } catch (error) {
@@ -1094,6 +1133,8 @@ router.post(
         ],
       );
 
+      await markQueueDirty(db, bracket.event_id);
+
       const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
         result.lastID,
       ]);
@@ -1173,6 +1214,8 @@ router.patch(
         return res.status(404).json({ error: 'Game not found' });
       }
 
+      await markQueueDirty(db, game.event_id);
+
       const updatedGame = await db.get(
         'SELECT * FROM bracket_games WHERE id = ?',
         [id],
@@ -1249,6 +1292,14 @@ router.post(
 
       // Resolve any downstream bye chains that may have been created
       const byeResolution = await resolveBracketByes(db, game.bracket_id);
+
+      const owner = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM brackets WHERE id = ?',
+        [game.bracket_id],
+      );
+      if (owner) {
+        await markQueueDirty(db, owner.event_id);
+      }
 
       res.json({ message: 'Winner advanced', updates, byeResolution });
     } catch (error) {
@@ -1445,6 +1496,8 @@ router.post(
       // Fourth pass: Resolve bye chains (implicit byes from loser sources, etc.)
       const byeResolution = await resolveBracketByes(db, parseInt(id, 10));
 
+      await markQueueDirty(db, bracket.event_id);
+
       res.json({
         message: 'Games generated successfully',
         gamesCreated: templates.length,
@@ -1565,6 +1618,14 @@ router.post(
         db,
         parseInt(bracketId, 10),
       );
+
+      const owner = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM brackets WHERE id = ?',
+        [bracketId],
+      );
+      if (owner) {
+        await markQueueDirty(db, owner.event_id);
+      }
 
       res.json({
         message: 'Winner advanced successfully',

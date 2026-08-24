@@ -30,6 +30,13 @@ export const queueSchema: SchemaModule = {
           )
         )
       `,
+      `
+        CREATE TABLE IF NOT EXISTS queue_versions (
+          event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+          version INTEGER NOT NULL DEFAULT 1,
+          dirty INTEGER NOT NULL DEFAULT 0
+        )
+      `,
     ],
     triggers: [
       `
@@ -87,6 +94,13 @@ export const queueSchema: SchemaModule = {
             OR
             (queue_type = 'double_seeding' AND double_seeding_match_id IS NOT NULL AND bracket_game_id IS NULL AND seeding_team_id IS NULL AND seeding_round IS NULL)
           )
+        )
+      `,
+      `
+        CREATE TABLE IF NOT EXISTS queue_versions (
+          event_id INTEGER PRIMARY KEY REFERENCES events(id) ON DELETE CASCADE,
+          version INTEGER NOT NULL DEFAULT 1,
+          dirty INTEGER NOT NULL DEFAULT 0
         )
       `,
     ],

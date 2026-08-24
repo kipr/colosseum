@@ -72,6 +72,15 @@ describe('Brackets Team Selection', () => {
     }
     await recalculateSeedingRankings(event.id);
 
+    await testDb.db.run(
+      'INSERT INTO queue_versions (event_id, version, dirty) VALUES (?, 1, 0)',
+      [event.id],
+    );
+    const before = await http.get(
+      `${baseUrl}/brackets/event/${event.id}/games`,
+    );
+    const beforeEtag = before.headers.get('ETag');
+
     const teamIds = teams.map((t) => t.id);
     const res = await http.post(`${baseUrl}/brackets`, {
       event_id: event.id,
@@ -105,6 +114,10 @@ describe('Brackets Team Selection', () => {
       (g: { status: string }) => g.status === 'ready' || g.status === 'bye',
     );
     expect(readyOrBye.length).toBeGreaterThan(0);
+
+    const after = await http.get(`${baseUrl}/brackets/event/${event.id}/games`);
+    expect(after.headers.get('ETag')).not.toBe(beforeEtag);
+    expect((after.json as unknown[]).length).toBeGreaterThan(0);
   });
 
   it('blocks overlap: returns 409 when team already in another bracket', async () => {

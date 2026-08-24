@@ -2,481 +2,25 @@ import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
-import type { Database } from '../database/connection';
 import { isValidQueueStatus } from '../constants/queueStatus';
+import {
+  ensureQueueFresh,
+  scheduleQueueRepair,
+  syncQueueCoalesced,
+} from '../services/queueSync';
+import { bumpQueueVersion, queueEtag } from '../services/queueVersion';
 
 const router = express.Router();
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
-const QUEUE_SYNC_FRESH_MS = 5_000;
-const QUEUE_SYNC_TYPES = ['seeding', 'bracket', 'double_seeding'] as const;
 
-type QueueSyncType = (typeof QUEUE_SYNC_TYPES)[number];
-
-interface QueueSyncState {
-  lastSyncedAt: number;
-  inFlight?: Promise<void>;
-}
-
-const queueSyncStates = new WeakMap<object, Map<string, QueueSyncState>>();
-
-function getQueueSyncStateMap(db: Database): Map<string, QueueSyncState> {
-  let stateMap = queueSyncStates.get(db as object);
-  if (!stateMap) {
-    stateMap = new Map<string, QueueSyncState>();
-    queueSyncStates.set(db as object, stateMap);
-  }
-  return stateMap;
-}
-
-function queueSyncKey(eventId: number, queueType: QueueSyncType): string {
-  return `${eventId}:${queueType}`;
-}
-
-async function runQueueTypeSync(
-  db: Database,
-  eventId: number,
-  queueType: QueueSyncType,
-): Promise<void> {
-  if (queueType === 'seeding') {
-    await syncSeedingQueue(db, eventId);
-    return;
-  }
-  if (queueType === 'bracket') {
-    await syncBracketQueue(db, eventId);
-    return;
-  }
-  await syncDoubleSeedingQueue(db, eventId);
-}
-
-async function syncQueueTypeCoalesced(
-  db: Database,
-  eventId: number,
-  queueType: QueueSyncType,
-): Promise<void> {
-  const now = Date.now();
-  const stateMap = getQueueSyncStateMap(db);
-  const key = queueSyncKey(eventId, queueType);
-  const state = stateMap.get(key);
-
-  if (state?.inFlight) {
-    await state.inFlight;
-    return;
-  }
-
-  if (state && now - state.lastSyncedAt < QUEUE_SYNC_FRESH_MS) {
-    return;
-  }
-
-  const syncState: QueueSyncState = {
-    lastSyncedAt: state?.lastSyncedAt ?? 0,
-  };
-  const inFlight = runQueueTypeSync(db, eventId, queueType)
-    .then(() => {
-      syncState.lastSyncedAt = Date.now();
-    })
-    .finally(() => {
-      syncState.inFlight = undefined;
-    });
-
-  syncState.inFlight = inFlight;
-  stateMap.set(key, syncState);
-  await inFlight;
-}
-
-async function syncQueueCoalesced(
-  db: Database,
-  eventId: number,
-  queueType: string | null,
-): Promise<void> {
-  if (queueType && QUEUE_SYNC_TYPES.includes(queueType as QueueSyncType)) {
-    await syncQueueTypeCoalesced(db, eventId, queueType as QueueSyncType);
-    return;
-  }
-
-  if (queueType) return;
-
-  for (const type of QUEUE_SYNC_TYPES) {
-    await syncQueueTypeCoalesced(db, eventId, type);
-  }
-}
-
-/** Non-destructive sync: ensure game_queue has all team×round items for seeding, with correct status from seeding_scores. */
-async function syncSeedingQueue(db: Database, eventId: number): Promise<void> {
-  const event = await db.get(
-    'SELECT id, seeding_rounds FROM events WHERE id = ?',
-    [eventId],
-  );
-  if (!event) return;
-
-  const seedingRounds = event.seeding_rounds || 3;
-  const teams = await db.all<{ id: number; team_number: number }>(
-    'SELECT id, team_number FROM teams WHERE event_id = ? ORDER BY team_number ASC',
-    [eventId],
-  );
-  if (teams.length === 0) return;
-
-  const teamIds = teams.map((t) => t.id);
-  const scoredRounds = await db.all<{ team_id: number; round_number: number }>(
-    `SELECT team_id, round_number FROM seeding_scores
-     WHERE team_id IN (${teamIds.map(() => '?').join(',')}) AND score IS NOT NULL`,
-    teamIds,
-  );
-  const scoredSet = new Set(
-    scoredRounds.map((s) => `${s.team_id}:${s.round_number}`),
-  );
-  const submittedRoundsRaw = await db.all<{ score_data: string }>(
-    `SELECT score_data FROM score_submissions
-     WHERE event_id = ?
-       AND score_type = 'seeding'
-       AND status = 'accepted'`,
-    [eventId],
-  );
-  const submittedRounds: { team_id: number; round_number: number }[] = [];
-  for (const row of submittedRoundsRaw) {
-    try {
-      const data =
-        typeof row.score_data === 'string'
-          ? JSON.parse(row.score_data)
-          : row.score_data;
-      const teamId = data?.team_id?.value;
-      const roundNumber = data?.round?.value ?? data?.round_number?.value;
-      if (teamId != null && roundNumber != null) {
-        submittedRounds.push({
-          team_id: Number(teamId),
-          round_number: Number(roundNumber),
-        });
-      }
-    } catch {
-      // skip rows with unparseable score_data
-    }
-  }
-  const submittedSet = new Set(
-    submittedRounds.map((s) => `${s.team_id}:${s.round_number}`),
-  );
-
-  const pendingSeedingRaw = await db.all<{ score_data: string }>(
-    `SELECT score_data FROM score_submissions
-     WHERE event_id = ?
-       AND score_type = 'seeding'
-       AND status = 'pending'`,
-    [eventId],
-  );
-  const pendingSeedingSet = new Set<string>();
-  for (const row of pendingSeedingRaw) {
-    try {
-      const data =
-        typeof row.score_data === 'string'
-          ? JSON.parse(row.score_data)
-          : row.score_data;
-      const teamId = data?.team_id?.value;
-      const roundNumber = data?.round?.value ?? data?.round_number?.value;
-      if (teamId != null && roundNumber != null) {
-        pendingSeedingSet.add(`${Number(teamId)}:${Number(roundNumber)}`);
-      }
-    } catch {
-      // skip
-    }
-  }
-
-  const existingSeeding = await db.all<{
-    id: number;
-    seeding_team_id: number;
-    seeding_round: number;
-    status: string;
-  }>(
-    `SELECT id, seeding_team_id, seeding_round, status FROM game_queue
-     WHERE event_id = ? AND queue_type = 'seeding'`,
-    [eventId],
-  );
-  const existingMap = new Map(
-    existingSeeding.map((e) => [`${e.seeding_team_id}:${e.seeding_round}`, e]),
-  );
-
-  const allCombos: { team_id: number; round: number; scored: boolean }[] = [];
-  for (let round = 1; round <= seedingRounds; round++) {
-    for (const team of teams) {
-      allCombos.push({
-        team_id: team.id,
-        round,
-        scored:
-          scoredSet.has(`${team.id}:${round}`) ||
-          submittedSet.has(`${team.id}:${round}`),
-      });
-    }
-  }
-
-  const maxPos = await db.get<{ max_pos: number | null }>(
-    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-    [eventId],
-  );
-  let nextPos = (maxPos?.max_pos ?? 0) + 1;
-
-  await db.transaction(async (tx) => {
-    for (const combo of allCombos) {
-      const key = `${combo.team_id}:${combo.round}`;
-      const existing = existingMap.get(key);
-
-      if (existing) {
-        if (combo.scored) {
-          if (pendingSeedingSet.has(key)) {
-            await tx.run(
-              `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
-              [existing.id],
-            );
-          } else {
-            await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
-          }
-        } else if (
-          existing.status === 'scored' &&
-          !pendingSeedingSet.has(key)
-        ) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
-            [existing.id],
-          );
-        }
-      } else if (!combo.scored) {
-        await tx.run(
-          `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-           VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
-          [eventId, combo.team_id, combo.round, nextPos++],
-        );
-      } else if (pendingSeedingSet.has(key)) {
-        await tx.run(
-          `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-           VALUES (?, ?, ?, 'seeding', ?, 'scored')`,
-          [eventId, combo.team_id, combo.round, nextPos++],
-        );
-      }
-    }
-  });
-}
-
-/** Non-destructive sync: ensure game_queue has eligible bracket games, with correct status from bracket_games. */
-async function syncBracketQueue(db: Database, eventId: number): Promise<void> {
-  const brackets = await db.all<{ id: number }>(
-    'SELECT id FROM brackets WHERE event_id = ?',
-    [eventId],
-  );
-  if (brackets.length === 0) return;
-
-  const bracketIds = brackets.map((b) => b.id);
-  const allGames = await db.all<{
-    id: number;
-    game_number: number;
-    status: string;
-    team1_id: number | null;
-    team2_id: number | null;
-  }>(
-    `SELECT id, game_number, status, team1_id, team2_id FROM bracket_games
-     WHERE bracket_id IN (${bracketIds.map(() => '?').join(',')})
-     ORDER BY game_number ASC`,
-    bracketIds,
-  );
-  const submittedBracketGames = await db.all<{ bracket_game_id: number }>(
-    `SELECT DISTINCT bracket_game_id
-     FROM score_submissions
-     WHERE event_id = ?
-       AND score_type = 'bracket'
-       AND status = 'accepted'
-       AND bracket_game_id IS NOT NULL`,
-    [eventId],
-  );
-  const submittedGameSet = new Set(
-    submittedBracketGames.map((row) => row.bracket_game_id),
-  );
-
-  const pendingBracketGames = await db.all<{ bracket_game_id: number }>(
-    `SELECT DISTINCT bracket_game_id
-     FROM score_submissions
-     WHERE event_id = ?
-       AND score_type = 'bracket'
-       AND status = 'pending'
-       AND bracket_game_id IS NOT NULL`,
-    [eventId],
-  );
-  const pendingBracketSet = new Set(
-    pendingBracketGames.map((row) => row.bracket_game_id),
-  );
-
-  const existingBracket = await db.all<{
-    id: number;
-    bracket_game_id: number;
-    status: string;
-  }>(
-    `SELECT id, bracket_game_id, status FROM game_queue
-     WHERE event_id = ? AND queue_type = 'bracket'`,
-    [eventId],
-  );
-  const existingByGameId = new Map(
-    existingBracket.map((e) => [e.bracket_game_id, e]),
-  );
-
-  const maxPos = await db.get<{ max_pos: number | null }>(
-    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-    [eventId],
-  );
-  let nextPos = (maxPos?.max_pos ?? 0) + 1;
-
-  await db.transaction(async (tx) => {
-    for (const game of allGames) {
-      const isEligible =
-        game.team1_id != null &&
-        game.team2_id != null &&
-        ['ready', 'pending'].includes(game.status);
-      const isCompleted =
-        game.status === 'completed' || submittedGameSet.has(game.id);
-      const existing = existingByGameId.get(game.id);
-
-      if (existing) {
-        if (isCompleted) {
-          if (pendingBracketSet.has(game.id)) {
-            await tx.run(
-              `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
-              [existing.id],
-            );
-          } else {
-            await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
-          }
-        } else if (
-          isEligible &&
-          existing.status === 'scored' &&
-          !pendingBracketSet.has(game.id)
-        ) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
-            [existing.id],
-          );
-        } else if (
-          !isEligible &&
-          !isCompleted &&
-          (game.team1_id == null || game.team2_id == null)
-        ) {
-          await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
-        }
-      } else if (isEligible && !isCompleted) {
-        await tx.run(
-          `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-           VALUES (?, ?, 'bracket', ?, 'queued')`,
-          [eventId, game.id, nextPos++],
-        );
-      }
-    }
-  });
-}
-
-/** Non-destructive sync: ensure game_queue has eligible double-seeding matches, with correct status. */
-async function syncDoubleSeedingQueue(
-  db: Database,
-  eventId: number,
-): Promise<void> {
-  const matches = await db.all<{
-    id: number;
-    status: string;
-    team1_id: number | null;
-    team2_id: number | null;
-  }>(
-    `SELECT id, status, team1_id, team2_id FROM double_seeding_matches
-     WHERE event_id = ?
-     ORDER BY round_number ASC, match_number ASC`,
-    [eventId],
-  );
-  if (matches.length === 0) return;
-
-  const acceptedMatches = await db.all<{ double_seeding_match_id: number }>(
-    `SELECT DISTINCT double_seeding_match_id
-     FROM score_submissions
-     WHERE event_id = ?
-       AND score_type = 'double_seeding'
-       AND status = 'accepted'
-       AND double_seeding_match_id IS NOT NULL`,
-    [eventId],
-  );
-  const acceptedSet = new Set(
-    acceptedMatches.map((row) => row.double_seeding_match_id),
-  );
-
-  const pendingMatches = await db.all<{ double_seeding_match_id: number }>(
-    `SELECT DISTINCT double_seeding_match_id
-     FROM score_submissions
-     WHERE event_id = ?
-       AND score_type = 'double_seeding'
-       AND status = 'pending'
-       AND double_seeding_match_id IS NOT NULL`,
-    [eventId],
-  );
-  const pendingSet = new Set(
-    pendingMatches.map((row) => row.double_seeding_match_id),
-  );
-
-  const existingRows = await db.all<{
-    id: number;
-    double_seeding_match_id: number;
-    status: string;
-  }>(
-    `SELECT id, double_seeding_match_id, status FROM game_queue
-     WHERE event_id = ? AND queue_type = 'double_seeding'`,
-    [eventId],
-  );
-  const existingByMatchId = new Map(
-    existingRows.map((e) => [e.double_seeding_match_id, e]),
-  );
-
-  const maxPos = await db.get<{ max_pos: number | null }>(
-    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-    [eventId],
-  );
-  let nextPos = (maxPos?.max_pos ?? 0) + 1;
-
-  await db.transaction(async (tx) => {
-    for (const match of matches) {
-      const hasTeam = match.team1_id != null || match.team2_id != null;
-      const isEligible = hasTeam && ['ready', 'pending'].includes(match.status);
-      const isCompleted =
-        match.status === 'completed' || acceptedSet.has(match.id);
-      const existing = existingByMatchId.get(match.id);
-
-      if (existing) {
-        if (isCompleted) {
-          if (pendingSet.has(match.id)) {
-            await tx.run(
-              `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
-              [existing.id],
-            );
-          } else {
-            await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
-          }
-        } else if (
-          isEligible &&
-          existing.status === 'scored' &&
-          !pendingSet.has(match.id)
-        ) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
-            [existing.id],
-          );
-        } else if (!isEligible && !isCompleted && !hasTeam) {
-          await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
-        }
-      } else if (isEligible && !isCompleted) {
-        await tx.run(
-          `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
-           VALUES (?, ?, 'double_seeding', ?, ?)`,
-          [
-            eventId,
-            match.id,
-            nextPos++,
-            pendingSet.has(match.id) ? 'scored' : 'queued',
-          ],
-        );
-      }
-    }
-  });
-}
-
-// GET /queue/event/:eventId - Get queue for event (public for judges)
+// GET /queue/event/:eventId - Get queue for event (public for judges/spectators)
+//
+// Designed to be polled: the response carries a version-based ETag, so
+// clients sending If-None-Match get a 304 from a single-row version lookup
+// when nothing changed. Repair syncs only run when the event queue is
+// flagged dirty (or when sync=1 is explicitly requested, rate-limited).
 router.get(
   '/event/:eventId',
   queueSyncLimiter,
@@ -494,6 +38,15 @@ router.get(
       if (sync === '1' || sync === 'true') {
         const qt = typeof queue_type === 'string' ? queue_type : null;
         await syncQueueCoalesced(db, eventIdNum, qt);
+      }
+
+      const version = await ensureQueueFresh(db, eventIdNum);
+      scheduleQueueRepair(db, eventIdNum);
+
+      res.set('ETag', queueEtag(version));
+      res.set('Cache-Control', 'no-cache');
+      if (req.fresh) {
+        return res.status(304).end();
       }
 
       let query = `
@@ -657,6 +210,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
         table_number ?? null,
       ],
     );
+    await bumpQueueVersion(db, Number(event_id));
 
     const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
       result.lastID,
@@ -696,14 +250,30 @@ async function handleReorder(req: AuthRequest, res: Response) {
     );
 
     if (validItems.length > 0) {
+      const updatedItemIds = new Set<number>();
       await db.transaction(async (tx) => {
         for (const item of validItems) {
-          await tx.run(
+          const result = await tx.run(
             'UPDATE game_queue SET queue_position = ? WHERE id = ?',
             [item.queue_position, item.id],
           );
+          if ((result.changes ?? 0) > 0) {
+            updatedItemIds.add(Number(item.id));
+          }
         }
       });
+
+      if (updatedItemIds.size > 0) {
+        const ids = [...updatedItemIds];
+        const placeholders = ids.map(() => '?').join(', ');
+        const owners = await db.all<{ event_id: number }>(
+          `SELECT DISTINCT event_id FROM game_queue WHERE id IN (${placeholders})`,
+          ids,
+        );
+        for (const owner of owners) {
+          await bumpQueueVersion(db, owner.event_id);
+        }
+      }
     }
 
     res.json({ message: 'Queue reordered', updated: validItems.length });
@@ -779,6 +349,8 @@ router.post(
         );
         created++;
       }
+
+      await bumpQueueVersion(db, Number(event_id));
 
       res.json({
         message: 'Queue populated from bracket',
@@ -872,6 +444,8 @@ router.post(
         created++;
       }
 
+      await bumpQueueVersion(db, Number(event_id));
+
       res.json({
         message: 'Queue populated from seeding',
         created,
@@ -919,6 +493,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
       id,
     ]);
+    if (queueItem) {
+      await bumpQueueVersion(db, queueItem.event_id);
+    }
     res.json(queueItem);
   } catch (error) {
     console.error('Error updating queue item:', error);
@@ -963,6 +540,9 @@ router.patch(
       const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
         id,
       ]);
+      if (queueItem) {
+        await bumpQueueVersion(db, queueItem.event_id);
+      }
       res.json(queueItem);
     } catch (error) {
       console.error('Error calling queue item:', error);
@@ -977,7 +557,16 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    const existing = await db.get<{ event_id: number }>(
+      'SELECT event_id FROM game_queue WHERE id = ?',
+      [id],
+    );
+
     await db.run('DELETE FROM game_queue WHERE id = ?', [id]);
+
+    if (existing) {
+      await bumpQueueVersion(db, existing.event_id);
+    }
 
     res.status(204).send();
   } catch (error) {

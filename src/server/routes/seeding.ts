@@ -3,6 +3,7 @@ import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { isEventArchived } from '../utils/eventVisibility';
+import { markQueueDirty } from '../services/queueVersion';
 
 const router = express.Router();
 
@@ -85,6 +86,15 @@ router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
       [team_id, round_number],
     );
 
+    const team = await db.get<{ event_id: number }>(
+      'SELECT event_id FROM teams WHERE id = ?',
+      [team_id],
+    );
+    if (team) {
+      // Scored rounds leave the seeding queue on the next queue read.
+      await markQueueDirty(db, team.event_id);
+    }
+
     res.status(201).json(seedingScore ?? { id: result.lastID });
   } catch (error) {
     console.error('Error submitting seeding score:', error);
@@ -134,6 +144,17 @@ router.patch(
       const score = await db.get('SELECT * FROM seeding_scores WHERE id = ?', [
         id,
       ]);
+
+      if (score) {
+        const team = await db.get<{ event_id: number }>(
+          'SELECT event_id FROM teams WHERE id = ?',
+          [score.team_id],
+        );
+        if (team) {
+          await markQueueDirty(db, team.event_id);
+        }
+      }
+
       res.json(score);
     } catch (error) {
       console.error('Error updating seeding score:', error);
@@ -151,8 +172,24 @@ router.delete(
       const { id } = req.params;
       const db = await getDatabase();
 
+      const existing = await db.get<{ team_id: number }>(
+        'SELECT team_id FROM seeding_scores WHERE id = ?',
+        [id],
+      );
+
       // DELETE is idempotent
       await db.run('DELETE FROM seeding_scores WHERE id = ?', [id]);
+
+      if (existing) {
+        const team = await db.get<{ event_id: number }>(
+          'SELECT event_id FROM teams WHERE id = ?',
+          [existing.team_id],
+        );
+        if (team) {
+          // Deleted score re-queues the round on the next queue read.
+          await markQueueDirty(db, team.event_id);
+        }
+      }
 
       res.status(204).send();
     } catch (error) {

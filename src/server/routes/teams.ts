@@ -4,6 +4,7 @@ import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { isEventArchived } from '../utils/eventVisibility';
+import { markQueueDirty } from '../services/queueVersion';
 
 const router = express.Router();
 
@@ -101,6 +102,9 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       new_value: toAuditJson(team),
       ip_address: req.ip ?? null,
     });
+
+    // New team gets seeding queue slots on the next queue read.
+    await markQueueDirty(db, Number(event_id));
 
     res.status(201).json(team);
   } catch (error) {
@@ -238,6 +242,8 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
           }),
           ip_address: req.ip ?? null,
         });
+
+        await markQueueDirty(db, Number(event_id));
       }
 
       res.status(201).json({
@@ -300,6 +306,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       new_value: toAuditJson(team),
       ip_address: req.ip ?? null,
     });
+
+    // Team names/numbers are denormalized into queue responses.
+    await markQueueDirty(db, oldTeam.event_id);
 
     res.json(team);
   } catch (error) {
@@ -457,6 +466,9 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
         new_value: null,
         ip_address: req.ip ?? null,
       });
+
+      // Queue rows for the team cascade away; repair on next read.
+      await markQueueDirty(db, oldTeam.event_id);
     }
 
     res.status(204).send();

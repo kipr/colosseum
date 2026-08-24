@@ -143,19 +143,23 @@ describe('Queue Routes – sync edge cases', () => {
   });
 
   describe('queue reads without sync', () => {
-    it('does not populate missing seeding queue rows', async () => {
+    it('repair-syncs missing seeding queue rows on the first dirty read', async () => {
       const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
-      await seedTeam(testDb.db, {
+      const team = await seedTeam(testDb.db, {
         event_id: event.id,
         team_number: 1,
       });
 
+      // No queue_versions row means the event is dirty, so the read itself
+      // triggers a repair sync even without sync=1.
       const res = await http.get(
         `${baseUrl}/queue/event/${event.id}?queue_type=seeding`,
       );
 
       expect(res.status).toBe(200);
-      expect(res.json).toEqual([]);
+      const items = res.json as { seeding_team_id: number }[];
+      expect(items.length).toBe(1);
+      expect(items[0].seeding_team_id).toBe(team.id);
     });
   });
 

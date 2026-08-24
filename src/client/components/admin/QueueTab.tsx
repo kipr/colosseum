@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
 import { UnifiedTable } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
@@ -97,6 +103,10 @@ const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'double_seeding', label: 'Double Seeding' },
 ];
 
+// The server answers unchanged polls with a 304 from a version ETag, so a
+// 10s cadence keeps every admin view live at negligible cost.
+const QUEUE_POLL_INTERVAL_MS = 10_000;
+
 const TYPE_BADGE_LABELS: Record<QueueType, string> = {
   seeding: 'seeding',
   bracket: 'bracket',
@@ -180,47 +190,69 @@ export default function QueueTab() {
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
-  // Fetch queue
-  const fetchQueue = useCallback(async () => {
-    if (!selectedEventId) {
-      setQueue([]);
-      return;
-    }
+  // Key of the last applied response (URL + version ETag). Background polls
+  // skip the state update when the server says nothing changed.
+  const lastFetchKeyRef = useRef<string | null>(null);
 
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.append('sync', '1');
-      // Only append status params if we are filtering (not all selected)
-      const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
-      const isAllSelected = filterStatuses.length === allStatuses.length;
-
-      if (!isAllSelected) {
-        filterStatuses.forEach((status) => {
-          params.append('status', status);
-        });
-      }
-      if (filterType !== 'all') {
-        params.append('queue_type', filterType);
+  // Fetch queue. Background fetches (polling) don't toggle the loading
+  // spinner and don't re-render when the version ETag is unchanged.
+  const fetchQueue = useCallback(
+    async (background = false) => {
+      if (!selectedEventId) {
+        setQueue([]);
+        return;
       }
 
-      const url = `/queue/event/${selectedEventId}${params.toString() ? `?${params}` : ''}`;
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error('Failed to fetch queue');
+      if (!background) setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        // Only append status params if we are filtering (not all selected)
+        const allStatuses = Object.keys(STATUS_LABELS) as QueueStatus[];
+        const isAllSelected = filterStatuses.length === allStatuses.length;
+
+        if (!isAllSelected) {
+          filterStatuses.forEach((status) => {
+            params.append('status', status);
+          });
+        }
+        if (filterType !== 'all') {
+          params.append('queue_type', filterType);
+        }
+
+        const url = `/queue/event/${selectedEventId}${params.toString() ? `?${params}` : ''}`;
+        const response = await fetch(url, { credentials: 'include' });
+        if (!response.ok) {
+          throw new Error('Failed to fetch queue');
+        }
+        const etag = response.headers.get('ETag');
+        const fetchKey = etag ? `${url}::${etag}` : null;
+        if (background && fetchKey && lastFetchKeyRef.current === fetchKey) {
+          return;
+        }
+        const data: QueueItem[] = await response.json();
+        lastFetchKeyRef.current = fetchKey;
+        setQueue(data);
+      } catch (error) {
+        console.error('Error fetching queue:', error);
+        if (!background) toast.error('Failed to load queue');
+      } finally {
+        if (!background) setLoading(false);
       }
-      const data: QueueItem[] = await response.json();
-      setQueue(data);
-    } catch (error) {
-      console.error('Error fetching queue:', error);
-      toast.error('Failed to load queue');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId, filterStatuses, filterType]);
+    },
+    [selectedEventId, filterStatuses, filterType],
+  );
 
   useEffect(() => {
     fetchQueue();
+  }, [fetchQueue]);
+
+  // Poll so admin views stay live without manual refreshes.
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (document.hidden) return;
+      fetchQueue(true);
+    }, QUEUE_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [fetchQueue]);
 
   // Fetch brackets for populate modal

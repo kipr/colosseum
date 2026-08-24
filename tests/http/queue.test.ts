@@ -483,17 +483,25 @@ describe('Queue Routes', () => {
       expect(items[0].status).toBe('queued');
     });
 
-    it('without sync does not auto-populate (empty event returns empty)', async () => {
+    it('first read repair-syncs an event with no version row, then stays stable', async () => {
       const event = await seedEvent(testDb.db, { seeding_rounds: 2 });
       await seedTeam(testDb.db, {
         event_id: event.id,
         team_number: 101,
       });
 
-      const res = await http.get(`${baseUrl}/queue/event/${event.id}`);
+      // No queue_versions row yet, so the queue is considered dirty and the
+      // first read runs a repair sync (one item per team per seeding round).
+      const first = await http.get(`${baseUrl}/queue/event/${event.id}`);
+      expect(first.status).toBe(200);
+      const items = first.json as { seeding_round: number; status: string }[];
+      expect(items.length).toBe(2);
+      expect(items.map((item) => item.seeding_round).sort()).toEqual([1, 2]);
 
-      expect(res.status).toBe(200);
-      expect(res.json).toEqual([]);
+      // Once clean, subsequent reads return the same state without re-syncing.
+      const second = await http.get(`${baseUrl}/queue/event/${event.id}`);
+      expect(second.status).toBe(200);
+      expect((second.json as unknown[]).length).toBe(2);
     });
   });
 

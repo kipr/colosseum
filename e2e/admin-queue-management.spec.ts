@@ -94,19 +94,23 @@ test.describe('Admin queue management', () => {
       .run(eventId, TEAM_B_NUMBER, TEAM_B_NAME);
     const teamBId = Number(tmB.lastInsertRowid);
 
-    // Three seeding rows: A R1, A R2, B R1 — distinct rounds/teams for reorder assertions
-    db.prepare(
+    // The queue is materialized as every team x configured seeding round.
+    // Keep A R1 and A R2 adjacent in queue order for the reorder assertions.
+    const insertQueueItem = db.prepare(
       `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-       VALUES (?, ?, 1, 'seeding', 1, 'queued')`,
-    ).run(eventId, teamAId);
-    db.prepare(
-      `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-       VALUES (?, ?, 2, 'seeding', 2, 'queued')`,
-    ).run(eventId, teamAId);
-    db.prepare(
-      `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-       VALUES (?, ?, 1, 'seeding', 3, 'queued')`,
-    ).run(eventId, teamBId);
+       VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+    );
+    const queueItems = [
+      [teamAId, 1],
+      [teamAId, 2],
+      [teamBId, 1],
+      [teamBId, 2],
+      [teamAId, 3],
+      [teamBId, 3],
+    ];
+    queueItems.forEach(([teamId, round], index) => {
+      insertQueueItem.run(eventId, teamId, round, index + 1);
+    });
 
     const usr = db
       .prepare(
@@ -179,9 +183,8 @@ test.describe('Admin queue management', () => {
     await expect(seedingRow(page, TEAM_A_NAME, 1)).toBeVisible();
     await expect(seedingRow(page, TEAM_A_NAME, 2)).toBeVisible();
     await expect(seedingRow(page, TEAM_B_NAME, 1)).toBeVisible();
-    await expect(page.locator('.queue-summary')).toContainText(
-      '3 items in queue',
-    );
+    await expect(page.locator('table tbody tr.queue-row')).toHaveCount(6);
+    await expect(page.locator('.queue-summary')).toHaveText('6 items in queue');
 
     await context.close();
   });

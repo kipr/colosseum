@@ -338,12 +338,29 @@ describe('Brackets CRUD & Game Management', () => {
     it('updates bracket name', async () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+      });
+
+      const before = await http.get(
+        `${baseUrl}/brackets/event/${event.id}/games`,
+      );
+      const beforeEtag = before.headers.get('ETag');
 
       const res = await http.patch(`${baseUrl}/brackets/${bracket.id}`, {
         name: 'Updated Name',
       });
       expect(res.status).toBe(200);
       expect((res.json as { name: string }).name).toBe('Updated Name');
+
+      const after = await http.get(
+        `${baseUrl}/brackets/event/${event.id}/games`,
+      );
+      expect(after.headers.get('ETag')).not.toBe(beforeEtag);
+      expect(
+        (after.json as Array<{ bracket_name: string }>)[0].bracket_name,
+      ).toBe('Updated Name');
     });
 
     it('updates bracket status', async () => {
