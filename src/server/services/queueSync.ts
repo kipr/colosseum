@@ -32,7 +32,7 @@ export type QueueSyncType = (typeof QUEUE_SYNC_TYPES)[number];
 
 interface QueueSyncState {
   lastSyncedAt: number;
-  inFlight?: Promise<void>;
+  inFlight?: Promise<number>;
 }
 
 // Keyed by db instance so tests with separate in-memory databases don't
@@ -57,7 +57,7 @@ async function runQueueTypeSync(
   db: Database,
   eventId: number,
   queueType: QueueSyncType,
-): Promise<void> {
+): Promise<number> {
   let changes = 0;
   if (queueType === 'seeding') {
     changes = await syncSeedingQueue(db, eventId);
@@ -68,7 +68,9 @@ async function runQueueTypeSync(
   }
   if (changes > 0) {
     await bumpQueueVersion(db, eventId);
+    return 1;
   }
+  return 0;
 }
 
 async function syncQueueTypeCoalesced(
@@ -76,7 +78,7 @@ async function syncQueueTypeCoalesced(
   eventId: number,
   queueType: QueueSyncType,
   ignoreFreshness = false,
-): Promise<void> {
+): Promise<number> {
   const now = Date.now();
   const stateMap = getQueueSyncStateMap(db);
   const key = queueSyncKey(eventId, queueType);
@@ -84,7 +86,10 @@ async function syncQueueTypeCoalesced(
 
   if (state?.inFlight) {
     await state.inFlight;
-    return;
+    // The joined sync may have started before this caller captured its repair
+    // generation, so its version bump cannot safely be attributed to this
+    // repair. Excluding it makes the compare-and-clear conservatively fail.
+    return 0;
   }
 
   if (
@@ -92,15 +97,16 @@ async function syncQueueTypeCoalesced(
     state &&
     now - state.lastSyncedAt < QUEUE_SYNC_FRESH_MS
   ) {
-    return;
+    return 0;
   }
 
   const syncState: QueueSyncState = {
     lastSyncedAt: state?.lastSyncedAt ?? 0,
   };
   const inFlight = runQueueTypeSync(db, eventId, queueType)
-    .then(() => {
+    .then((versionBumps) => {
       syncState.lastSyncedAt = Date.now();
+      return versionBumps;
     })
     .finally(() => {
       syncState.inFlight = undefined;
@@ -108,7 +114,7 @@ async function syncQueueTypeCoalesced(
 
   syncState.inFlight = inFlight;
   stateMap.set(key, syncState);
-  await inFlight;
+  return inFlight;
 }
 
 /** Explicit `sync=1` request path: sync the requested type (or all). */
@@ -143,12 +149,16 @@ export async function ensureQueueFresh(
     return state.version;
   }
 
+  let repairVersionBumps = 0;
   for (const type of QUEUE_SYNC_TYPES) {
-    await syncQueueTypeCoalesced(db, eventId, type, true);
+    repairVersionBumps += await syncQueueTypeCoalesced(db, eventId, type, true);
   }
 
-  const synced = await getQueueVersionState(db, eventId);
-  await clearQueueDirty(db, eventId, synced.version);
+  // Only clear the generation this repair started from, accounting for
+  // version bumps made by the repair itself. A source mutation contributes
+  // an additional bump, so its dirty flag survives for the next read even if
+  // it races after the relevant queue type has already been synchronized.
+  await clearQueueDirty(db, eventId, state.version + repairVersionBumps);
   return (await getQueueVersionState(db, eventId)).version;
 }
 

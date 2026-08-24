@@ -298,4 +298,64 @@ describe('Queue versioning and conditional polling', () => {
     expect(after.etag).not.toBe(etag);
     expect((JSON.parse(after.body) as unknown[]).length).toBe(1);
   });
+
+  it('keeps a concurrent source mutation dirty when its sync pass has finished', async () => {
+    const event = await seedEvent(testDb.db, { seeding_rounds: 1 });
+    await seedTeam(testDb.db, { event_id: event.id, team_number: 1 });
+    await testDb.db.run(
+      'INSERT INTO queue_versions (event_id, version, dirty) VALUES (?, 1, 1)',
+      [event.id],
+    );
+
+    let mutationInjected = false;
+    const racingDb = new Proxy(testDb.db, {
+      get(target, property, receiver) {
+        if (property === 'all') {
+          return async (sql: string, params: unknown[] = []) => {
+            if (
+              !mutationInjected &&
+              sql.includes('SELECT id FROM brackets WHERE event_id = ?')
+            ) {
+              mutationInjected = true;
+              await seedTeam(target, {
+                event_id: event.id,
+                team_number: 2,
+              });
+              await target.run(
+                `UPDATE queue_versions
+                 SET version = version + 1, dirty = 1
+                 WHERE event_id = ?`,
+                [event.id],
+              );
+            }
+            return target.all(sql, params);
+          };
+        }
+
+        const value = Reflect.get(target, property, receiver);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+    __setTestDatabaseAdapter(racingDb);
+
+    const raced = await http.get(`${baseUrl}/queue/event/${event.id}`);
+    expect(raced.status).toBe(200);
+    expect((raced.json as unknown[]).length).toBe(1);
+
+    const stillDirty = await testDb.db.get<{ dirty: number }>(
+      'SELECT dirty FROM queue_versions WHERE event_id = ?',
+      [event.id],
+    );
+    expect(Number(stillDirty?.dirty)).toBe(1);
+
+    const repaired = await http.get(`${baseUrl}/queue/event/${event.id}`);
+    expect(repaired.status).toBe(200);
+    expect((repaired.json as unknown[]).length).toBe(2);
+
+    const clean = await testDb.db.get<{ dirty: number }>(
+      'SELECT dirty FROM queue_versions WHERE event_id = ?',
+      [event.id],
+    );
+    expect(Number(clean?.dirty)).toBe(0);
+  });
 });
