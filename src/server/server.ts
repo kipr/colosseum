@@ -14,7 +14,7 @@ import cors from 'cors';
 import path from 'path';
 import { setupPassport } from './config/passport';
 import { initializeDatabase } from './database/init';
-import { getPostgresPool } from './database/connection';
+import { getDatabase, getPostgresPool } from './database/connection';
 import authRoutes from './routes/auth';
 import adminRoutes from './routes/admin';
 import scoresheetRoutes from './routes/scoresheet';
@@ -137,7 +137,6 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       // Only update once per minute
       user._lastActivityUpdate = now;
       try {
-        const { getDatabase } = await import('./database/connection');
         const db = await getDatabase();
         await db.run(
           'UPDATE users SET last_activity = CURRENT_TIMESTAMP WHERE id = ?',
