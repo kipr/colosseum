@@ -1,4 +1,4 @@
-{
+ {
   "name": "colosseum-dev",
   "build": {
     "dockerfile": "Dockerfile"
@@ -12,8 +12,8 @@
     }
   },
   "mounts": [
-    "source=/home/tom/.config/codex,target=/home/node/.codex,type=bind,consistency=cached",
-    "source=/home/tom/.serena,target=/home/node/.serena,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.config/codex,target=/home/node/.codex,type=bind,consistency=cached",
+    "source=${localEnv:HOME}/.serena,target=/home/node/.serena,type=bind,consistency=cached"
   ],
   "workspaceFolder": "/workspaces/colosseum",
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/colosseum,type=bind,consistency=cached",
