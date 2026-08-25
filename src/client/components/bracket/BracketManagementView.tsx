@@ -27,11 +27,7 @@ const bracketGameColumns: UnifiedColumnDef<BracketGame>[] = [
     kind: 'data',
     id: 'game',
     header: { full: 'Game' },
-    renderCell: (game) => (
-      <strong>
-        Game {game.game_number} · ID {game.id}
-      </strong>
-    ),
+    renderCell: (game) => <strong>Game {game.game_number}</strong>,
   },
   {
     kind: 'data',

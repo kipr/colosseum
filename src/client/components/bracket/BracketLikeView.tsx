@@ -31,7 +31,6 @@ interface BracketLikeViewProps {
   side?: BracketSide;
   onSideChange?: (side: BracketSide) => void;
   emptyMessage?: string;
-  showGameDebugInfo?: boolean;
 }
 
 interface RoundData {
@@ -193,7 +192,6 @@ export default function BracketLikeView({
   side: controlledSide,
   onSideChange,
   emptyMessage = 'No games available. Generate games to view the bracket.',
-  showGameDebugInfo = false,
 }: BracketLikeViewProps) {
   const [internalSide, setInternalSide] = useState<BracketSide>(initialSide);
   const isControlled = controlledSide !== undefined;
@@ -299,9 +297,7 @@ export default function BracketLikeView({
       >
         {/* Status header */}
         <div className={`match-header match-status-${game.status}`}>
-          {showGameDebugInfo
-            ? `Game ${game.game_number} · ID ${game.id} · ${getStatusLabel(game.status)}`
-            : getStatusLabel(game.status)}
+          {getStatusLabel(game.status)}
         </div>
 
         {/* Team 1 row */}

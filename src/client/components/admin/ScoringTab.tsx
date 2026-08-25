@@ -438,11 +438,7 @@ export default function ScoringTab() {
 
     const bracketName = score.bracket_name || 'Bracket';
     const gameNum = score.game_number || data.game_number?.value;
-    const gameLabel = gameNum
-      ? `Game ${gameNum}${score.bracket_game_id != null ? ` · ID ${score.bracket_game_id}` : ''}`
-      : score.bracket_game_id != null
-        ? `ID ${score.bracket_game_id}`
-        : '-';
+    const gameLabel = gameNum ? `Game ${gameNum}` : '-';
 
     const team1Score =
       data.team1_score?.value ?? score.bracket_team1_score ?? null;

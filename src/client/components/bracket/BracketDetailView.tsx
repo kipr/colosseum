@@ -136,7 +136,6 @@ export default function BracketDetailView({
           bracketDetail={bracketDetail}
           side={bracketSide}
           onSideChange={handleSideChange}
-          showGameDebugInfo
         />
       )}
 
