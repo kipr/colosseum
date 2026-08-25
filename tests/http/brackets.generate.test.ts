@@ -20,6 +20,7 @@ import {
 } from './helpers/seed';
 import bracketsRoutes from '../../src/server/routes/brackets';
 import { recalculateSeedingRankings } from '../../src/server/services/seedingRankings';
+import { generatePlayOrder } from '../../src/server/services/bracketTemplates';
 
 describe('Brackets Entry & Game Generation', () => {
   let testDb: TestDb;
@@ -237,6 +238,48 @@ describe('Brackets Entry & Game Generation', () => {
       expect(games.length).toBeGreaterThan(0);
     });
 
+    it('copies canonical play order during generation and forced regeneration', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, {
+        event_id: event.id,
+        bracket_size: 8,
+      });
+
+      const first = await http.post(
+        `${baseUrl}/brackets/${bracket.id}/games/generate`,
+      );
+      expect(first.status).toBe(200);
+      const firstOrder = await testDb.db.all<{
+        game_number: number;
+        play_order: number | null;
+      }>(
+        `SELECT game_number, play_order FROM bracket_games
+         WHERE bracket_id = ? ORDER BY play_order`,
+        [bracket.id],
+      );
+      expect(firstOrder.map((game) => game.game_number)).toEqual(
+        generatePlayOrder(8),
+      );
+      expect(firstOrder.every((game) => game.play_order !== null)).toBe(true);
+
+      await testDb.db.run(
+        `UPDATE bracket_games SET play_order = NULL WHERE bracket_id = ?`,
+        [bracket.id],
+      );
+      const forced = await http.post(
+        `${baseUrl}/brackets/${bracket.id}/games/generate?force=true`,
+      );
+      expect(forced.status).toBe(200);
+      const regenerated = await testDb.db.all<{ game_number: number }>(
+        `SELECT game_number FROM bracket_games
+         WHERE bracket_id = ? ORDER BY play_order`,
+        [bracket.id],
+      );
+      expect(regenerated.map((game) => game.game_number)).toEqual(
+        generatePlayOrder(8),
+      );
+    });
+
     it('returns 404 when bracket not found', async () => {
       const res = await http.post(`${baseUrl}/brackets/9999/games/generate`);
       expect(res.status).toBe(404);
@@ -326,6 +369,35 @@ describe('Brackets Entry & Game Generation', () => {
   // ==========================================================================
 
   describe('POST /brackets with team_ids - validation', () => {
+    it('copies canonical play order into automatically created games', async () => {
+      const event = await seedEvent(testDb.db);
+      const teams = [];
+      for (let i = 1; i <= 5; i++) {
+        teams.push(
+          await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: i,
+          }),
+        );
+      }
+
+      const res = await http.post(`${baseUrl}/brackets`, {
+        event_id: event.id,
+        name: 'Selected Teams Bracket',
+        team_ids: teams.map((team) => team.id),
+      });
+      expect(res.status).toBe(201);
+      const bracketId = (res.json as { id: number }).id;
+      const games = await testDb.db.all<{ game_number: number }>(
+        `SELECT game_number FROM bracket_games
+         WHERE bracket_id = ? ORDER BY play_order`,
+        [bracketId],
+      );
+      expect(games.map((game) => game.game_number)).toEqual(
+        generatePlayOrder(8),
+      );
+    });
+
     it('returns 400 when event_id missing with team_ids', async () => {
       const res = await http.post(`${baseUrl}/brackets`, {
         name: 'Test',

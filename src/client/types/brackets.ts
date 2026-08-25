@@ -48,6 +48,7 @@ export interface BracketGame {
   id: number;
   bracket_id: number;
   game_number: number;
+  play_order: number | null;
   round_name: string | null;
   round_number: number | null;
   bracket_side: BracketSide | null;

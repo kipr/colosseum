@@ -15,6 +15,27 @@ describe('Schema Constraints', () => {
     testDb.close();
   });
 
+  describe('bracket play-order schema', () => {
+    it('creates play_order columns and the bracket-game order index', async () => {
+      const templateColumn = await testDb.db.get<{ name: string }>(
+        `SELECT name FROM pragma_table_info('bracket_templates')
+         WHERE name = 'play_order'`,
+      );
+      const gameColumn = await testDb.db.get<{ name: string }>(
+        `SELECT name FROM pragma_table_info('bracket_games')
+         WHERE name = 'play_order'`,
+      );
+      const index = await testDb.db.get<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'index' AND name = 'idx_bracket_games_play_order'`,
+      );
+
+      expect(templateColumn?.name).toBe('play_order');
+      expect(gameColumn?.name).toBe('play_order');
+      expect(index?.name).toBe('idx_bracket_games_play_order');
+    });
+  });
+
   describe('teams table', () => {
     it('should enforce UNIQUE(event_id, team_number)', async () => {
       // Create an event first

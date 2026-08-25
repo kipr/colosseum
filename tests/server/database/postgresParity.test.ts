@@ -74,6 +74,16 @@ describe('initializePostgres parity with SQLite', () => {
         /CREATE TABLE.*bracket_entries[\s\S]*weighted_bracket_raw_score/i,
       );
     });
+
+    it('creates bracket play-order columns and index', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_games[\s\S]*play_order INTEGER/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_templates[\s\S]*play_order INTEGER/i,
+      );
+      expect(allSql).toContain('idx_bracket_games_play_order');
+    });
   });
 
   describe('double-seeding baseline', () => {

@@ -2,8 +2,9 @@
  * Bracket template seeding tests - verify templates are generated correctly
  * and that seeding is idempotent.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDb, TestDb } from './helpers/testDb';
+import { initializeSQLite } from '../../src/server/database/init';
 import {
   ensureBracketTemplatesSeeded,
   generateDEBracketTemplates,
@@ -116,6 +117,114 @@ describe('Bracket Template Seeding', () => {
 
       expect(size4).toHaveLength(7);
       expect(size8).toHaveLength(15);
+    });
+
+    it('should seed a complete play_order permutation for every size', async () => {
+      for (const size of [4, 8, 16, 32, 64]) {
+        await ensureBracketTemplatesSeeded(testDb.db, size);
+        const templates = await testDb.db.all<{ play_order: number | null }>(
+          `SELECT play_order FROM bracket_templates
+           WHERE bracket_size = ? ORDER BY play_order`,
+          [size],
+        );
+
+        expect(templates.map((template) => template.play_order)).toEqual(
+          Array.from({ length: 2 * size - 1 }, (_, index) => index + 1),
+        );
+      }
+    });
+
+    it('should repair play_order without overwriting hand-edited template fields', async () => {
+      await ensureBracketTemplatesSeeded(testDb.db, 8);
+      const expected = generateDEBracketTemplates(8).find(
+        (template) => template.game_number === 5,
+      )?.play_order;
+      await testDb.db.run(
+        `UPDATE bracket_templates
+         SET play_order = NULL, round_name = 'Custom Winners Round'
+         WHERE bracket_size = 8 AND game_number = 5`,
+      );
+
+      await ensureBracketTemplatesSeeded(testDb.db, 8);
+
+      const repaired = await testDb.db.get<{
+        play_order: number;
+        round_name: string;
+      }>(
+        `SELECT play_order, round_name FROM bracket_templates
+         WHERE bracket_size = 8 AND game_number = 5`,
+      );
+      expect(repaired?.play_order).toBe(expected);
+      expect(repaired?.round_name).toBe('Custom Winners Round');
+    });
+
+    it('should backfill legacy bracket games during database initialization', async () => {
+      const event = await testDb.db.run(
+        `INSERT INTO events (name, status) VALUES ('Legacy Event', 'setup')`,
+      );
+      const bracket = await testDb.db.run(
+        `INSERT INTO brackets (event_id, name, bracket_size)
+         VALUES (?, 'Legacy Bracket', 8)`,
+        [event.lastID],
+      );
+      const game1 = await testDb.db.run(
+        `INSERT INTO bracket_games (bracket_id, game_number, play_order)
+         VALUES (?, 1, NULL)`,
+        [bracket.lastID],
+      );
+      await testDb.db.run(
+        `INSERT INTO bracket_games (bracket_id, game_number, play_order)
+         VALUES (?, 5, 77), (?, 99, NULL)`,
+        [bracket.lastID, bracket.lastID],
+      );
+      await testDb.db.run(
+        `INSERT INTO game_queue (
+           event_id, queue_type, queue_position, bracket_game_id
+         ) VALUES (?, 'bracket', 7, ?)`,
+        [event.lastID, game1.lastID],
+      );
+
+      const unsupported = await testDb.db.run(
+        `INSERT INTO brackets (event_id, name, bracket_size)
+         VALUES (?, 'Custom Bracket', 10)`,
+        [event.lastID],
+      );
+      await testDb.db.run(
+        `INSERT INTO bracket_games (bracket_id, game_number, play_order)
+         VALUES (?, 1, NULL)`,
+        [unsupported.lastID],
+      );
+      const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      try {
+        await initializeSQLite(testDb.db);
+      } finally {
+        warning.mockRestore();
+      }
+
+      const games = await testDb.db.all<{
+        game_number: number;
+        play_order: number | null;
+      }>(
+        `SELECT game_number, play_order FROM bracket_games
+         WHERE bracket_id = ? ORDER BY game_number`,
+        [bracket.lastID],
+      );
+      expect(games).toEqual([
+        { game_number: 1, play_order: 1 },
+        { game_number: 5, play_order: 77 },
+        { game_number: 99, play_order: null },
+      ]);
+      const customGame = await testDb.db.get<{ play_order: number | null }>(
+        `SELECT play_order FROM bracket_games WHERE bracket_id = ?`,
+        [unsupported.lastID],
+      );
+      expect(customGame?.play_order).toBeNull();
+      const queue = await testDb.db.get<{ queue_position: number }>(
+        `SELECT queue_position FROM game_queue WHERE bracket_game_id = ?`,
+        [game1.lastID],
+      );
+      expect(queue?.queue_position).toBe(7);
     });
   });
 

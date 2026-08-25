@@ -557,12 +557,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       for (const template of templates) {
         const result = await db.run(
           `INSERT INTO bracket_games (
-            bracket_id, game_number, round_name, round_number, bracket_side,
+            bracket_id, game_number, play_order, round_name, round_number, bracket_side,
             team1_source, team2_source, status, winner_slot, loser_slot
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
           [
             bracketId,
             template.game_number,
+            template.play_order,
             template.round_name,
             template.round_number,
             template.bracket_side,
@@ -1382,12 +1383,13 @@ router.post(
       for (const template of templates) {
         const result = await db.run(
           `INSERT INTO bracket_games (
-            bracket_id, game_number, round_name, round_number, bracket_side,
+            bracket_id, game_number, play_order, round_name, round_number, bracket_side,
             team1_source, team2_source, status, winner_slot, loser_slot
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
           [
             id,
             template.game_number,
+            template.play_order,
             template.round_name,
             template.round_number,
             template.bracket_side,
@@ -1654,6 +1656,7 @@ router.post(
       const {
         bracket_size,
         game_number,
+        play_order,
         round_name,
         round_number,
         bracket_side,
@@ -1687,13 +1690,14 @@ router.post(
 
       const result = await db.run(
         `INSERT INTO bracket_templates (
-           bracket_size, game_number, round_name, round_number, bracket_side,
+           bracket_size, game_number, play_order, round_name, round_number, bracket_side,
            team1_source, team2_source, winner_advances_to, loser_advances_to,
            winner_slot, loser_slot, is_championship, is_grand_final, is_reset_game
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           bracket_size,
           game_number,
+          play_order ?? null,
           round_name,
           round_number,
           bracket_side,
