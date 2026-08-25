@@ -28,6 +28,7 @@ interface EventFormData {
   event_date: string;
   location: string;
   seeding_rounds: number;
+  min_rest_minutes: number;
   score_accept_mode: ScoreAcceptMode;
 }
 
@@ -37,6 +38,7 @@ const defaultFormData: EventFormData = {
   event_date: '',
   location: '',
   seeding_rounds: 3,
+  min_rest_minutes: 3,
   score_accept_mode: 'manual',
 };
 
@@ -89,6 +91,7 @@ export default function EventsTab() {
       event_date: toDateOnlyString(event.event_date) || '',
       location: event.location || '',
       seeding_rounds: event.seeding_rounds,
+      min_rest_minutes: event.min_rest_minutes,
       score_accept_mode: event.score_accept_mode ?? 'manual',
     });
     setShowModal(true);
@@ -122,6 +125,7 @@ export default function EventsTab() {
           event_date: formData.event_date || null,
           location: formData.location.trim() || null,
           seeding_rounds: formData.seeding_rounds,
+          min_rest_minutes: formData.min_rest_minutes,
           score_accept_mode: formData.score_accept_mode,
         }),
       });
@@ -813,6 +817,32 @@ export default function EventsTab() {
                 />
                 <small style={{ color: 'var(--secondary-color)' }}>
                   Number of seeding rounds for this event (typically 3)
+                </small>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="min-rest-minutes">Minimum Rest (minutes)</label>
+                <input
+                  id="min-rest-minutes"
+                  type="number"
+                  className="field-input"
+                  value={formData.min_rest_minutes}
+                  onChange={(e) => {
+                    const value = Number.parseInt(e.target.value, 10);
+                    setFormData({
+                      ...formData,
+                      min_rest_minutes: Number.isNaN(value)
+                        ? 0
+                        : Math.max(0, value),
+                    });
+                  }}
+                  min={0}
+                  step={1}
+                  style={{ maxWidth: '100px' }}
+                />
+                <small style={{ color: 'var(--secondary-color)' }}>
+                  Warn before calling a team that played within this window. A
+                  value of 0 disables recent-play warnings.
                 </small>
               </div>
 

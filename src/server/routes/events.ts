@@ -24,6 +24,7 @@ const ALLOWED_UPDATE_FIELDS = [
   'status',
   'seeding_rounds',
   'double_seeding_rounds',
+  'min_rest_minutes',
   'score_accept_mode',
   'spectator_results_released',
 ];
@@ -176,6 +177,7 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
       location,
       status,
       seeding_rounds,
+      min_rest_minutes,
       score_accept_mode,
     } = req.body;
 
@@ -183,11 +185,20 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Event name is required' });
     }
 
+    if (
+      min_rest_minutes !== undefined &&
+      (!Number.isInteger(min_rest_minutes) || min_rest_minutes < 0)
+    ) {
+      return res.status(400).json({
+        error: 'min_rest_minutes must be a non-negative integer',
+      });
+    }
+
     const db = await getDatabase();
 
     const result = await db.run(
-      `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, score_accept_mode, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, min_rest_minutes, score_accept_mode, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         description || null,
@@ -195,6 +206,7 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
         location || null,
         status || 'setup',
         seeding_rounds ?? 3,
+        min_rest_minutes ?? 3,
         score_accept_mode || 'manual',
         req.user?.id || null,
       ],
@@ -215,6 +227,16 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
+
+    if (
+      Object.prototype.hasOwnProperty.call(req.body, 'min_rest_minutes') &&
+      (!Number.isInteger(req.body.min_rest_minutes) ||
+        req.body.min_rest_minutes < 0)
+    ) {
+      return res.status(400).json({
+        error: 'min_rest_minutes must be a non-negative integer',
+      });
+    }
 
     // Filter to only allowed fields
     const updates = Object.entries(req.body).filter(([key]) =>

@@ -15,6 +15,62 @@ describe('Schema Constraints', () => {
     testDb.close();
   });
 
+  describe('bracket play-order schema', () => {
+    it('creates play_order columns and the bracket-game order index', async () => {
+      const templateColumn = await testDb.db.get<{ name: string }>(
+        `SELECT name FROM pragma_table_info('bracket_templates')
+         WHERE name = 'play_order'`,
+      );
+      const gameColumn = await testDb.db.get<{ name: string }>(
+        `SELECT name FROM pragma_table_info('bracket_games')
+         WHERE name = 'play_order'`,
+      );
+      const index = await testDb.db.get<{ name: string }>(
+        `SELECT name FROM sqlite_master
+         WHERE type = 'index' AND name = 'idx_bracket_games_play_order'`,
+      );
+
+      expect(templateColumn?.name).toBe('play_order');
+      expect(gameColumn?.name).toBe('play_order');
+      expect(index?.name).toBe('idx_bracket_games_play_order');
+    });
+  });
+
+  describe('event rest configuration schema', () => {
+    it('creates min_rest_minutes with a default and non-negative check', async () => {
+      const column = await testDb.db.get<{
+        name: string;
+        notnull: number;
+        dflt_value: string;
+      }>(
+        `SELECT name, "notnull", dflt_value
+         FROM pragma_table_info('events')
+         WHERE name = 'min_rest_minutes'`,
+      );
+
+      expect(column).toMatchObject({
+        name: 'min_rest_minutes',
+        notnull: 1,
+        dflt_value: '3',
+      });
+
+      const event = await testDb.db.run(
+        `INSERT INTO events (name) VALUES ('Default Rest Event')`,
+      );
+      const row = await testDb.db.get<{ min_rest_minutes: number }>(
+        'SELECT min_rest_minutes FROM events WHERE id = ?',
+        [event.lastID],
+      );
+      expect(row?.min_rest_minutes).toBe(3);
+
+      await expect(
+        testDb.db.run(
+          `INSERT INTO events (name, min_rest_minutes) VALUES ('Bad Rest Event', -1)`,
+        ),
+      ).rejects.toThrow(/CHECK constraint failed/);
+    });
+  });
+
   describe('teams table', () => {
     it('should enforce UNIQUE(event_id, team_number)', async () => {
       // Create an event first

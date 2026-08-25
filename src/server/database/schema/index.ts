@@ -30,4 +30,9 @@ export const schemaModules: readonly SchemaModule[] = [
 ];
 
 export { runSchema } from './runner';
-export type { SchemaDialect, SchemaModule } from './types';
+export type {
+  ColumnAddition,
+  DialectSchema,
+  SchemaDialect,
+  SchemaModule,
+} from './types';

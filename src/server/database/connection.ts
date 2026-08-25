@@ -45,6 +45,8 @@ export interface DatabaseResult {
  */
 export interface Transaction {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   run(sql: string, params?: any[]): Promise<DatabaseResult>;
   exec(sql: string): Promise<void>;
 }
@@ -146,6 +148,13 @@ class SqliteAdapter implements Database {
 
   async transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
     const tx: Transaction = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      get: async <R = any>(
+        sql: string,
+        params: any[] = [], // eslint-disable-line @typescript-eslint/no-explicit-any
+      ): Promise<R | undefined> => {
+        return this.stmt(sql).get(normalizeParams(params)) as R | undefined;
+      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       run: async (sql: string, params: any[] = []): Promise<DatabaseResult> => {
         const info = this.stmt(sql).run(normalizeParams(params));
@@ -252,6 +261,16 @@ class PostgresAdapter implements Database {
       await client.query('BEGIN');
 
       const tx: Transaction = {
+        get: async <R = any>( // eslint-disable-line @typescript-eslint/no-explicit-any
+          sql: string,
+          params?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+        ): Promise<R | undefined> => {
+          const result = await client.query(
+            this.convertSql(sql),
+            params ? normalizePgParams(params) : params,
+          );
+          return result.rows[0];
+        },
         run: async (
           sql: string,
           params?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any

@@ -26,6 +26,7 @@ function createRecordingAdapter(): { db: Database; sql: string[] } {
     all: async () => [],
     transaction: async <T>(fn: (tx: Transaction) => Promise<T>) => {
       const tx: Transaction = {
+        get: async () => undefined,
         run: async () => noop,
         exec: async (s: string) => {
           sql.push(s);
@@ -72,6 +73,16 @@ describe('initializePostgres parity with SQLite', () => {
       expect(allSql).toMatch(
         /CREATE TABLE.*bracket_entries[\s\S]*weighted_bracket_raw_score/i,
       );
+    });
+
+    it('creates bracket play-order columns and index', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_games[\s\S]*play_order INTEGER/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_templates[\s\S]*play_order INTEGER/i,
+      );
+      expect(allSql).toContain('idx_bracket_games_play_order');
     });
   });
 

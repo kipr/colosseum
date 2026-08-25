@@ -117,6 +117,25 @@ describe('createSqliteDatabase', () => {
 
     db.close();
   });
+
+  it('supports reads of uncommitted writes inside a transaction', async () => {
+    const db = new SQLite(':memory:');
+    const adapter = createSqliteDatabase(db);
+
+    await adapter.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)');
+
+    await adapter.transaction(async (tx) => {
+      await tx.run('INSERT INTO t (val) VALUES (?)', ['pending']);
+      const row = await tx.get<{ val: string }>(
+        'SELECT val FROM t WHERE val = ?',
+        ['pending'],
+      );
+
+      expect(row?.val).toBe('pending');
+    });
+
+    db.close();
+  });
 });
 
 describe('closeDatabase', () => {

@@ -1,4 +1,4 @@
-import { Database } from '../database/connection';
+import type { Database } from '../database/connection';
 
 /**
  * Double-elimination bracket template definition.
@@ -7,6 +7,7 @@ import { Database } from '../database/connection';
 export interface BracketTemplate {
   bracket_size: number;
   game_number: number;
+  play_order: number;
   round_name: string;
   round_number: number;
   bracket_side: 'winners' | 'losers' | 'finals';
@@ -21,6 +22,16 @@ export interface BracketTemplate {
   is_reset_game: boolean;
 }
 
+type BracketTemplateDefinition = Omit<BracketTemplate, 'play_order'>;
+
+interface CachedPlayOrder {
+  order: readonly number[];
+  ranks: ReadonlyMap<number, number>;
+}
+
+const playOrderCache = new Map<number, CachedPlayOrder>();
+const supportedBracketSizes = new Set([4, 8, 16, 32, 64]);
+
 /**
  * Generate double-elimination bracket templates for a given bracket size.
  * Supports sizes: 4, 8, 16, 32, 64
@@ -28,6 +39,34 @@ export interface BracketTemplate {
 export function generateDEBracketTemplates(
   bracketSize: number,
 ): BracketTemplate[] {
+  const definitions = generateDEBracketTemplateDefinitions(bracketSize);
+  const { ranks } = getCachedPlayOrder(bracketSize, definitions);
+
+  return definitions.map((definition) => {
+    const playOrder = ranks.get(definition.game_number);
+    if (playOrder === undefined) {
+      throw new Error(
+        `Missing play order for game ${definition.game_number} in ${bracketSize}-team bracket`,
+      );
+    }
+
+    return { ...definition, play_order: playOrder };
+  });
+}
+
+/** Game numbers in canonical play order for a bracket size. */
+export function generatePlayOrder(bracketSize: number): number[] {
+  return [...getCachedPlayOrder(bracketSize).order];
+}
+
+/** game_number -> 1-based play order rank. */
+export function getPlayOrderMap(bracketSize: number): Map<number, number> {
+  return new Map(getCachedPlayOrder(bracketSize).ranks);
+}
+
+function generateDEBracketTemplateDefinitions(
+  bracketSize: number,
+): BracketTemplateDefinition[] {
   switch (bracketSize) {
     case 4:
       return generate4TeamDE();
@@ -44,6 +83,135 @@ export function generateDEBracketTemplates(
   }
 }
 
+function getCachedPlayOrder(
+  bracketSize: number,
+  definitions?: BracketTemplateDefinition[],
+): CachedPlayOrder {
+  const cached = playOrderCache.get(bracketSize);
+  if (cached) return cached;
+
+  const order = derivePlayOrder(
+    definitions ?? generateDEBracketTemplateDefinitions(bracketSize),
+  );
+  const ranks = new Map(
+    order.map((gameNumber, index) => [gameNumber, index + 1]),
+  );
+  const result = { order, ranks };
+  playOrderCache.set(bracketSize, result);
+  return result;
+}
+
+function derivePlayOrder(definitions: BracketTemplateDefinition[]): number[] {
+  const gameNumbers = new Set<number>();
+  const dependencies = new Map<number, number[]>();
+  const dependents = new Map<number, number[]>();
+
+  for (const definition of definitions) {
+    if (gameNumbers.has(definition.game_number)) {
+      throw new Error(
+        `Duplicate bracket game number: ${definition.game_number}`,
+      );
+    }
+    gameNumbers.add(definition.game_number);
+    dependents.set(definition.game_number, []);
+  }
+
+  for (const definition of definitions) {
+    const feeders = Array.from(
+      new Set(
+        [definition.team1_source, definition.team2_source]
+          .map((source) => /^(?:winner|loser):(\d+)$/.exec(source))
+          .filter((match): match is RegExpExecArray => match !== null)
+          .map((match) => Number.parseInt(match[1], 10)),
+      ),
+    );
+
+    for (const feeder of feeders) {
+      if (!gameNumbers.has(feeder)) {
+        throw new Error(
+          `Game ${definition.game_number} references missing feeder game ${feeder}`,
+        );
+      }
+      dependents.get(feeder)?.push(definition.game_number);
+    }
+    dependencies.set(definition.game_number, feeders);
+  }
+
+  const distanceToSink = new Map<number, number>();
+  const visiting = new Set<number>();
+  const getDistanceToSink = (gameNumber: number): number => {
+    const knownDistance = distanceToSink.get(gameNumber);
+    if (knownDistance !== undefined) return knownDistance;
+    if (visiting.has(gameNumber)) {
+      throw new Error(`Cycle detected at bracket game ${gameNumber}`);
+    }
+
+    visiting.add(gameNumber);
+    const nextGames = dependents.get(gameNumber) ?? [];
+    const distance =
+      nextGames.length === 0
+        ? 0
+        : 1 + Math.max(...nextGames.map(getDistanceToSink));
+    visiting.delete(gameNumber);
+    distanceToSink.set(gameNumber, distance);
+    return distance;
+  };
+
+  const criticalLineCount =
+    1 +
+    Math.max(
+      ...definitions.map((definition) =>
+        getDistanceToSink(definition.game_number),
+      ),
+    );
+  const gamesByLine = new Map<number, number[]>();
+
+  for (const definition of definitions) {
+    const line = criticalLineCount - getDistanceToSink(definition.game_number);
+    const games = gamesByLine.get(line) ?? [];
+    games.push(definition.game_number);
+    gamesByLine.set(line, games);
+  }
+
+  const order: number[] = [];
+  const queuePosition = new Map<number, number>();
+
+  for (let line = 1; line <= criticalLineCount; line++) {
+    const games = gamesByLine.get(line) ?? [];
+    games.sort((left, right) => {
+      const feederPositions = (gameNumber: number): number[] =>
+        (dependencies.get(gameNumber) ?? []).map((feeder) => {
+          const position = queuePosition.get(feeder);
+          if (position === undefined) {
+            throw new Error(
+              `Feeder game ${feeder} is not ordered before game ${gameNumber}`,
+            );
+          }
+          return position;
+        });
+      const leftPositions = feederPositions(left);
+      const rightPositions = feederPositions(right);
+      const leftLast =
+        leftPositions.length === 0 ? 0 : Math.max(...leftPositions);
+      const rightLast =
+        rightPositions.length === 0 ? 0 : Math.max(...rightPositions);
+      const leftFirst =
+        leftPositions.length === 0 ? 0 : Math.min(...leftPositions);
+      const rightFirst =
+        rightPositions.length === 0 ? 0 : Math.min(...rightPositions);
+
+      return leftLast - rightLast || leftFirst - rightFirst || left - right;
+    });
+
+    for (const gameNumber of games) {
+      order.push(gameNumber);
+      queuePosition.set(gameNumber, order.length);
+    }
+  }
+
+  return order;
+}
+
 /**
  * Ensure bracket templates are seeded for a given bracket size.
  * This is idempotent - it will not insert duplicates.
@@ -57,14 +225,16 @@ export async function ensureBracketTemplatesSeeded(
   for (const t of templates) {
     await db.run(
       `INSERT INTO bracket_templates (
-        bracket_size, game_number, round_name, round_number, bracket_side,
+        bracket_size, game_number, play_order, round_name, round_number, bracket_side,
         team1_source, team2_source, winner_advances_to, loser_advances_to,
         winner_slot, loser_slot, is_championship, is_grand_final, is_reset_game
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT (bracket_size, game_number) DO NOTHING`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (bracket_size, game_number) DO UPDATE
+      SET play_order = EXCLUDED.play_order`,
       [
         t.bracket_size,
         t.game_number,
+        t.play_order,
         t.round_name,
         t.round_number,
         t.bracket_side,
@@ -78,6 +248,64 @@ export async function ensureBracketTemplatesSeeded(
         t.is_grand_final,
         t.is_reset_game,
       ],
+    );
+  }
+}
+
+/** Fill canonical ranks on bracket games created before play_order existed. */
+export async function backfillBracketGamePlayOrders(
+  db: Database,
+): Promise<void> {
+  const games = await db.all<{
+    id: number;
+    bracket_size: number;
+    game_number: number;
+  }>(
+    `SELECT bg.id, b.bracket_size, bg.game_number
+     FROM bracket_games bg
+     JOIN brackets b ON b.id = bg.bracket_id
+     WHERE bg.play_order IS NULL`,
+  );
+
+  const rankMaps = new Map<number, Map<number, number>>();
+  const updates: Array<{ id: number; playOrder: number }> = [];
+  let skippedCount = 0;
+
+  for (const game of games) {
+    if (!supportedBracketSizes.has(game.bracket_size)) {
+      skippedCount++;
+      continue;
+    }
+
+    let ranks = rankMaps.get(game.bracket_size);
+    if (!ranks) {
+      ranks = getPlayOrderMap(game.bracket_size);
+      rankMaps.set(game.bracket_size, ranks);
+    }
+    const playOrder = ranks.get(game.game_number);
+    if (playOrder === undefined) {
+      skippedCount++;
+      continue;
+    }
+    updates.push({ id: game.id, playOrder });
+  }
+
+  if (updates.length > 0) {
+    await db.transaction(async (tx) => {
+      for (const update of updates) {
+        await tx.run(
+          `UPDATE bracket_games
+           SET play_order = ?
+           WHERE id = ? AND play_order IS NULL`,
+          [update.playOrder, update.id],
+        );
+      }
+    });
+  }
+
+  if (skippedCount > 0) {
+    console.warn(
+      `Skipped play-order backfill for ${skippedCount} unsupported or custom bracket game(s)`,
     );
   }
 }
@@ -102,7 +330,7 @@ function crossBracketPosition(position: number, gameCount: number): number {
 // Grand Final (G6): winner of G3 vs winner of G5
 // Reset (G7): if loser of G6 came from winners bracket
 
-function generate4TeamDE(): BracketTemplate[] {
+function generate4TeamDE(): BracketTemplateDefinition[] {
   return [
     // Winners R1
     {
@@ -229,8 +457,8 @@ function generate4TeamDE(): BracketTemplate[] {
 // 8-TEAM DOUBLE ELIMINATION
 // =============================================================================
 
-function generate8TeamDE(): BracketTemplate[] {
-  const templates: BracketTemplate[] = [];
+function generate8TeamDE(): BracketTemplateDefinition[] {
+  const templates: BracketTemplateDefinition[] = [];
   const winnersR2GameCount = 2;
   const redemptionR2Start = 9;
 
@@ -485,8 +713,8 @@ function generate8TeamDE(): BracketTemplate[] {
 // 16-TEAM DOUBLE ELIMINATION
 // =============================================================================
 
-function generate16TeamDE(): BracketTemplate[] {
-  const templates: BracketTemplate[] = [];
+function generate16TeamDE(): BracketTemplateDefinition[] {
+  const templates: BracketTemplateDefinition[] = [];
 
   // Standard 16-team seeding order: 1v16, 8v9, 4v13, 5v12, 2v15, 7v10, 3v14, 6v11
   const seedPairs = [
@@ -754,8 +982,8 @@ function generate16TeamDE(): BracketTemplate[] {
 // 32-TEAM DOUBLE ELIMINATION
 // =============================================================================
 
-function generate32TeamDE(): BracketTemplate[] {
-  const templates: BracketTemplate[] = [];
+function generate32TeamDE(): BracketTemplateDefinition[] {
+  const templates: BracketTemplateDefinition[] = [];
 
   // 32-team seeding (standard format)
   const seedPairs = [
@@ -1094,8 +1322,8 @@ function generate32TeamDE(): BracketTemplate[] {
 // 64-TEAM DOUBLE ELIMINATION
 // =============================================================================
 
-function generate64TeamDE(): BracketTemplate[] {
-  const templates: BracketTemplate[] = [];
+function generate64TeamDE(): BracketTemplateDefinition[] {
+  const templates: BracketTemplateDefinition[] = [];
 
   // 64-team seeding (standard format) - all 64 seeds
   const seedPairs: [number, number][] = [];

@@ -112,6 +112,13 @@ test.describe('Admin queue management', () => {
       insertQueueItem.run(eventId, teamId, round, index + 1);
     });
 
+    // A prior round outside the configured queue range supplies recent-play
+    // history without being materialized as another queue row.
+    db.prepare(
+      `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
+       VALUES (?, 99, 42, CURRENT_TIMESTAMP)`,
+    ).run(teamAId);
+
     const usr = db
       .prepare(
         `INSERT INTO users (google_id, email, name, is_admin)
@@ -189,6 +196,57 @@ test.describe('Admin queue management', () => {
     await context.close();
   });
 
+  test('bracket population modal describes the event-wide safe reset', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    await setAdminCookie(context);
+    const page = await context.newPage();
+    await bypassQueueSyncLimit(page);
+
+    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.getByRole('button', { name: 'Populate from Brackets' }).click();
+
+    await expect(
+      page.getByRole('heading', { name: 'Populate Queue from Brackets' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Seeding and double-seeding items remain in the queue/),
+    ).toBeVisible();
+    await expect(
+      page.getByText('No brackets found for this event.'),
+    ).toBeVisible();
+
+    await context.close();
+  });
+
+  test('recently played team shows a warning and call confirmation', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    await setAdminCookie(context);
+    const page = await context.newPage();
+    await bypassQueueSyncLimit(page);
+
+    await page.goto(`/admin/events/${eventId}?view=queue`);
+    const row = seedingRow(page, TEAM_A_NAME, 1);
+    await expect(row.locator('.queue-rest-chip--resting')).toContainText(
+      `#${TEAM_A_NUMBER}`,
+      { timeout: 15_000 },
+    );
+    await expect(row).toHaveClass(/queue-row--rest-warning/);
+
+    await row.getByRole('button', { name: 'Called' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Call Team Anyway?' }),
+    ).toBeVisible();
+    await expect(page.getByText(/finished another match/)).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(row.locator('.queue-status-queued')).toBeVisible();
+
+    await context.close();
+  });
+
   test('admin advances flow to Called and steps back to Queued', async ({
     browser,
   }) => {
@@ -204,6 +262,7 @@ test.describe('Admin queue management', () => {
 
     const row = seedingRow(page, TEAM_A_NAME, 1);
     await row.getByRole('button', { name: 'Called' }).click();
+    await page.getByRole('button', { name: 'Call Anyway' }).click();
 
     await expect(
       row.locator('.queue-status-badge.queue-status-called'),
@@ -231,11 +290,11 @@ test.describe('Admin queue management', () => {
       timeout: 15_000,
     });
 
-    // Table sorts by seeding round first, then queue fields — first visible row is Round 1 (not min queue_position).
+    // The table defaults to canonical queue-position order.
     const rowA1 = seedingRow(page, TEAM_A_NAME, 1);
     await expect(rowA1.locator('td.queue-position')).toHaveText('1');
 
-    // Move down swaps this item with the next row in API order (Team A Round 2): positions become A R2 → 1, A R1 → 2.
+    // Move down swaps this item with the next queue row (Team A Round 2).
     await rowA1.locator('button.reorder-btn[title="Move down"]').click();
 
     await expect(

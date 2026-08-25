@@ -1100,11 +1100,40 @@ describe('Brackets CRUD & Game Management', () => {
         bracket_side: 'winners',
         team1_source: 'seed:1',
         team2_source: 'seed:4',
+        play_order: 42,
       });
       expect(res.status).toBe(201);
-      const body = res.json as { bracket_size: number; game_number: number };
+      const body = res.json as {
+        bracket_size: number;
+        game_number: number;
+        play_order: number;
+      };
       expect(body.bracket_size).toBe(4);
       expect(body.game_number).toBe(1);
+      expect(body.play_order).toBe(42);
+
+      const getRes = await http.get(
+        `${baseUrl}/brackets/templates?bracket_size=4`,
+      );
+      expect(getRes.status).toBe(200);
+      expect((getRes.json as Array<{ play_order: number }>)[0].play_order).toBe(
+        42,
+      );
+    });
+
+    it('keeps play_order optional for custom templates', async () => {
+      const res = await http.post(`${baseUrl}/brackets/templates`, {
+        bracket_size: 4,
+        game_number: 1,
+        round_name: 'Semi',
+        round_number: 1,
+        bracket_side: 'winners',
+        team1_source: 'seed:1',
+        team2_source: 'seed:4',
+      });
+
+      expect(res.status).toBe(201);
+      expect((res.json as { play_order: number | null }).play_order).toBeNull();
     });
 
     it('returns 400 when required fields missing', async () => {

@@ -46,6 +46,7 @@ export const bracketsSchema: SchemaModule = {
           id SERIAL PRIMARY KEY,
           bracket_id INTEGER NOT NULL REFERENCES brackets(id) ON DELETE CASCADE,
           game_number INTEGER NOT NULL,
+          play_order INTEGER,
           round_name TEXT,
           round_number INTEGER,
           bracket_side TEXT
@@ -78,6 +79,7 @@ export const bracketsSchema: SchemaModule = {
           id SERIAL PRIMARY KEY,
           bracket_size INTEGER NOT NULL,
           game_number INTEGER NOT NULL,
+          play_order INTEGER,
           round_name TEXT NOT NULL,
           round_number INTEGER NOT NULL,
           bracket_side TEXT NOT NULL,
@@ -93,6 +95,18 @@ export const bracketsSchema: SchemaModule = {
           UNIQUE(bracket_size, game_number)
         )
       `,
+    ],
+    columns: [
+      {
+        table: 'bracket_templates',
+        column: 'play_order',
+        definition: 'INTEGER',
+      },
+      {
+        table: 'bracket_games',
+        column: 'play_order',
+        definition: 'INTEGER',
+      },
     ],
     triggers: [
       `
@@ -121,6 +135,7 @@ export const bracketsSchema: SchemaModule = {
       `CREATE INDEX IF NOT EXISTS idx_brackets_event ON brackets(event_id)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_entries_bracket ON bracket_entries(bracket_id)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_bracket ON bracket_games(bracket_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_bracket_games_play_order ON bracket_games(bracket_id, play_order)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_status ON bracket_games(bracket_id, status)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_team1 ON bracket_games(team1_id)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_team2 ON bracket_games(team2_id)`,
@@ -172,6 +187,7 @@ export const bracketsSchema: SchemaModule = {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           bracket_id INTEGER NOT NULL REFERENCES brackets(id) ON DELETE CASCADE,
           game_number INTEGER NOT NULL,
+          play_order INTEGER,
           round_name TEXT,
           round_number INTEGER,
           bracket_side TEXT
@@ -204,6 +220,7 @@ export const bracketsSchema: SchemaModule = {
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           bracket_size INTEGER NOT NULL,
           game_number INTEGER NOT NULL,
+          play_order INTEGER,
           round_name TEXT NOT NULL,
           round_number INTEGER NOT NULL,
           bracket_side TEXT NOT NULL,
@@ -219,6 +236,18 @@ export const bracketsSchema: SchemaModule = {
           UNIQUE(bracket_size, game_number)
         )
       `,
+    ],
+    columns: [
+      {
+        table: 'bracket_templates',
+        column: 'play_order',
+        definition: 'INTEGER',
+      },
+      {
+        table: 'bracket_games',
+        column: 'play_order',
+        definition: 'INTEGER',
+      },
     ],
     triggers: [
       `
@@ -248,6 +277,7 @@ export const bracketsSchema: SchemaModule = {
       `CREATE INDEX IF NOT EXISTS idx_brackets_event ON brackets(event_id)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_entries_bracket ON bracket_entries(bracket_id)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_bracket ON bracket_games(bracket_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_bracket_games_play_order ON bracket_games(bracket_id, play_order)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_status ON bracket_games(bracket_id, status)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_team1 ON bracket_games(team1_id)`,
       `CREATE INDEX IF NOT EXISTS idx_bracket_games_team2 ON bracket_games(team2_id)`,
