@@ -36,6 +36,41 @@ describe('Schema Constraints', () => {
     });
   });
 
+  describe('event rest configuration schema', () => {
+    it('creates min_rest_minutes with a default and non-negative check', async () => {
+      const column = await testDb.db.get<{
+        name: string;
+        notnull: number;
+        dflt_value: string;
+      }>(
+        `SELECT name, "notnull", dflt_value
+         FROM pragma_table_info('events')
+         WHERE name = 'min_rest_minutes'`,
+      );
+
+      expect(column).toMatchObject({
+        name: 'min_rest_minutes',
+        notnull: 1,
+        dflt_value: '10',
+      });
+
+      const event = await testDb.db.run(
+        `INSERT INTO events (name) VALUES ('Default Rest Event')`,
+      );
+      const row = await testDb.db.get<{ min_rest_minutes: number }>(
+        'SELECT min_rest_minutes FROM events WHERE id = ?',
+        [event.lastID],
+      );
+      expect(row?.min_rest_minutes).toBe(10);
+
+      await expect(
+        testDb.db.run(
+          `INSERT INTO events (name, min_rest_minutes) VALUES ('Bad Rest Event', -1)`,
+        ),
+      ).rejects.toThrow(/CHECK constraint failed/);
+    });
+  });
+
   describe('teams table', () => {
     it('should enforce UNIQUE(event_id, team_number)', async () => {
       // Create an event first

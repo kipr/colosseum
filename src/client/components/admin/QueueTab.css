@@ -29,6 +29,11 @@
   background-color: hsl(142 44% 93%);
 }
 
+.queue-row--rest-warning {
+  background-color: hsl(38 76% 94%);
+  box-shadow: inset 4px 0 0 hsl(38 88% 48%);
+}
+
 [data-theme='dark'] .queue-row--called {
   background-color: hsl(0 32% 21%);
 }
@@ -43,6 +48,11 @@
 
 [data-theme='dark'] .queue-row--scored {
   background-color: hsl(142 30% 20%);
+}
+
+[data-theme='dark'] .queue-row--rest-warning {
+  background-color: hsl(38 34% 20%);
+  box-shadow: inset 4px 0 0 hsl(38 82% 58%);
 }
 
 /* Controls section */
@@ -256,6 +266,49 @@
 .queue-game-teams {
   font-size: 0.875rem;
   color: var(--secondary-color);
+}
+
+.queue-team-numbers {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.queue-rest-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.queue-rest-chip--resting {
+  background-color: hsl(38 88% 82%);
+  color: hsl(30 76% 26%);
+  border: 1px solid hsl(38 74% 62%);
+}
+
+.queue-rest-chip--busy {
+  background-color: hsl(0 82% 78%);
+  color: hsl(0 72% 26%);
+  border: 1px solid hsl(0 70% 56%);
+  text-transform: uppercase;
+}
+
+[data-theme='dark'] .queue-rest-chip--resting {
+  background-color: hsl(38 48% 30%);
+  color: hsl(38 92% 86%);
+  border-color: hsl(38 62% 48%);
+}
+
+[data-theme='dark'] .queue-rest-chip--busy {
+  background-color: hsl(0 48% 32%);
+  color: hsl(0 90% 88%);
+  border-color: hsl(0 64% 54%);
 }
 
 .queue-called-at {

@@ -473,12 +473,14 @@ describe('Events Routes', () => {
         name: string;
         status: string;
         seeding_rounds: number;
+        min_rest_minutes: number;
         score_accept_mode: string;
       };
       expect(event.id).toBeGreaterThan(0);
       expect(event.name).toBe('New Event');
       expect(event.status).toBe('setup'); // default status
       expect(event.seeding_rounds).toBe(3); // default seeding_rounds
+      expect(event.min_rest_minutes).toBe(10);
       expect(event.score_accept_mode).toBe('manual'); // default score_accept_mode
     });
 
@@ -490,6 +492,7 @@ describe('Events Routes', () => {
         location: 'Test Location',
         status: 'active',
         seeding_rounds: 5,
+        min_rest_minutes: 15,
         score_accept_mode: 'auto_accept_seeding',
       });
 
@@ -501,6 +504,7 @@ describe('Events Routes', () => {
         location: string;
         status: string;
         seeding_rounds: number;
+        min_rest_minutes: number;
         score_accept_mode: string;
       };
       expect(event.name).toBe('Custom Event');
@@ -509,6 +513,7 @@ describe('Events Routes', () => {
       expect(event.location).toBe('Test Location');
       expect(event.status).toBe('active');
       expect(event.seeding_rounds).toBe(5);
+      expect(event.min_rest_minutes).toBe(15);
       expect(event.score_accept_mode).toBe('auto_accept_seeding');
     });
 
@@ -520,6 +525,18 @@ describe('Events Routes', () => {
       expect(res.status).toBe(201);
       const event = res.json as { created_by: number };
       expect(event.created_by).toBe(userId);
+    });
+
+    it('rejects an invalid min_rest_minutes value', async () => {
+      const res = await http.post(`${server.baseUrl}/events`, {
+        name: 'Invalid Rest Event',
+        min_rest_minutes: -1,
+      });
+
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain(
+        'non-negative integer',
+      );
     });
   });
 
@@ -584,6 +601,32 @@ describe('Events Routes', () => {
       expect(res.status).toBe(200);
       const result = res.json as { score_accept_mode: string };
       expect(result.score_accept_mode).toBe('auto_accept_all');
+    });
+
+    it('updates min_rest_minutes, including disabling recent-play warnings', async () => {
+      const event = await seedEvent(testDb.db);
+      const res = await http.patch(`${server.baseUrl}/events/${event.id}`, {
+        min_rest_minutes: 0,
+      });
+
+      expect(res.status).toBe(200);
+      expect((res.json as { min_rest_minutes: number }).min_rest_minutes).toBe(
+        0,
+      );
+    });
+
+    it('rejects invalid min_rest_minutes values', async () => {
+      const event = await seedEvent(testDb.db);
+
+      for (const value of [-1, 1.5, '10', null]) {
+        const res = await http.patch(`${server.baseUrl}/events/${event.id}`, {
+          min_rest_minutes: value,
+        });
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'non-negative integer',
+        );
+      }
     });
 
     it('updates multiple fields', async () => {

@@ -10,6 +10,12 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatCalledAt } from '../../utils/dateUtils';
+import {
+  describeRestDuration,
+  formatRestDuration,
+  getQueueRestWarnings,
+  type TeamRestWarning,
+} from '../../utils/queueRest';
 import '../Modal.css';
 import './QueueTab.css';
 
@@ -31,16 +37,24 @@ interface QueueItem {
   round_name: string | null;
   bracket_side: string | null;
   bracket_name: string | null;
+  team1_id: number | null;
+  team2_id: number | null;
   team1_number: number | null;
   team1_name: string | null;
   team1_display: string | null;
   team2_number: number | null;
   team2_name: string | null;
   team2_display: string | null;
+  team1_last_played_at: string | null;
+  team2_last_played_at: string | null;
+  team1_busy: boolean;
+  team2_busy: boolean;
   // Seeding team info
   seeding_team_number: number | null;
   seeding_team_name: string | null;
   seeding_team_display: string | null;
+  seeding_team_last_played_at: string | null;
+  seeding_team_busy: boolean;
   // Double-seeding match info
   double_seeding_round: number | null;
   double_seeding_match_number: number | null;
@@ -52,6 +66,10 @@ interface QueueItem {
   double_seeding_team2_number: number | null;
   double_seeding_team2_name: string | null;
   double_seeding_team2_display: string | null;
+  double_seeding_team1_last_played_at: string | null;
+  double_seeding_team2_last_played_at: string | null;
+  double_seeding_team1_busy: boolean;
+  double_seeding_team2_busy: boolean;
 }
 
 interface Bracket {
@@ -106,6 +124,7 @@ const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
 // The server answers unchanged polls with a 304 from a version ETag, so a
 // 10s cadence keeps every admin view live at negligible cost.
 const QUEUE_POLL_INTERVAL_MS = 10_000;
+const REST_CLOCK_INTERVAL_MS = 30_000;
 
 const TYPE_BADGE_LABELS: Record<QueueType, string> = {
   seeding: 'seeding',
@@ -145,6 +164,7 @@ export default function QueueTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
   const seedingRounds = selectedEvent?.seeding_rounds ?? 3;
+  const minRestMinutes = selectedEvent?.min_rest_minutes ?? 10;
   // Queue state
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [loading, setLoading] = useState(false);
@@ -158,6 +178,7 @@ export default function QueueTab() {
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
   const [sortField, setSortField] = useState<SortField>('gameNumber');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   // Populate from bracket state
   const [showPopulateModal, setShowPopulateModal] = useState(false);
@@ -251,6 +272,16 @@ export default function QueueTab() {
     }, QUEUE_POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [fetchQueue]);
+
+  // Rest warnings depend on wall-clock time, not queue mutations. Keep their
+  // age live even when the versioned queue poll correctly returns 304.
+  useEffect(() => {
+    const interval = window.setInterval(
+      () => setNowMs(Date.now()),
+      REST_CLOCK_INTERVAL_MS,
+    );
+    return () => window.clearInterval(interval);
+  }, []);
 
   // Fetch brackets for populate modal
   const fetchBrackets = useCallback(async () => {
@@ -530,6 +561,26 @@ export default function QueueTab() {
     }
   };
 
+  const getVisibleRestWarnings = (item: QueueItem, atMs = nowMs) =>
+    item.status === 'queued'
+      ? getQueueRestWarnings(item, minRestMinutes, atMs)
+      : [];
+
+  const warningTeamLabel = (warning: TeamRestWarning) =>
+    warning.teamNumber == null ? 'Team' : `Team #${warning.teamNumber}`;
+
+  const warningDescription = (warning: TeamRestWarning) => {
+    if (warning.kind === 'busy') {
+      return `${warningTeamLabel(warning)} is currently active in another queue item.`;
+    }
+
+    const elapsed = describeRestDuration(warning.elapsedMinutes ?? 0);
+    const completedAt = warning.lastPlayedAt
+      ? ` (completed ${formatCalledAt(warning.lastPlayedAt)})`
+      : '';
+    return `${warningTeamLabel(warning)} finished another match ${elapsed}${completedAt}.`;
+  };
+
   /** Move one step forward or backward in queue flow (queued → called → … → scored). */
   const handleFlowStep = async (
     item: QueueItem,
@@ -541,6 +592,23 @@ export default function QueueTab() {
     const nextIdx = idx + delta;
     if (nextIdx < 0 || nextIdx >= STATUS_ORDER.length) return;
     const targetStatus = STATUS_ORDER[nextIdx]!;
+
+    if (
+      direction === 'next' &&
+      item.status === 'queued' &&
+      targetStatus === 'called'
+    ) {
+      const warnings = getVisibleRestWarnings(item, Date.now());
+      if (warnings.length > 0) {
+        const confirmed = await confirm({
+          title: 'Call Team Anyway?',
+          message: `${warnings.map(warningDescription).join(' ')} Call anyway?`,
+          confirmText: 'Call Anyway',
+          confirmStyle: 'warning',
+        });
+        if (!confirmed) return;
+      }
+    }
 
     try {
       let response: Response;
@@ -589,6 +657,7 @@ export default function QueueTab() {
             : q,
         ),
       );
+      await fetchQueue(true);
     } catch (error) {
       console.error('Error updating status:', error);
       toast.error(
@@ -598,23 +667,84 @@ export default function QueueTab() {
   };
 
   // Render item details
+  const renderTeamWithWarning = (
+    teamId: number | null,
+    teamNumber: number | null,
+    warnings: TeamRestWarning[],
+  ) => {
+    const warning =
+      teamId == null
+        ? undefined
+        : warnings.find((candidate) => candidate.teamId === teamId);
+    const plainLabel = teamNumber ?? '-';
+
+    if (!warning) return <span>{plainLabel}</span>;
+
+    const chipLabel =
+      warning.kind === 'busy'
+        ? `#${teamNumber ?? '?'} · busy`
+        : `#${teamNumber ?? '?'} · ${formatRestDuration(warning.elapsedMinutes ?? 0)}`;
+    const description = warningDescription(warning);
+
+    return (
+      <span
+        className={`queue-rest-chip queue-rest-chip--${warning.kind}`}
+        title={description}
+        aria-label={description}
+      >
+        {chipLabel}
+      </span>
+    );
+  };
+
   const renderTeamNumber = (item: QueueItem) => {
+    const warnings = getVisibleRestWarnings(item);
+
     if (item.queue_type === 'seeding') {
-      return item.seeding_team_number ?? '-';
+      return renderTeamWithWarning(
+        item.seeding_team_id,
+        item.seeding_team_number,
+        warnings,
+      );
     }
 
     if (item.queue_type === 'double_seeding') {
-      const team1Number = item.double_seeding_team1_number ?? '-';
       if (item.double_seeding_team2_id == null) {
-        return `${team1Number} (solo)`;
+        return (
+          <span className="queue-team-numbers">
+            {renderTeamWithWarning(
+              item.double_seeding_team1_id,
+              item.double_seeding_team1_number,
+              warnings,
+            )}{' '}
+            <span>(solo)</span>
+          </span>
+        );
       }
-      const team2Number = item.double_seeding_team2_number ?? '-';
-      return `${team1Number} vs ${team2Number}`;
+      return (
+        <span className="queue-team-numbers">
+          {renderTeamWithWarning(
+            item.double_seeding_team1_id,
+            item.double_seeding_team1_number,
+            warnings,
+          )}
+          <span>vs</span>
+          {renderTeamWithWarning(
+            item.double_seeding_team2_id,
+            item.double_seeding_team2_number,
+            warnings,
+          )}
+        </span>
+      );
     }
 
-    const team1Number = item.team1_number ?? '-';
-    const team2Number = item.team2_number ?? '-';
-    return `${team1Number} vs ${team2Number}`;
+    return (
+      <span className="queue-team-numbers">
+        {renderTeamWithWarning(item.team1_id, item.team1_number, warnings)}
+        <span>vs</span>
+        {renderTeamWithWarning(item.team2_id, item.team2_number, warnings)}
+      </span>
+    );
   };
 
   const renderItemDetails = (item: QueueItem) => {
@@ -1010,9 +1140,12 @@ export default function QueueTab() {
             onSort={(id) => handleSort(id as SortField)}
             headerLabelVariant="none"
             sortButtonClassName="queue-sort-button unified-table-sort-btn"
-            rowClassName={(item) =>
-              `queue-row ${getRowStatusClass(item.status)}`
-            }
+            rowClassName={(item) => {
+              const hasRestWarning = getVisibleRestWarnings(item).length > 0;
+              return `queue-row ${getRowStatusClass(item.status)}${
+                hasRestWarning ? ' queue-row--rest-warning' : ''
+              }`;
+            }}
             highlightActiveColumn={false}
           />
         )}

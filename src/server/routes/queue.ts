@@ -14,6 +14,7 @@ import {
   type BracketQueueOrder,
   mergeBracketQueueItems,
 } from '../services/bracketQueueOrder';
+import { getTeamRest } from '../services/teamRest';
 
 const router = express.Router();
 
@@ -57,6 +58,7 @@ router.get(
       let query = `
       SELECT gq.*,
              bg.game_number, bg.round_name, bg.bracket_side,
+             bg.team1_id, bg.team2_id,
              b.name as bracket_name,
              t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
              t2.team_number as team2_number, t2.team_name as team2_name, t2.display_name as team2_display,
@@ -76,7 +78,7 @@ router.get(
       LEFT JOIN teams dst2 ON dsm.team2_id = dst2.id
       WHERE gq.event_id = ?
     `;
-      const params: (string | number)[] = [eventId];
+      const params: (string | number)[] = [eventIdNum];
 
       const statusParam = req.query.status;
       if (statusParam) {
@@ -107,7 +109,48 @@ router.get(
       query += ' ORDER BY gq.queue_position ASC';
 
       const queue = await db.all(query, params);
-      res.json(queue);
+      const rest = await getTeamRest(db, eventIdNum);
+
+      const enrichedQueue = queue.map((item) => ({
+        ...item,
+        team1_last_played_at:
+          item.team1_id == null
+            ? null
+            : (rest.lastPlayedAt.get(Number(item.team1_id)) ?? null),
+        team2_last_played_at:
+          item.team2_id == null
+            ? null
+            : (rest.lastPlayedAt.get(Number(item.team2_id)) ?? null),
+        team1_busy:
+          item.team1_id != null && rest.busy.has(Number(item.team1_id)),
+        team2_busy:
+          item.team2_id != null && rest.busy.has(Number(item.team2_id)),
+        seeding_team_last_played_at:
+          item.seeding_team_id == null
+            ? null
+            : (rest.lastPlayedAt.get(Number(item.seeding_team_id)) ?? null),
+        seeding_team_busy:
+          item.seeding_team_id != null &&
+          rest.busy.has(Number(item.seeding_team_id)),
+        double_seeding_team1_last_played_at:
+          item.double_seeding_team1_id == null
+            ? null
+            : (rest.lastPlayedAt.get(Number(item.double_seeding_team1_id)) ??
+              null),
+        double_seeding_team2_last_played_at:
+          item.double_seeding_team2_id == null
+            ? null
+            : (rest.lastPlayedAt.get(Number(item.double_seeding_team2_id)) ??
+              null),
+        double_seeding_team1_busy:
+          item.double_seeding_team1_id != null &&
+          rest.busy.has(Number(item.double_seeding_team1_id)),
+        double_seeding_team2_busy:
+          item.double_seeding_team2_id != null &&
+          rest.busy.has(Number(item.double_seeding_team2_id)),
+      }));
+
+      res.json(enrichedQueue);
     } catch (error) {
       console.error('Error fetching game queue:', error);
       res.status(500).json({ error: 'Failed to fetch game queue' });

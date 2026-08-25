@@ -112,6 +112,13 @@ test.describe('Admin queue management', () => {
       insertQueueItem.run(eventId, teamId, round, index + 1);
     });
 
+    // A prior round outside the configured queue range supplies recent-play
+    // history without being materialized as another queue row.
+    db.prepare(
+      `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
+       VALUES (?, 99, 42, CURRENT_TIMESTAMP)`,
+    ).run(teamAId);
+
     const usr = db
       .prepare(
         `INSERT INTO users (google_id, email, name, is_admin)
@@ -213,6 +220,33 @@ test.describe('Admin queue management', () => {
     await context.close();
   });
 
+  test('recently played team shows a warning and call confirmation', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    await setAdminCookie(context);
+    const page = await context.newPage();
+    await bypassQueueSyncLimit(page);
+
+    await page.goto(`/admin/events/${eventId}?view=queue`);
+    const row = seedingRow(page, TEAM_A_NAME, 1);
+    await expect(row.locator('.queue-rest-chip--resting')).toContainText(
+      `#${TEAM_A_NUMBER}`,
+      { timeout: 15_000 },
+    );
+    await expect(row).toHaveClass(/queue-row--rest-warning/);
+
+    await row.getByRole('button', { name: 'Called' }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Call Team Anyway?' }),
+    ).toBeVisible();
+    await expect(page.getByText(/finished another match/)).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+    await expect(row.locator('.queue-status-queued')).toBeVisible();
+
+    await context.close();
+  });
+
   test('admin advances flow to Called and steps back to Queued', async ({
     browser,
   }) => {
@@ -228,6 +262,7 @@ test.describe('Admin queue management', () => {
 
     const row = seedingRow(page, TEAM_A_NAME, 1);
     await row.getByRole('button', { name: 'Called' }).click();
+    await page.getByRole('button', { name: 'Call Anyway' }).click();
 
     await expect(
       row.locator('.queue-status-badge.queue-status-called'),
