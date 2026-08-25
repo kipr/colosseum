@@ -18,6 +18,8 @@ const ADMIN_EMAIL = 'e2e-queue-mgmt-admin@kipr.org';
 const ADMIN_NAME = 'E2E Queue Mgmt Admin';
 
 let eventId: number;
+let teamAId: number;
+let teamBId: number;
 let adminUserId: number;
 let sessionId: string;
 
@@ -84,7 +86,7 @@ test.describe('Admin queue management', () => {
          VALUES (?, ?, ?, 'checked_in')`,
       )
       .run(eventId, TEAM_A_NUMBER, TEAM_A_NAME);
-    const teamAId = Number(tmA.lastInsertRowid);
+    teamAId = Number(tmA.lastInsertRowid);
 
     const tmB = db
       .prepare(
@@ -92,7 +94,7 @@ test.describe('Admin queue management', () => {
          VALUES (?, ?, ?, 'checked_in')`,
       )
       .run(eventId, TEAM_B_NUMBER, TEAM_B_NAME);
-    const teamBId = Number(tmB.lastInsertRowid);
+    teamBId = Number(tmB.lastInsertRowid);
 
     // The queue is materialized as every team x configured seeding round.
     // Keep A R1 and A R2 adjacent in queue order for the reorder assertions.
@@ -277,9 +279,7 @@ test.describe('Admin queue management', () => {
     await context.close();
   });
 
-  test('admin reorders with move down on the first queue row', async ({
-    browser,
-  }) => {
+  test('queue table omits the order controls', async ({ browser }) => {
     const context = await browser.newContext();
     await setAdminCookie(context);
     const page = await context.newPage();
@@ -290,19 +290,10 @@ test.describe('Admin queue management', () => {
       timeout: 15_000,
     });
 
-    // The table defaults to canonical queue-position order.
-    const rowA1 = seedingRow(page, TEAM_A_NAME, 1);
-    await expect(rowA1.locator('td.queue-position')).toHaveText('1');
-
-    // Move down swaps this item with the next queue row (Team A Round 2).
-    await rowA1.locator('button.reorder-btn[title="Move down"]').click();
-
     await expect(
-      seedingRow(page, TEAM_A_NAME, 2).locator('td.queue-position'),
-    ).toHaveText('1', { timeout: 10_000 });
-    await expect(
-      seedingRow(page, TEAM_A_NAME, 1).locator('td.queue-position'),
-    ).toHaveText('2');
+      page.getByRole('columnheader', { name: 'Order', exact: true }),
+    ).toHaveCount(0);
+    await expect(page.locator('button.reorder-btn')).toHaveCount(0);
 
     await context.close();
   });
@@ -361,6 +352,165 @@ test.describe('Admin queue management', () => {
     await expect(
       page.locator('table tbody tr.queue-row').first(),
     ).toContainText('Called');
+
+    await context.close();
+  });
+
+  test('paired matches track each team presence and retain the single-team flow', async ({
+    browser,
+  }) => {
+    const db = new SQLite(DB_PATH);
+    db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 5000');
+
+    const bracket = db
+      .prepare(
+        `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status)
+         VALUES (?, 'E2E Presence Bracket', 2, 2, 'in_progress')`,
+      )
+      .run(eventId);
+    const game = db
+      .prepare(
+        `INSERT INTO bracket_games
+           (bracket_id, game_number, play_order, round_name, round_number,
+            bracket_side, team1_id, team2_id, status)
+         VALUES (?, 91, 91, 'Presence Final', 1, 'finals', ?, ?, 'ready')`,
+      )
+      .run(Number(bracket.lastInsertRowid), teamAId, teamBId);
+    db.prepare(
+      `INSERT INTO game_queue
+         (event_id, bracket_game_id, queue_type, queue_position, status,
+          called_at)
+       VALUES (?, ?, 'bracket', 20, 'called', CURRENT_TIMESTAMP)`,
+    ).run(eventId, Number(game.lastInsertRowid));
+
+    const pairedDoubleSeeding = db
+      .prepare(
+        `INSERT INTO double_seeding_matches
+           (event_id, round_number, match_number, team1_id, team2_id, status)
+         VALUES (?, 90, 1, ?, ?, 'ready')`,
+      )
+      .run(eventId, teamAId, teamBId);
+    db.prepare(
+      `INSERT INTO game_queue
+         (event_id, double_seeding_match_id, queue_type, queue_position,
+          status, called_at)
+       VALUES (?, ?, 'double_seeding', 21, 'called', CURRENT_TIMESTAMP)`,
+    ).run(eventId, Number(pairedDoubleSeeding.lastInsertRowid));
+
+    const soloDoubleSeeding = db
+      .prepare(
+        `INSERT INTO double_seeding_matches
+           (event_id, round_number, match_number, team1_id, team2_id, status)
+         VALUES (?, 91, 1, ?, NULL, 'ready')`,
+      )
+      .run(eventId, teamAId);
+    db.prepare(
+      `INSERT INTO game_queue
+         (event_id, double_seeding_match_id, queue_type, queue_position,
+          status, called_at)
+       VALUES (?, ?, 'double_seeding', 22, 'called', CURRENT_TIMESTAMP)`,
+    ).run(eventId, Number(soloDoubleSeeding.lastInsertRowid));
+    db.close();
+
+    const context = await browser.newContext({
+      viewport: { width: 600, height: 900 },
+    });
+    await setAdminCookie(context);
+    const page = await context.newPage();
+    await bypassQueueSyncLimit(page);
+    await page.goto(`/admin/events/${eventId}?view=queue`);
+
+    const bracketRow = page
+      .locator('tr.queue-row')
+      .filter({ hasText: 'E2E Presence Bracket' });
+    await expect(bracketRow).toBeVisible({ timeout: 15_000 });
+    await expect(
+      bracketRow.getByRole('button', {
+        name: `Mark #${TEAM_A_NUMBER} present`,
+      }),
+    ).toBeVisible();
+    await expect(
+      bracketRow.getByRole('button', {
+        name: `Mark #${TEAM_B_NUMBER} present`,
+      }),
+    ).toBeVisible();
+    await expect(bracketRow.getByText('0/2 present')).toBeVisible();
+    await expect(
+      bracketRow.getByText(
+        `Waiting for #${TEAM_A_NUMBER} and #${TEAM_B_NUMBER}`,
+      ),
+    ).toBeVisible();
+    await expect(
+      bracketRow.getByRole('button', { name: 'Arrived' }),
+    ).toHaveCount(0);
+
+    await bracketRow
+      .getByRole('button', { name: `Mark #${TEAM_A_NUMBER} present` })
+      .click();
+    await expect(bracketRow.getByText('1/2 present')).toBeVisible();
+    await expect(
+      bracketRow.getByText(`Waiting for #${TEAM_B_NUMBER}`),
+    ).toBeVisible();
+    const confirmedTeamA = bracketRow.getByRole('button', {
+      name: `✓ #${TEAM_A_NUMBER} present`,
+    });
+    await expect(confirmedTeamA).toHaveClass(
+      /queue-presence-control--confirmed/,
+    );
+
+    // The first confirmation remains reversible until the other team arrives.
+    await confirmedTeamA.click();
+    await expect(bracketRow.getByText('0/2 present')).toBeVisible();
+    await bracketRow
+      .getByRole('button', { name: `Mark #${TEAM_A_NUMBER} present` })
+      .click();
+    await bracketRow
+      .getByRole('button', { name: `Mark #${TEAM_B_NUMBER} present` })
+      .click();
+
+    await expect(
+      bracketRow.locator('.queue-status-badge.queue-status-arrived'),
+    ).toBeVisible();
+    await expect(
+      bracketRow.getByRole('button', { name: 'On table' }),
+    ).toBeVisible();
+    await bracketRow.getByRole('button', { name: 'On table' }).click();
+    await expect(
+      bracketRow.getByRole('button', { name: 'Scored' }),
+    ).toBeVisible();
+
+    // Back from on-table retains arrival; Back again resets both confirmations.
+    await bracketRow.getByRole('button', { name: 'Back' }).click();
+    await expect(
+      bracketRow.locator('.queue-status-badge.queue-status-arrived'),
+    ).toBeVisible();
+    await bracketRow.getByRole('button', { name: 'Back' }).click();
+    await expect(bracketRow.getByText('0/2 present')).toBeVisible();
+    await expect(
+      bracketRow.getByRole('button', {
+        name: `Mark #${TEAM_A_NUMBER} present`,
+      }),
+    ).toBeVisible();
+
+    const pairedDoubleSeedingRow = page
+      .locator('tr.queue-row')
+      .filter({ hasText: 'Round 90' });
+    await expect(
+      pairedDoubleSeedingRow.getByRole('button', {
+        name: `Mark #${TEAM_A_NUMBER} present`,
+      }),
+    ).toBeVisible();
+
+    const soloDoubleSeedingRow = page
+      .locator('tr.queue-row')
+      .filter({ hasText: 'Round 91' });
+    await expect(
+      soloDoubleSeedingRow.getByRole('button', { name: 'Arrived' }),
+    ).toBeVisible();
+    await expect(
+      soloDoubleSeedingRow.locator('.queue-presence-controls'),
+    ).toHaveCount(0);
 
     await context.close();
   });
