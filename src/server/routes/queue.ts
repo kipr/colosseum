@@ -377,64 +377,6 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Shared reorder handler
-async function handleReorder(req: AuthRequest, res: Response) {
-  try {
-    const { items } = req.body;
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return res
-        .status(400)
-        .json({ error: 'items array is required with {id, queue_position}' });
-    }
-
-    const db = await getDatabase();
-
-    // Filter valid items and execute all updates in a single transaction
-    const validItems = items.filter(
-      (item) => item.id !== undefined && item.queue_position !== undefined,
-    );
-
-    if (validItems.length > 0) {
-      const updatedItemIds = new Set<number>();
-      await db.transaction(async (tx) => {
-        for (const item of validItems) {
-          const result = await tx.run(
-            'UPDATE game_queue SET queue_position = ? WHERE id = ?',
-            [item.queue_position, item.id],
-          );
-          if ((result.changes ?? 0) > 0) {
-            updatedItemIds.add(Number(item.id));
-          }
-        }
-      });
-
-      if (updatedItemIds.size > 0) {
-        const ids = [...updatedItemIds];
-        const placeholders = ids.map(() => '?').join(', ');
-        const owners = await db.all<{ event_id: number }>(
-          `SELECT DISTINCT event_id FROM game_queue WHERE id IN (${placeholders})`,
-          ids,
-        );
-        for (const owner of owners) {
-          await bumpQueueVersion(db, owner.event_id);
-        }
-      }
-    }
-
-    res.json({ message: 'Queue reordered', updated: validItems.length });
-  } catch (error) {
-    console.error('Error reordering queue:', error);
-    res.status(500).json({ error: 'Failed to reorder queue' });
-  }
-}
-
-// POST /queue/reorder - Reorder queue items (MUST be before /:id routes)
-router.post('/reorder', requireAuth, handleReorder);
-
-// PATCH /queue/reorder - Reorder queue items (alias for POST)
-router.patch('/reorder', requireAuth, handleReorder);
-
 // POST /queue/populate-from-bracket - Populate queue from event bracket games
 router.post(
   '/populate-from-bracket',
@@ -826,7 +768,7 @@ router.patch(
   },
 );
 
-// PATCH /queue/:id - Update queue item status (MUST be after specific routes like /reorder)
+// PATCH /queue/:id - Update queue item status
 router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;

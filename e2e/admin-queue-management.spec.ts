@@ -293,7 +293,6 @@ test.describe('Admin queue management', () => {
     await expect(
       page.getByRole('columnheader', { name: 'Order', exact: true }),
     ).toHaveCount(0);
-    await expect(page.locator('button.reorder-btn')).toHaveCount(0);
 
     await context.close();
   });
