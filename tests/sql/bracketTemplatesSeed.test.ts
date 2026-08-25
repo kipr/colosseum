@@ -120,6 +120,126 @@ describe('Bracket Template Seeding', () => {
   });
 
   describe('generateDEBracketTemplates', () => {
+    it.each([
+      [8, 5, 6, 9],
+      [16, 9, 12, 17],
+      [32, 17, 24, 33],
+      [64, 33, 48, 65],
+    ])(
+      'should cross-bracket Winners R2 losers for a %i-team bracket',
+      (size, winnersStart, winnersEnd, redemptionStart) => {
+        const templates = generateDEBracketTemplates(size);
+        const winnersGameCount = winnersEnd - winnersStart + 1;
+
+        for (let position = 0; position < winnersGameCount; position++) {
+          const winnersGame = templates.find(
+            (template) => template.game_number === winnersStart + position,
+          );
+          const redemptionPosition =
+            (position + winnersGameCount / 2) % winnersGameCount;
+          const redemptionGame = templates.find(
+            (template) =>
+              template.game_number === redemptionStart + redemptionPosition,
+          );
+
+          expect(winnersGame?.loser_advances_to).toBe(
+            redemptionGame?.game_number,
+          );
+          expect(redemptionGame?.team2_source).toBe(
+            `loser:${winnersGame?.game_number}`,
+          );
+        }
+      },
+    );
+
+    it.each([
+      [32, 57, 58, 55],
+      [64, 113, 116, 109],
+    ])(
+      'should cross-bracket later Winners losers for a %i-team bracket',
+      (size, winnersStart, winnersEnd, redemptionStart) => {
+        const templates = generateDEBracketTemplates(size);
+        const winnersGameCount = winnersEnd - winnersStart + 1;
+
+        for (let position = 0; position < winnersGameCount; position++) {
+          const winnersGame = templates.find(
+            (template) => template.game_number === winnersStart + position,
+          );
+          const redemptionPosition =
+            (position + winnersGameCount / 2) % winnersGameCount;
+          const redemptionGame = templates.find(
+            (template) =>
+              template.game_number === redemptionStart + redemptionPosition,
+          );
+
+          expect(winnersGame?.loser_advances_to).toBe(
+            redemptionGame?.game_number,
+          );
+          expect(redemptionGame?.team2_source).toBe(
+            `loser:${winnersGame?.game_number}`,
+          );
+        }
+      },
+    );
+
+    it('should keep the two Game 50 paths separate until Game 59', () => {
+      const templates = generateDEBracketTemplates(32);
+      const game = (gameNumber: number) =>
+        templates.find((template) => template.game_number === gameNumber);
+
+      // The G50 loser can reach G55 through G46 and G53. If the G50 winner
+      // later loses G57, it now enters the opposite branch at G56.
+      expect(game(50)?.loser_advances_to).toBe(46);
+      expect(game(46)?.winner_advances_to).toBe(53);
+      expect(game(53)?.winner_advances_to).toBe(55);
+      expect(game(57)?.loser_advances_to).toBe(56);
+      expect(game(56)?.team2_source).toBe('loser:57');
+      expect(game(55)?.winner_advances_to).toBe(59);
+      expect(game(56)?.winner_advances_to).toBe(59);
+    });
+
+    it('should keep the two Game 97 paths separate until Game 123', () => {
+      const templates = generateDEBracketTemplates(64);
+      const game = (gameNumber: number) =>
+        templates.find((template) => template.game_number === gameNumber);
+
+      // The G97 loser can reach G109 through G89 and G105. If the G97 winner
+      // later loses G113, it now enters the opposite half at G111.
+      expect(game(97)?.loser_advances_to).toBe(89);
+      expect(game(89)?.winner_advances_to).toBe(105);
+      expect(game(105)?.winner_advances_to).toBe(109);
+      expect(game(113)?.loser_advances_to).toBe(111);
+      expect(game(111)?.team2_source).toBe('loser:113');
+      expect(game(109)?.winner_advances_to).toBe(117);
+      expect(game(117)?.winner_advances_to).toBe(119);
+      expect(game(119)?.winner_advances_to).toBe(123);
+      expect(game(111)?.winner_advances_to).toBe(118);
+      expect(game(118)?.winner_advances_to).toBe(120);
+      expect(game(120)?.winner_advances_to).toBe(123);
+    });
+
+    it('should prevent an immediate rematch in the 10-team bracket scenario', () => {
+      const templates = generateDEBracketTemplates(16);
+      const game = (gameNumber: number) =>
+        templates.find((template) => template.game_number === gameNumber);
+
+      // With 10 teams, G1 is a bye. The G2 loser therefore advances through
+      // G13, while the G2 winner can lose G9. Those teams must not meet in G17.
+      expect(game(13)?.team2_source).toBe('loser:2');
+      expect(game(13)?.winner_advances_to).toBe(17);
+      expect(game(9)?.loser_advances_to).toBe(19);
+      expect(game(17)?.team2_source).toBe('loser:11');
+      expect(game(19)?.team2_source).toBe('loser:9');
+
+      // The two routes stay on opposite branches until Redemption Semi (G27).
+      expect(game(17)?.winner_advances_to).toBe(21);
+      expect(game(21)?.winner_advances_to).toBe(23);
+      expect(game(23)?.winner_advances_to).toBe(27);
+      expect(game(19)?.winner_advances_to).toBe(22);
+      expect(game(22)?.winner_advances_to).toBe(24);
+      expect(game(24)?.winner_advances_to).toBe(27);
+    });
+
     it('should have unique game_numbers for each size', () => {
       for (const size of [4, 8, 16, 32, 64]) {
         const templates = generateDEBracketTemplates(size);

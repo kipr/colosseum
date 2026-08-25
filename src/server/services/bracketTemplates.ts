@@ -82,6 +82,15 @@ export async function ensureBracketTemplatesSeeded(
   }
 }
 
+/**
+ * Cross Winners R2 losers into the opposite half of Redemption R2.
+ * This keeps a team away from the opponent it may have just beaten in
+ * Winners R1 until the redemption bracket has narrowed further.
+ */
+function crossBracketPosition(position: number, gameCount: number): number {
+  return (position + gameCount / 2) % gameCount;
+}
+
 // =============================================================================
 // 4-TEAM DOUBLE ELIMINATION
 // =============================================================================
@@ -222,6 +231,8 @@ function generate4TeamDE(): BracketTemplate[] {
 
 function generate8TeamDE(): BracketTemplate[] {
   const templates: BracketTemplate[] = [];
+  const winnersR2GameCount = 2;
+  const redemptionR2Start = 9;
 
   // Winners R1 (Games 1-4)
   const winnersR1Seeds = [
@@ -259,7 +270,8 @@ function generate8TeamDE(): BracketTemplate[] {
     team1_source: 'winner:1',
     team2_source: 'winner:2',
     winner_advances_to: 13,
-    loser_advances_to: 9,
+    loser_advances_to:
+      redemptionR2Start + crossBracketPosition(0, winnersR2GameCount),
     winner_slot: 'team1',
     loser_slot: 'team2',
     is_championship: false,
@@ -275,7 +287,8 @@ function generate8TeamDE(): BracketTemplate[] {
     team1_source: 'winner:3',
     team2_source: 'winner:4',
     winner_advances_to: 13,
-    loser_advances_to: 10,
+    loser_advances_to:
+      redemptionR2Start + crossBracketPosition(1, winnersR2GameCount),
     winner_slot: 'team2',
     loser_slot: 'team2',
     is_championship: false,
@@ -349,7 +362,7 @@ function generate8TeamDE(): BracketTemplate[] {
     round_number: 2,
     bracket_side: 'losers',
     team1_source: 'winner:7',
-    team2_source: 'loser:5',
+    team2_source: `loser:${5 + crossBracketPosition(0, winnersR2GameCount)}`,
     winner_advances_to: 11,
     loser_advances_to: null,
     winner_slot: 'team1',
@@ -365,7 +378,7 @@ function generate8TeamDE(): BracketTemplate[] {
     round_number: 2,
     bracket_side: 'losers',
     team1_source: 'winner:8',
-    team2_source: 'loser:6',
+    team2_source: `loser:${5 + crossBracketPosition(1, winnersR2GameCount)}`,
     winner_advances_to: 11,
     loser_advances_to: null,
     winner_slot: 'team2',
@@ -508,6 +521,8 @@ function generate16TeamDE(): BracketTemplate[] {
   }
 
   // Winners R2 (Games 9-12)
+  const winnersR2GameCount = 4;
+  const redemptionR2Start = 17;
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 16,
@@ -518,7 +533,8 @@ function generate16TeamDE(): BracketTemplate[] {
       team1_source: `winner:${i * 2 + 1}`,
       team2_source: `winner:${i * 2 + 2}`,
       winner_advances_to: 25 + Math.floor(i / 2),
-      loser_advances_to: 17 + i,
+      loser_advances_to:
+        redemptionR2Start + crossBracketPosition(i, winnersR2GameCount),
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
       loser_slot: 'team2',
       is_championship: false,
@@ -556,7 +572,7 @@ function generate16TeamDE(): BracketTemplate[] {
       round_number: 2,
       bracket_side: 'losers',
       team1_source: `winner:${13 + i}`,
-      team2_source: `loser:${9 + i}`,
+      team2_source: `loser:${9 + crossBracketPosition(i, winnersR2GameCount)}`,
       winner_advances_to: 21 + Math.floor(i / 2),
       loser_advances_to: null,
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
@@ -782,6 +798,8 @@ function generate32TeamDE(): BracketTemplate[] {
   }
 
   // Winners R2 (Games 17-24)
+  const winnersR2GameCount = 8;
+  const redemptionR2Start = 33;
   for (let i = 0; i < 8; i++) {
     templates.push({
       bracket_size: 32,
@@ -792,7 +810,8 @@ function generate32TeamDE(): BracketTemplate[] {
       team1_source: `winner:${i * 2 + 1}`,
       team2_source: `winner:${i * 2 + 2}`,
       winner_advances_to: 49 + Math.floor(i / 2),
-      loser_advances_to: 33 + i,
+      loser_advances_to:
+        redemptionR2Start + crossBracketPosition(i, winnersR2GameCount),
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
       loser_slot: 'team2',
       is_championship: false,
@@ -830,7 +849,7 @@ function generate32TeamDE(): BracketTemplate[] {
       round_number: 2,
       bracket_side: 'losers',
       team1_source: `winner:${25 + i}`,
-      team2_source: `loser:${17 + i}`,
+      team2_source: `loser:${17 + crossBracketPosition(i, winnersR2GameCount)}`,
       winner_advances_to: 41 + Math.floor(i / 2),
       loser_advances_to: null,
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
@@ -922,6 +941,7 @@ function generate32TeamDE(): BracketTemplate[] {
   }
 
   // Redemption R6 (Games 55-56): vs losers from Winners Semi
+  const winnersSemiGameCount = 2;
   for (let i = 0; i < 2; i++) {
     templates.push({
       bracket_size: 32,
@@ -930,7 +950,9 @@ function generate32TeamDE(): BracketTemplate[] {
       round_number: 6,
       bracket_side: 'losers',
       team1_source: `winner:${53 + i}`,
-      team2_source: `loser:${57 + i}`,
+      team2_source: `loser:${
+        57 + crossBracketPosition(i, winnersSemiGameCount)
+      }`,
       winner_advances_to: 59,
       loser_advances_to: null,
       winner_slot: i === 0 ? 'team1' : 'team2',
@@ -951,7 +973,7 @@ function generate32TeamDE(): BracketTemplate[] {
     team1_source: 'winner:49',
     team2_source: 'winner:50',
     winner_advances_to: 60,
-    loser_advances_to: 55,
+    loser_advances_to: 56,
     winner_slot: 'team1',
     loser_slot: 'team2',
     is_championship: false,
@@ -967,7 +989,7 @@ function generate32TeamDE(): BracketTemplate[] {
     team1_source: 'winner:51',
     team2_source: 'winner:52',
     winner_advances_to: 60,
-    loser_advances_to: 56,
+    loser_advances_to: 55,
     winner_slot: 'team2',
     loser_slot: 'team2',
     is_championship: false,
@@ -1106,6 +1128,8 @@ function generate64TeamDE(): BracketTemplate[] {
   }
 
   // Winners R2 (Games 33-48)
+  const winnersR2GameCount = 16;
+  const redemptionR2Start = 65;
   for (let i = 0; i < 16; i++) {
     templates.push({
       bracket_size: 64,
@@ -1116,7 +1140,8 @@ function generate64TeamDE(): BracketTemplate[] {
       team1_source: `winner:${i * 2 + 1}`,
       team2_source: `winner:${i * 2 + 2}`,
       winner_advances_to: 97 + Math.floor(i / 2),
-      loser_advances_to: 65 + i,
+      loser_advances_to:
+        redemptionR2Start + crossBracketPosition(i, winnersR2GameCount),
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
       loser_slot: 'team2',
       is_championship: false,
@@ -1154,7 +1179,7 @@ function generate64TeamDE(): BracketTemplate[] {
       round_number: 2,
       bracket_side: 'losers',
       team1_source: `winner:${49 + i}`,
-      team2_source: `loser:${33 + i}`,
+      team2_source: `loser:${33 + crossBracketPosition(i, winnersR2GameCount)}`,
       winner_advances_to: 81 + Math.floor(i / 2),
       loser_advances_to: null,
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
@@ -1246,6 +1271,7 @@ function generate64TeamDE(): BracketTemplate[] {
   }
 
   // Redemption R6 (Games 109-112): vs losers from Winners R4
+  const winnersR4GameCount = 4;
   for (let i = 0; i < 4; i++) {
     templates.push({
       bracket_size: 64,
@@ -1254,7 +1280,9 @@ function generate64TeamDE(): BracketTemplate[] {
       round_number: 6,
       bracket_side: 'losers',
       team1_source: `winner:${105 + i}`,
-      team2_source: `loser:${113 + i}`,
+      team2_source: `loser:${
+        113 + crossBracketPosition(i, winnersR4GameCount)
+      }`,
       winner_advances_to: 117 + Math.floor(i / 2),
       loser_advances_to: null,
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
@@ -1276,7 +1304,7 @@ function generate64TeamDE(): BracketTemplate[] {
       team1_source: `winner:${97 + i * 2}`,
       team2_source: `winner:${98 + i * 2}`,
       winner_advances_to: 121 + Math.floor(i / 2),
-      loser_advances_to: 109 + i,
+      loser_advances_to: 109 + crossBracketPosition(i, winnersR4GameCount),
       winner_slot: i % 2 === 0 ? 'team1' : 'team2',
       loser_slot: 'team2',
       is_championship: false,
