@@ -26,6 +26,7 @@ function createRecordingAdapter(): { db: Database; sql: string[] } {
     all: async () => [],
     transaction: async <T>(fn: (tx: Transaction) => Promise<T>) => {
       const tx: Transaction = {
+        get: async () => undefined,
         run: async () => noop,
         exec: async (s: string) => {
           sql.push(s);

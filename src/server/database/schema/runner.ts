@@ -1,20 +1,11 @@
 import type {
+  ColumnAddition,
   SchemaDatabase,
   SchemaDialect,
   SchemaModule,
-  SchemaPhase,
 } from './types';
 
-type SchemaExecutor = Pick<SchemaDatabase, 'exec'>;
-
-const tablePhases = [
-  'tables',
-  'constraints',
-] as const satisfies readonly SchemaPhase[];
-const postTablePhases = [
-  'triggers',
-  'indexes',
-] as const satisfies readonly SchemaPhase[];
+type SchemaExecutor = Pick<SchemaDatabase, 'exec' | 'get'>;
 
 async function execStatements(
   db: SchemaExecutor,
@@ -22,6 +13,50 @@ async function execStatements(
 ): Promise<void> {
   for (const statement of statements) {
     await db.exec(statement);
+  }
+}
+
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier.replace(/"/g, '""')}"`;
+}
+
+async function columnExists(
+  db: SchemaExecutor,
+  dialect: SchemaDialect,
+  addition: ColumnAddition,
+): Promise<boolean> {
+  if (dialect === 'postgres') {
+    const existing = await db.get(
+      `SELECT 1 AS present
+       FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = ?
+         AND column_name = ?`,
+      [addition.table, addition.column],
+    );
+    return existing !== undefined;
+  }
+
+  const existing = await db.get(
+    `SELECT 1 AS present
+     FROM pragma_table_info(?)
+     WHERE name = ?`,
+    [addition.table, addition.column],
+  );
+  return existing !== undefined;
+}
+
+async function addMissingColumns(
+  db: SchemaExecutor,
+  dialect: SchemaDialect,
+  additions: readonly ColumnAddition[] = [],
+): Promise<void> {
+  for (const addition of additions) {
+    if (await columnExists(db, dialect, addition)) continue;
+
+    await db.exec(
+      `ALTER TABLE ${quoteIdentifier(addition.table)} ADD COLUMN ${quoteIdentifier(addition.column)} ${addition.definition}`,
+    );
   }
 }
 
@@ -85,18 +120,26 @@ export async function runSchema(
   modules: readonly SchemaModule[],
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    for (const phase of tablePhases) {
-      for (const module of modules) {
-        await execStatements(tx, module[dialect][phase]);
-      }
+    for (const module of modules) {
+      await execStatements(tx, module[dialect].tables);
+    }
+
+    for (const module of modules) {
+      await addMissingColumns(tx, dialect, module[dialect].columns);
+    }
+
+    for (const module of modules) {
+      await execStatements(tx, module[dialect].constraints);
     }
 
     await createUpdatedAtTriggers(tx, dialect, collectUpdatedAtTables(modules));
 
-    for (const phase of postTablePhases) {
-      for (const module of modules) {
-        await execStatements(tx, module[dialect][phase]);
-      }
+    for (const module of modules) {
+      await execStatements(tx, module[dialect].triggers);
+    }
+
+    for (const module of modules) {
+      await execStatements(tx, module[dialect].indexes);
     }
   });
 }
