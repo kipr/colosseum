@@ -70,6 +70,13 @@ interface QueueItem {
   double_seeding_team2_last_played_at: string | null;
   double_seeding_team1_busy: boolean;
   double_seeding_team2_busy: boolean;
+  team1_present: boolean;
+  team2_present: boolean;
+}
+
+interface QueueParticipant {
+  id: number;
+  teamNumber: number | null;
 }
 
 interface Bracket {
@@ -160,6 +167,45 @@ function getNextQueueStatus(current: QueueStatus): QueueStatus | null {
   return STATUS_ORDER[idx + 1]!;
 }
 
+/** Return the two current participants for queue rows with paired arrival. */
+function getQueueParticipants(
+  item: QueueItem,
+): [QueueParticipant, QueueParticipant] | null {
+  if (
+    item.queue_type === 'bracket' &&
+    item.team1_id != null &&
+    item.team2_id != null
+  ) {
+    return [
+      { id: item.team1_id, teamNumber: item.team1_number },
+      { id: item.team2_id, teamNumber: item.team2_number },
+    ];
+  }
+
+  if (
+    item.queue_type === 'double_seeding' &&
+    item.double_seeding_team1_id != null &&
+    item.double_seeding_team2_id != null
+  ) {
+    return [
+      {
+        id: item.double_seeding_team1_id,
+        teamNumber: item.double_seeding_team1_number,
+      },
+      {
+        id: item.double_seeding_team2_id,
+        teamNumber: item.double_seeding_team2_number,
+      },
+    ];
+  }
+
+  return null;
+}
+
+function participantLabel(participant: QueueParticipant): string {
+  return `#${participant.teamNumber ?? participant.id}`;
+}
+
 export default function QueueTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
@@ -179,6 +225,9 @@ export default function QueueTab() {
   const [sortField, setSortField] = useState<SortField>('gameNumber');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [presenceUpdatingIds, setPresenceUpdatingIds] = useState<Set<number>>(
+    () => new Set(),
+  );
 
   // Populate from bracket state
   const [showPopulateModal, setShowPopulateModal] = useState(false);
@@ -520,47 +569,6 @@ export default function QueueTab() {
     }
   };
 
-  // Handle move up/down
-  const handleMove = async (index: number, direction: 'up' | 'down') => {
-    const newQueue = [...queue];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-
-    if (targetIndex < 0 || targetIndex >= newQueue.length) return;
-
-    // Swap items
-    [newQueue[index], newQueue[targetIndex]] = [
-      newQueue[targetIndex],
-      newQueue[index],
-    ];
-
-    // Update positions
-    const items = newQueue.map((item, i) => ({
-      id: item.id,
-      queue_position: i + 1,
-    }));
-
-    // Optimistically update UI
-    setQueue(newQueue.map((item, i) => ({ ...item, queue_position: i + 1 })));
-
-    try {
-      const response = await fetch('/queue/reorder', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ items }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to reorder queue');
-      }
-    } catch (error) {
-      console.error('Error reordering queue:', error);
-      toast.error('Failed to reorder queue');
-      // Revert on error
-      await fetchQueue();
-    }
-  };
-
   const getVisibleRestWarnings = (item: QueueItem, atMs = nowMs) =>
     item.status === 'queued'
       ? getQueueRestWarnings(item, minRestMinutes, atMs)
@@ -653,6 +661,14 @@ export default function QueueTab() {
                   targetStatus === 'queued'
                     ? null
                     : (updatedItem.table_number ?? q.table_number),
+                team1_present:
+                  targetStatus === 'queued' || targetStatus === 'called'
+                    ? false
+                    : q.team1_present,
+                team2_present:
+                  targetStatus === 'queued' || targetStatus === 'called'
+                    ? false
+                    : q.team2_present,
               }
             : q,
         ),
@@ -663,6 +679,58 @@ export default function QueueTab() {
       toast.error(
         error instanceof Error ? error.message : 'Failed to update status',
       );
+    }
+  };
+
+  const handlePresence = async (
+    item: QueueItem,
+    participant: QueueParticipant,
+    present: boolean,
+  ) => {
+    setPresenceUpdatingIds((prev) => new Set(prev).add(item.id));
+    try {
+      const response = await fetch(`/queue/${item.id}/presence`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ team_id: participant.id, present }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update team presence');
+      }
+
+      const updatedItem = (await response.json()) as Pick<
+        QueueItem,
+        'id' | 'status' | 'team1_present' | 'team2_present'
+      >;
+      setQueue((prev) =>
+        prev.map((queueItem) =>
+          queueItem.id === item.id
+            ? {
+                ...queueItem,
+                status: updatedItem.status,
+                team1_present: updatedItem.team1_present,
+                team2_present: updatedItem.team2_present,
+              }
+            : queueItem,
+        ),
+      );
+      await fetchQueue(true);
+    } catch (error) {
+      console.error('Error updating team presence:', error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : 'Failed to update team presence',
+      );
+    } finally {
+      setPresenceUpdatingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
     }
   };
 
@@ -875,12 +943,6 @@ export default function QueueTab() {
     return sorted;
   }, [queue, sortDirection, sortField]);
 
-  const canReorder =
-    sortField === 'gameNumber' &&
-    sortDirection === 'asc' &&
-    filterType === 'all' &&
-    filterStatuses.length === Object.keys(STATUS_LABELS).length;
-
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
@@ -1050,83 +1112,120 @@ export default function QueueTab() {
                 kind: 'data',
                 id: 'status',
                 header: { full: 'Status' },
-                headerStyle: { width: '100px' },
-                renderCell: (item) => (
-                  <span
-                    className={`queue-status-badge ${getStatusClass(item.status)}`}
-                  >
-                    {STATUS_LABELS[item.status]}
-                  </span>
-                ),
-              },
-              {
-                kind: 'data',
-                id: 'actions',
-                header: { full: 'Actions' },
-                headerStyle: { width: '200px' },
+                headerStyle: { width: '140px' },
                 renderCell: (item) => {
-                  const nextStatus = getNextQueueStatus(item.status);
+                  const participants = getQueueParticipants(item);
+                  const showPresence =
+                    item.status === 'called' && participants !== null;
+                  const presentCount =
+                    Number(item.team1_present) + Number(item.team2_present);
+                  const waitingFor = participants
+                    ?.filter(
+                      (_, index) =>
+                        !(index === 0
+                          ? item.team1_present
+                          : item.team2_present),
+                    )
+                    .map(participantLabel)
+                    .join(' and ');
+
                   return (
-                    <div className="queue-actions">
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        disabled={STATUS_ORDER.indexOf(item.status) <= 0}
-                        onClick={() => handleFlowStep(item, 'prev')}
-                        title="Previous step"
+                    <div className="queue-status-content">
+                      <span
+                        className={`queue-status-badge ${getStatusClass(item.status)}`}
                       >
-                        Back
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-success"
-                        disabled={nextStatus === null}
-                        onClick={() => handleFlowStep(item, 'next')}
-                        title={
-                          nextStatus
-                            ? `Advance to ${STATUS_LABELS[nextStatus]}`
-                            : 'Next step'
-                        }
-                      >
-                        {nextStatus ? `${STATUS_LABELS[nextStatus]}` : 'End'}
-                      </button>
+                        {STATUS_LABELS[item.status]}
+                      </span>
+                      {showPresence && (
+                        <div
+                          className="queue-presence-progress"
+                          aria-live="polite"
+                        >
+                          <span>{presentCount}/2 present</span>
+                          <span className="queue-presence-waiting">
+                            Waiting for {waitingFor}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   );
                 },
               },
               {
                 kind: 'data',
-                id: 'order',
-                header: { full: 'Order' },
-                headerStyle: { width: '60px' },
+                id: 'actions',
+                header: { full: 'Actions' },
+                headerStyle: { width: '280px' },
                 renderCell: (item) => {
-                  const index = queue.findIndex((q) => q.id === item.id);
+                  const nextStatus = getNextQueueStatus(item.status);
+                  const participants = getQueueParticipants(item);
+                  const showPresence =
+                    item.status === 'called' && participants !== null;
+                  const presenceUpdating = presenceUpdatingIds.has(item.id);
                   return (
-                    <div className="reorder-buttons">
+                    <div className="queue-actions">
                       <button
-                        className="btn btn-secondary reorder-btn"
-                        onClick={() => handleMove(index, 'up')}
-                        disabled={!canReorder || index === 0}
-                        title={
-                          canReorder
-                            ? 'Move up'
-                            : 'Show all items in queue order to reorder'
+                        type="button"
+                        className="btn btn-secondary"
+                        disabled={
+                          STATUS_ORDER.indexOf(item.status) <= 0 ||
+                          presenceUpdating
                         }
+                        onClick={() => handleFlowStep(item, 'prev')}
+                        title="Previous step"
                       >
-                        ▲
+                        Back
                       </button>
-                      <button
-                        className="btn btn-secondary reorder-btn"
-                        onClick={() => handleMove(index, 'down')}
-                        disabled={!canReorder || index === queue.length - 1}
-                        title={
-                          canReorder
-                            ? 'Move down'
-                            : 'Show all items in queue order to reorder'
-                        }
-                      >
-                        ▼
-                      </button>
+                      {showPresence ? (
+                        <div className="queue-presence-controls">
+                          {participants.map((participant, index) => {
+                            const isPresent =
+                              index === 0
+                                ? item.team1_present
+                                : item.team2_present;
+                            const label = participantLabel(participant);
+                            return (
+                              <button
+                                key={participant.id}
+                                type="button"
+                                className={`btn queue-presence-control${
+                                  isPresent
+                                    ? ' queue-presence-control--confirmed'
+                                    : ''
+                                }`}
+                                disabled={presenceUpdating}
+                                aria-pressed={isPresent}
+                                title={
+                                  isPresent
+                                    ? `Undo ${label} presence confirmation`
+                                    : `Mark ${label} present`
+                                }
+                                onClick={() =>
+                                  handlePresence(item, participant, !isPresent)
+                                }
+                              >
+                                {isPresent
+                                  ? `✓ ${label} present`
+                                  : `Mark ${label} present`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-success"
+                          disabled={nextStatus === null}
+                          onClick={() => handleFlowStep(item, 'next')}
+                          title={
+                            nextStatus
+                              ? `Advance to ${STATUS_LABELS[nextStatus]}`
+                              : 'Next step'
+                          }
+                        >
+                          {nextStatus ? `${STATUS_LABELS[nextStatus]}` : 'End'}
+                        </button>
+                      )}
                     </div>
                   );
                 },

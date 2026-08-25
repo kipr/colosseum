@@ -444,20 +444,6 @@ curl -X PATCH http://localhost:3000/queue/1 \
   }'
 ```
 
-### Reorder queue (auth required)
-
-```bash
-curl -X POST http://localhost:3000/queue/reorder \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "items": [
-      {"id": 1, "queue_position": 2},
-      {"id": 2, "queue_position": 1}
-    ]
-  }'
-```
-
 ### Remove from queue (auth required)
 
 ```bash

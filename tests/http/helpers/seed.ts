@@ -161,6 +161,8 @@ export interface SeedQueueItemData {
   double_seeding_match_id?: number | null;
   status?: string;
   table_number?: number | null;
+  present_team1_id?: number | null;
+  present_team2_id?: number | null;
 }
 
 export async function seedQueueItem(
@@ -168,8 +170,11 @@ export async function seedQueueItem(
   data: SeedQueueItemData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO game_queue (event_id, bracket_game_id, seeding_team_id, seeding_round, double_seeding_match_id, queue_type, queue_position, status, table_number)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO game_queue (
+       event_id, bracket_game_id, seeding_team_id, seeding_round,
+       double_seeding_match_id, queue_type, queue_position, status,
+       table_number, present_team1_id, present_team2_id
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.event_id,
       data.bracket_game_id ?? null,
@@ -180,6 +185,8 @@ export async function seedQueueItem(
       data.queue_position,
       data.status ?? 'queued',
       data.table_number ?? null,
+      data.present_team1_id ?? null,
+      data.present_team2_id ?? null,
     ],
   );
   // Real queue writes go through routes/services that bump the event's queue

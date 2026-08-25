@@ -696,104 +696,6 @@ describe('Queue Routes', () => {
   });
 
   // ==========================================================================
-  // POST /queue/reorder
-  // ==========================================================================
-
-  describe('POST /queue/reorder', () => {
-    it('returns 401 when not authenticated', async () => {
-      const unauthApp = createTestApp();
-      unauthApp.use('/queue', queueRoutes);
-      const unauthServer = await startServer(unauthApp);
-
-      try {
-        const res = await http.post(`${unauthServer.baseUrl}/queue/reorder`, {
-          items: [],
-        });
-        expect(res.status).toBe(401);
-      } finally {
-        await unauthServer.close();
-      }
-    });
-
-    it('returns 400 when items is not an array', async () => {
-      const res = await http.post(`${baseUrl}/queue/reorder`, {
-        items: 'not an array',
-      });
-
-      expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('items array');
-    });
-
-    it('returns 400 when items is empty', async () => {
-      const res = await http.post(`${baseUrl}/queue/reorder`, {
-        items: [],
-      });
-
-      expect(res.status).toBe(400);
-    });
-
-    it('reorders queue items successfully', async () => {
-      const event = await seedEvent(testDb.db);
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 101,
-      });
-      const item1 = await seedQueueItem(testDb.db, {
-        event_id: event.id,
-        queue_type: 'seeding',
-        queue_position: 1,
-        seeding_team_id: team.id,
-        seeding_round: 1,
-      });
-      const item2 = await seedQueueItem(testDb.db, {
-        event_id: event.id,
-        queue_type: 'seeding',
-        queue_position: 2,
-        seeding_team_id: team.id,
-        seeding_round: 2,
-      });
-
-      const res = await http.post(`${baseUrl}/queue/reorder`, {
-        items: [
-          { id: item1.id, queue_position: 2 },
-          { id: item2.id, queue_position: 1 },
-        ],
-      });
-
-      expect(res.status).toBe(200);
-      expect((res.json as { updated: number }).updated).toBe(2);
-
-      // Verify the order changed
-      const getRes = await http.get(`${baseUrl}/queue/event/${event.id}`);
-      const items = getRes.json as { id: number; queue_position: number }[];
-      expect(items[0].id).toBe(item2.id);
-      expect(items[1].id).toBe(item1.id);
-    });
-
-    it('PATCH /queue/reorder works as alias', async () => {
-      const event = await seedEvent(testDb.db);
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 101,
-      });
-      const item = await seedQueueItem(testDb.db, {
-        event_id: event.id,
-        queue_type: 'seeding',
-        queue_position: 1,
-        seeding_team_id: team.id,
-        seeding_round: 1,
-      });
-
-      const res = await http.patch(`${baseUrl}/queue/reorder`, {
-        items: [{ id: item.id, queue_position: 10 }],
-      });
-
-      expect(res.status).toBe(200);
-      expect((res.json as { updated: number }).updated).toBe(1);
-    });
-  });
-
-  // ==========================================================================
   // POST /queue/populate-from-bracket
   // ==========================================================================
 
@@ -1069,6 +971,189 @@ describe('Queue Routes', () => {
   });
 
   // ==========================================================================
+  // PATCH /queue/:id/presence
+  // ==========================================================================
+
+  describe('PATCH /queue/:id/presence', () => {
+    async function seedPairedBracketItem(status = 'queued') {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'ready',
+      });
+      const item = await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+        status,
+      });
+      return { event, team1, team2, game, item };
+    }
+
+    it('requires authentication and a valid request body', async () => {
+      const unauthApp = createTestApp();
+      unauthApp.use('/queue', queueRoutes);
+      const unauthServer = await startServer(unauthApp);
+
+      try {
+        const unauthorized = await http.patch(
+          `${unauthServer.baseUrl}/queue/1/presence`,
+          { team_id: 1, present: true },
+        );
+        expect(unauthorized.status).toBe(401);
+      } finally {
+        await unauthServer.close();
+      }
+
+      const invalid = await http.patch(`${baseUrl}/queue/1/presence`, {
+        team_id: 'team-1',
+        present: 'yes',
+      });
+      expect(invalid.status).toBe(400);
+    });
+
+    it('confirms each bracket participant and advances atomically on the second', async () => {
+      const { event, team1, team2, item } =
+        await seedPairedBracketItem('called');
+
+      const first = await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+        team_id: team1.id,
+        present: true,
+      });
+      expect(first.status).toBe(200);
+      expect(first.json).toMatchObject({
+        id: item.id,
+        status: 'called',
+        team1_present: true,
+        team2_present: false,
+      });
+
+      const listed = await http.get(`${baseUrl}/queue/event/${event.id}`);
+      expect((listed.json as Record<string, unknown>[])[0]).toMatchObject({
+        team1_present: true,
+        team2_present: false,
+      });
+
+      const second = await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+        team_id: team2.id,
+        present: true,
+      });
+      expect(second.status).toBe(200);
+      expect(second.json).toMatchObject({
+        status: 'arrived',
+        team1_present: true,
+        team2_present: true,
+      });
+    });
+
+    it('allows undo while called and rejects unrelated teams or the wrong state', async () => {
+      const { event, team1, team2, item } =
+        await seedPairedBracketItem('called');
+      const unrelated = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 103,
+      });
+
+      await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+        team_id: team1.id,
+        present: true,
+      });
+      const undone = await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+        team_id: team1.id,
+        present: false,
+      });
+      expect(undone.status).toBe(200);
+      expect(undone.json).toMatchObject({
+        status: 'called',
+        team1_present: false,
+        team2_present: false,
+      });
+
+      const unrelatedResponse = await http.patch(
+        `${baseUrl}/queue/${item.id}/presence`,
+        { team_id: unrelated.id, present: true },
+      );
+      expect(unrelatedResponse.status).toBe(409);
+
+      await testDb.db.run(
+        "UPDATE game_queue SET status = 'arrived' WHERE id = ?",
+        [item.id],
+      );
+      const wrongState = await http.patch(
+        `${baseUrl}/queue/${item.id}/presence`,
+        { team_id: team2.id, present: true },
+      );
+      expect(wrongState.status).toBe(409);
+    });
+
+    it('reconciles simultaneous confirmations to arrived', async () => {
+      const { team1, team2, item } = await seedPairedBracketItem('called');
+
+      const [first, second] = await Promise.all([
+        http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+          team_id: team1.id,
+          present: true,
+        }),
+        http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+          team_id: team2.id,
+          present: true,
+        }),
+      ]);
+      expect(first.status).toBe(200);
+      expect(second.status).toBe(200);
+
+      const row = await testDb.db.get<{
+        status: string;
+        present_team1_id: number;
+        present_team2_id: number;
+      }>('SELECT * FROM game_queue WHERE id = ?', [item.id]);
+      expect(row).toMatchObject({
+        status: 'arrived',
+        present_team1_id: team1.id,
+        present_team2_id: team2.id,
+      });
+    });
+
+    it('normalizes a stored confirmation against replacement participants', async () => {
+      const { event, team1, team2, game, item } =
+        await seedPairedBracketItem('called');
+      const replacement = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 104,
+      });
+      await testDb.db.run(
+        `UPDATE game_queue
+         SET present_team1_id = ?, present_team2_id = ? WHERE id = ?`,
+        [team1.id, team2.id, item.id],
+      );
+      await testDb.db.run(
+        'UPDATE bracket_games SET team1_id = ? WHERE id = ?',
+        [replacement.id, game.id],
+      );
+
+      const listed = await http.get(`${baseUrl}/queue/event/${event.id}`);
+      expect((listed.json as Record<string, unknown>[])[0]).toMatchObject({
+        team1_id: replacement.id,
+        team1_present: false,
+        team2_present: true,
+      });
+    });
+  });
+
+  // ==========================================================================
   // PATCH /queue/:id
   // ==========================================================================
 
@@ -1168,6 +1253,152 @@ describe('Queue Routes', () => {
 
       expect(arrivedRes.status).toBe(200);
       expect((arrivedRes.json as { status: string }).status).toBe('arrived');
+    });
+
+    it('blocks paired matches from bypassing the presence checkpoint', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+      });
+      const item = await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+        status: 'called',
+      });
+
+      for (const status of ['arrived', 'on_table', 'scored']) {
+        const response = await http.patch(`${baseUrl}/queue/${item.id}`, {
+          status,
+        });
+        expect(response.status).toBe(409);
+      }
+    });
+
+    it('allows confirmed paired advances and legacy post-arrival rows', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+      });
+      const item = await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+        status: 'called',
+        present_team1_id: team1.id,
+        present_team2_id: team2.id,
+      });
+
+      const confirmed = await http.patch(`${baseUrl}/queue/${item.id}`, {
+        status: 'on_table',
+      });
+      expect(confirmed.status).toBe(200);
+
+      await testDb.db.run(
+        `UPDATE game_queue
+         SET status = 'arrived', present_team1_id = NULL,
+             present_team2_id = NULL
+         WHERE id = ?`,
+        [item.id],
+      );
+      const legacy = await http.patch(`${baseUrl}/queue/${item.id}`, {
+        status: 'on_table',
+      });
+      expect(legacy.status).toBe(200);
+      expect((legacy.json as { status: string }).status).toBe('on_table');
+    });
+
+    it('clears confirmations on back/call resets and retains them after arrival', async () => {
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+      });
+      const item = await seedQueueItem(testDb.db, {
+        event_id: event.id,
+        queue_type: 'bracket',
+        queue_position: 1,
+        bracket_game_id: game.id,
+        status: 'on_table',
+        present_team1_id: team1.id,
+        present_team2_id: team2.id,
+      });
+
+      const arrived = await http.patch(`${baseUrl}/queue/${item.id}`, {
+        status: 'arrived',
+      });
+      expect(arrived.status).toBe(200);
+      let row = await testDb.db.get<Record<string, unknown>>(
+        'SELECT * FROM game_queue WHERE id = ?',
+        [item.id],
+      );
+      expect(row).toMatchObject({
+        present_team1_id: team1.id,
+        present_team2_id: team2.id,
+      });
+
+      const called = await http.patch(`${baseUrl}/queue/${item.id}`, {
+        status: 'called',
+      });
+      expect(called.status).toBe(200);
+      row = await testDb.db.get<Record<string, unknown>>(
+        'SELECT * FROM game_queue WHERE id = ?',
+        [item.id],
+      );
+      expect(row).toMatchObject({
+        status: 'called',
+        present_team1_id: null,
+        present_team2_id: null,
+      });
+
+      await testDb.db.run(
+        `UPDATE game_queue
+         SET present_team1_id = ?, present_team2_id = ? WHERE id = ?`,
+        [team1.id, team2.id, item.id],
+      );
+      const recalled = await http.patch(`${baseUrl}/queue/${item.id}/call`, {});
+      expect(recalled.status).toBe(200);
+      expect(recalled.json).toMatchObject({
+        present_team1_id: null,
+        present_team2_id: null,
+      });
     });
 
     it('updates table_number successfully', async () => {

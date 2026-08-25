@@ -118,6 +118,12 @@ describe('initializePostgres parity with SQLite', () => {
       expect(allSql).toMatch(
         /CREATE TABLE.*game_queue[\s\S]*double_seeding_match_id INTEGER REFERENCES double_seeding_matches\(id\) ON DELETE CASCADE/i,
       );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*game_queue[\s\S]*present_team1_id INTEGER REFERENCES teams\(id\) ON DELETE SET NULL/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*game_queue[\s\S]*present_team2_id INTEGER REFERENCES teams\(id\) ON DELETE SET NULL/i,
+      );
     });
   });
 

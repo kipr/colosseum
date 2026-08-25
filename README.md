@@ -275,7 +275,6 @@ The application uses SQLite (development) or PostgreSQL (production) with the fo
 - `POST /queue` - Add item to queue
 - `PATCH /queue/:id` - Update queue item
 - `PATCH /queue/:id/call` - Call team/game
-- `POST /queue/reorder` - Reorder queue
 - `DELETE /queue/:id` - Remove from queue
 
 ### Scoring

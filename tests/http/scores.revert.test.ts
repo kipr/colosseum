@@ -200,6 +200,8 @@ describe('Scores Revert-Event Edge Cases', () => {
       queue_position: 1,
       bracket_game_id: game.id,
       status: 'scored',
+      present_team1_id: team1.id,
+      present_team2_id: team2.id,
     });
     const template = await seedScoresheetTemplate(testDb.db);
     const score = await seedScoreSubmission(testDb.db, {
@@ -216,11 +218,20 @@ describe('Scores Revert-Event Edge Cases', () => {
     );
     expect(res.status).toBe(200);
 
-    const queueItem = await testDb.db.get(
-      'SELECT status FROM game_queue WHERE bracket_game_id = ?',
+    const queueItem = await testDb.db.get<{
+      status: string;
+      present_team1_id: number | null;
+      present_team2_id: number | null;
+    }>(
+      `SELECT status, present_team1_id, present_team2_id
+       FROM game_queue WHERE bracket_game_id = ?`,
       [game.id],
     );
-    expect(queueItem.status).toBe('queued');
+    expect(queueItem).toMatchObject({
+      status: 'queued',
+      present_team1_id: null,
+      present_team2_id: null,
+    });
   });
 
   it('returns 400 for non-event-scoped score', async () => {

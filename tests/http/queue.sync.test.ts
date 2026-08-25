@@ -258,6 +258,8 @@ describe('Queue Routes – sync edge cases', () => {
         queue_position: 1,
         bracket_game_id: game.id,
         status: 'scored',
+        present_team1_id: team1.id,
+        present_team2_id: team2.id,
       });
 
       // Sync should reset it to queued since game is ready and eligible
@@ -265,10 +267,17 @@ describe('Queue Routes – sync edge cases', () => {
         `${baseUrl}/queue/event/${event.id}?queue_type=bracket&sync=1`,
       );
       expect(res.status).toBe(200);
-      const items = res.json as { bracket_game_id: number; status: string }[];
+      const items = res.json as {
+        bracket_game_id: number;
+        status: string;
+        present_team1_id: number | null;
+        present_team2_id: number | null;
+      }[];
       const item = items.find((i) => i.bracket_game_id === game.id);
       expect(item).toBeDefined();
       expect(item!.status).toBe('queued');
+      expect(item!.present_team1_id).toBeNull();
+      expect(item!.present_team2_id).toBeNull();
     });
 
     it('removes queued bracket item when game loses teams after rollback', async () => {
