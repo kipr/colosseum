@@ -162,9 +162,6 @@ export default function QueueTab() {
   // Populate from bracket state
   const [showPopulateModal, setShowPopulateModal] = useState(false);
   const [brackets, setBrackets] = useState<Bracket[]>([]);
-  const [selectedBracketId, setSelectedBracketId] = useState<number | null>(
-    null,
-  );
   const [populating, setPopulating] = useState(false);
 
   // Populate from seeding state
@@ -259,6 +256,7 @@ export default function QueueTab() {
   const fetchBrackets = useCallback(async () => {
     if (!selectedEventId) return;
 
+    setBrackets([]);
     try {
       const response = await fetch(`/brackets/event/${selectedEventId}`, {
         credentials: 'include',
@@ -266,9 +264,6 @@ export default function QueueTab() {
       if (!response.ok) throw new Error('Failed to fetch brackets');
       const data: Bracket[] = await response.json();
       setBrackets(data);
-      if (data.length > 0) {
-        setSelectedBracketId(data[0].id);
-      }
     } catch (error) {
       console.error('Error fetching brackets:', error);
     }
@@ -316,13 +311,14 @@ export default function QueueTab() {
     }
   }, []);
 
-  // Handle populate from bracket
+  // Handle event-wide bracket population
   const handlePopulateFromBracket = async () => {
-    if (!selectedEventId || !selectedBracketId) return;
+    if (!selectedEventId || brackets.length === 0) return;
 
     const confirmed = await confirm({
-      title: 'Populate Queue from Bracket',
-      message: 'This will completely clear the existing queue. Continue?',
+      title: 'Populate Queue from Brackets',
+      message:
+        'This will replace every bracket item and reset its call and table state. Seeding and double-seeding items will remain. Continue?',
       confirmText: 'Populate',
       confirmStyle: 'danger',
     });
@@ -337,7 +333,6 @@ export default function QueueTab() {
         credentials: 'include',
         body: JSON.stringify({
           event_id: selectedEventId,
-          bracket_id: selectedBracketId,
         }),
       });
 
@@ -698,25 +693,6 @@ export default function QueueTab() {
     }
   };
 
-  const getRoundOrder = (item: QueueItem): number => {
-    if (item.queue_type === 'seeding' && item.seeding_round !== null) {
-      return item.seeding_round;
-    }
-    if (
-      item.queue_type === 'double_seeding' &&
-      item.double_seeding_round !== null
-    ) {
-      return item.double_seeding_round;
-    }
-    if (item.round_name) {
-      const match = item.round_name.match(/\d+/);
-      if (match) {
-        return Number(match[0]);
-      }
-    }
-    return Number.MAX_SAFE_INTEGER;
-  };
-
   const getTeamSortValue = (item: QueueItem): string => {
     if (item.queue_type === 'seeding') {
       return (item.seeding_team_name || '').toLowerCase();
@@ -750,11 +726,6 @@ export default function QueueTab() {
   const sortedQueue = useMemo(() => {
     const sorted = [...queue];
     sorted.sort((a, b) => {
-      const roundCompare = getRoundOrder(a) - getRoundOrder(b);
-      if (roundCompare !== 0) {
-        return roundCompare;
-      }
-
       let valueCompare = 0;
       if (sortField === 'gameNumber') {
         const aValue = a.queue_position;
@@ -774,6 +745,12 @@ export default function QueueTab() {
     });
     return sorted;
   }, [queue, sortDirection, sortField]);
+
+  const canReorder =
+    sortField === 'gameNumber' &&
+    sortDirection === 'asc' &&
+    filterType === 'all' &&
+    filterStatuses.length === Object.keys(STATUS_LABELS).length;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -809,7 +786,7 @@ export default function QueueTab() {
               setShowPopulateModal(true);
             }}
           >
-            Populate from Bracket
+            Populate from Brackets
           </button>
           <button
             className="btn btn-primary"
@@ -883,7 +860,7 @@ export default function QueueTab() {
           <p style={{ color: 'var(--secondary-color)' }}>
             {filterStatuses.length === Object.keys(STATUS_LABELS).length &&
             filterType === 'all'
-              ? 'Queue is empty. Use "Populate from Bracket" or add items manually.'
+              ? 'Queue is empty. Use "Populate from Brackets" or add items manually.'
               : 'No queue items match the current filters.'}
           </p>
         ) : (
@@ -1000,16 +977,24 @@ export default function QueueTab() {
                       <button
                         className="btn btn-secondary reorder-btn"
                         onClick={() => handleMove(index, 'up')}
-                        disabled={index === 0}
-                        title="Move up"
+                        disabled={!canReorder || index === 0}
+                        title={
+                          canReorder
+                            ? 'Move up'
+                            : 'Show all items in queue order to reorder'
+                        }
                       >
                         ▲
                       </button>
                       <button
                         className="btn btn-secondary reorder-btn"
                         onClick={() => handleMove(index, 'down')}
-                        disabled={index === queue.length - 1}
-                        title="Move down"
+                        disabled={!canReorder || index === queue.length - 1}
+                        title={
+                          canReorder
+                            ? 'Move down'
+                            : 'Show all items in queue order to reorder'
+                        }
                       >
                         ▼
                       </button>
@@ -1039,7 +1024,7 @@ export default function QueueTab() {
         </div>
       </div>
 
-      {/* Populate from Bracket Modal */}
+      {/* Populate from Brackets Modal */}
       {showPopulateModal && (
         <div className="modal show" onClick={() => setShowPopulateModal(false)}>
           <div
@@ -1050,16 +1035,17 @@ export default function QueueTab() {
             <span className="close" onClick={() => setShowPopulateModal(false)}>
               &times;
             </span>
-            <h3>Populate Queue from Bracket</h3>
+            <h3>Populate Queue from Brackets</h3>
             <p
               style={{
                 color: 'var(--secondary-color)',
                 marginBottom: '1.5rem',
               }}
             >
-              This will completely clear the existing queue and replace it with
-              eligible games from the selected bracket. Games must have both
-              teams assigned.
+              Replace bracket items with eligible games from all brackets in
+              this event, using canonical interleaved order. Games must have
+              both teams assigned. Seeding and double-seeding items remain in
+              the queue.
             </p>
 
             {brackets.length === 0 ? (
@@ -1068,24 +1054,10 @@ export default function QueueTab() {
               </p>
             ) : (
               <>
-                <div className="form-group">
-                  <label htmlFor="populate-bracket">Select Bracket</label>
-                  <select
-                    id="populate-bracket"
-                    className="field-input"
-                    value={selectedBracketId ?? ''}
-                    onChange={(e) =>
-                      setSelectedBracketId(Number(e.target.value))
-                    }
-                  >
-                    {brackets.map((bracket) => (
-                      <option key={bracket.id} value={bracket.id}>
-                        {bracket.name} ({bracket.bracket_size} teams)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
+                <p style={{ color: 'var(--secondary-color)' }}>
+                  {brackets.length} bracket{brackets.length === 1 ? '' : 's'}
+                  will be populated.
+                </p>
                 <div
                   style={{
                     display: 'flex',
@@ -1106,7 +1078,7 @@ export default function QueueTab() {
                     type="button"
                     className="btn btn-danger"
                     onClick={handlePopulateFromBracket}
-                    disabled={populating || !selectedBracketId}
+                    disabled={populating}
                   >
                     {populating ? 'Populating...' : 'Populate Queue'}
                   </button>

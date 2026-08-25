@@ -118,6 +118,7 @@ export async function seedBracket(
 export interface SeedBracketGameData {
   bracket_id: number;
   game_number: number;
+  play_order?: number | null;
   round_name?: string;
   round_number?: number;
   bracket_side?: string;
@@ -131,11 +132,12 @@ export async function seedBracketGame(
   data: SeedBracketGameData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, team1_id, team2_id, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO bracket_games (bracket_id, game_number, play_order, round_name, round_number, bracket_side, team1_id, team2_id, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.bracket_id,
       data.game_number,
+      data.play_order ?? null,
       data.round_name ?? 'Round 1',
       data.round_number ?? 1,
       data.bracket_side ?? 'winners',

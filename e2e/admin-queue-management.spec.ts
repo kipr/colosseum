@@ -189,6 +189,30 @@ test.describe('Admin queue management', () => {
     await context.close();
   });
 
+  test('bracket population modal describes the event-wide safe reset', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext();
+    await setAdminCookie(context);
+    const page = await context.newPage();
+    await bypassQueueSyncLimit(page);
+
+    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.getByRole('button', { name: 'Populate from Brackets' }).click();
+
+    await expect(
+      page.getByRole('heading', { name: 'Populate Queue from Brackets' }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/Seeding and double-seeding items remain in the queue/),
+    ).toBeVisible();
+    await expect(
+      page.getByText('No brackets found for this event.'),
+    ).toBeVisible();
+
+    await context.close();
+  });
+
   test('admin advances flow to Called and steps back to Queued', async ({
     browser,
   }) => {
@@ -231,11 +255,11 @@ test.describe('Admin queue management', () => {
       timeout: 15_000,
     });
 
-    // Table sorts by seeding round first, then queue fields — first visible row is Round 1 (not min queue_position).
+    // The table defaults to canonical queue-position order.
     const rowA1 = seedingRow(page, TEAM_A_NAME, 1);
     await expect(rowA1.locator('td.queue-position')).toHaveText('1');
 
-    // Move down swaps this item with the next row in API order (Team A Round 2): positions become A R2 → 1, A R1 → 2.
+    // Move down swaps this item with the next queue row (Team A Round 2).
     await rowA1.locator('button.reorder-btn[title="Move down"]').click();
 
     await expect(

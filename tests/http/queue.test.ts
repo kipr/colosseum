@@ -814,13 +814,13 @@ describe('Queue Routes', () => {
       }
     });
 
-    it('returns 400 when event_id or bracket_id missing', async () => {
+    it('returns 400 when event_id is missing', async () => {
       const res = await http.post(`${baseUrl}/queue/populate-from-bracket`, {
-        event_id: 1,
+        bracket_id: 1,
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('bracket_id');
+      expect((res.json as { error: string }).error).toContain('event_id');
     });
 
     it('returns 404 when bracket not found', async () => {
@@ -833,6 +833,17 @@ describe('Queue Routes', () => {
       expect(res.status).toBe(404);
       expect((res.json as { error: string }).error).toContain(
         'Bracket not found',
+      );
+    });
+
+    it('returns 404 when event not found', async () => {
+      const res = await http.post(`${baseUrl}/queue/populate-from-bracket`, {
+        event_id: 999,
+      });
+
+      expect(res.status).toBe(404);
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
       );
     });
 
@@ -902,7 +913,7 @@ describe('Queue Routes', () => {
       expect(result.bracketGamesTotal).toBe(1);
     });
 
-    it('replaces existing queue for the event', async () => {
+    it('preserves non-bracket queue rows', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {
         event_id: event.id,
@@ -928,9 +939,9 @@ describe('Queue Routes', () => {
       expect(res.status).toBe(200);
       expect((res.json as { created: number }).created).toBe(0);
 
-      // Verify old queue item was deleted
+      // Verify the unrelated seeding item remains.
       const getRes = await http.get(`${baseUrl}/queue/event/${event.id}`);
-      expect((getRes.json as unknown[]).length).toBe(0);
+      expect((getRes.json as unknown[]).length).toBe(1);
     });
   });
 

@@ -4,6 +4,11 @@ import {
   clearQueueDirty,
   getQueueVersionState,
 } from './queueVersion';
+import {
+  BRACKET_INTERLEAVE_ORDER_SQL,
+  BracketQueueOrder,
+  mergeBracketQueueItems,
+} from './bracketQueueOrder';
 
 /**
  * Non-destructive queue repair sync.
@@ -372,18 +377,21 @@ async function syncBracketQueue(
   );
   if (brackets.length === 0) return 0;
 
-  const bracketIds = brackets.map((b) => b.id);
-  const allGames = await db.all<{
-    id: number;
-    game_number: number;
-    status: string;
-    team1_id: number | null;
-    team2_id: number | null;
-  }>(
-    `SELECT id, game_number, status, team1_id, team2_id FROM bracket_games
-     WHERE bracket_id IN (${bracketIds.map(() => '?').join(',')})
-     ORDER BY game_number ASC`,
-    bracketIds,
+  const allGames = await db.all<
+    BracketQueueOrder & {
+      id: number;
+      status: string;
+      team1_id: number | null;
+      team2_id: number | null;
+    }
+  >(
+    `SELECT bg.id, bg.bracket_id, b.bracket_size, bg.game_number,
+            bg.play_order, bg.status, bg.team1_id, bg.team2_id
+     FROM bracket_games bg
+     JOIN brackets b ON b.id = bg.bracket_id
+     WHERE b.event_id = ?
+     ORDER BY ${BRACKET_INTERLEAVE_ORDER_SQL}`,
+    [eventId],
   );
   const submittedBracketGames = await db.all<{ bracket_game_id: number }>(
     `SELECT DISTINCT bracket_game_id
@@ -411,75 +419,151 @@ async function syncBracketQueue(
     pendingBracketGames.map((row) => row.bracket_game_id),
   );
 
-  const existingBracket = await db.all<{
+  interface ExistingQueueItem {
     id: number;
-    bracket_game_id: number;
+    bracket_game_id: number | null;
+    queue_type: string;
+    queue_position: number;
     status: string;
-  }>(
-    `SELECT id, bracket_game_id, status FROM game_queue
-     WHERE event_id = ? AND queue_type = 'bracket'`,
+    bracketOrder: BracketQueueOrder | null;
+    newBracketGameId: number | null;
+  }
+
+  const existingQueueRows = await db.all<
+    Omit<ExistingQueueItem, 'bracketOrder' | 'newBracketGameId'> &
+      Partial<BracketQueueOrder>
+  >(
+    `SELECT gq.id, gq.bracket_game_id, gq.queue_type, gq.queue_position,
+            gq.status, bg.bracket_id, b.bracket_size, bg.game_number,
+            bg.play_order
+     FROM game_queue gq
+     LEFT JOIN bracket_games bg ON bg.id = gq.bracket_game_id
+     LEFT JOIN brackets b ON b.id = bg.bracket_id
+     WHERE gq.event_id = ?
+     ORDER BY gq.queue_position ASC, gq.id ASC`,
     [eventId],
+  );
+  const existingQueue: ExistingQueueItem[] = existingQueueRows.map((row) => ({
+    id: row.id,
+    bracket_game_id: row.bracket_game_id,
+    queue_type: row.queue_type,
+    queue_position: row.queue_position,
+    status: row.status,
+    bracketOrder:
+      row.queue_type === 'bracket' &&
+      row.bracket_id !== undefined &&
+      row.bracket_size !== undefined &&
+      row.game_number !== undefined
+        ? {
+            bracket_id: row.bracket_id,
+            bracket_size: row.bracket_size,
+            game_number: row.game_number,
+            play_order: row.play_order ?? null,
+          }
+        : null,
+    newBracketGameId: null,
+  }));
+  const existingBracket = existingQueue.filter(
+    (row) => row.queue_type === 'bracket' && row.bracket_game_id !== null,
   );
   const existingByGameId = new Map(
-    existingBracket.map((e) => [e.bracket_game_id, e]),
+    existingBracket.map((row) => [row.bracket_game_id!, row]),
   );
 
-  const maxPos = await db.get<{ max_pos: number | null }>(
-    'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-    [eventId],
-  );
-  let nextPos = (maxPos?.max_pos ?? 0) + 1;
+  const deleteIds = new Set<number>();
+  const statusUpdates: Array<{ id: number; status: 'queued' | 'scored' }> = [];
+  const newGames: ExistingQueueItem[] = [];
+
+  for (const game of allGames) {
+    const isEligible =
+      game.team1_id != null &&
+      game.team2_id != null &&
+      ['ready', 'pending'].includes(game.status);
+    const isCompleted =
+      game.status === 'completed' || submittedGameSet.has(game.id);
+    const existing = existingByGameId.get(game.id);
+
+    if (existing) {
+      if (isCompleted) {
+        if (pendingBracketSet.has(game.id)) {
+          if (existing.status !== 'scored') {
+            statusUpdates.push({ id: existing.id, status: 'scored' });
+          }
+        } else {
+          deleteIds.add(existing.id);
+        }
+      } else if (
+        isEligible &&
+        existing.status === 'scored' &&
+        !pendingBracketSet.has(game.id)
+      ) {
+        statusUpdates.push({ id: existing.id, status: 'queued' });
+      } else if (
+        !isEligible &&
+        !isCompleted &&
+        (game.team1_id == null || game.team2_id == null)
+      ) {
+        deleteIds.add(existing.id);
+      }
+    } else if (isEligible && !isCompleted) {
+      newGames.push({
+        id: -game.id,
+        bracket_game_id: game.id,
+        queue_type: 'bracket',
+        queue_position: -1,
+        status: 'queued',
+        bracketOrder: {
+          bracket_id: game.bracket_id,
+          bracket_size: game.bracket_size,
+          game_number: game.game_number,
+          play_order: game.play_order,
+        },
+        newBracketGameId: game.id,
+      });
+    }
+  }
+
+  const sequenceChanged = deleteIds.size > 0 || newGames.length > 0;
+  const survivingQueue = existingQueue.filter((row) => !deleteIds.has(row.id));
+  const finalQueue = sequenceChanged
+    ? mergeBracketQueueItems(survivingQueue, newGames)
+    : survivingQueue;
 
   let changes = 0;
   await db.transaction(async (tx) => {
-    for (const game of allGames) {
-      const isEligible =
-        game.team1_id != null &&
-        game.team2_id != null &&
-        ['ready', 'pending'].includes(game.status);
-      const isCompleted =
-        game.status === 'completed' || submittedGameSet.has(game.id);
-      const existing = existingByGameId.get(game.id);
+    for (const update of statusUpdates) {
+      const result = await tx.run(
+        `UPDATE game_queue
+         SET status = ?, called_at = NULL, table_number = NULL
+         WHERE id = ?`,
+        [update.status, update.id],
+      );
+      changes += result.changes ?? 0;
+    }
 
-      if (existing) {
-        if (isCompleted) {
-          if (pendingBracketSet.has(game.id)) {
-            if (existing.status !== 'scored') {
-              await tx.run(
-                `UPDATE game_queue SET status = 'scored', called_at = NULL, table_number = NULL WHERE id = ?`,
-                [existing.id],
-              );
-              changes++;
-            }
-          } else {
-            await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
-            changes++;
-          }
-        } else if (
-          isEligible &&
-          existing.status === 'scored' &&
-          !pendingBracketSet.has(game.id)
-        ) {
-          await tx.run(
-            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
-            [existing.id],
-          );
-          changes++;
-        } else if (
-          !isEligible &&
-          !isCompleted &&
-          (game.team1_id == null || game.team2_id == null)
-        ) {
-          await tx.run('DELETE FROM game_queue WHERE id = ?', [existing.id]);
-          changes++;
-        }
-      } else if (isEligible && !isCompleted) {
-        await tx.run(
-          `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-           VALUES (?, ?, 'bracket', ?, 'queued')`,
-          [eventId, game.id, nextPos++],
+    for (const id of deleteIds) {
+      const result = await tx.run('DELETE FROM game_queue WHERE id = ?', [id]);
+      changes += result.changes ?? 0;
+    }
+
+    for (let index = 0; index < finalQueue.length; index++) {
+      const row = finalQueue[index];
+      const queuePosition = index + 1;
+
+      if (row.newBracketGameId !== null) {
+        const result = await tx.run(
+          `INSERT INTO game_queue (
+             event_id, bracket_game_id, queue_type, queue_position, status
+           ) VALUES (?, ?, 'bracket', ?, 'queued')`,
+          [eventId, row.newBracketGameId, queuePosition],
         );
-        changes++;
+        changes += result.changes ?? 0;
+      } else if (sequenceChanged && row.queue_position !== queuePosition) {
+        const result = await tx.run(
+          'UPDATE game_queue SET queue_position = ? WHERE id = ?',
+          [queuePosition, row.id],
+        );
+        changes += result.changes ?? 0;
       }
     }
   });
