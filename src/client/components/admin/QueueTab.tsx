@@ -663,6 +663,7 @@ export default function QueueTab() {
         <span className="queue-game-teams">
           {item.bracket_name && `${item.bracket_name} · `}Game{' '}
           {item.game_number}
+          {item.bracket_game_id != null && ` · ID ${item.bracket_game_id}`}
           {item.round_name && ` - ${item.round_name}`}
         </span>
       </div>

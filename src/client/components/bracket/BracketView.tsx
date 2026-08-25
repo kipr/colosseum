@@ -8,12 +8,14 @@ interface BracketViewProps {
   bracketDetail: BracketDetail;
   side?: BracketSide;
   onSideChange?: (side: BracketSide) => void;
+  showGameDebugInfo?: boolean;
 }
 
 export default function BracketView({
   bracketDetail,
   side,
   onSideChange,
+  showGameDebugInfo = false,
 }: BracketViewProps) {
   const winner =
     bracketDetail.games.length > 0
@@ -40,6 +42,7 @@ export default function BracketView({
         games={bracketDetail.games}
         side={side}
         onSideChange={onSideChange}
+        showGameDebugInfo={showGameDebugInfo}
       />
     </div>
   );
