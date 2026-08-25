@@ -338,7 +338,10 @@ async function syncSeedingQueue(
           !pendingSeedingSet.has(key)
         ) {
           await tx.run(
-            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
+            `UPDATE game_queue
+             SET status = 'queued', called_at = NULL, table_number = NULL,
+                 present_team1_id = NULL, present_team2_id = NULL
+             WHERE id = ?`,
             [existing.id],
           );
           changes++;
@@ -532,9 +535,13 @@ async function syncBracketQueue(
   let changes = 0;
   await db.transaction(async (tx) => {
     for (const update of statusUpdates) {
+      const clearPresence =
+        update.status === 'queued'
+          ? ', present_team1_id = NULL, present_team2_id = NULL'
+          : '';
       const result = await tx.run(
         `UPDATE game_queue
-         SET status = ?, called_at = NULL, table_number = NULL
+         SET status = ?, called_at = NULL, table_number = NULL${clearPresence}
          WHERE id = ?`,
         [update.status, update.id],
       );
@@ -665,7 +672,10 @@ async function syncDoubleSeedingQueue(
           !pendingSet.has(match.id)
         ) {
           await tx.run(
-            "UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?",
+            `UPDATE game_queue
+             SET status = 'queued', called_at = NULL, table_number = NULL,
+                 present_team1_id = NULL, present_team2_id = NULL
+             WHERE id = ?`,
             [existing.id],
           );
           changes++;

@@ -11,7 +11,13 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { seedEvent, seedTeam, seedQueueItem } from './helpers/seed';
+import {
+  seedEvent,
+  seedTeam,
+  seedBracket,
+  seedBracketGame,
+  seedQueueItem,
+} from './helpers/seed';
 import queueRoutes from '../../src/server/routes/queue';
 
 describe('Queue versioning and conditional polling', () => {
@@ -181,6 +187,54 @@ describe('Queue versioning and conditional polling', () => {
     expect(after.status).toBe(200);
     expect(after.etag).not.toBe(etag);
     expect((JSON.parse(after.body) as unknown[]).length).toBe(2);
+  });
+
+  it('presence-only mutations invalidate queue ETags while status remains called', async () => {
+    const event = await seedEvent(testDb.db);
+    const team1 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    const team2 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 2,
+    });
+    const bracket = await seedBracket(testDb.db, { event_id: event.id });
+    const game = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 1,
+      team1_id: team1.id,
+      team2_id: team2.id,
+      status: 'ready',
+    });
+    const item = await seedQueueItem(testDb.db, {
+      event_id: event.id,
+      queue_type: 'bracket',
+      queue_position: 1,
+      bracket_game_id: game.id,
+      status: 'called',
+    });
+
+    const before = await http.get(`${baseUrl}/queue/event/${event.id}`);
+    const etag = before.headers.get('ETag');
+    const presence = await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+      team_id: team1.id,
+      present: true,
+    });
+    expect(presence.status).toBe(200);
+    expect(presence.json).toMatchObject({ status: 'called' });
+
+    const after = await conditionalGet(
+      `${baseUrl}/queue/event/${event.id}`,
+      etag,
+    );
+    expect(after.status).toBe(200);
+    expect(after.etag).not.toBe(etag);
+    expect(JSON.parse(after.body)[0]).toMatchObject({
+      status: 'called',
+      team1_present: true,
+      team2_present: false,
+    });
   });
 
   it('reorder invalidates every event with an updated row', async () => {

@@ -7,6 +7,7 @@ import {
   type Transaction,
 } from '../../../src/server/database/connection';
 import { runSchema } from '../../../src/server/database/schema';
+import { queueSchema } from '../../../src/server/database/schema/queue';
 import type { SchemaModule } from '../../../src/server/database/schema/types';
 
 const noop: DatabaseResult = { lastID: 0, changes: 0 };
@@ -153,6 +154,44 @@ describe('schema runner column additions', () => {
       ['rollback_test', 'temporary_value'],
     );
     expect(column).toBeUndefined();
+  });
+
+  it('upgrades legacy queue rows with nullable presence columns idempotently', async () => {
+    sqlite = new SQLite(':memory:');
+    const db = createSqliteDatabase(sqlite);
+    await db.exec(`
+      CREATE TABLE teams (id INTEGER PRIMARY KEY);
+      CREATE TABLE game_queue (
+        id INTEGER PRIMARY KEY,
+        event_id INTEGER NOT NULL,
+        status TEXT NOT NULL DEFAULT 'queued',
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO game_queue (id, event_id) VALUES (1, 10);
+    `);
+    const presenceOnly = sqliteModule({ columns: queueSchema.sqlite.columns });
+
+    await runSchema(db, 'sqlite', [presenceOnly]);
+    await expect(
+      runSchema(db, 'sqlite', [presenceOnly]),
+    ).resolves.toBeUndefined();
+
+    const columns = await db.all<{ name: string }>(
+      `SELECT name FROM pragma_table_info('game_queue')
+       WHERE name IN ('present_team1_id', 'present_team2_id')
+       ORDER BY name`,
+    );
+    expect(columns.map((column) => column.name)).toEqual([
+      'present_team1_id',
+      'present_team2_id',
+    ]);
+    const row = await db.get<{
+      present_team1_id: number | null;
+      present_team2_id: number | null;
+    }>(
+      'SELECT present_team1_id, present_team2_id FROM game_queue WHERE id = 1',
+    );
+    expect(row).toEqual({ present_team1_id: null, present_team2_id: null });
   });
 });
 

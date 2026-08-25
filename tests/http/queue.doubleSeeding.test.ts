@@ -30,6 +30,10 @@ interface QueueRow {
   double_seeding_match_number: number | null;
   double_seeding_team1_number: number | null;
   double_seeding_team2_number: number | null;
+  present_team1_id: number | null;
+  present_team2_id: number | null;
+  team1_present: boolean;
+  team2_present: boolean;
 }
 
 describe('Queue - double seeding', () => {
@@ -161,6 +165,39 @@ describe('Queue - double seeding', () => {
     expect(completedQueueRows.length).toBe(0);
   });
 
+  it('sync clears confirmations when a scored match is re-queued', async () => {
+    const { event, team1, team2 } = await setup();
+    const match = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 1,
+      match_number: 1,
+      team1_id: team1.id,
+      team2_id: team2.id,
+      status: 'ready',
+    });
+    await seedQueueItem(testDb.db, {
+      event_id: event.id,
+      queue_type: 'double_seeding',
+      double_seeding_match_id: match.id,
+      queue_position: 1,
+      status: 'scored',
+      present_team1_id: team1.id,
+      present_team2_id: team2.id,
+    });
+
+    const res = await http.get(
+      `${baseUrl}/queue/event/${event.id}?queue_type=double_seeding&sync=1`,
+    );
+    expect(res.status).toBe(200);
+    expect((res.json as QueueRow[])[0]).toMatchObject({
+      status: 'queued',
+      present_team1_id: null,
+      present_team2_id: null,
+      team1_present: false,
+      team2_present: false,
+    });
+  });
+
   it('POST /queue validates and adds double-seeding items, preventing duplicates', async () => {
     const { event, team1, team2 } = await setup();
     const match = await seedDoubleSeedingMatch(testDb.db, {
@@ -197,5 +234,75 @@ describe('Queue - double seeding', () => {
       double_seeding_match_id: match.id,
     });
     expect(duplicate.status).toBe(409);
+  });
+
+  it('tracks both double-seeding participants before advancing to arrived', async () => {
+    const { event, team1, team2 } = await setup();
+    const match = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 1,
+      match_number: 1,
+      team1_id: team1.id,
+      team2_id: team2.id,
+    });
+    const item = await seedQueueItem(testDb.db, {
+      event_id: event.id,
+      queue_type: 'double_seeding',
+      double_seeding_match_id: match.id,
+      queue_position: 1,
+      status: 'called',
+    });
+
+    const first = await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+      team_id: team1.id,
+      present: true,
+    });
+    expect(first.status).toBe(200);
+    expect(first.json).toMatchObject({
+      status: 'called',
+      team1_present: true,
+      team2_present: false,
+    });
+
+    const second = await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+      team_id: team2.id,
+      present: true,
+    });
+    expect(second.status).toBe(200);
+    expect(second.json).toMatchObject({
+      status: 'arrived',
+      team1_present: true,
+      team2_present: true,
+    });
+  });
+
+  it('keeps solo double-seeding matches on the existing arrival flow', async () => {
+    const { event, team1 } = await setup();
+    const match = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 1,
+      match_number: 1,
+      team1_id: team1.id,
+      team2_id: null,
+    });
+    const item = await seedQueueItem(testDb.db, {
+      event_id: event.id,
+      queue_type: 'double_seeding',
+      double_seeding_match_id: match.id,
+      queue_position: 1,
+      status: 'called',
+    });
+
+    const presence = await http.patch(`${baseUrl}/queue/${item.id}/presence`, {
+      team_id: team1.id,
+      present: true,
+    });
+    expect(presence.status).toBe(400);
+
+    const arrived = await http.patch(`${baseUrl}/queue/${item.id}`, {
+      status: 'arrived',
+    });
+    expect(arrived.status).toBe(200);
+    expect((arrived.json as QueueRow).status).toBe('arrived');
   });
 });

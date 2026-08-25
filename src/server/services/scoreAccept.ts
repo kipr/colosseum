@@ -22,8 +22,13 @@ export async function updateSeedingQueueItem(
     [eventId, teamId, roundNumber],
   );
   if (existing) {
+    const clearPresence = pendingSubmission
+      ? ''
+      : ', present_team1_id = NULL, present_team2_id = NULL';
     await db.run(
-      `UPDATE game_queue SET status = ?, called_at = NULL, table_number = NULL WHERE id = ?`,
+      `UPDATE game_queue
+       SET status = ?, called_at = NULL, table_number = NULL${clearPresence}
+       WHERE id = ?`,
       [pendingSubmission ? 'scored' : 'queued', existing.id],
     );
   } else {
@@ -112,7 +117,10 @@ export async function updateBracketQueueItem(
   if (existing) {
     if (hasBothTeams) {
       await db.run(
-        `UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?`,
+        `UPDATE game_queue
+         SET status = 'queued', called_at = NULL, table_number = NULL,
+             present_team1_id = NULL, present_team2_id = NULL
+         WHERE id = ?`,
         [existing.id],
       );
     } else {
@@ -197,7 +205,10 @@ export async function updateDoubleSeedingQueueItem(
   if (existing) {
     if (hasTeam) {
       await db.run(
-        `UPDATE game_queue SET status = 'queued', called_at = NULL, table_number = NULL WHERE id = ?`,
+        `UPDATE game_queue
+         SET status = 'queued', called_at = NULL, table_number = NULL,
+             present_team1_id = NULL, present_team2_id = NULL
+         WHERE id = ?`,
         [existing.id],
       );
     } else {

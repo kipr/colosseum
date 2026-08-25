@@ -13,6 +13,8 @@ export const queueSchema: SchemaModule = {
           seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
           seeding_round INTEGER,
           double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE CASCADE,
+          present_team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+          present_team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
           queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket', 'double_seeding')),
           queue_position INTEGER NOT NULL,
           status TEXT DEFAULT 'queued'
@@ -37,6 +39,18 @@ export const queueSchema: SchemaModule = {
           dirty INTEGER NOT NULL DEFAULT 0
         )
       `,
+    ],
+    columns: [
+      {
+        table: 'game_queue',
+        column: 'present_team1_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
+      },
+      {
+        table: 'game_queue',
+        column: 'present_team2_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
+      },
     ],
     triggers: [
       `
@@ -79,6 +93,8 @@ export const queueSchema: SchemaModule = {
           seeding_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
           seeding_round INTEGER,
           double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE CASCADE,
+          present_team1_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+          present_team2_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
           queue_type TEXT NOT NULL CHECK (queue_type IN ('seeding', 'bracket', 'double_seeding')),
           queue_position INTEGER NOT NULL,
           status TEXT DEFAULT 'queued'
@@ -103,6 +119,18 @@ export const queueSchema: SchemaModule = {
           dirty INTEGER NOT NULL DEFAULT 0
         )
       `,
+    ],
+    columns: [
+      {
+        table: 'game_queue',
+        column: 'present_team1_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
+      },
+      {
+        table: 'game_queue',
+        column: 'present_team2_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
+      },
     ],
     triggers: [
       `

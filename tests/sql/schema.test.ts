@@ -369,6 +369,37 @@ describe('Schema Constraints', () => {
       expect(entry.seeding_team_id).toBe(teamId);
       expect(entry.seeding_round).toBe(2);
     });
+
+    it('stores nullable queue presence references and clears them when a team is deleted', async () => {
+      const team2Result = await testDb.db.run(
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        [eventId, 200, 'Second Team'],
+      );
+      await testDb.db.run(
+        `UPDATE bracket_games SET team1_id = ?, team2_id = ? WHERE id = ?`,
+        [teamId, team2Result.lastID, gameId],
+      );
+      const queueResult = await testDb.db.run(
+        `INSERT INTO game_queue (
+           event_id, queue_type, queue_position, bracket_game_id,
+           present_team1_id, present_team2_id
+         ) VALUES (?, 'bracket', 1, ?, ?, ?)`,
+        [eventId, gameId, teamId, team2Result.lastID],
+      );
+
+      await testDb.db.run('DELETE FROM teams WHERE id = ?', [teamId]);
+
+      const entry = await testDb.db.get<{
+        present_team1_id: number | null;
+        present_team2_id: number | null;
+      }>(
+        `SELECT present_team1_id, present_team2_id
+         FROM game_queue WHERE id = ?`,
+        [queueResult.lastID],
+      );
+      expect(entry?.present_team1_id).toBeNull();
+      expect(entry?.present_team2_id).toBe(team2Result.lastID);
+    });
   });
 
   describe('events table', () => {
