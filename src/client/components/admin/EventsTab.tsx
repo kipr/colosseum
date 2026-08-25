@@ -38,7 +38,7 @@ const defaultFormData: EventFormData = {
   event_date: '',
   location: '',
   seeding_rounds: 3,
-  min_rest_minutes: 10,
+  min_rest_minutes: 3,
   score_accept_mode: 'manual',
 };
 
@@ -828,7 +828,7 @@ export default function EventsTab() {
                   className="field-input"
                   value={formData.min_rest_minutes}
                   onChange={(e) => {
-                    const value = Number.parseInt(e.target.value, 3);
+                    const value = Number.parseInt(e.target.value, 10);
                     setFormData({
                       ...formData,
                       min_rest_minutes: Number.isNaN(value)

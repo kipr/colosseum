@@ -15,7 +15,7 @@ export const eventsSchema: SchemaModule = {
           status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
           seeding_rounds INTEGER DEFAULT 3,
           double_seeding_rounds INTEGER DEFAULT 0,
-          min_rest_minutes INTEGER NOT NULL DEFAULT 10 CHECK (min_rest_minutes >= 0),
+          min_rest_minutes INTEGER NOT NULL DEFAULT 3 CHECK (min_rest_minutes >= 0),
           score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
           spectator_results_released INTEGER NOT NULL DEFAULT 0,
           created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -43,7 +43,7 @@ export const eventsSchema: SchemaModule = {
       {
         table: 'events',
         column: 'min_rest_minutes',
-        definition: 'INTEGER NOT NULL DEFAULT 10 CHECK (min_rest_minutes >= 0)',
+        definition: 'INTEGER NOT NULL DEFAULT 3 CHECK (min_rest_minutes >= 0)',
       },
     ],
     triggers: [
@@ -83,7 +83,7 @@ export const eventsSchema: SchemaModule = {
           status TEXT NOT NULL DEFAULT 'setup' CHECK (status IN ('setup', 'active', 'complete', 'archived')),
           seeding_rounds INTEGER DEFAULT 3,
           double_seeding_rounds INTEGER DEFAULT 0,
-          min_rest_minutes INTEGER NOT NULL DEFAULT 10 CHECK (min_rest_minutes >= 0),
+          min_rest_minutes INTEGER NOT NULL DEFAULT 3 CHECK (min_rest_minutes >= 0),
           score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
           spectator_results_released INTEGER NOT NULL DEFAULT 0,
           created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -111,7 +111,7 @@ export const eventsSchema: SchemaModule = {
       {
         table: 'events',
         column: 'min_rest_minutes',
-        definition: 'INTEGER NOT NULL DEFAULT 10 CHECK (min_rest_minutes >= 0)',
+        definition: 'INTEGER NOT NULL DEFAULT 3 CHECK (min_rest_minutes >= 0)',
       },
     ],
     triggers: [

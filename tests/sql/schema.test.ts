@@ -51,7 +51,7 @@ describe('Schema Constraints', () => {
       expect(column).toMatchObject({
         name: 'min_rest_minutes',
         notnull: 1,
-        dflt_value: '10',
+        dflt_value: '3',
       });
 
       const event = await testDb.db.run(
@@ -61,7 +61,7 @@ describe('Schema Constraints', () => {
         'SELECT min_rest_minutes FROM events WHERE id = ?',
         [event.lastID],
       );
-      expect(row?.min_rest_minutes).toBe(10);
+      expect(row?.min_rest_minutes).toBe(3);
 
       await expect(
         testDb.db.run(

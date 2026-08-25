@@ -480,7 +480,7 @@ describe('Events Routes', () => {
       expect(event.name).toBe('New Event');
       expect(event.status).toBe('setup'); // default status
       expect(event.seeding_rounds).toBe(3); // default seeding_rounds
-      expect(event.min_rest_minutes).toBe(10);
+      expect(event.min_rest_minutes).toBe(3);
       expect(event.score_accept_mode).toBe('manual'); // default score_accept_mode
     });
 

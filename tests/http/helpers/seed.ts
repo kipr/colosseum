@@ -55,7 +55,7 @@ export async function seedEvent(
       data.status ?? 'setup',
       data.seeding_rounds ?? 3,
       data.double_seeding_rounds ?? 0,
-      data.min_rest_minutes ?? 10,
+      data.min_rest_minutes ?? 3,
       data.score_accept_mode ?? 'manual',
       data.created_by ?? null,
     ],

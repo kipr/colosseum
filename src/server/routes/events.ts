@@ -206,7 +206,7 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
         location || null,
         status || 'setup',
         seeding_rounds ?? 3,
-        min_rest_minutes ?? 10,
+        min_rest_minutes ?? 3,
         score_accept_mode || 'manual',
         req.user?.id || null,
       ],
