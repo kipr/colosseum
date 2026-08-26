@@ -371,7 +371,8 @@ router.post(
   requireAuth,
   ...validatedHandler(populateFromBracketRequest, async (req, res) => {
     try {
-      const { event_id: eventId, bracket_id: bracketId } = req.validated.body;
+      const { event_id: eventId, bracket_id } = req.validated.body;
+      const bracketId = bracket_id ?? null;
 
       const db = await getDatabase();
 

@@ -11,6 +11,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -247,7 +248,7 @@ describe('Scores Revert-Event Edge Cases', () => {
       `${server.baseUrl}/scores/${score.id}/revert-event`,
     );
     expect(res.status).toBe(400);
-    expect((res.json as { error: string }).error).toContain('not event-scoped');
+    expect(getApiErrorMessage(res.json)).toContain('not event-scoped');
   });
 
   it('returns 400 for unknown score_type', async () => {
@@ -265,9 +266,7 @@ describe('Scores Revert-Event Edge Cases', () => {
       `${server.baseUrl}/scores/${score.id}/revert-event`,
     );
     expect(res.status).toBe(400);
-    expect((res.json as { error: string }).error).toContain(
-      'Unknown score_type',
-    );
+    expect(getApiErrorMessage(res.json)).toContain('Unknown score_type');
   });
 
   it('returns dry-run for seeding revert', async () => {

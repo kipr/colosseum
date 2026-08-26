@@ -399,7 +399,7 @@ describe('Brackets Entry & Game Generation', () => {
         team_ids: [1, 2],
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('event_id and name');
+      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
     });
 
     it('returns 400 when name missing with team_ids', async () => {

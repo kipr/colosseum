@@ -7,7 +7,7 @@ export const JUDGE_CHAT_SENDER_NAME_MAX = 30;
 export const postChatMessageBodySchema = z
   .object({
     message: trimmedNonEmptyString.max(JUDGE_CHAT_MESSAGE_MAX),
-    senderName: z.string().max(JUDGE_CHAT_SENDER_NAME_MAX).optional(),
+    senderName: z.string().optional(),
     conversationKey: z.string().min(1).optional(),
   })
   .strict();

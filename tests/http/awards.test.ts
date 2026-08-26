@@ -380,9 +380,7 @@ describe('Awards API', () => {
         { team_id: team2.id },
       );
       expect(res.status).toBe(400);
-      expect((res.json as Record<string, unknown>).error).toMatch(
-        /same event/i,
-      );
+      expect(getApiErrorMessage(res.json)).toMatch(/same event/i);
     });
 
     it('removes a recipient', async () => {
@@ -477,7 +475,7 @@ describe('Awards API', () => {
         { team_ids: [team.id, 'invalid'] },
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toMatch(/integers/i);
+      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
 
       const recipients = await testDb.db.all(
         'SELECT team_id FROM event_award_recipients WHERE event_award_id = ?',
@@ -685,7 +683,7 @@ describe('Awards API', () => {
         { name: 'Ada Lovelace', team_id: 99999 },
       );
       expect(res.status).toBe(404);
-      expect((res.json as Record<string, unknown>).error).toMatch(/team/i);
+      expect(getApiErrorMessage(res.json)).toMatch(/team/i);
     });
 
     it('rejects an associated team from another event', async () => {
@@ -711,9 +709,7 @@ describe('Awards API', () => {
         { name: 'Ada Lovelace', team_id: team2.id },
       );
       expect(res.status).toBe(400);
-      expect((res.json as Record<string, unknown>).error).toMatch(
-        /same event/i,
-      );
+      expect(getApiErrorMessage(res.json)).toMatch(/same event/i);
     });
 
     it('allows two people with the same name on one award', async () => {

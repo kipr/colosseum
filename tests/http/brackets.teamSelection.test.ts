@@ -11,7 +11,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
+import { getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -169,8 +169,8 @@ describe('Brackets Team Selection', () => {
       team_ids: [teamA.id, teamB.id],
     });
     expect(res2.status).toBe(409);
-    const data = res2.json as { error?: string; conflicts?: unknown[] };
-    expect(data.error).toContain('already assigned');
+    const data = res2.json as { error?: unknown; conflicts?: unknown[] };
+    expect(getApiErrorMessage(data)).toContain('already assigned');
     expect(data.conflicts).toBeDefined();
     expect(Array.isArray(data.conflicts)).toBe(true);
     expect(
@@ -223,8 +223,7 @@ describe('Brackets Team Selection', () => {
       team_ids: [team1.id, team2.id],
     });
     expect(res.status).toBe(400);
-    const data = res.json as { error?: string };
-    expect(data.error).toContain('same event');
+    expect(getApiErrorMessage(res.json)).toContain('same event');
   });
 
   it('GET /brackets/event/:eventId/assigned-teams returns team-bracket mapping', async () => {
