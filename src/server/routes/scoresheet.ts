@@ -1,36 +1,45 @@
 import express from 'express';
 import { randomUUID } from 'crypto';
-import {
-  requireAuth,
-  AuthRequest,
-  JUDGE_SESSION_TTL_MS,
-} from '../middleware/auth';
+import { requireAuth, JUDGE_SESSION_TTL_MS } from '../middleware/auth';
 import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import { applyLoadedSchema } from '../scoresheetParse';
+import { validatedHandler } from '../validation/middleware';
+import { sendForbidden, sendNotFound } from '../validation/errors';
+import { normalizeLegacyScoresheetSchema } from '../../shared/scoresheetNormalize';
+import type { ScoresheetSchema } from '../../shared/scoresheetSchema';
 import {
-  formatSchemaValidationError,
-  validateScoresheetSchema,
-} from '../../shared/scoresheetSchema';
+  adminScoresheetTemplatesRequest,
+  createScoresheetTemplateRequest,
+  scoresheetTemplateIdRequest,
+  updateScoresheetTemplateRequest,
+  verifyScoresheetTemplateRequest,
+} from '../validation/templates';
 
 const router = express.Router();
 
 function inferTemplateType(
-  schema: unknown,
+  schema: ScoresheetSchema,
 ): 'seeding' | 'bracket' | 'double_seeding' {
   // Explicit schema marker takes precedence; do not infer double seeding from
   // mode (head-to-head means bracket scoring with a winner).
-  if (schema && typeof schema === 'object' && 'scoreKind' in schema) {
-    if ((schema as { scoreKind?: string }).scoreKind === 'double_seeding') {
-      return 'double_seeding';
-    }
+  if (schema.scoreKind === 'double_seeding') {
+    return 'double_seeding';
   }
-  if (schema && typeof schema === 'object' && 'mode' in schema) {
-    if ((schema as { mode?: string }).mode === 'head-to-head') return 'bracket';
+  if (schema.mode === 'head-to-head') {
+    return 'bracket';
   }
-  if (schema && typeof schema === 'object' && 'bracketSource' in schema) {
+  if (schema.bracketSource !== undefined) {
     return 'bracket';
   }
   return 'seeding';
+}
+
+function rawBodySchema(body: unknown): unknown {
+  if (body && typeof body === 'object' && 'schema' in body) {
+    return (body as { schema: unknown }).schema;
+  }
+  return undefined;
 }
 
 // Get all scoresheet templates (public - for judges, without access codes)
@@ -65,16 +74,8 @@ router.get(
       ORDER BY e.event_date DESC, e.name, t.name
     `);
 
-      // Parse schema JSON for each template
       templates.forEach((template) => {
-        if (template.schema) {
-          try {
-            template.schema = JSON.parse(template.schema);
-          } catch (e) {
-            console.error('Error parsing template schema:', e);
-            template.schema = null;
-          }
-        }
+        applyLoadedSchema(template);
       });
 
       res.json(templates);
@@ -90,11 +91,10 @@ router.get(
 router.get(
   '/templates/admin',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(adminScoresheetTemplatesRequest, async (req, res) => {
     try {
       const db = await getDatabase();
-      const eventId = req.query.eventId;
-      const hasEventFilter = eventId !== undefined && eventId !== '';
+      const eventId = req.validated.query.eventId;
 
       const baseSelect = `
       SELECT 
@@ -110,16 +110,12 @@ router.get(
       let query: string;
       const params: (string | number)[] = [];
 
-      if (hasEventFilter) {
-        const eventIdNum = Number(eventId);
-        if (Number.isNaN(eventIdNum)) {
-          return res.status(400).json({ error: 'Invalid eventId' });
-        }
+      if (eventId !== undefined) {
         query = `${baseSelect}
       INNER JOIN event_scoresheet_templates est ON est.template_id = t.id AND est.event_id = ?
       WHERE t.is_active IS TRUE
       ORDER BY t.name`;
-        params.push(eventIdNum);
+        params.push(eventId);
       } else {
         query = `${baseSelect}
       WHERE t.is_active IS TRUE
@@ -132,17 +128,17 @@ router.get(
       console.error('Error fetching templates:', error);
       res.status(500).json({ error: 'Failed to fetch scoresheet templates' });
     }
-  },
+  }),
 );
 
 // Verify access code and get template (public - for judges)
 router.post(
   '/templates/:id/verify',
   accessCodeLimiter,
-  async (req: express.Request, res: express.Response) => {
+  ...validatedHandler(verifyScoresheetTemplateRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { accessCode } = req.body;
+      const { id } = req.validated.params;
+      const { accessCode } = req.validated.body;
       const db = await getDatabase();
 
       const template = await db.get(
@@ -151,12 +147,11 @@ router.post(
       );
 
       if (!template) {
-        return res.status(404).json({ error: 'Template not found' });
+        return sendNotFound(res, 'Template not found');
       }
 
-      // Verify access code
       if (template.access_code !== accessCode) {
-        return res.status(403).json({ error: 'Invalid access code' });
+        return sendForbidden(res, 'Invalid access code');
       }
 
       // Mint a judge session scoped to this template and its linked events
@@ -174,12 +169,12 @@ router.post(
         const reuseConversationKey =
           existing != null &&
           now <= existing.expiresAt &&
-          existing.templateId === Number(id) &&
+          existing.templateId === id &&
           typeof existing.conversationKey === 'string' &&
           existing.conversationKey.length > 0;
 
         req.session.judgeAuth = {
-          templateId: Number(id),
+          templateId: id,
           eventIds,
           conversationKey: reuseConversationKey
             ? existing.conversationKey
@@ -189,8 +184,7 @@ router.post(
         };
       }
 
-      // Parse JSON schema and remove sensitive data
-      template.schema = JSON.parse(template.schema);
+      applyLoadedSchema(template);
       delete template.access_code;
       delete template.created_by;
 
@@ -199,16 +193,16 @@ router.post(
       console.error('Error verifying template access:', error);
       res.status(500).json({ error: 'Failed to verify access' });
     }
-  },
+  }),
 );
 
 // Get a specific template with full schema (authenticated - for admin preview)
 router.get(
   '/templates/:id',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoresheetTemplateIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
       const template = await db.get(
         'SELECT * FROM scoresheet_templates WHERE id = ? AND is_active IS TRUE',
@@ -216,55 +210,50 @@ router.get(
       );
 
       if (!template) {
-        return res.status(404).json({ error: 'Template not found' });
+        return sendNotFound(res, 'Template not found');
       }
 
-      // Parse JSON schema
-      template.schema = JSON.parse(template.schema);
+      applyLoadedSchema(template);
       res.json(template);
     } catch (error) {
       console.error('Error fetching template:', error);
       res.status(500).json({ error: 'Failed to fetch template' });
     }
-  },
+  }),
 );
 
 // Create a new template
 router.post(
   '/templates',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(createScoresheetTemplateRequest, async (req, res) => {
     try {
-      const { name, description, schema, accessCode, eventId } = req.body;
-
-      if (!name || !schema || !accessCode) {
-        return res
-          .status(400)
-          .json({ error: 'Name, schema, and access code are required' });
-      }
-
-      const schemaValidation = validateScoresheetSchema(schema);
-      if (!schemaValidation.ok) {
-        return res.status(400).json({
-          error: formatSchemaValidationError(schemaValidation.errors),
-          errors: schemaValidation.errors,
-        });
-      }
+      const { name, description, schema, accessCode, eventId } =
+        req.validated.body;
+      const { migrations } = normalizeLegacyScoresheetSchema(
+        rawBodySchema(req.body),
+      );
 
       const db = await getDatabase();
       const result = await db.run(
         `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by)
        VALUES (?, ?, ?, ?, ?)`,
-        [name, description, JSON.stringify(schema), accessCode, req.user.id],
+        [
+          name,
+          description ?? null,
+          JSON.stringify(schema),
+          accessCode,
+          req.user.id,
+        ],
       );
 
       const templateId = result.lastID!;
 
-      if (eventId != null && Number.isInteger(Number(eventId))) {
+      if (eventId != null) {
         const templateType = inferTemplateType(schema);
         await db.run(
           `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
-          [Number(eventId), templateId, templateType],
+          [eventId, templateId, templateType],
         );
       }
 
@@ -272,42 +261,45 @@ router.post(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
-      template.schema = JSON.parse(template.schema);
+      applyLoadedSchema(template);
+      template.normalizationApplied = migrations;
 
       res.json(template);
     } catch (error) {
       console.error('Error creating template:', error);
       res.status(500).json({ error: 'Failed to create template' });
     }
-  },
+  }),
 );
 
 // Update a template
 router.put(
   '/templates/:id',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(updateScoresheetTemplateRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { name, description, schema, accessCode, eventId } = req.body;
-
-      if (schema !== undefined) {
-        const schemaValidation = validateScoresheetSchema(schema);
-        if (!schemaValidation.ok) {
-          return res.status(400).json({
-            error: formatSchemaValidationError(schemaValidation.errors),
-            errors: schemaValidation.errors,
-          });
-        }
-      }
+      const { id } = req.validated.params;
+      const { name, description, schema, accessCode, eventId } =
+        req.validated.body;
+      const { migrations } = normalizeLegacyScoresheetSchema(
+        rawBodySchema(req.body),
+      );
 
       const db = await getDatabase();
+      const existing = await db.get(
+        'SELECT id FROM scoresheet_templates WHERE id = ?',
+        [id],
+      );
+      if (!existing) {
+        return sendNotFound(res, 'Template not found');
+      }
+
       await db.transaction(async (tx) => {
         await tx.run(
           `UPDATE scoresheet_templates 
          SET name = ?, description = ?, schema = ?, access_code = ?, updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-          [name, description, JSON.stringify(schema), accessCode, id],
+          [name, description ?? null, JSON.stringify(schema), accessCode, id],
         );
 
         await tx.run(
@@ -315,11 +307,11 @@ router.put(
           [id],
         );
 
-        if (eventId != null && Number.isInteger(Number(eventId))) {
+        if (eventId != null) {
           const templateType = inferTemplateType(schema);
           await tx.run(
             `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
-            [Number(eventId), id, templateType],
+            [eventId, id, templateType],
           );
         }
       });
@@ -328,23 +320,24 @@ router.put(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [id],
       );
-      template.schema = JSON.parse(template.schema);
+      applyLoadedSchema(template);
+      template.normalizationApplied = migrations;
 
       res.json(template);
     } catch (error) {
       console.error('Error updating template:', error);
       res.status(500).json({ error: 'Failed to update template' });
     }
-  },
+  }),
 );
 
 // Delete a template
 router.delete(
   '/templates/:id',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoresheetTemplateIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [id]);
@@ -354,7 +347,7 @@ router.delete(
       console.error('Error deleting template:', error);
       res.status(500).json({ error: 'Failed to delete template' });
     }
-  },
+  }),
 );
 
 export default router;

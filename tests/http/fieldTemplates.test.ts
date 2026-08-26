@@ -13,6 +13,11 @@ import {
 } from './helpers/testServer';
 import { seedUser } from './helpers/seed';
 import fieldTemplatesRoutes from '../../src/server/routes/fieldTemplates';
+import {
+  expectValidationFailed,
+  getApiError,
+  getApiErrorMessage,
+} from './helpers/apiError';
 
 async function seedFieldTemplate(
   db: TestDb['db'],
@@ -167,9 +172,10 @@ describe('Field Templates Routes', () => {
     it('returns 404 when template not found', async () => {
       const res = await http.get(`${server.baseUrl}/field-templates/999`);
       expect(res.status).toBe(404);
-      expect((res.json as { error: string }).error).toContain(
+      expect(getApiErrorMessage(res.json)).toContain(
         'Field template not found',
       );
+      expect(getApiError(res.json)?.code).toBe('NOT_FOUND');
     });
 
     it('returns template with parsed fields', async () => {
@@ -186,11 +192,13 @@ describe('Field Templates Routes', () => {
       const result = res.json as {
         name: string;
         fields: { name: string; type: string; max: number }[];
+        fieldsIssues?: string[];
       };
       expect(result.name).toBe('Accuracy');
       expect(result.fields).toEqual([
         { name: 'accuracy', type: 'number', max: 100 },
       ]);
+      expect(result.fieldsIssues?.length).toBeGreaterThan(0);
     });
   });
 
@@ -219,9 +227,7 @@ describe('Field Templates Routes', () => {
         fields: [{ name: 'score', type: 'number' }],
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'Name and fields are required',
-      );
+      expectValidationFailed(res);
     });
 
     it('returns 400 when fields is missing', async () => {
@@ -237,9 +243,7 @@ describe('Field Templates Routes', () => {
         fields: 'not-an-array',
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'Fields must be an array',
-      );
+      expectValidationFailed(res);
     });
 
     it('creates a field template', async () => {
@@ -296,7 +300,9 @@ describe('Field Templates Routes', () => {
 
     it('updates a field template', async () => {
       const tmpl = await seedFieldTemplate(testDb.db, { name: 'Old Name' });
-      const newFields = [{ id: 'updated_field', label: 'Updated', type: 'text' }];
+      const newFields = [
+        { id: 'updated_field', label: 'Updated', type: 'text' },
+      ];
 
       const res = await http.put(
         `${server.baseUrl}/field-templates/${tmpl.id}`,

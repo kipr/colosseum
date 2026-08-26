@@ -5,6 +5,7 @@ import {
   discriminateShape,
   inventoryDocument,
   rowFromJsonText,
+  rowFromParsedDocument,
 } from '../../../src/server/scoresheetAudit/inventory';
 
 const TEMPLATES_DIR = path.join(__dirname, '../../../templates');
@@ -106,6 +107,19 @@ describe('synthetic inventory detectors', () => {
     expect(row.findings.some((item) => item.code === 'json.parse')).toBe(true);
     expect(row.automaticNormalizationAvailable).toBe(false);
     expect(row.proposedNormalized).toBeNull();
+  });
+
+  it('proposes add-schema-version for unversioned schema objects', () => {
+    const row = rowFromParsedDocument({
+      id: 3,
+      name: 'legacy',
+      parsed: { fields: [] },
+    });
+    expect(row.automaticNormalizationAvailable).toBe(true);
+    expect(row.proposedNormalized).toEqual({
+      schemaVersion: 1,
+      fields: [],
+    });
   });
 
   it('reports json.parse for empty text', () => {

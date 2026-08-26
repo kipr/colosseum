@@ -21,6 +21,7 @@ import {
 } from './helpers/seed';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
 import { canonicalSchema } from '../helpers/canonicalSchema';
+import { expectValidationFailed } from './helpers/apiError';
 
 describe('Scoresheet Templates Event Scope', () => {
   let testDb: TestDb;
@@ -137,7 +138,7 @@ describe('Scoresheet Templates Event Scope', () => {
         description: 'Test',
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('required');
+      expectValidationFailed(res);
     });
   });
 
@@ -312,10 +313,16 @@ describe('Scoresheet Templates Event Scope', () => {
       );
 
       expect(res.status).toBe(200);
-      const body = res.json as { id: number; name: string; schema: unknown };
+      const body = res.json as {
+        id: number;
+        name: string;
+        schema: unknown;
+        schemaNormalization?: string[];
+      };
       expect(body.id).toBe(template.id);
       expect(body.name).toBe('Admin Preview');
-      expect(body.schema).toEqual({ fields: [] });
+      expect(body.schema).toEqual({ schemaVersion: 1, fields: [] });
+      expect(body.schemaNormalization).toEqual(['add-schema-version']);
     });
 
     it('returns 404 when template does not exist', async () => {
@@ -463,7 +470,7 @@ describe('Scoresheet Templates Event Scope', () => {
       const res = await http.get(
         `${baseUrl}/scoresheet/templates/admin?eventId=not-a-number`,
       );
-      expect(res.status).toBe(400);
+      expectValidationFailed(res);
     });
   });
 

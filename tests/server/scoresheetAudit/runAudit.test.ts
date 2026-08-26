@@ -88,6 +88,11 @@ describe('runScoresheetAudit database runner', () => {
       expect(validRow?.findings.map((item) => item.code)).toContain(
         'missing.schemaVersion',
       );
+      expect(validRow?.automaticNormalizationAvailable).toBe(true);
+      expect(validRow?.proposedNormalized).toMatchObject({
+        schemaVersion: 1,
+        title: 'Valid',
+      });
 
       const broken = report.rows.find((row) => row.name === 'Broken JSON');
       expect(broken?.shape).toBe('unparseable');
