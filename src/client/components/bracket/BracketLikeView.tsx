@@ -44,12 +44,16 @@ function getStatusLabel(status: GameStatus): string {
 }
 
 function getTeamDisplayName(
-  teamNumber?: number,
   teamName?: string,
   teamDisplay?: string | null,
 ): string {
   return teamName || teamDisplay || '';
 }
+
+type AnchorRefs = {
+  registerTeam1: (el: HTMLElement | null) => void;
+  registerTeam2: (el: HTMLElement | null) => void;
+};
 
 interface BracketTreeDesktopProps {
   rounds: RoundData[];
@@ -57,6 +61,7 @@ interface BracketTreeDesktopProps {
     game: BracketGame,
     isLastRound: boolean,
     matchIndex: number,
+    anchorRefs?: AnchorRefs,
   ) => React.ReactNode;
 }
 
@@ -272,11 +277,6 @@ export default function BracketLikeView({
     setSelectedRoundIndex(0);
   }, [selectedSide]);
 
-  type AnchorRefs = {
-    registerTeam1: (el: HTMLElement | null) => void;
-    registerTeam2: (el: HTMLElement | null) => void;
-  };
-
   // Render a single match card
   const renderMatchCard = (
     game: BracketGame,
@@ -320,11 +320,7 @@ export default function BracketLikeView({
           </span>
           <span className="team-name">
             {game.team1_id
-              ? getTeamDisplayName(
-                  game.team1_number,
-                  game.team1_name,
-                  game.team1_display,
-                )
+              ? getTeamDisplayName(game.team1_name, game.team1_display)
               : 'TBD'}
           </span>
           {hasScores && (
@@ -349,11 +345,7 @@ export default function BracketLikeView({
           </span>
           <span className="team-name">
             {game.team2_id
-              ? getTeamDisplayName(
-                  game.team2_number,
-                  game.team2_name,
-                  game.team2_display,
-                )
+              ? getTeamDisplayName(game.team2_name, game.team2_display)
               : 'TBD'}
           </span>
           {hasScores && (

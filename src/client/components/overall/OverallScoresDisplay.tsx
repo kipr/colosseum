@@ -178,7 +178,8 @@ export default function OverallScoresDisplay({
               headerClassName: 'overall-raw-double-seed-col doc-sortable',
               cellClassName: 'overall-raw-double-seed-cell',
               sortAriaLabel: 'Sort by raw double seed score',
-              renderCell: (row) => formatScore(row.raw_double_seed_score ?? 0),
+              renderCell: (row: OverallRow) =>
+                formatScore(row.raw_double_seed_score ?? 0),
             },
           ]
         : []),

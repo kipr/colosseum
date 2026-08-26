@@ -256,7 +256,7 @@ export default function ScoreViewModal({
       // Build updated score data with labels and types preserved
       const updatedScoreData: Record<string, any> = {};
 
-      const fieldsById = new Map(
+      const fieldsById = new Map<string, any>(
         (template?.schema?.fields || []).map((field: any) => [field.id, field]),
       );
       const saveCalculatedValues = calculateFormulaValues(formData);
@@ -489,8 +489,12 @@ export default function ScoreViewModal({
     );
   };
 
-  const getRepeatableGroupRowsForRender = (field: any) => {
-    const submittedRows = Array.isArray(score.score_data?.[field.id]?.value)
+  const getRepeatableGroupRowsForRender = (
+    field: any,
+  ): Array<Record<string, any>> => {
+    const submittedRows: Array<Record<string, any>> = Array.isArray(
+      score.score_data?.[field.id]?.value,
+    )
       ? score.score_data[field.id].value
       : [];
 

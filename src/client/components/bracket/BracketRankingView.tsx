@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BracketEntryWithRank } from '../../types/brackets';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
