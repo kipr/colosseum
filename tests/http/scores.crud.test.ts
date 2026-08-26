@@ -11,6 +11,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -63,6 +64,7 @@ describe('Scores Routes – CRUD extra coverage', () => {
 
       const res = await http.put(`${baseUrl}/scores/${score.id}`, {
         scoreData: { total: 100 },
+        resultType: 'standard',
       });
       expect(res.status).toBe(200);
       expect((res.json as { success: boolean }).success).toBe(true);
@@ -86,6 +88,7 @@ describe('Scores Routes – CRUD extra coverage', () => {
 
       await http.put(`${baseUrl}/scores/${score.id}`, {
         scoreData: { total: 200 },
+        resultType: 'standard',
       });
 
       const audit = await testDb.db.get(
@@ -99,8 +102,35 @@ describe('Scores Routes – CRUD extra coverage', () => {
     it('returns 404 when score not found', async () => {
       const res = await http.put(`${baseUrl}/scores/99999`, {
         scoreData: { total: 100 },
+        resultType: 'standard',
       });
       expect(res.status).toBe(404);
+      expect(getApiErrorMessage(res.json)).toContain('Score not found');
+    });
+
+    it('rejects an incomplete PUT without mutating the row', async () => {
+      const event = await seedEvent(testDb.db);
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: JSON.stringify({ total: 50 }),
+        event_id: event.id,
+        score_type: 'seeding',
+      });
+
+      const res = await http.put(`${baseUrl}/scores/${score.id}`, {
+        scoreData: { total: 100 },
+      });
+      expect(res.status).toBe(400);
+      expect(getApiErrorMessage(res.json)).toBe(
+        'The request contains invalid values.',
+      );
+
+      const unchanged = await testDb.db.get(
+        'SELECT score_data FROM score_submissions WHERE id = ?',
+        [score.id],
+      );
+      expect(JSON.parse(unchanged.score_data)).toEqual({ total: 50 });
     });
   });
 

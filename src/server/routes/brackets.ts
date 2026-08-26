@@ -22,11 +22,9 @@ import {
   markQueueDirty,
   queueEtag,
 } from '../services/queueVersion';
-import { parseRequest } from '../validation/request';
-import {
-  advanceWinnerBodySchema,
-  advanceWinnerParamsSchema,
-} from '../validation/bracketResult';
+import { sendInvalidState, sendNotFound } from '../validation/errors';
+import { validatedHandler } from '../validation/middleware';
+import { advanceWinnerRequest } from '../validation/brackets';
 
 const router = express.Router();
 
@@ -1523,22 +1521,10 @@ router.post(
 router.post(
   '/:id/advance-winner',
   requireAuth,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(advanceWinnerRequest, async (req, res) => {
     try {
-      const routeParams = parseRequest(
-        advanceWinnerParamsSchema,
-        req.params,
-        res,
-      );
-      if (!routeParams) return;
-      const payload = parseRequest(
-        advanceWinnerBodySchema,
-        req.body ?? {},
-        res,
-      );
-      if (!payload) return;
-      const { id: bracketId } = routeParams;
-      const { game_id, winner_id } = payload;
+      const { id: bracketId } = req.validated.params;
+      const { game_id, winner_id } = req.validated.body;
       const db = await getDatabase();
 
       // Get the game and verify it belongs to this bracket
@@ -1548,20 +1534,19 @@ router.post(
       );
 
       if (!game) {
-        return res
-          .status(404)
-          .json({ error: 'Game not found in this bracket' });
+        return sendNotFound(res, 'Game not found in this bracket');
       }
 
       if (game.status === 'completed') {
-        return res.status(400).json({ error: 'Game is already completed' });
+        return sendInvalidState(res, 'Game is already completed');
       }
 
       // Verify winner_id is one of the teams in the game
       if (game.team1_id !== winner_id && game.team2_id !== winner_id) {
-        return res.status(400).json({
-          error: 'winner_id must be one of the teams in the game',
-        });
+        return sendInvalidState(
+          res,
+          'winner_id must be one of the teams in the game',
+        );
       }
 
       // Determine loser
@@ -1652,7 +1637,7 @@ router.post(
       console.error('Error advancing winner:', error);
       res.status(500).json({ error: 'Failed to advance winner' });
     }
-  },
+  }),
 );
 
 // ============================================================================

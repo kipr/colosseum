@@ -11,6 +11,7 @@ import { formatDateTime } from '../../utils/dateUtils';
 import '../Modal.css';
 import './ScoringTab.css';
 import type { BracketResultType } from '../../../shared/bracketResult';
+import { getApiErrorMessage } from '../../../shared/apiError';
 
 interface ScoreSubmission {
   id: number;
@@ -215,7 +216,7 @@ export default function ScoringTab() {
       }
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to accept score');
+        throw new Error(getApiErrorMessage(data, 'Failed to accept score'));
       }
 
       if (data.advanced) {
@@ -290,7 +291,7 @@ export default function ScoringTab() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to revert score');
+        throw new Error(getApiErrorMessage(data, 'Failed to revert score'));
       }
 
       if (data.revertedGames && data.revertedGames > 1) {
@@ -382,7 +383,7 @@ export default function ScoringTab() {
 
       if (!response.ok) {
         const data = await response.json();
-        throw new Error(data.error || 'Failed to accept scores');
+        throw new Error(getApiErrorMessage(data, 'Failed to accept scores'));
       }
 
       const data = await response.json();

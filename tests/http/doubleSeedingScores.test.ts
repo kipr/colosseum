@@ -11,6 +11,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedTeam,
@@ -94,6 +95,7 @@ describe('Double Seeding Score Lifecycle', () => {
       },
       eventId: event.id,
       scoreType: 'double_seeding',
+      resultType: 'standard',
       double_seeding_match_id: match.id,
       ...overrides,
     };
@@ -109,7 +111,7 @@ describe('Double Seeding Score Lifecycle', () => {
         }),
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
+      expect(getApiErrorMessage(res.json)).toContain(
         'double_seeding_match_id is required',
       );
     });
@@ -122,7 +124,7 @@ describe('Double Seeding Score Lifecycle', () => {
         submitBody(template, otherEvent, match),
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
+      expect(getApiErrorMessage(res.json)).toContain(
         'does not belong to this event',
       );
     });
@@ -303,8 +305,7 @@ describe('Double Seeding Score Lifecycle', () => {
       );
       expect(dryRun.status).toBe(200);
       expect(
-        (dryRun.json as { requiresConfirmation: boolean })
-          .requiresConfirmation,
+        (dryRun.json as { requiresConfirmation: boolean }).requiresConfirmation,
       ).toBe(false);
 
       const res = await http.post(
