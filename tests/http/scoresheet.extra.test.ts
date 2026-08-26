@@ -24,6 +24,10 @@ import {
   getApiError,
   getApiErrorMessage,
 } from './helpers/apiError';
+import {
+  buildDoubleEliminationSchema,
+  buildDoubleSeedingSchema,
+} from '../../src/client/components/scoresheetUtils';
 
 describe('Scoresheet Routes – extra coverage', () => {
   let testDb: TestDb;
@@ -317,6 +321,47 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(body.name).toBe('New Template');
       expect(body.schema).toEqual(canonicalSchema());
       expect(body.normalizationApplied).toEqual([]);
+    });
+
+    it('accepts DE and double-seeding schemas from the client builders', async () => {
+      const deSchema = buildDoubleEliminationSchema({
+        title: 'Wizard DE Sheet',
+        eventId: null,
+        templateFields: null,
+      });
+      const dsSchema = buildDoubleSeedingSchema({
+        title: 'Wizard DS Sheet',
+        eventId: null,
+        templateFields: null,
+      });
+
+      const deRes = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Wizard DE',
+        schema: deSchema,
+        accessCode: 'de-wiz',
+      });
+      expect(deRes.status).toBe(200);
+      const deBody = deRes.json as {
+        schema: { schemaVersion: number; mode?: string };
+        normalizationApplied: string[];
+      };
+      expect(deBody.schema.schemaVersion).toBe(1);
+      expect(deBody.schema.mode).toBe('head-to-head');
+      expect(deBody.normalizationApplied).toEqual([]);
+
+      const dsRes = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Wizard DS',
+        schema: dsSchema,
+        accessCode: 'ds-wiz',
+      });
+      expect(dsRes.status).toBe(200);
+      const dsBody = dsRes.json as {
+        schema: { schemaVersion: number; scoreKind?: string };
+        normalizationApplied: string[];
+      };
+      expect(dsBody.schema.schemaVersion).toBe(1);
+      expect(dsBody.schema.scoreKind).toBe('double_seeding');
+      expect(dsBody.normalizationApplied).toEqual([]);
     });
 
     it('creates template with eventId and links to event', async () => {
