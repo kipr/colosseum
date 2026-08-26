@@ -10,6 +10,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedUser,
   seedEvent,
@@ -136,9 +137,7 @@ describe('Double Seeding Routes', () => {
         { rounds: 2 },
       );
       expect(lowered.status).toBe(409);
-      expect((lowered.json as { error: string }).error).toContain(
-        'highest-numbered',
-      );
+      expect(getApiErrorMessage(lowered.json)).toContain('highest-numbered');
     });
 
     it('allows appending after results exist but blocks disabling', async () => {
@@ -176,9 +175,7 @@ describe('Double Seeding Routes', () => {
         { rounds: 0 },
       );
       expect(disabled.status).toBe(409);
-      expect((disabled.json as { error: string }).error).toContain(
-        'cannot be disabled',
-      );
+      expect(getApiErrorMessage(disabled.json)).toContain('cannot be disabled');
     });
 
     it('disables double seeding with rounds=0 when no results exist', async () => {
@@ -218,7 +215,7 @@ describe('Double Seeding Routes', () => {
         { rounds: 3 },
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('cannot exceed');
+      expect(getApiErrorMessage(res.json)).toContain('cannot exceed');
     });
 
     it('rejects non-admin requests', async () => {
@@ -391,9 +388,7 @@ describe('Double Seeding Routes', () => {
         `${adminServer.baseUrl}/double-seeding/matches/event/${event.id}/round/1`,
       );
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain(
-        'highest-numbered',
-      );
+      expect(getApiErrorMessage(res.json)).toContain('highest-numbered');
     });
 
     it('rejects deleting a round with a submitted score', async () => {
@@ -420,9 +415,7 @@ describe('Double Seeding Routes', () => {
         `${adminServer.baseUrl}/double-seeding/matches/event/${event.id}/round/1`,
       );
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain(
-        'submissions or scores',
-      );
+      expect(getApiErrorMessage(res.json)).toContain('submissions or scores');
     });
   });
 

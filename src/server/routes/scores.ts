@@ -16,6 +16,7 @@ import {
   acceptEventRequest,
   bulkAcceptRequest,
   revertEventRequest,
+  scoreIdRequest,
   scoreUpdateRequest,
 } from '../validation/scores';
 
@@ -1120,9 +1121,9 @@ router.post(
 router.post(
   '/:id/reject',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoreIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       const oldScore = await db.get(
@@ -1130,7 +1131,7 @@ router.post(
         [id],
       );
       if (!oldScore) {
-        return res.status(404).json({ error: 'Score not found' });
+        return sendNotFound(res, 'Score not found');
       }
 
       await db.run(
@@ -1204,16 +1205,16 @@ router.post(
       console.error('Error rejecting score:', error);
       res.status(500).json({ error: 'Failed to reject score' });
     }
-  },
+  }),
 );
 
 // Revert a score (undo accept/reject) - DB-only, no sheet operations
 router.post(
   '/:id/revert',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoreIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       const score = await db.get(
@@ -1221,7 +1222,7 @@ router.post(
         [id],
       );
       if (!score) {
-        return res.status(404).json({ error: 'Score not found' });
+        return sendNotFound(res, 'Score not found');
       }
 
       await db.run(
@@ -1236,7 +1237,7 @@ router.post(
       console.error('Error reverting score:', error);
       res.status(500).json({ error: 'Failed to revert score' });
     }
-  },
+  }),
 );
 
 // Update a score
@@ -1328,9 +1329,9 @@ router.put(
 router.delete(
   '/:id',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoreIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       const oldScore = await db.get(
@@ -1358,7 +1359,7 @@ router.delete(
       console.error('Error deleting score:', error);
       res.status(500).json({ error: 'Failed to delete score' });
     }
-  },
+  }),
 );
 
 export default router;

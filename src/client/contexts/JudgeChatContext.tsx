@@ -26,6 +26,7 @@ import {
   pageMayHaveOlderMessages,
   hasOlderMessagesForConversation,
 } from '../utils/judgeChatUtils';
+import { getApiErrorMessage } from '../../shared/apiError';
 
 export type JudgeChatMode = 'judge' | 'admin';
 
@@ -381,9 +382,7 @@ export function JudgeChatProvider({
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
-          throw new Error(
-            (data as { error?: string }).error || 'Failed to send message',
-          );
+          throw new Error(getApiErrorMessage(data, 'Failed to send message'));
         }
 
         const newMessage = (await response.json()) as JudgeChatMessage;
@@ -414,8 +413,7 @@ export function JudgeChatProvider({
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
           throw new Error(
-            (data as { error?: string }).error ||
-              'Failed to delete conversation',
+            getApiErrorMessage(data, 'Failed to delete conversation'),
           );
         }
         setConversations((prev) =>

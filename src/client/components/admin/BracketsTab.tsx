@@ -28,6 +28,7 @@ import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../Modal.css';
 import './BracketsTab.css';
+import { getApiErrorMessage } from '../../../shared/apiError';
 
 interface BracketFormData {
   name: string;
@@ -348,7 +349,7 @@ export default function BracketsTab() {
             `Teams already in another bracket: ${names}. Remove them from selection.`,
           );
         }
-        throw new Error(data.error || 'Failed to create bracket');
+        throw new Error(getApiErrorMessage(data, 'Failed to create bracket'));
       }
 
       toast.success('Bracket created!');
@@ -410,7 +411,9 @@ export default function BracketsTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update bracket');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to update bracket'),
+        );
       }
 
       toast.success('Bracket updated!');
@@ -445,7 +448,9 @@ export default function BracketsTab() {
 
       if (!response.ok && response.status !== 204) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete bracket');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to delete bracket'),
+        );
       }
 
       toast.success('Bracket deleted');

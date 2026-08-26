@@ -9,6 +9,7 @@ import type {
 } from '../doubleSeeding/DoubleSeedingScoresTable';
 import DoubleSeedingDisplay from '../doubleSeeding/DoubleSeedingDisplay';
 import './SeedingTab.css';
+import { getApiErrorMessage } from '../../../shared/apiError';
 
 interface DoubleSeedingMatch {
   id: number;
@@ -167,7 +168,7 @@ export default function DoubleSeedingTab() {
       );
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate matches');
+        throw new Error(getApiErrorMessage(data, 'Failed to generate matches'));
       }
       toast.success(
         data.message ||
@@ -201,7 +202,7 @@ export default function DoubleSeedingTab() {
       );
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to remove round');
+        throw new Error(getApiErrorMessage(data, 'Failed to remove round'));
       }
       toast.success(`Removed round ${data.round}`);
       await loadData();

@@ -52,3 +52,11 @@ export function mergePatch<T extends Record<string, unknown>>(
   }
   return merged;
 }
+
+export function nonEmptyObject<T extends z.ZodRawShape>(
+  schema: z.ZodObject<T>,
+) {
+  return schema.strict().refine((value) => Object.keys(value).length > 0, {
+    message: 'No valid fields to update',
+  });
+}

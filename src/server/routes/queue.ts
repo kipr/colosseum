@@ -1,8 +1,7 @@
 import express, { Request, Response } from 'express';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase, type Database } from '../database/connection';
-import { isValidQueueStatus } from '../constants/queueStatus';
 import {
   ensureQueueFresh,
   scheduleQueueRepair,
@@ -15,11 +14,26 @@ import {
   mergeBracketQueueItems,
 } from '../services/bracketQueueOrder';
 import { getTeamRest } from '../services/teamRest';
+import {
+  sendConflict,
+  sendInvalidState,
+  sendNotFound,
+} from '../validation/errors';
+import { validatedHandler } from '../validation/middleware';
+import {
+  callQueueItemRequest,
+  createQueueItemRequest,
+  mergeQueuePatch,
+  patchQueueItemRequest,
+  populateFromBracketRequest,
+  populateFromSeedingRequest,
+  queueIdRequest,
+  queueItemUpdateSchema,
+  queuePresenceRequest,
+  queueRowToUpdateCandidate,
+} from '../validation/queue';
 
 const router = express.Router();
-
-// Allowed fields for PATCH updates
-const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
 
 interface QueuePresenceSource {
   id: number;
@@ -257,146 +271,107 @@ router.get(
 );
 
 // POST /queue - Add item to queue
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const {
-      event_id,
-      bracket_game_id,
-      seeding_team_id,
-      seeding_round,
-      double_seeding_match_id,
-      queue_type,
-      queue_position,
-      table_number,
-    } = req.body;
+router.post(
+  '/',
+  requireAuth,
+  ...validatedHandler(createQueueItemRequest, async (req, res) => {
+    try {
+      const {
+        event_id,
+        bracket_game_id,
+        seeding_team_id,
+        seeding_round,
+        double_seeding_match_id,
+        queue_type,
+        queue_position,
+        table_number,
+      } = req.validated.body;
 
-    if (!event_id || !queue_type) {
-      return res
-        .status(400)
-        .json({ error: 'event_id and queue_type are required' });
-    }
+      const db = await getDatabase();
 
-    // Validate queue_type constraints
-    if (queue_type === 'bracket' && !bracket_game_id) {
-      return res
-        .status(400)
-        .json({ error: 'bracket_game_id is required for bracket queue type' });
-    }
-    if (queue_type === 'seeding' && (!seeding_team_id || !seeding_round)) {
-      return res.status(400).json({
-        error:
-          'seeding_team_id and seeding_round are required for seeding queue type',
-      });
-    }
-    if (queue_type === 'double_seeding' && !double_seeding_match_id) {
-      return res.status(400).json({
-        error:
-          'double_seeding_match_id is required for double_seeding queue type',
-      });
-    }
-
-    const db = await getDatabase();
-
-    // Application-level constraint: never queue the same game/seeding round/match twice
-    if (queue_type === 'bracket') {
-      const existing = await db.get(
-        'SELECT id FROM game_queue WHERE bracket_game_id = ?',
-        [bracket_game_id],
-      );
-      if (existing) {
-        return res
-          .status(409)
-          .json({ error: 'This game is already in the queue' });
+      // Application-level constraint: never queue the same game/seeding round/match twice
+      if (queue_type === 'bracket') {
+        const existing = await db.get(
+          'SELECT id FROM game_queue WHERE bracket_game_id = ?',
+          [bracket_game_id],
+        );
+        if (existing) {
+          return sendConflict(res, 'This game is already in the queue');
+        }
+      } else if (queue_type === 'double_seeding') {
+        const existing = await db.get(
+          'SELECT id FROM game_queue WHERE double_seeding_match_id = ?',
+          [double_seeding_match_id],
+        );
+        if (existing) {
+          return sendConflict(res, 'This match is already in the queue');
+        }
+      } else {
+        const existing = await db.get(
+          'SELECT id FROM game_queue WHERE seeding_team_id = ? AND seeding_round = ?',
+          [seeding_team_id, seeding_round],
+        );
+        if (existing) {
+          return sendConflict(
+            res,
+            'This seeding round is already in the queue',
+          );
+        }
       }
-    } else if (queue_type === 'double_seeding') {
-      const existing = await db.get(
-        'SELECT id FROM game_queue WHERE double_seeding_match_id = ?',
-        [double_seeding_match_id],
-      );
-      if (existing) {
-        return res
-          .status(409)
-          .json({ error: 'This match is already in the queue' });
-      }
-    } else {
-      const existing = await db.get(
-        'SELECT id FROM game_queue WHERE seeding_team_id = ? AND seeding_round = ?',
-        [seeding_team_id, seeding_round],
-      );
-      if (existing) {
-        return res
-          .status(409)
-          .json({ error: 'This seeding round is already in the queue' });
-      }
-    }
 
-    // If no position specified, add to end
-    let position = queue_position;
-    if (position === undefined) {
-      const maxPos = await db.get(
-        'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
-        [event_id],
-      );
-      position = (maxPos?.max_pos ?? 0) + 1;
-    }
+      // If no position specified, add to end
+      let position = queue_position;
+      if (position === undefined) {
+        const maxPos = await db.get(
+          'SELECT MAX(queue_position) as max_pos FROM game_queue WHERE event_id = ?',
+          [event_id],
+        );
+        position = (maxPos?.max_pos ?? 0) + 1;
+      }
 
-    const result = await db.run(
-      `INSERT INTO game_queue (
+      const result = await db.run(
+        `INSERT INTO game_queue (
          event_id, bracket_game_id, seeding_team_id, seeding_round, double_seeding_match_id,
          queue_type, queue_position, status, table_number
        ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
-      [
-        event_id,
-        queue_type === 'bracket' ? bracket_game_id : null,
-        queue_type === 'seeding' ? seeding_team_id : null,
-        queue_type === 'seeding' ? seeding_round : null,
-        queue_type === 'double_seeding' ? double_seeding_match_id : null,
-        queue_type,
-        position,
-        table_number ?? null,
-      ],
-    );
-    await bumpQueueVersion(db, Number(event_id));
+        [
+          event_id,
+          queue_type === 'bracket' ? bracket_game_id : null,
+          queue_type === 'seeding' ? seeding_team_id : null,
+          queue_type === 'seeding' ? seeding_round : null,
+          queue_type === 'double_seeding' ? double_seeding_match_id : null,
+          queue_type,
+          position,
+          table_number ?? null,
+        ],
+      );
+      await bumpQueueVersion(db, event_id);
 
-    const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
-      result.lastID,
-    ]);
-    res.status(201).json(queueItem);
-  } catch (error) {
-    console.error('Error adding to queue:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
-      return res
-        .status(400)
-        .json({ error: 'Event, game, or team does not exist' });
+      const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
+        result.lastID,
+      ]);
+      res.status(201).json(queueItem);
+    } catch (error) {
+      console.error('Error adding to queue:', error);
+      const errMsg = (error as Error).message || '';
+      if (errMsg.includes('FOREIGN KEY constraint failed')) {
+        return sendInvalidState(res, 'Event, game, or team does not exist');
+      }
+      if (errMsg.includes('CHECK constraint failed')) {
+        return sendInvalidState(res, 'Invalid queue_type or status');
+      }
+      res.status(500).json({ error: 'Failed to add to queue' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
-      return res.status(400).json({ error: 'Invalid queue_type or status' });
-    }
-    res.status(500).json({ error: 'Failed to add to queue' });
-  }
-});
+  }),
+);
 
 // POST /queue/populate-from-bracket - Populate queue from event bracket games
 router.post(
   '/populate-from-bracket',
   requireAuth,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(populateFromBracketRequest, async (req, res) => {
     try {
-      const { event_id, bracket_id } = req.body;
-
-      const eventId = Number(event_id);
-      if (!Number.isInteger(eventId) || eventId <= 0) {
-        return res.status(400).json({ error: 'event_id is required' });
-      }
-
-      const bracketId = bracket_id == null ? null : Number(bracket_id);
-      if (
-        bracketId !== null &&
-        (!Number.isInteger(bracketId) || bracketId <= 0)
-      ) {
-        return res.status(400).json({ error: 'Invalid bracket_id' });
-      }
+      const { event_id: eventId, bracket_id: bracketId } = req.validated.body;
 
       const db = await getDatabase();
 
@@ -405,7 +380,7 @@ router.post(
         [eventId],
       );
       if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
+        return sendNotFound(res, 'Event not found');
       }
 
       let targetBrackets: Array<{ id: number }>;
@@ -416,12 +391,10 @@ router.post(
         );
 
         if (!bracket) {
-          return res.status(404).json({ error: 'Bracket not found' });
+          return sendNotFound(res, 'Bracket not found');
         }
         if (bracket.event_id !== eventId) {
-          return res
-            .status(400)
-            .json({ error: 'Bracket does not belong to this event' });
+          return sendInvalidState(res, 'Bracket does not belong to this event');
         }
         targetBrackets = [{ id: bracket.id }];
       } else {
@@ -572,20 +545,16 @@ router.post(
       console.error('Error populating queue from bracket:', error);
       res.status(500).json({ error: 'Failed to populate queue from bracket' });
     }
-  },
+  }),
 );
 
 // POST /queue/populate-from-seeding - Populate queue from unplayed seeding rounds
 router.post(
   '/populate-from-seeding',
   requireAuth,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(populateFromSeedingRequest, async (req, res) => {
     try {
-      const { event_id } = req.body;
-
-      if (!event_id) {
-        return res.status(400).json({ error: 'event_id is required' });
-      }
+      const { event_id } = req.validated.body;
 
       const db = await getDatabase();
 
@@ -596,7 +565,7 @@ router.post(
       );
 
       if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
+        return sendNotFound(res, 'Event not found');
       }
 
       const seedingRounds = event.seeding_rounds || 3;
@@ -608,7 +577,7 @@ router.post(
       );
 
       if (teams.length === 0) {
-        return res.status(400).json({ error: 'No teams found for this event' });
+        return sendInvalidState(res, 'No teams found for this event');
       }
 
       // Get all scored seeding rounds (team_id + round_number with non-null score)
@@ -667,56 +636,46 @@ router.post(
       console.error('Error populating queue from seeding:', error);
       res.status(500).json({ error: 'Failed to populate queue from seeding' });
     }
-  },
+  }),
 );
 
 // PATCH /queue/:id/presence - Confirm one participant in a paired queue item
 router.patch(
   '/:id/presence',
   requireAuth,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(queuePresenceRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { team_id, present } = req.body;
-      const teamId = team_id;
-
-      if (
-        typeof teamId !== 'number' ||
-        !Number.isInteger(teamId) ||
-        teamId <= 0 ||
-        typeof present !== 'boolean'
-      ) {
-        return res.status(400).json({
-          error:
-            'team_id must be a positive integer and present must be boolean',
-        });
-      }
+      const { id } = req.validated.params;
+      const { team_id: teamId, present } = req.validated.body;
 
       const db = await getDatabase();
       const source = await getQueuePresenceSource(db, id);
       if (!source) {
-        return res.status(404).json({ error: 'Queue item not found' });
+        return sendNotFound(res, 'Queue item not found');
       }
       if (
         !['bracket', 'double_seeding'].includes(source.queue_type) ||
         !isPairedQueueItem(source)
       ) {
-        return res.status(400).json({
-          error: 'Presence tracking requires a two-team match',
-        });
+        return sendInvalidState(
+          res,
+          'Presence tracking requires a two-team match',
+        );
       }
       if (source.status !== 'called') {
-        return res.status(409).json({
-          error: 'Presence can only be changed while the queue item is called',
-        });
+        return sendConflict(
+          res,
+          'Presence can only be changed while the queue item is called',
+        );
       }
 
       const [team1Id, team2Id] = getQueueParticipants(source);
       const slot = teamId === team1Id ? 1 : teamId === team2Id ? 2 : null;
       if (slot === null) {
-        return res.status(409).json({
-          error: 'Team is not a current participant in this queue item',
-        });
+        return sendConflict(
+          res,
+          'Team is not a current participant in this queue item',
+        );
       }
 
       const nextPresentId = present ? teamId : null;
@@ -744,17 +703,18 @@ router.patch(
       if ((result.changes ?? 0) === 0) {
         const current = await getQueuePresenceSource(db, id);
         if (!current) {
-          return res.status(404).json({ error: 'Queue item not found' });
+          return sendNotFound(res, 'Queue item not found');
         }
-        return res.status(409).json({
-          error: 'Queue status or participants changed; refresh and try again',
-        });
+        return sendConflict(
+          res,
+          'Queue status or participants changed; refresh and try again',
+        );
       }
 
       await bumpQueueVersion(db, source.event_id);
       const updated = await getQueuePresenceSource(db, id);
       if (!updated) {
-        return res.status(404).json({ error: 'Queue item not found' });
+        return sendNotFound(res, 'Queue item not found');
       }
       res.json({
         id: updated.id,
@@ -765,117 +725,117 @@ router.patch(
       console.error('Error updating queue presence:', error);
       res.status(500).json({ error: 'Failed to update queue presence' });
     }
-  },
+  }),
 );
 
 // PATCH /queue/:id - Update queue item status
-router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
+router.patch(
+  '/:id',
+  requireAuth,
+  ...validatedHandler(patchQueueItemRequest, async (req, res) => {
+    try {
+      const { id } = req.validated.params;
+      const patch = req.validated.body;
+      const db = await getDatabase();
 
-    const updates = Object.entries(req.body).filter(([key]) =>
-      ALLOWED_UPDATE_FIELDS.includes(key),
-    );
-
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'No valid fields to update' });
-    }
-
-    const statusEntry = updates.find(([key]) => key === 'status');
-    if (statusEntry && !isValidQueueStatus(statusEntry[1])) {
-      return res.status(400).json({ error: 'Invalid status value' });
-    }
-
-    const current = await getQueuePresenceSource(db, id);
-    if (!current) {
-      return res.status(404).json({ error: 'Queue item not found' });
-    }
-
-    let updateGuard = '';
-    let updateGuardParams: (string | number)[] = [];
-    const targetStatus = statusEntry?.[1];
-    const gatedAdvance =
-      typeof targetStatus === 'string' &&
-      ['queued', 'called'].includes(current.status) &&
-      ['arrived', 'on_table', 'scored'].includes(targetStatus) &&
-      isPairedQueueItem(current);
-
-    if (gatedAdvance) {
-      const presence = normalizedPresence(current);
-      if (!presence.team1_present || !presence.team2_present) {
-        return res.status(409).json({
-          error: 'Both teams must be present before this match can advance',
-        });
+      const current = await getQueuePresenceSource(db, id);
+      if (!current) {
+        return sendNotFound(res, 'Queue item not found');
       }
 
-      const [team1Id, team2Id] = getQueueParticipants(current);
-      const snapshot = participantSnapshotPredicate(current);
-      updateGuard = `
+      const merged = mergeQueuePatch(queueRowToUpdateCandidate(current), patch);
+      const parsed = queueItemUpdateSchema.safeParse(merged);
+      if (!parsed.success) {
+        return sendInvalidState(res, 'Invalid queue item update');
+      }
+      const next = parsed.data;
+
+      let updateGuard = '';
+      let updateGuardParams: (string | number)[] = [];
+      const targetStatus = next.status;
+      const gatedAdvance =
+        ['queued', 'called'].includes(current.status) &&
+        ['arrived', 'on_table', 'scored'].includes(targetStatus) &&
+        isPairedQueueItem(current);
+
+      if (gatedAdvance) {
+        const presence = normalizedPresence(current);
+        if (!presence.team1_present || !presence.team2_present) {
+          return sendConflict(
+            res,
+            'Both teams must be present before this match can advance',
+          );
+        }
+
+        const [team1Id, team2Id] = getQueueParticipants(current);
+        const snapshot = participantSnapshotPredicate(current);
+        updateGuard = `
         AND status = ?
         AND present_team1_id = ?
         AND present_team2_id = ?
         AND ${snapshot.sql}`;
-      updateGuardParams = [
-        current.status,
-        team1Id!,
-        team2Id!,
-        ...snapshot.params,
-      ];
-    }
-
-    const resetPresence =
-      targetStatus === 'queued' || targetStatus === 'called';
-    const setClause = [
-      ...updates.map(([key]) => `${key} = ?`),
-      ...(resetPresence
-        ? ['present_team1_id = NULL', 'present_team2_id = NULL']
-        : []),
-    ].join(', ');
-    const values = updates.map(([, value]) => value);
-
-    const result = await db.run(
-      `UPDATE game_queue SET ${setClause} WHERE id = ?${updateGuard}`,
-      [...values, id, ...updateGuardParams],
-    );
-
-    if (result.changes === 0) {
-      if (gatedAdvance) {
-        return res.status(409).json({
-          error: 'Queue status or participants changed; refresh and try again',
-        });
+        updateGuardParams = [
+          current.status,
+          team1Id!,
+          team2Id!,
+          ...snapshot.params,
+        ];
       }
-      return res.status(404).json({ error: 'Queue item not found' });
-    }
 
-    const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
-      id,
-    ]);
-    if (queueItem) {
-      await bumpQueueVersion(db, queueItem.event_id);
+      const resetPresence =
+        targetStatus === 'queued' || targetStatus === 'called';
+      const setClause = [
+        'status = ?',
+        'table_number = ?',
+        ...(resetPresence
+          ? ['present_team1_id = NULL', 'present_team2_id = NULL']
+          : []),
+      ].join(', ');
+
+      const result = await db.run(
+        `UPDATE game_queue SET ${setClause} WHERE id = ?${updateGuard}`,
+        [next.status, next.table_number, id, ...updateGuardParams],
+      );
+
+      if (result.changes === 0) {
+        if (gatedAdvance) {
+          return sendConflict(
+            res,
+            'Queue status or participants changed; refresh and try again',
+          );
+        }
+        return sendNotFound(res, 'Queue item not found');
+      }
+
+      const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
+        id,
+      ]);
+      if (queueItem) {
+        await bumpQueueVersion(db, queueItem.event_id);
+      }
+      res.json(queueItem);
+    } catch (error) {
+      console.error('Error updating queue item:', error);
+      const errMsg = (error as Error).message || '';
+      if (
+        errMsg.includes('CHECK constraint failed') ||
+        errMsg.includes('violates check constraint')
+      ) {
+        return sendInvalidState(res, 'Invalid status value');
+      }
+      res.status(500).json({ error: 'Failed to update queue item' });
     }
-    res.json(queueItem);
-  } catch (error) {
-    console.error('Error updating queue item:', error);
-    const errMsg = (error as Error).message || '';
-    if (
-      errMsg.includes('CHECK constraint failed') ||
-      errMsg.includes('violates check constraint')
-    ) {
-      return res.status(400).json({ error: 'Invalid status value' });
-    }
-    res.status(500).json({ error: 'Failed to update queue item' });
-  }
-});
+  }),
+);
 
 // PATCH /queue/:id/call - Call team/game (sets status to 'called' and records time)
 router.patch(
   '/:id/call',
   requireAuth,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(callQueueItemRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { table_number } = req.body;
+      const { id } = req.validated.params;
+      const { table_number } = req.validated.body;
       const db = await getDatabase();
 
       let query = `UPDATE game_queue
@@ -894,7 +854,7 @@ router.patch(
       const result = await db.run(query, params);
 
       if (result.changes === 0) {
-        return res.status(404).json({ error: 'Queue item not found' });
+        return sendNotFound(res, 'Queue item not found');
       }
 
       const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
@@ -908,31 +868,35 @@ router.patch(
       console.error('Error calling queue item:', error);
       res.status(500).json({ error: 'Failed to call queue item' });
     }
-  },
+  }),
 );
 
 // DELETE /queue/:id - Remove from queue
-router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
+router.delete(
+  '/:id',
+  requireAuth,
+  ...validatedHandler(queueIdRequest, async (req, res) => {
+    try {
+      const { id } = req.validated.params;
+      const db = await getDatabase();
 
-    const existing = await db.get<{ event_id: number }>(
-      'SELECT event_id FROM game_queue WHERE id = ?',
-      [id],
-    );
+      const existing = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM game_queue WHERE id = ?',
+        [id],
+      );
 
-    await db.run('DELETE FROM game_queue WHERE id = ?', [id]);
+      await db.run('DELETE FROM game_queue WHERE id = ?', [id]);
 
-    if (existing) {
-      await bumpQueueVersion(db, existing.event_id);
+      if (existing) {
+        await bumpQueueVersion(db, existing.event_id);
+      }
+
+      res.status(204).send();
+    } catch (error) {
+      console.error('Error removing from queue:', error);
+      res.status(500).json({ error: 'Failed to remove from queue' });
     }
-
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error removing from queue:', error);
-    res.status(500).json({ error: 'Failed to remove from queue' });
-  }
-});
+  }),
+);
 
 export default router;

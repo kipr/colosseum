@@ -12,6 +12,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -476,7 +477,7 @@ describe('Awards API', () => {
         { team_ids: [team.id, 'invalid'] },
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toMatch(/integers/i);
+      expect(getApiErrorMessage(res.json)).toMatch(/integers/i);
 
       const recipients = await testDb.db.all(
         'SELECT team_id FROM event_award_recipients WHERE event_award_id = ?',
@@ -576,10 +577,13 @@ describe('Awards API', () => {
         name: 'Outstanding Programming',
       });
 
-      const res = await http.post(`${baseUrl}/awards/event-awards/${award.id}/individual-recipients`, {
-        name: 'Ada Lovelace',
-        team_id: team.id,
-      });
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        {
+          name: 'Ada Lovelace',
+          team_id: team.id,
+        },
+      );
       expect(res.status).toBe(201);
       const body = res.json as Record<string, unknown>;
       expect(body.id).toBeDefined();
@@ -791,9 +795,9 @@ describe('Awards API', () => {
       );
       expect(res.status).toBe(200);
 
-      const listRes = await http.get<
-        { individual_recipients: unknown[] }[]
-      >(`${baseUrl}/awards/event/${event.id}`);
+      const listRes = await http.get<{ individual_recipients: unknown[] }[]>(
+        `${baseUrl}/awards/event/${event.id}`,
+      );
       expect(listRes.json[0].individual_recipients).toEqual([]);
     });
 
@@ -1014,7 +1018,9 @@ describe('Awards API', () => {
       expect(res.json.manual[0].individual_recipients[0].team_name).toBe(
         'Winners',
       );
-      expect(res.json.manual[0].individual_recipients[0].display_name).toBeNull();
+      expect(
+        res.json.manual[0].individual_recipients[0].display_name,
+      ).toBeNull();
       expect(res.json.manual[0].individual_recipients[0]).not.toHaveProperty(
         'id',
       );
@@ -1300,9 +1306,9 @@ describe('Awards API', () => {
         1, 2,
       ]);
       expect(res.json.automatic.perBracketOverall).toEqual([]);
-      expect(res.json.automatic.seeding!.placements.map((p) => p.place)).toEqual(
-        [1, 2, 3, 4],
-      );
+      expect(
+        res.json.automatic.seeding!.placements.map((p) => p.place),
+      ).toEqual([1, 2, 3, 4]);
     });
   });
 
@@ -1482,9 +1488,7 @@ describe('Awards API', () => {
         `${baseUrl}/awards/event/${event.id}`,
       );
       const deAward = listRes.json.find((a) => a.name.includes('DE —'));
-      const seedingAward = listRes.json.find((a) =>
-        a.name.includes('Seeding'),
-      );
+      const seedingAward = listRes.json.find((a) => a.name.includes('Seeding'));
       expect(deAward?.award_type).toBe('trophy');
       expect(seedingAward?.award_type).toBe('certificate');
     });
@@ -1580,12 +1584,15 @@ describe('Awards API', () => {
         team_number: 1,
         team_name: 'Solo',
       });
-      const res = await http.post(`${baseUrl}/awards/event/${event.id}/automatic`, {
-        de_top_n: 5,
-        per_bracket_overall_top_n: 0,
-        seeding_top_n: 0,
-        acknowledge_warnings: true,
-      });
+      const res = await http.post(
+        `${baseUrl}/awards/event/${event.id}/automatic`,
+        {
+          de_top_n: 5,
+          per_bracket_overall_top_n: 0,
+          seeding_top_n: 0,
+          acknowledge_warnings: true,
+        },
+      );
       expect(res.status).toBe(400);
     });
 

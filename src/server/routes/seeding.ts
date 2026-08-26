@@ -4,15 +4,18 @@ import { getDatabase } from '../database/connection';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { isEventArchived } from '../utils/eventVisibility';
 import { markQueueDirty } from '../services/queueVersion';
+import { sendInvalidState, sendNotFound } from '../validation/errors';
+import { validatedHandler } from '../validation/middleware';
+import {
+  createSeedingScoreRequest,
+  mergeSeedingScorePatch,
+  patchSeedingScoreRequest,
+  seedingScoreIdRequest,
+  seedingScoreRowToUpdateCandidate,
+  seedingScoreUpdateSchema,
+} from '../validation/seeding';
 
 const router = express.Router();
-
-// Allowed fields for PATCH updates on seeding_scores
-const ALLOWED_SCORE_UPDATE_FIELDS = [
-  'score',
-  'score_submission_id',
-  'scored_at',
-];
 
 // GET /seeding/scores/team/:teamId - Get scores for team (public for judges)
 router.get('/scores/team/:teamId', async (req: Request, res: Response) => {
@@ -58,87 +61,91 @@ router.get('/scores/event/:eventId', async (req: Request, res: Response) => {
 });
 
 // POST /seeding/scores - Submit seeding score (admin only)
-router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
-  try {
-    const { team_id, round_number, score, score_submission_id } = req.body;
+router.post(
+  '/scores',
+  requireAdmin,
+  ...validatedHandler(createSeedingScoreRequest, async (req, res) => {
+    try {
+      const { team_id, round_number, score, score_submission_id } =
+        req.validated.body;
 
-    if (!team_id || !round_number) {
-      return res
-        .status(400)
-        .json({ error: 'team_id and round_number are required' });
-    }
+      const db = await getDatabase();
 
-    const db = await getDatabase();
-
-    // Use INSERT OR REPLACE to handle upsert
-    const result = await db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
+      // Use INSERT OR REPLACE to handle upsert
+      const result = await db.run(
+        `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(team_id, round_number) DO UPDATE SET
          score = excluded.score,
          score_submission_id = excluded.score_submission_id,
          scored_at = CURRENT_TIMESTAMP`,
-      [team_id, round_number, score ?? null, score_submission_id ?? null],
-    );
+        [team_id, round_number, score ?? null, score_submission_id ?? null],
+      );
 
-    const seedingScore = await db.get(
-      'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
-      [team_id, round_number],
-    );
+      const seedingScore = await db.get(
+        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+        [team_id, round_number],
+      );
 
-    const team = await db.get<{ event_id: number }>(
-      'SELECT event_id FROM teams WHERE id = ?',
-      [team_id],
-    );
-    if (team) {
-      // Scored rounds leave the seeding queue on the next queue read.
-      await markQueueDirty(db, team.event_id);
-    }
+      const team = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM teams WHERE id = ?',
+        [team_id],
+      );
+      if (team) {
+        // Scored rounds leave the seeding queue on the next queue read.
+        await markQueueDirty(db, team.event_id);
+      }
 
-    res.status(201).json(seedingScore ?? { id: result.lastID });
-  } catch (error) {
-    console.error('Error submitting seeding score:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
-      return res.status(400).json({ error: 'Team does not exist' });
+      res.status(201).json(seedingScore ?? { id: result.lastID });
+    } catch (error) {
+      console.error('Error submitting seeding score:', error);
+      const errMsg = (error as Error).message || '';
+      if (errMsg.includes('FOREIGN KEY constraint failed')) {
+        return sendInvalidState(res, 'Team does not exist');
+      }
+      if (errMsg.includes('CHECK constraint failed')) {
+        return sendInvalidState(res, 'Invalid round_number (must be > 0)');
+      }
+      res.status(500).json({ error: 'Failed to submit seeding score' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
-      return res
-        .status(400)
-        .json({ error: 'Invalid round_number (must be > 0)' });
-    }
-    res.status(500).json({ error: 'Failed to submit seeding score' });
-  }
-});
+  }),
+);
 
 // PATCH /seeding/scores/:id - Update score (admin only)
 router.patch(
   '/scores/:id',
   requireAuth,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(patchSeedingScoreRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
+      const patch = req.validated.body;
       const db = await getDatabase();
 
-      // Filter to only allowed fields
-      const updates = Object.entries(req.body).filter(([key]) =>
-        ALLOWED_SCORE_UPDATE_FIELDS.includes(key),
+      const existing = await db.get(
+        'SELECT * FROM seeding_scores WHERE id = ?',
+        [id],
       );
-
-      if (updates.length === 0) {
-        return res.status(400).json({ error: 'No valid fields to update' });
+      if (!existing) {
+        return sendNotFound(res, 'Seeding score not found');
       }
 
-      const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
-      const values = updates.map(([, value]) => value);
+      const merged = mergeSeedingScorePatch(
+        seedingScoreRowToUpdateCandidate(existing),
+        patch,
+      );
+      const parsed = seedingScoreUpdateSchema.safeParse(merged);
+      if (!parsed.success) {
+        return sendInvalidState(res, 'Invalid seeding score update');
+      }
+      const next = parsed.data;
 
       const result = await db.run(
-        `UPDATE seeding_scores SET ${setClause} WHERE id = ?`,
-        [...values, id],
+        `UPDATE seeding_scores SET score = ?, score_submission_id = ?, scored_at = ? WHERE id = ?`,
+        [next.score, next.score_submission_id, next.scored_at, id],
       );
 
       if (result.changes === 0) {
-        return res.status(404).json({ error: 'Seeding score not found' });
+        return sendNotFound(res, 'Seeding score not found');
       }
 
       const score = await db.get('SELECT * FROM seeding_scores WHERE id = ?', [
@@ -160,16 +167,16 @@ router.patch(
       console.error('Error updating seeding score:', error);
       res.status(500).json({ error: 'Failed to update seeding score' });
     }
-  },
+  }),
 );
 
 // DELETE /seeding/scores/:id - Delete score (admin only)
 router.delete(
   '/scores/:id',
   requireAuth,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(seedingScoreIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       const existing = await db.get<{ team_id: number }>(
@@ -196,7 +203,7 @@ router.delete(
       console.error('Error deleting seeding score:', error);
       res.status(500).json({ error: 'Failed to delete seeding score' });
     }
-  },
+  }),
 );
 
 // GET /seeding/rankings/event/:eventId - Get rankings for event (public; blocked for archived events)

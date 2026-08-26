@@ -22,6 +22,29 @@ import {
   isAwardType,
   type AwardType,
 } from '../../shared/awards';
+import {
+  sendConflict,
+  sendInvalidState,
+  sendNotFound,
+} from '../validation/errors';
+import { validatedHandler } from '../validation/middleware';
+import {
+  addIndividualRecipientRequest,
+  addRecipientsRequest,
+  awardIdRequest,
+  awardTemplateRowToUpdateCandidate,
+  awardTemplateUpdateSchema,
+  createAwardTemplateRequest,
+  createEventAwardRequest,
+  eventAwardIndividualRecipientRequest,
+  eventAwardRecipientRequest,
+  eventAwardRowToUpdateCandidate,
+  eventAwardUpdateSchema,
+  mergeAwardTemplatePatch,
+  mergeEventAwardPatch,
+  patchAwardTemplateRequest,
+  patchEventAwardRequest,
+} from '../validation/awards';
 
 function parseTopNParam(value: unknown, fallback: number): number | null {
   if (value === undefined || value === null || value === '') {
@@ -118,25 +141,13 @@ router.get(
 router.post(
   '/templates',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(createAwardTemplateRequest, async (req, res) => {
     try {
-      const { name, description, award_type } = req.body;
-      if (!name || !String(name).trim()) {
-        return res.status(400).json({ error: 'Name is required' });
-      }
-      const resolvedType =
-        award_type === undefined || award_type === null || award_type === ''
-          ? DEFAULT_AWARD_TYPE
-          : award_type;
-      if (!isAwardType(resolvedType)) {
-        return res
-          .status(400)
-          .json({ error: 'award_type must be "certificate" or "trophy"' });
-      }
+      const { name, description, award_type } = req.validated.body;
       const db = await getDatabase();
       const result = await db.run(
         'INSERT INTO award_templates (name, description, award_type) VALUES (?, ?, ?)',
-        [String(name).trim(), description ?? null, resolvedType],
+        [name, description ?? null, award_type],
       );
       const created = await db.get(
         'SELECT id, name, description, award_type, created_at, updated_at FROM award_templates WHERE id = ?',
@@ -147,55 +158,38 @@ router.post(
       console.error('Error creating award template:', error);
       res.status(500).json({ error: 'Failed to create award template' });
     }
-  },
+  }),
 );
 
 // PATCH /awards/templates/:id
 router.patch(
   '/templates/:id',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(patchAwardTemplateRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { name, description, award_type } = req.body;
+      const { id } = req.validated.params;
+      const patch = req.validated.body;
       const db = await getDatabase();
       const existing = await db.get(
-        'SELECT id FROM award_templates WHERE id = ?',
+        'SELECT id, name, description, award_type FROM award_templates WHERE id = ?',
         [id],
       );
       if (!existing) {
-        return res.status(404).json({ error: 'Award template not found' });
+        return sendNotFound(res, 'Award template not found');
       }
 
-      const updates: string[] = [];
-      const values: unknown[] = [];
-      if (name !== undefined) {
-        if (!String(name).trim()) {
-          return res.status(400).json({ error: 'Name cannot be empty' });
-        }
-        updates.push('name = ?');
-        values.push(String(name).trim());
+      const merged = mergeAwardTemplatePatch(
+        awardTemplateRowToUpdateCandidate(existing),
+        patch,
+      );
+      const parsed = awardTemplateUpdateSchema.safeParse(merged);
+      if (!parsed.success) {
+        return sendInvalidState(res, 'Invalid award template update');
       }
-      if (description !== undefined) {
-        updates.push('description = ?');
-        values.push(description);
-      }
-      if (award_type !== undefined) {
-        if (!isAwardType(award_type)) {
-          return res
-            .status(400)
-            .json({ error: 'award_type must be "certificate" or "trophy"' });
-        }
-        updates.push('award_type = ?');
-        values.push(award_type);
-      }
-      if (updates.length === 0) {
-        return res.status(400).json({ error: 'No fields to update' });
-      }
-      values.push(id);
+      const next = parsed.data;
       await db.run(
-        `UPDATE award_templates SET ${updates.join(', ')} WHERE id = ?`,
-        values,
+        'UPDATE award_templates SET name = ?, description = ?, award_type = ? WHERE id = ?',
+        [next.name, next.description, next.award_type, id],
       );
       const updated = await db.get(
         'SELECT id, name, description, award_type, created_at, updated_at FROM award_templates WHERE id = ?',
@@ -206,23 +200,23 @@ router.patch(
       console.error('Error updating award template:', error);
       res.status(500).json({ error: 'Failed to update award template' });
     }
-  },
+  }),
 );
 
 // DELETE /awards/templates/:id
 router.delete(
   '/templates/:id',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(awardIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
       const existing = await db.get(
         'SELECT id FROM award_templates WHERE id = ?',
         [id],
       );
       if (!existing) {
-        return res.status(404).json({ error: 'Award template not found' });
+        return sendNotFound(res, 'Award template not found');
       }
       await db.run('DELETE FROM award_templates WHERE id = ?', [id]);
       res.json({ success: true });
@@ -230,7 +224,7 @@ router.delete(
       console.error('Error deleting award template:', error);
       res.status(500).json({ error: 'Failed to delete award template' });
     }
-  },
+  }),
 );
 
 // ============================================================================
@@ -541,26 +535,23 @@ router.get(
 router.post(
   '/event/:eventId',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(createEventAwardRequest, async (req, res) => {
     try {
-      const { eventId } = req.params;
+      const { eventId } = req.validated.params;
       const { template_award_id, name, description, sort_order, award_type } =
-        req.body;
+        req.validated.body;
 
       const db = await getDatabase();
       const event = await db.get('SELECT id FROM events WHERE id = ?', [
         eventId,
       ]);
       if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
+        return sendNotFound(res, 'Event not found');
       }
 
       let awardName = name;
       let awardDescription = description;
-      let awardType: AwardType | undefined =
-        award_type === undefined || award_type === null || award_type === ''
-          ? undefined
-          : award_type;
+      let awardType: AwardType | undefined = award_type;
 
       if (template_award_id) {
         const template = await db.get(
@@ -568,26 +559,23 @@ router.post(
           [template_award_id],
         );
         if (!template) {
-          return res.status(404).json({ error: 'Award template not found' });
+          return sendNotFound(res, 'Award template not found');
         }
         const t = template as Record<string, unknown>;
-        if (!awardName) awardName = t.name;
-        if (awardDescription === undefined) awardDescription = t.description;
+        if (!awardName) awardName = t.name as string;
+        if (awardDescription === undefined) {
+          awardDescription = t.description as string | null;
+        }
         if (awardType === undefined && isAwardType(t.award_type)) {
           awardType = t.award_type;
         }
       }
 
       if (!awardName || !String(awardName).trim()) {
-        return res.status(400).json({ error: 'Name is required' });
+        return sendInvalidState(res, 'Name is required');
       }
 
       const resolvedType = awardType ?? DEFAULT_AWARD_TYPE;
-      if (!isAwardType(resolvedType)) {
-        return res
-          .status(400)
-          .json({ error: 'award_type must be "certificate" or "trophy"' });
-      }
 
       const order =
         sort_order !== undefined
@@ -605,7 +593,7 @@ router.post(
         [
           eventId,
           template_award_id ?? null,
-          String(awardName).trim(),
+          awardName.trim(),
           awardDescription ?? null,
           resolvedType,
           order,
@@ -624,59 +612,38 @@ router.post(
       console.error('Error creating event award:', error);
       res.status(500).json({ error: 'Failed to create event award' });
     }
-  },
+  }),
 );
 
 // PATCH /awards/event-awards/:id
 router.patch(
   '/event-awards/:id',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(patchEventAwardRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { name, description, sort_order, award_type } = req.body;
+      const { id } = req.validated.params;
+      const patch = req.validated.body;
       const db = await getDatabase();
       const existing = await db.get(
-        'SELECT id FROM event_awards WHERE id = ?',
+        'SELECT id, name, description, sort_order, award_type FROM event_awards WHERE id = ?',
         [id],
       );
       if (!existing) {
-        return res.status(404).json({ error: 'Event award not found' });
+        return sendNotFound(res, 'Event award not found');
       }
 
-      const updates: string[] = [];
-      const values: unknown[] = [];
-      if (name !== undefined) {
-        if (!String(name).trim()) {
-          return res.status(400).json({ error: 'Name cannot be empty' });
-        }
-        updates.push('name = ?');
-        values.push(String(name).trim());
+      const merged = mergeEventAwardPatch(
+        eventAwardRowToUpdateCandidate(existing),
+        patch,
+      );
+      const parsed = eventAwardUpdateSchema.safeParse(merged);
+      if (!parsed.success) {
+        return sendInvalidState(res, 'Invalid event award update');
       }
-      if (description !== undefined) {
-        updates.push('description = ?');
-        values.push(description);
-      }
-      if (sort_order !== undefined) {
-        updates.push('sort_order = ?');
-        values.push(sort_order);
-      }
-      if (award_type !== undefined) {
-        if (!isAwardType(award_type)) {
-          return res
-            .status(400)
-            .json({ error: 'award_type must be "certificate" or "trophy"' });
-        }
-        updates.push('award_type = ?');
-        values.push(award_type);
-      }
-      if (updates.length === 0) {
-        return res.status(400).json({ error: 'No fields to update' });
-      }
-      values.push(id);
+      const next = parsed.data;
       await db.run(
-        `UPDATE event_awards SET ${updates.join(', ')} WHERE id = ?`,
-        values,
+        `UPDATE event_awards SET name = ?, description = ?, sort_order = ?, award_type = ? WHERE id = ?`,
+        [next.name, next.description, next.sort_order, next.award_type, id],
       );
       const updated = await db.get('SELECT * FROM event_awards WHERE id = ?', [
         id,
@@ -686,23 +653,23 @@ router.patch(
       console.error('Error updating event award:', error);
       res.status(500).json({ error: 'Failed to update event award' });
     }
-  },
+  }),
 );
 
 // DELETE /awards/event-awards/:id
 router.delete(
   '/event-awards/:id',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(awardIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
       const existing = await db.get(
         'SELECT id FROM event_awards WHERE id = ?',
         [id],
       );
       if (!existing) {
-        return res.status(404).json({ error: 'Event award not found' });
+        return sendNotFound(res, 'Event award not found');
       }
       await db.run('DELETE FROM event_awards WHERE id = ?', [id]);
       res.json({ success: true });
@@ -710,7 +677,7 @@ router.delete(
       console.error('Error deleting event award:', error);
       res.status(500).json({ error: 'Failed to delete event award' });
     }
-  },
+  }),
 );
 
 // ============================================================================
@@ -722,10 +689,10 @@ router.delete(
 router.post(
   '/event-awards/:id/recipients',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(addRecipientsRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { team_id, team_ids } = req.body;
+      const { id } = req.validated.params;
+      const { team_id, team_ids } = req.validated.body;
 
       const db = await getDatabase();
       const award = await db.get(
@@ -733,37 +700,13 @@ router.post(
         [id],
       );
       if (!award) {
-        return res.status(404).json({ error: 'Event award not found' });
+        return sendNotFound(res, 'Event award not found');
       }
 
       const awardEventId = (award as Record<string, unknown>)
         .event_id as number;
 
-      let ids: number[] = [];
-      if (Array.isArray(team_ids)) {
-        if (team_ids.length === 0) {
-          return res
-            .status(400)
-            .json({ error: 'team_ids must be a non-empty array of integers' });
-        }
-        ids = [];
-        for (const v of team_ids) {
-          const n = Number(v);
-          if (!Number.isInteger(n)) {
-            return res.status(400).json({
-              error: 'team_ids must be a non-empty array of integers',
-            });
-          }
-          ids.push(n);
-        }
-      } else if (team_id) {
-        ids = [Number(team_id)];
-      } else {
-        return res
-          .status(400)
-          .json({ error: 'team_id or team_ids is required' });
-      }
-
+      const ids = team_ids ?? (team_id !== undefined ? [team_id] : []);
       const uniqueIds = Array.from(new Set(ids));
       const placeholders = uniqueIds.map(() => '?').join(',');
       const teams = await db.all<{ id: number; event_id: number }>(
@@ -771,13 +714,14 @@ router.post(
         uniqueIds,
       );
       if (teams.length !== uniqueIds.length) {
-        return res.status(404).json({ error: 'One or more teams not found' });
+        return sendNotFound(res, 'One or more teams not found');
       }
       for (const team of teams) {
         if (team.event_id !== awardEventId) {
-          return res
-            .status(400)
-            .json({ error: 'Team does not belong to the same event' });
+          return sendInvalidState(
+            res,
+            'Team does not belong to the same event',
+          );
         }
       }
 
@@ -800,7 +744,7 @@ router.post(
         [id, ...uniqueIds],
       );
 
-      if (Array.isArray(team_ids)) {
+      if (team_ids) {
         res.status(201).json(recipients);
       } else {
         res.status(201).json(recipients[0] ?? null);
@@ -808,64 +752,50 @@ router.post(
     } catch (error) {
       const errMsg = String(error);
       if (errMsg.includes('UNIQUE') || errMsg.includes('unique')) {
-        return res
-          .status(409)
-          .json({ error: 'Team is already a recipient of this award' });
+        return sendConflict(res, 'Team is already a recipient of this award');
       }
       console.error('Error adding award recipient:', error);
       res.status(500).json({ error: 'Failed to add award recipient' });
     }
-  },
+  }),
 );
 
 // DELETE /awards/event-awards/:awardId/recipients/:teamId
 router.delete(
   '/event-awards/:awardId/recipients/:teamId',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(eventAwardRecipientRequest, async (req, res) => {
     try {
-      const { awardId, teamId } = req.params;
+      const { awardId, teamId } = req.validated.params;
       const db = await getDatabase();
       const result = await db.run(
         'DELETE FROM event_award_recipients WHERE event_award_id = ? AND team_id = ?',
         [awardId, teamId],
       );
       if (!result.changes) {
-        return res.status(404).json({ error: 'Recipient not found' });
+        return sendNotFound(res, 'Recipient not found');
       }
       res.json({ success: true });
     } catch (error) {
       console.error('Error removing award recipient:', error);
       res.status(500).json({ error: 'Failed to remove award recipient' });
     }
-  },
+  }),
 );
 
 // ============================================================================
 // EVENT AWARD INDIVIDUAL RECIPIENTS
 // ============================================================================
 
-const MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH = 200;
-
 // POST /awards/event-awards/:id/individual-recipients
 router.post(
   '/event-awards/:id/individual-recipients',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
+  ...validatedHandler(addIndividualRecipientRequest, async (req, res) => {
     try {
-      const { id } = req.params;
-      const { name, team_id } = req.body;
-
-      const trimmedName =
-        name === undefined || name === null ? '' : String(name).trim();
-      if (!trimmedName) {
-        return res.status(400).json({ error: 'Name is required' });
-      }
-      if (trimmedName.length > MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH) {
-        return res.status(400).json({
-          error: `Name must be at most ${MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH} characters`,
-        });
-      }
+      const { id } = req.validated.params;
+      const { name, team_id } = req.validated.body;
+      const trimmedName = name;
 
       const db = await getDatabase();
       const award = await db.get(
@@ -873,11 +803,11 @@ router.post(
         [id],
       );
       if (!award) {
-        return res.status(404).json({ error: 'Event award not found' });
+        return sendNotFound(res, 'Event award not found');
       }
 
       let resolvedTeamId: number | null = null;
-      if (team_id !== undefined && team_id !== null && team_id !== '') {
+      if (team_id !== undefined && team_id !== null) {
         const awardEventId = (award as Record<string, unknown>)
           .event_id as number;
         const team = await db.get(
@@ -885,14 +815,15 @@ router.post(
           [team_id],
         );
         if (!team) {
-          return res.status(404).json({ error: 'Team not found' });
+          return sendNotFound(res, 'Team not found');
         }
         if ((team as Record<string, unknown>).event_id !== awardEventId) {
-          return res
-            .status(400)
-            .json({ error: 'Team does not belong to the same event' });
+          return sendInvalidState(
+            res,
+            'Team does not belong to the same event',
+          );
         }
-        resolvedTeamId = Number(team_id);
+        resolvedTeamId = team_id;
       }
 
       const result = await db.run(
@@ -916,33 +847,36 @@ router.post(
         .status(500)
         .json({ error: 'Failed to add individual award recipient' });
     }
-  },
+  }),
 );
 
 // DELETE /awards/event-awards/:awardId/individual-recipients/:recipientId
 router.delete(
   '/event-awards/:awardId/individual-recipients/:recipientId',
   requireAdmin,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { awardId, recipientId } = req.params;
-      const db = await getDatabase();
-      const result = await db.run(
-        `DELETE FROM event_award_individual_recipients
+  ...validatedHandler(
+    eventAwardIndividualRecipientRequest,
+    async (req, res) => {
+      try {
+        const { awardId, recipientId } = req.validated.params;
+        const db = await getDatabase();
+        const result = await db.run(
+          `DELETE FROM event_award_individual_recipients
          WHERE event_award_id = ? AND id = ?`,
-        [awardId, recipientId],
-      );
-      if (!result.changes) {
-        return res.status(404).json({ error: 'Recipient not found' });
+          [awardId, recipientId],
+        );
+        if (!result.changes) {
+          return sendNotFound(res, 'Recipient not found');
+        }
+        res.json({ success: true });
+      } catch (error) {
+        console.error('Error removing individual award recipient:', error);
+        res
+          .status(500)
+          .json({ error: 'Failed to remove individual award recipient' });
       }
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error removing individual award recipient:', error);
-      res
-        .status(500)
-        .json({ error: 'Failed to remove individual award recipient' });
-    }
-  },
+    },
+  ),
 );
 
 // ============================================================================

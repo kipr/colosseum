@@ -10,6 +10,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedTeam,
@@ -213,9 +214,7 @@ describe('Queue - double seeding', () => {
       queue_type: 'double_seeding',
     });
     expect(missing.status).toBe(400);
-    expect((missing.json as { error: string }).error).toContain(
-      'double_seeding_match_id is required',
-    );
+    expect(getApiError(missing.json)?.code).toBe('VALIDATION_FAILED');
 
     const created = await http.post(`${baseUrl}/queue`, {
       event_id: event.id,
