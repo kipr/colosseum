@@ -2,6 +2,9 @@ import { defineConfig } from 'vitest/config';
 import path from 'path';
 
 export default defineConfig({
+  esbuild: {
+    jsx: 'automatic',
+  },
   test: {
     // Run tests sequentially for SQLite + better-sqlite3 compatibility
     // (native bindings + in-memory DBs work better this way)
