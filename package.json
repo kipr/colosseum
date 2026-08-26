@@ -22,7 +22,8 @@
     "lint": "npx eslint src scripts",
     "pretty": "npx prettier src/ scripts/ --check",
     "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs",
-    "audit:scoresheets": "ts-node --project tsconfig.scripts.json scripts/audit-scoresheet-templates.ts"
+    "audit:scoresheets": "ts-node --project tsconfig.scripts.json scripts/audit-scoresheet-templates.ts",
+    "migrate:scoresheets": "ts-node --project tsconfig.scripts.json scripts/migrate-scoresheet-templates.ts"
   },
   "keywords": [],
   "author": "",

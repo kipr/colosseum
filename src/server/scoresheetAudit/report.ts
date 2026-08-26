@@ -37,8 +37,8 @@ export interface RowReport {
   currentValidationErrors: string[];
   findings: InventoryFinding[];
   propertyInventory: PropertyInventory;
-  automaticNormalizationAvailable: false;
-  proposedNormalized: null;
+  automaticNormalizationAvailable: boolean;
+  proposedNormalized: unknown | null;
 }
 
 export interface AuditSummary {
@@ -169,6 +169,9 @@ export function formatAuditReportText(report: AuditReport): string {
       }
       if (row.jsonParseError) {
         lines.push(`  json.parse: ${row.jsonParseError}`);
+      }
+      if (row.automaticNormalizationAvailable) {
+        lines.push('  automaticNormalization: yes');
       }
       for (const finding of row.findings) {
         const candidate = finding.candidateMigration

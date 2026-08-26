@@ -1,4 +1,10 @@
 import {
+  normalizeLegacyScoresheetFields,
+  normalizeLegacyScoresheetSchema,
+  parseNormalizedScoresheetFields,
+  parseNormalizedScoresheetSchema,
+} from '../../shared/scoresheetNormalize';
+import {
   discriminateShape,
   validateScoresheetFields,
   validateScoresheetSchema,
@@ -392,6 +398,39 @@ export function inventoryDocument(input: unknown): DocumentInventory {
   };
 }
 
+function proposedNormalization(
+  kind: DocumentKind,
+  parsed: unknown,
+): Pick<RowReport, 'automaticNormalizationAvailable' | 'proposedNormalized'> {
+  if (kind === 'field_template') {
+    const normalized = normalizeLegacyScoresheetFields(parsed);
+    const result = parseNormalizedScoresheetFields(parsed);
+    if (result.success && normalized.migrations.length > 0) {
+      return {
+        automaticNormalizationAvailable: true,
+        proposedNormalized: result.data,
+      };
+    }
+    return {
+      automaticNormalizationAvailable: false,
+      proposedNormalized: null,
+    };
+  }
+
+  const normalized = normalizeLegacyScoresheetSchema(parsed);
+  const result = parseNormalizedScoresheetSchema(parsed);
+  if (result.success && normalized.migrations.length > 0) {
+    return {
+      automaticNormalizationAvailable: true,
+      proposedNormalized: result.data,
+    };
+  }
+  return {
+    automaticNormalizationAvailable: false,
+    proposedNormalized: null,
+  };
+}
+
 export function rowFromInventory(opts: {
   kind: DocumentKind;
   id: number | string;
@@ -399,7 +438,16 @@ export function rowFromInventory(opts: {
   inventory: DocumentInventory;
   eventLinks?: RowReport['eventLinks'];
   jsonParseError?: string;
+  parsed?: unknown;
 }): RowReport {
+  const proposed =
+    opts.parsed === undefined
+      ? {
+          automaticNormalizationAvailable: false,
+          proposedNormalized: null,
+        }
+      : proposedNormalization(opts.kind, opts.parsed);
+
   return {
     kind: opts.kind,
     id: opts.id,
@@ -410,8 +458,8 @@ export function rowFromInventory(opts: {
     currentValidationErrors: opts.inventory.currentValidationErrors,
     findings: opts.inventory.findings,
     propertyInventory: opts.inventory.propertyInventory,
-    automaticNormalizationAvailable: false,
-    proposedNormalized: null,
+    automaticNormalizationAvailable: proposed.automaticNormalizationAvailable,
+    proposedNormalized: proposed.proposedNormalized,
   };
 }
 
@@ -429,6 +477,7 @@ export function rowFromParsedDocument(opts: {
     name: opts.name,
     inventory,
     eventLinks: opts.eventLinks,
+    parsed: opts.parsed,
   });
 }
 

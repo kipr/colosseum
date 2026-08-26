@@ -12,6 +12,7 @@ import {
 } from './helpers/testServer';
 import { seedUser } from './helpers/seed';
 import fieldTemplatesRoutes from '../../src/server/routes/fieldTemplates';
+import { expectValidationFailed } from './helpers/apiError';
 
 describe('Field Templates - additional coverage', () => {
   let testDb: TestDb;
@@ -93,7 +94,7 @@ describe('Field Templates - additional coverage', () => {
         fields: 'not-an-array',
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('array');
+      expect(JSON.stringify(expectValidationFailed(res))).toContain('array');
     });
 
     it('returns 400 for invalid defaultValue', async () => {
@@ -109,7 +110,7 @@ describe('Field Templates - additional coverage', () => {
         ],
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('boolean');
+      expect(JSON.stringify(expectValidationFailed(res))).toContain('boolean');
     });
 
     it('persists valid typed defaults', async () => {
@@ -158,7 +159,7 @@ describe('Field Templates - additional coverage', () => {
         },
       );
       expect(updateRes.status).toBe(400);
-      expect((updateRes.json as { error: string }).error).toContain(
+      expect(JSON.stringify(expectValidationFailed(updateRes))).toContain(
         'finite number',
       );
     });

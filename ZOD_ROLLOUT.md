@@ -412,8 +412,9 @@ Inventory to convert later:
 
 - Scoresheet templates: canonical document model is a Zod schema in
   `src/shared/scoresheetSchema.ts`. `validateScoresheetSchema` remains the
-  exported template-aware step; its body is a Zod parse. HTTP envelopes in
-  `validation/templates.ts` are still later work.
+  exported template-aware step; its body is a Zod parse. HTTP envelopes live
+  in `src/server/validation/templates.ts` and are applied through
+  `validatedHandler`. Stored JSON is loaded with normalize-then-strict parse.
 - `scoreData` contents: stable `ScoreFieldEntry` (`{ value, type?, label? }`);
   validate against the stored template in a dedicated service after the request
   schema.

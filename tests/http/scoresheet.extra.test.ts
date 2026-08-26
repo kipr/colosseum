@@ -19,6 +19,11 @@ import {
 } from './helpers/seed';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
 import { canonicalSchema } from '../helpers/canonicalSchema';
+import {
+  expectValidationFailed,
+  getApiError,
+  getApiErrorMessage,
+} from './helpers/apiError';
 
 describe('Scoresheet Routes – extra coverage', () => {
   let testDb: TestDb;
@@ -103,10 +108,40 @@ describe('Scoresheet Routes – extra coverage', () => {
 
       const res = await http.get(`${baseUrl}/scoresheet/templates`);
       expect(res.status).toBe(200);
-      const templates = res.json as { name: string; schema: unknown }[];
+      const templates = res.json as {
+        name: string;
+        schema: unknown;
+        schemaIssues?: string[];
+      }[];
       const badTemplate = templates.find((t) => t.name === 'Bad Schema');
       expect(badTemplate).toBeDefined();
       expect(badTemplate!.schema).toBeNull();
+      expect(badTemplate!.schemaIssues?.length).toBeGreaterThan(0);
+    });
+
+    it('returns schemaIssues for stored schemas that do not parse', async () => {
+      const event = await seedEvent(testDb.db, { status: 'active' });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Invalid Schema',
+        schema: JSON.stringify({ mode: 'head-to-head' }),
+        created_by: userId,
+      });
+      await seedEventScoresheetTemplate(testDb.db, {
+        event_id: event.id,
+        template_id: template.id,
+        template_type: 'bracket',
+      });
+
+      const res = await http.get(`${baseUrl}/scoresheet/templates`);
+      expect(res.status).toBe(200);
+      const templates = res.json as {
+        name: string;
+        schema: unknown;
+        schemaIssues?: string[];
+      }[];
+      const invalid = templates.find((t) => t.name === 'Invalid Schema');
+      expect(invalid?.schema).toEqual({ mode: 'head-to-head' });
+      expect(invalid?.schemaIssues?.length).toBeGreaterThan(0);
     });
   });
 
@@ -148,8 +183,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const res = await http.get(
         `${baseUrl}/scoresheet/templates/admin?eventId=abc`,
       );
-      expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('Invalid');
+      expectValidationFailed(res);
     });
   });
 
@@ -160,6 +194,7 @@ describe('Scoresheet Routes – extra coverage', () => {
         { accessCode: 'test' },
       );
       expect(res.status).toBe(404);
+      expect(getApiError(res.json)?.code).toBe('NOT_FOUND');
     });
 
     it('returns 403 for wrong access code', async () => {
@@ -174,14 +209,14 @@ describe('Scoresheet Routes – extra coverage', () => {
         { accessCode: 'wrong-code' },
       );
       expect(res.status).toBe(403);
-      expect((res.json as { error: string }).error).toContain('Invalid');
+      expect(getApiErrorMessage(res.json)).toContain('Invalid access code');
     });
 
     it('returns template with parsed schema on correct access code', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Verified Template',
         access_code: 'secret',
-        schema: JSON.stringify({ fields: ['a', 'b'] }),
+        schema: JSON.stringify({ fields: [] }),
         created_by: userId,
       });
 
@@ -192,12 +227,36 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(res.status).toBe(200);
       const body = res.json as {
         name: string;
-        schema: { fields: string[] };
+        schema: { fields: unknown[]; schemaVersion: number };
         access_code?: string;
+        schemaNormalization?: string[];
       };
       expect(body.name).toBe('Verified Template');
-      expect(body.schema).toEqual({ fields: ['a', 'b'] });
+      expect(body.schema.fields).toEqual([]);
+      expect(body.schema.schemaVersion).toBe(1);
+      expect(body.schemaNormalization).toEqual(['add-schema-version']);
       expect(body.access_code).toBeUndefined();
+    });
+
+    it('returns 200 with schemaIssues when stored JSON is invalid', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Broken JSON',
+        access_code: 'secret',
+        schema: 'not-json',
+        created_by: userId,
+      });
+
+      const res = await http.post(
+        `${baseUrl}/scoresheet/templates/${template.id}/verify`,
+        { accessCode: 'secret' },
+      );
+      expect(res.status).toBe(200);
+      const body = res.json as {
+        schema: unknown;
+        schemaIssues?: string[];
+      };
+      expect(body.schema).toBeNull();
+      expect(body.schemaIssues?.length).toBeGreaterThan(0);
     });
   });
 
@@ -205,6 +264,12 @@ describe('Scoresheet Routes – extra coverage', () => {
     it('returns 404 when template not found', async () => {
       const res = await http.get(`${baseUrl}/scoresheet/templates/999`);
       expect(res.status).toBe(404);
+      expect(getApiError(res.json)?.code).toBe('NOT_FOUND');
+    });
+
+    it('returns VALIDATION_FAILED for a non-numeric id', async () => {
+      const res = await http.get(`${baseUrl}/scoresheet/templates/abc`);
+      expectValidationFailed(res);
     });
 
     it('returns template with parsed schema', async () => {
@@ -218,9 +283,14 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
       );
       expect(res.status).toBe(200);
-      const body = res.json as { name: string; schema: { mode: string } };
+      const body = res.json as {
+        name: string;
+        schema: { mode: string };
+        schemaIssues?: string[];
+      };
       expect(body.name).toBe('My Template');
       expect(body.schema).toEqual({ mode: 'seeding' });
+      expect(body.schemaIssues?.length).toBeGreaterThan(0);
     });
   });
 
@@ -229,8 +299,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'No Schema',
       });
-      expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('required');
+      expectValidationFailed(res);
     });
 
     it('creates template without eventId', async () => {
@@ -240,9 +309,14 @@ describe('Scoresheet Routes – extra coverage', () => {
         accessCode: 'abc123',
       });
       expect(res.status).toBe(200);
-      const body = res.json as { name: string; schema: { fields: unknown[] } };
+      const body = res.json as {
+        name: string;
+        schema: { fields: unknown[] };
+        normalizationApplied: string[];
+      };
       expect(body.name).toBe('New Template');
       expect(body.schema).toEqual(canonicalSchema());
+      expect(body.normalizationApplied).toEqual([]);
     });
 
     it('creates template with eventId and links to event', async () => {
@@ -304,6 +378,60 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(link.template_type).toBe('bracket');
     });
 
+    it('normalizes missing schemaVersion on write', async () => {
+      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Unversioned',
+        schema: { fields: [] },
+        accessCode: 'legacy123',
+      });
+      expect(res.status).toBe(200);
+      const body = res.json as {
+        id: number;
+        schema: { schemaVersion: number; fields: unknown[] };
+        normalizationApplied: string[];
+      };
+      expect(body.schema).toEqual({ schemaVersion: 1, fields: [] });
+      expect(body.normalizationApplied).toEqual(['add-schema-version']);
+
+      const stored = await testDb.db.get<{ schema: string }>(
+        'SELECT schema FROM scoresheet_templates WHERE id = ?',
+        [body.id],
+      );
+      expect(JSON.parse(stored!.schema)).toEqual({
+        schemaVersion: 1,
+        fields: [],
+      });
+    });
+
+    it('normalizes bracketSource: true and infers bracket', async () => {
+      const event = await seedEvent(testDb.db);
+      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Legacy Bracket Flag',
+        schema: { fields: [], bracketSource: true },
+        accessCode: 'true-bs',
+        eventId: event.id,
+      });
+      expect(res.status).toBe(200);
+      const body = res.json as {
+        id: number;
+        schema: { bracketSource?: unknown };
+        normalizationApplied: string[];
+      };
+      expect(body.schema.bracketSource).toEqual({ type: 'db' });
+      expect(body.normalizationApplied).toEqual(
+        expect.arrayContaining([
+          'add-schema-version',
+          'normalize-bracket-source-true',
+        ]),
+      );
+
+      const link = await testDb.db.get(
+        'SELECT template_type FROM event_scoresheet_templates WHERE template_id = ?',
+        [body.id],
+      );
+      expect(link.template_type).toBe('bracket');
+    });
+
     it('rejects invalid defaultValue types', async () => {
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bad Defaults',
@@ -321,10 +449,8 @@ describe('Scoresheet Routes – extra coverage', () => {
           ],
         }),
       });
-      expect(res.status).toBe(400);
-      const body = res.json as { error: string; errors: string[] };
-      expect(body.error).toContain('above max');
-      expect(body.errors.some((e) => e.includes('above max'))).toBe(true);
+      const error = expectValidationFailed(res);
+      expect(JSON.stringify(error)).toContain('above max');
     });
 
     it('rejects legacy startValue', async () => {
@@ -337,8 +463,8 @@ describe('Scoresheet Routes – extra coverage', () => {
           ],
         }),
       });
-      expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('startValue');
+      const error = expectValidationFailed(res);
+      expect(JSON.stringify(error)).toContain('startValue');
     });
 
     it('persists templates with valid typed defaults', async () => {
@@ -440,6 +566,16 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(link).toBeUndefined();
     });
 
+    it('returns 404 when the template does not exist', async () => {
+      const res = await http.put(`${baseUrl}/scoresheet/templates/99999`, {
+        name: 'Missing',
+        schema: canonicalSchema(),
+        accessCode: 'x',
+      });
+      expect(res.status).toBe(404);
+      expect(getApiError(res.json)?.code).toBe('NOT_FOUND');
+    });
+
     it('rejects invalid defaultValue on update', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Original',
@@ -466,8 +602,7 @@ describe('Scoresheet Routes – extra coverage', () => {
           accessCode: 'new',
         },
       );
-      expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
+      expect(JSON.stringify(expectValidationFailed(res))).toContain(
         'match one of the declared options',
       );
     });
