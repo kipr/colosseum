@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
