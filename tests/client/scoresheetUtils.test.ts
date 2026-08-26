@@ -17,6 +17,12 @@ import {
   pruneRepeatableGroupRows,
   shouldAutoAppendRepeatableGroupRow,
 } from '../../src/client/components/scoresheetUtils';
+import {
+  parseScoresheetSchema,
+  SCORESHEET_SCHEMA_VERSION,
+  type RepeatableGroupField,
+  type ScoresheetField,
+} from '../../src/shared/scoresheetSchema';
 
 describe('scoresheetUtils', () => {
   const repeatableGroupField = {
@@ -29,7 +35,7 @@ describe('scoresheetUtils', () => {
       { id: 'small_red', label: 'Small Red', type: 'number' },
       { id: 'notes', label: 'Notes', type: 'text' },
     ],
-  };
+  } satisfies RepeatableGroupField;
   const startBoxCubeField = {
     id: 'side_a_ls_cube_stacks',
     label: 'Lower Start Box Cubes',
@@ -56,7 +62,7 @@ describe('scoresheetUtils', () => {
         subtotal: 'side_a_ls_cube_points',
       },
     },
-  };
+  } satisfies RepeatableGroupField;
 
   it('builds new DE schemas with an event-scoped bracket source', () => {
     const schema = buildDoubleEliminationSchema({
@@ -65,67 +71,94 @@ describe('scoresheetUtils', () => {
       templateFields: null,
     });
 
+    expect(schema.schemaVersion).toBe(SCORESHEET_SCHEMA_VERSION);
     expect(schema.mode).toBe('head-to-head');
     expect(schema.eventId).toBe(42);
     expect(schema.bracketSource).toEqual(buildEventScopedBracketSource(42));
-    expect(schema.teamsDataSource.eventId).toBe(42);
+    expect(schema.teamsDataSource?.eventId).toBe(42);
+    expect(parseScoresheetSchema(schema).success).toBe(true);
   });
 
   it('adapts template fields from side A/B to team A/B', () => {
+    const templateFields: ScoresheetField[] = [
+      {
+        id: 'side_a_score',
+        label: 'Side A Score',
+        type: 'number',
+      },
+      {
+        id: 'side_b_total',
+        label: 'Side B Total',
+        type: 'calculated',
+        formula: 'side_b_score + side_a_score',
+      },
+      {
+        id: 'side_a_cube_stacks',
+        label: 'Side A Cube Stacks',
+        type: 'repeatableGroup',
+        fields: [
+          { id: 'has_pallet', label: 'Pallet', type: 'checkbox' },
+          { id: 'small_red', label: 'Small Red', type: 'number' },
+        ],
+        derived: {
+          type: 'botballCubeStacks',
+          sortedValue: 30,
+          unsortedValue: 10,
+          outputs: {
+            sortedEquivalent: 'side_a_sorted_cubes',
+            unsortedEquivalent: 'side_a_unsorted_cubes',
+            subtotal: 'side_a_cube_points',
+          },
+        },
+      },
+      {
+        id: 'side_a_sorted_cubes',
+        label: 'Sorted Cubes',
+        type: 'number',
+      },
+      {
+        id: 'side_a_unsorted_cubes',
+        label: 'Unsorted Cubes',
+        type: 'number',
+      },
+      {
+        id: 'side_a_cube_points',
+        label: 'Cube Points',
+        type: 'calculated',
+        formula: 'side_a_sorted_cubes + side_a_unsorted_cubes',
+      },
+    ];
     const schema = buildDoubleEliminationSchema({
       title: 'Adapted DE Sheet',
       eventId: 7,
-      templateFields: [
-        {
-          id: 'side_a_score',
-          label: 'Side A Score',
-          type: 'number',
-        },
-        {
-          id: 'side_b_total',
-          label: 'Side B Total',
-          type: 'calculated',
-          formula: 'side_b_score + side_a_score',
-        },
-        {
-          id: 'side_a_cube_stacks',
-          label: 'Side A Cube Stacks',
-          type: 'repeatableGroup',
-          derived: {
-            type: 'botballCubeStacks',
-            outputs: {
-              sortedEquivalent: 'side_a_sorted_cubes',
-              unsortedEquivalent: 'side_a_unsorted_cubes',
-              subtotal: 'side_a_cube_points',
-            },
-          },
-        },
-      ],
+      templateFields,
     });
 
-    expect(
-      schema.fields.some(
-        (field: { id: string }) => field.id === 'team_a_score',
-      ),
-    ).toBe(true);
-    expect(
-      schema.fields.some(
-        (field: { id: string }) => field.id === 'team_b_total',
-      ),
-    ).toBe(true);
-    expect(
-      schema.fields.find((field: { id: string }) => field.id === 'team_b_total')
-        ?.formula,
-    ).toBe('team_b_score + team_a_score');
-    expect(
-      schema.fields.find(
-        (field: { id: string }) => field.id === 'team_a_cube_stacks',
-      )?.derived.outputs,
-    ).toEqual({
-      sortedEquivalent: 'team_a_sorted_cubes',
-      unsortedEquivalent: 'team_a_unsorted_cubes',
-      subtotal: 'team_a_cube_points',
-    });
+    expect(parseScoresheetSchema(schema).success).toBe(true);
+    expect(schema.fields.some((field) => field.id === 'team_a_score')).toBe(
+      true,
+    );
+    expect(schema.fields.some((field) => field.id === 'team_b_total')).toBe(
+      true,
+    );
+    const teamBTotal = schema.fields.find(
+      (field) => field.id === 'team_b_total',
+    );
+    expect(teamBTotal?.type).toBe('calculated');
+    if (teamBTotal?.type === 'calculated') {
+      expect(teamBTotal.formula).toBe('team_b_score + team_a_score');
+    }
+    const cubeStacks = schema.fields.find(
+      (field) => field.id === 'team_a_cube_stacks',
+    );
+    expect(cubeStacks?.type).toBe('repeatableGroup');
+    if (cubeStacks?.type === 'repeatableGroup') {
+      expect(cubeStacks.derived?.outputs).toEqual({
+        sortedEquivalent: 'team_a_sorted_cubes',
+        unsortedEquivalent: 'team_a_unsorted_cubes',
+        subtotal: 'team_a_cube_points',
+      });
+    }
   });
 
   it('formats judge game labels without bracket or game context', () => {
@@ -428,13 +461,14 @@ describe('scoresheetUtils', () => {
           subtotal: 'side_a_ild_subtotal',
         },
       },
-    };
-    const fields = [
+    } satisfies RepeatableGroupField;
+    const fields: ScoresheetField[] = [
       field,
       {
         id: 'side_a_ild_subtotal',
         label: 'ILD Subtotal',
         type: 'calculated',
+        formula: 'side_a_ild_sorted_cubes + side_a_ild_unsorted_cubes',
       },
     ];
 
@@ -515,8 +549,8 @@ describe('scoresheetUtils', () => {
           subtotal: 'side_a_ls_cube_points',
         },
       },
-    };
-    const fields = [field];
+    } satisfies RepeatableGroupField;
+    const fields: ScoresheetField[] = [field];
 
     const { derivedByFieldId, outputs } = calculateRepeatableGroupDerivedValues(
       fields,

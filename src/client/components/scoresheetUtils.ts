@@ -1,7 +1,23 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
 import { scoreBotballStartBoxCubes } from '../scoring/botballStartBoxCubes';
-import { getBlankFieldValue } from '../../shared/scoresheetSchema';
+import {
+  getBlankFieldValue,
+  isPlainObject,
+  isRepeatableGroupField,
+  isScoresheetValue,
+  SCORESHEET_SCHEMA_VERSION,
+  type DbBracketSource,
+  type RepeatableGroupDerivedResult,
+  type RepeatableGroupField,
+  type RepeatableGroupRows,
+  type ScoreFieldEntry,
+  type ScoresheetField,
+  type ScoresheetFieldType,
+  type ScoresheetSchema,
+  type ScoresheetValue,
+} from '../../shared/scoresheetSchema';
+
+export type { DbBracketSource };
 
 export interface BracketTeamDisplay {
   teamNumber: string;
@@ -21,16 +37,25 @@ export interface BracketGameOption {
   hasWinner?: boolean;
 }
 
-export interface DbBracketSource {
-  type: 'db';
-  scope?: 'event';
-  eventId?: number | null;
-  bracketId?: number | null;
-}
+type RepeatableGroupChild = RepeatableGroupField['fields'][number];
+
+const REPEATABLE_GROUP_TEXT_TYPES = new Set<ScoresheetFieldType>([
+  'text',
+  'dropdown',
+  'buttons',
+]);
+
+const DERIVED_OUTPUT_KEYS = [
+  'sortedEquivalent',
+  'unsortedEquivalent',
+  'subtotal',
+] as const;
+
+type DerivedOutputKey = (typeof DERIVED_OUTPUT_KEYS)[number];
 
 export function shouldHideSoloDoubleSeedingField(
   fieldId: string | undefined,
-  formData: Record<string, any>,
+  formData: Record<string, unknown>,
   isDoubleSeeding: boolean,
 ): boolean {
   if (
@@ -46,9 +71,38 @@ export function shouldHideSoloDoubleSeedingField(
   );
 }
 
-const REPEATABLE_GROUP_TEXT_TYPES = new Set(['text', 'dropdown', 'buttons']);
+function toScoresheetValue(value: unknown): ScoresheetValue {
+  return isScoresheetValue(value) ? value : '';
+}
 
-function isBlankRepeatableGroupValue(value: any, field?: any): boolean {
+function asRepeatableGroupRow(value: unknown): Record<string, ScoresheetValue> {
+  if (!isPlainObject(value)) {
+    return {};
+  }
+
+  const row: Record<string, ScoresheetValue> = {};
+  for (const [key, cell] of Object.entries(value)) {
+    if (isScoresheetValue(cell)) {
+      row[key] = cell;
+    }
+  }
+  return row;
+}
+
+function asDerivedRow(row: object): Record<string, ScoresheetValue> {
+  const copied: Record<string, ScoresheetValue> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (isScoresheetValue(value)) {
+      copied[key] = value;
+    }
+  }
+  return copied;
+}
+
+function isBlankRepeatableGroupValue(
+  value: unknown,
+  field?: RepeatableGroupChild,
+): boolean {
   if (field?.type === 'number') {
     return (
       value === '' ||
@@ -90,14 +144,18 @@ function isBlankRepeatableGroupValue(value: any, field?: any): boolean {
   return false;
 }
 
-function getRepeatableGroupChildField(field: any, childFieldId: string): any {
-  return (field?.fields || []).find(
-    (childField: any) => childField?.id === childFieldId,
-  );
+function getRepeatableGroupChildField(
+  field: RepeatableGroupField,
+  childFieldId: string,
+): RepeatableGroupChild | undefined {
+  return field.fields.find((childField) => childField.id === childFieldId);
 }
 
-function isStartBoxCubeRowWithoutQuantity(row: any, field: any): boolean {
-  if (field?.derived?.type !== 'botballStartBoxCubes') {
+function isStartBoxCubeRowWithoutQuantity(
+  row: Record<string, ScoresheetValue>,
+  field: RepeatableGroupField,
+): boolean {
+  if (field.derived?.type !== 'botballStartBoxCubes') {
     return false;
   }
 
@@ -112,9 +170,7 @@ function isStartBoxCubeRowWithoutQuantity(row: any, field: any): boolean {
   }
 
   const configuredFieldIds = new Set(
-    (field?.fields || [])
-      .map((childField: any) => childField?.id)
-      .filter((id: any) => id != null),
+    field.fields.map((childField) => childField.id),
   );
 
   return Object.entries(row).every(([key, value]) => {
@@ -126,52 +182,49 @@ function isStartBoxCubeRowWithoutQuantity(row: any, field: any): boolean {
   });
 }
 
-function getRepeatableGroupMinRows(field: any): number {
-  const minRows = Number(field?.minRows);
-  return Number.isFinite(minRows) && minRows > 0 ? Math.floor(minRows) : 1;
+function getRepeatableGroupMinRows(field: RepeatableGroupField): number {
+  const minRows = field.minRows;
+  return typeof minRows === 'number' && minRows > 0 ? Math.floor(minRows) : 1;
 }
 
-function getBlankRepeatableGroupValue(field: any): any {
-  return getBlankFieldValue(field);
-}
+export function createBlankRepeatableGroupRow(
+  field: RepeatableGroupField,
+): Record<string, ScoresheetValue> {
+  const row: Record<string, ScoresheetValue> = {};
 
-export function createBlankRepeatableGroupRow(field: any): Record<string, any> {
-  const row: Record<string, any> = {};
-
-  (field?.fields || []).forEach((childField: any) => {
-    if (!childField?.id) return;
-    row[childField.id] = getBlankRepeatableGroupValue(childField);
+  field.fields.forEach((childField) => {
+    row[childField.id] = toScoresheetValue(getBlankFieldValue(childField));
   });
 
   return row;
 }
 
-export function isRepeatableGroupRowBlank(row: any, field: any): boolean {
-  if (!row || typeof row !== 'object') {
+export function isRepeatableGroupRowBlank(
+  row: unknown,
+  field: RepeatableGroupField,
+): boolean {
+  if (!isPlainObject(row)) {
     return true;
   }
 
-  if (isStartBoxCubeRowWithoutQuantity(row, field)) {
+  const typedRow = asRepeatableGroupRow(row);
+
+  if (isStartBoxCubeRowWithoutQuantity(typedRow, field)) {
     return true;
   }
 
-  const childFields = field?.fields || [];
   const configuredFieldIds = new Set(
-    childFields
-      .map((childField: any) => childField?.id)
-      .filter((id: any) => id != null),
+    field.fields.map((childField) => childField.id),
   );
-  const configuredValuesBlank = childFields.every((childField: any) => {
-    const value = row[childField.id];
-
-    return isBlankRepeatableGroupValue(value, childField);
+  const configuredValuesBlank = field.fields.every((childField) => {
+    return isBlankRepeatableGroupValue(typedRow[childField.id], childField);
   });
 
   if (!configuredValuesBlank) {
     return false;
   }
 
-  return Object.entries(row).every(([key, value]) => {
+  return Object.entries(typedRow).every(([key, value]) => {
     if (configuredFieldIds.has(key)) {
       return true;
     }
@@ -181,14 +234,14 @@ export function isRepeatableGroupRowBlank(row: any, field: any): boolean {
 }
 
 export function normalizeRepeatableGroupRows(
-  value: any,
-  field: any,
-): Array<Record<string, any>> {
+  value: unknown,
+  field: RepeatableGroupField,
+): RepeatableGroupRows {
   const minRows = getRepeatableGroupMinRows(field);
-  const rows = Array.isArray(value)
+  const rows: RepeatableGroupRows = Array.isArray(value)
     ? value.map((row) => ({
         ...createBlankRepeatableGroupRow(field),
-        ...(row && typeof row === 'object' ? row : {}),
+        ...asRepeatableGroupRow(row),
       }))
     : [];
 
@@ -200,8 +253,8 @@ export function normalizeRepeatableGroupRows(
 }
 
 export function shouldAutoAppendRepeatableGroupRow(
-  rows: any[],
-  field: any,
+  rows: RepeatableGroupRows,
+  field: RepeatableGroupField,
 ): boolean {
   if (!Array.isArray(rows) || rows.length === 0) {
     return false;
@@ -211,9 +264,9 @@ export function shouldAutoAppendRepeatableGroupRow(
 }
 
 export function pruneRepeatableGroupRows(
-  rows: any[],
-  field: any,
-): Array<Record<string, any>> {
+  rows: RepeatableGroupRows,
+  field: RepeatableGroupField,
+): RepeatableGroupRows {
   if (!Array.isArray(rows)) {
     return [];
   }
@@ -221,29 +274,63 @@ export function pruneRepeatableGroupRows(
   return rows.filter((row) => !isRepeatableGroupRowBlank(row, field));
 }
 
-function repeatableGroupRowsEqual(left: any, right: any): boolean {
+function repeatableGroupRowsEqual(
+  left: RepeatableGroupRows,
+  right: unknown,
+): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function calculateRepeatableGroupDerived(field: any, rows: any[]): any {
-  if (field?.derived?.type === 'botballCubeStacks') {
-    return scoreBotballCubeStacks(rows, {
-      sortedValue: field.derived.sortedValue,
-      unsortedValue: field.derived.unsortedValue,
-    });
+function derivedResultFromCubeStacks(
+  rows: RepeatableGroupRows,
+  sortedValue: number,
+  unsortedValue: number,
+): RepeatableGroupDerivedResult {
+  const result = scoreBotballCubeStacks(rows, {
+    sortedValue,
+    unsortedValue,
+  });
+  return {
+    sortedEquivalent: result.sortedEquivalent,
+    unsortedEquivalent: result.unsortedEquivalent,
+    subtotal: result.subtotal,
+    rows: result.rows.map((row) => asDerivedRow(row)),
+  };
+}
+
+function derivedResultFromStartBoxCubes(
+  rows: RepeatableGroupRows,
+): RepeatableGroupDerivedResult {
+  const result = scoreBotballStartBoxCubes(rows);
+  return {
+    subtotal: result.subtotal,
+    rows: result.rows.map((row) => asDerivedRow(row)),
+  };
+}
+
+export function calculateRepeatableGroupDerived(
+  field: RepeatableGroupField,
+  rows: RepeatableGroupRows,
+): RepeatableGroupDerivedResult | undefined {
+  if (field.derived?.type === 'botballCubeStacks') {
+    return derivedResultFromCubeStacks(
+      rows,
+      field.derived.sortedValue,
+      field.derived.unsortedValue,
+    );
   }
 
-  if (field?.derived?.type === 'botballStartBoxCubes') {
-    return scoreBotballStartBoxCubes(rows);
+  if (field.derived?.type === 'botballStartBoxCubes') {
+    return derivedResultFromStartBoxCubes(rows);
   }
 
   return undefined;
 }
 
 export function calculateRepeatableGroupDerivedRows(
-  field: any,
-  rows: any[],
-): any[] {
+  field: RepeatableGroupField,
+  rows: RepeatableGroupRows,
+): Array<Record<string, ScoresheetValue> | undefined> {
   if (!Array.isArray(rows)) {
     return [];
   }
@@ -254,17 +341,17 @@ export function calculateRepeatableGroupDerivedRows(
 }
 
 export function calculateRepeatableGroupDerivedValues(
-  fields: any[],
-  formData: Record<string, any>,
+  fields: ScoresheetField[],
+  formData: Record<string, unknown>,
 ): {
-  derivedByFieldId: Record<string, any>;
+  derivedByFieldId: Record<string, RepeatableGroupDerivedResult>;
   outputs: Record<string, number>;
 } {
-  const derivedByFieldId: Record<string, any> = {};
+  const derivedByFieldId: Record<string, RepeatableGroupDerivedResult> = {};
   const outputs: Record<string, number> = {};
 
   fields.forEach((field) => {
-    if (field?.type !== 'repeatableGroup' || !field.derived) {
+    if (!isRepeatableGroupField(field) || !field.derived) {
       return;
     }
 
@@ -282,40 +369,49 @@ export function calculateRepeatableGroupDerivedValues(
 
     derivedByFieldId[field.id] = derived;
 
-    const configuredOutputs = field.derived.outputs || {};
-    ['sortedEquivalent', 'unsortedEquivalent', 'subtotal'].forEach(
-      (outputKey) => {
-        const outputFieldId = configuredOutputs[outputKey];
-        if (outputFieldId) {
-          outputs[outputFieldId] = Number(derived[outputKey]) || 0;
-        }
-      },
-    );
+    const configuredOutputs = field.derived.outputs;
+    if (!configuredOutputs) {
+      return;
+    }
+
+    DERIVED_OUTPUT_KEYS.forEach((outputKey) => {
+      const outputFieldId = configuredOutputs[outputKey];
+      if (outputFieldId) {
+        outputs[outputFieldId] = Number(derived[outputKey]) || 0;
+      }
+    });
   });
 
   return { derivedByFieldId, outputs };
 }
 
 export function buildRepeatableGroupDerivedOutputScoreEntries(
-  field: any,
-  derived: any,
-  fields: any[] = [],
-): Record<string, any> {
-  const entries: Record<string, any> = {};
-  const configuredOutputs = field?.derived?.outputs || {};
-  const outputDefaults: Record<string, { label: string; type: string }> = {
+  field: RepeatableGroupField,
+  derived: RepeatableGroupDerivedResult | undefined,
+  fields: ScoresheetField[] = [],
+): Record<string, ScoreFieldEntry> {
+  const entries: Record<string, ScoreFieldEntry> = {};
+  const configuredOutputs = field.derived?.outputs;
+  if (!configuredOutputs) {
+    return entries;
+  }
+
+  const outputDefaults: Record<
+    DerivedOutputKey,
+    { label: string; type: ScoresheetFieldType }
+  > = {
     sortedEquivalent: { label: 'Sorted Cubes', type: 'number' },
     unsortedEquivalent: { label: 'Unsorted Cubes', type: 'number' },
     subtotal: {
       label:
-        field?.derived?.type === 'botballStartBoxCubes'
+        field.derived?.type === 'botballStartBoxCubes'
           ? 'Cube Points'
           : 'Subtotal',
       type: 'calculated',
     },
   };
 
-  Object.entries(outputDefaults).forEach(([outputKey, defaults]) => {
+  DERIVED_OUTPUT_KEYS.forEach((outputKey) => {
     const outputFieldId = configuredOutputs[outputKey];
     if (!outputFieldId) {
       return;
@@ -324,6 +420,7 @@ export function buildRepeatableGroupDerivedOutputScoreEntries(
     const schemaField = fields.find(
       (candidate) => candidate.id === outputFieldId,
     );
+    const defaults = outputDefaults[outputKey];
     entries[outputFieldId] = {
       label: schemaField?.label ?? defaults.label,
       type: schemaField?.type ?? defaults.type,
@@ -335,34 +432,31 @@ export function buildRepeatableGroupDerivedOutputScoreEntries(
 }
 
 export function buildRepeatableGroupDerivedScoreEntries(
-  fields: any[],
-  derivedByFieldId: Record<string, any>,
-): Record<string, any> {
-  return fields.reduce(
-    (entries, field) => {
-      if (field?.type !== 'repeatableGroup' || !derivedByFieldId[field.id]) {
-        return entries;
-      }
+  fields: ScoresheetField[],
+  derivedByFieldId: Record<string, RepeatableGroupDerivedResult>,
+): Record<string, ScoreFieldEntry> {
+  return fields.reduce<Record<string, ScoreFieldEntry>>((entries, field) => {
+    if (!isRepeatableGroupField(field) || !derivedByFieldId[field.id]) {
+      return entries;
+    }
 
-      return {
-        ...entries,
-        ...buildRepeatableGroupDerivedOutputScoreEntries(
-          field,
-          derivedByFieldId[field.id],
-          fields,
-        ),
-      };
-    },
-    {} as Record<string, any>,
-  );
+    return {
+      ...entries,
+      ...buildRepeatableGroupDerivedOutputScoreEntries(
+        field,
+        derivedByFieldId[field.id],
+        fields,
+      ),
+    };
+  }, {});
 }
 
 export function buildRepeatableGroupScoreEntry(
-  field: any,
-  existingEntry: any,
-  formValue: any,
-  derived?: any,
-): Record<string, any> {
+  field: RepeatableGroupField,
+  existingEntry: ScoreFieldEntry | undefined,
+  formValue: unknown,
+  derived?: RepeatableGroupDerivedResult,
+): ScoreFieldEntry {
   const normalizedRows = normalizeRepeatableGroupRows(formValue, field);
   const submittedRows = Array.isArray(existingEntry?.value)
     ? existingEntry.value
@@ -377,36 +471,29 @@ export function buildRepeatableGroupScoreEntry(
       submittedRows,
     );
   const value = rowsUnchanged ? submittedRows : prunedRows;
-  const nextEntry: Record<string, any> = {
-    ...existingEntry,
+  const nextEntry: ScoreFieldEntry = {
     label: field.label ?? existingEntry?.label,
     value,
     type: field.type,
   };
 
-  if (!rowsUnchanged) {
-    delete nextEntry.derived;
-  }
-
   if (derived) {
     nextEntry.derived = derived;
+  } else if (rowsUnchanged && existingEntry?.derived) {
+    nextEntry.derived = existingEntry.derived;
   }
 
   return nextEntry;
 }
 
-export function getRepeatableGroupRowKeys(rows: any[]): string[] {
+export function getRepeatableGroupRowKeys(rows: unknown[]): string[] {
   if (!Array.isArray(rows)) {
     return [];
   }
 
   return Array.from(
     new Set(
-      rows.flatMap((row: any) =>
-        row && typeof row === 'object' && !Array.isArray(row)
-          ? Object.keys(row)
-          : [],
-      ),
+      rows.flatMap((row) => (isPlainObject(row) ? Object.keys(row) : [])),
     ),
   );
 }
@@ -425,17 +512,15 @@ export function getBracketSourceEventId(
   bracketSource: unknown,
   fallbackEventId?: number | null,
 ): number | null {
-  if (!bracketSource || typeof bracketSource !== 'object') {
+  if (!isPlainObject(bracketSource) || bracketSource.type !== 'db') {
     return fallbackEventId ?? null;
   }
 
-  const source = bracketSource as DbBracketSource;
-  if (source.type !== 'db') {
-    return fallbackEventId ?? null;
-  }
+  const rawEventId = bracketSource.eventId;
+  const eventId = typeof rawEventId === 'number' ? rawEventId : null;
 
-  if (source.scope === 'event') {
-    return source.eventId ?? fallbackEventId ?? null;
+  if (bracketSource.scope === 'event') {
+    return eventId ?? fallbackEventId ?? null;
   }
 
   return fallbackEventId ?? null;
@@ -452,46 +537,238 @@ function adaptDoubleEliminationId(value: string): string {
   return value.replace(/side_a/g, 'team_a').replace(/side_b/g, 'team_b');
 }
 
-export function adaptDoubleEliminationFields(templateFields: any[]): any[] {
-  return templateFields.map((field) => {
-    const newField = { ...field };
+function adaptSectionHeaderLabel(label: string): string {
+  if (label === 'SIDE A') return 'TEAM A';
+  if (label === 'SIDE B') return 'TEAM B';
+  return label;
+}
 
-    if (newField.id) {
-      newField.id = adaptDoubleEliminationId(newField.id);
+function adaptDerivedOutputs(
+  derived: RepeatableGroupField['derived'],
+): RepeatableGroupField['derived'] {
+  if (!derived?.outputs) {
+    return derived;
+  }
+
+  const { outputs } = derived;
+  return {
+    ...derived,
+    outputs: {
+      ...(outputs.sortedEquivalent != null
+        ? {
+            sortedEquivalent: adaptDoubleEliminationId(
+              outputs.sortedEquivalent,
+            ),
+          }
+        : {}),
+      ...(outputs.unsortedEquivalent != null
+        ? {
+            unsortedEquivalent: adaptDoubleEliminationId(
+              outputs.unsortedEquivalent,
+            ),
+          }
+        : {}),
+      ...(outputs.subtotal != null
+        ? { subtotal: adaptDoubleEliminationId(outputs.subtotal) }
+        : {}),
+    },
+  };
+}
+
+export function adaptDoubleEliminationFields(
+  templateFields: ScoresheetField[],
+): ScoresheetField[] {
+  return templateFields.map((field): ScoresheetField => {
+    const id = adaptDoubleEliminationId(field.id);
+
+    switch (field.type) {
+      case 'calculated':
+        return {
+          ...field,
+          id,
+          formula: adaptDoubleEliminationId(field.formula),
+        };
+      case 'repeatableGroup':
+        return {
+          ...field,
+          id,
+          derived: adaptDerivedOutputs(field.derived),
+        };
+      case 'section_header':
+        return {
+          ...field,
+          id,
+          label: adaptSectionHeaderLabel(field.label),
+        };
+      default:
+        return { ...field, id };
     }
-
-    if (newField.formula) {
-      newField.formula = adaptDoubleEliminationId(newField.formula);
-    }
-
-    if (newField.derived?.outputs) {
-      newField.derived = {
-        ...newField.derived,
-        outputs: Object.fromEntries(
-          Object.entries(newField.derived.outputs).map(([key, value]) => [
-            key,
-            typeof value === 'string' ? adaptDoubleEliminationId(value) : value,
-          ]),
-        ),
-      };
-    }
-
-    if (newField.type === 'section_header') {
-      if (newField.label === 'SIDE A') newField.label = 'TEAM A';
-      if (newField.label === 'SIDE B') newField.label = 'TEAM B';
-    }
-
-    return newField;
   });
+}
+
+function doubleEliminationIdentityFields(): ScoresheetField[] {
+  return [
+    {
+      id: 'game_number',
+      label: 'Game',
+      type: 'dropdown',
+      required: true,
+      dataSource: {
+        type: 'bracket',
+      },
+      cascades: {
+        team_a_number: 'team1.teamNumber',
+        team_a_name: 'team1.displayName',
+        team_b_number: 'team2.teamNumber',
+        team_b_name: 'team2.displayName',
+      },
+    },
+    {
+      id: 'team_a_number',
+      label: 'Team A Number',
+      type: 'text',
+      required: true,
+      autoPopulated: true,
+      placeholder: 'Select game first',
+    },
+    {
+      id: 'team_a_name',
+      label: 'Team A Name',
+      type: 'text',
+      required: true,
+      autoPopulated: true,
+      placeholder: 'Select game first',
+    },
+    {
+      id: 'team_b_number',
+      label: 'Team B Number',
+      type: 'text',
+      required: true,
+      autoPopulated: true,
+      placeholder: 'Select game first',
+    },
+    {
+      id: 'team_b_name',
+      label: 'Team B Name',
+      type: 'text',
+      required: true,
+      autoPopulated: true,
+      placeholder: 'Select game first',
+    },
+    {
+      id: 'winner',
+      label: 'Winner',
+      type: 'winner-select',
+      required: true,
+      options: [
+        { value: 'team_a', label: 'Team A Wins' },
+        { value: 'team_b', label: 'Team B Wins' },
+      ],
+    },
+  ];
+}
+
+function doubleSeedingIdentityFields(): ScoresheetField[] {
+  return [
+    {
+      id: 'team_a_number',
+      label: 'Team A Number',
+      type: 'text',
+      required: true,
+      autoPopulated: true,
+      placeholder: 'Select match first',
+    },
+    {
+      id: 'team_a_name',
+      label: 'Team A Name',
+      type: 'text',
+      required: true,
+      autoPopulated: true,
+      placeholder: 'Select match first',
+    },
+    {
+      id: 'team_b_number',
+      label: 'Team B Number',
+      type: 'text',
+      required: false,
+      autoPopulated: true,
+      placeholder: 'Select match first',
+    },
+    {
+      id: 'team_b_name',
+      label: 'Team B Name',
+      type: 'text',
+      required: false,
+      autoPopulated: true,
+      placeholder: 'Select match first',
+    },
+  ];
+}
+
+function defaultTeamScoreFields(): ScoresheetField[] {
+  return [
+    {
+      id: 'section_header_team_a',
+      label: 'TEAM A',
+      type: 'section_header',
+      column: 'left',
+    },
+    {
+      id: 'team_a_score',
+      label: 'Team A Score',
+      type: 'number',
+      column: 'left',
+      required: false,
+      min: 0,
+      step: 1,
+    },
+    {
+      id: 'team_a_total',
+      label: 'TEAM A TOTAL',
+      type: 'calculated',
+      column: 'left',
+      isTotal: true,
+      formula: 'team_a_score',
+    },
+    {
+      id: 'section_header_team_b',
+      label: 'TEAM B',
+      type: 'section_header',
+      column: 'right',
+    },
+    {
+      id: 'team_b_score',
+      label: 'Team B Score',
+      type: 'number',
+      column: 'right',
+      required: false,
+      min: 0,
+      step: 1,
+    },
+    {
+      id: 'team_b_total',
+      label: 'TEAM B TOTAL',
+      type: 'calculated',
+      column: 'right',
+      isTotal: true,
+      formula: 'team_b_score',
+    },
+  ];
 }
 
 export function buildDoubleEliminationSchema(options: {
   title: string;
   eventId: number | null;
-  templateFields?: any[] | null;
-}): any {
+  templateFields?: ScoresheetField[] | null;
+}): ScoresheetSchema {
   const { title, eventId, templateFields } = options;
-  const schema: any = {
+  const scoringFields =
+    templateFields && templateFields.length > 0
+      ? adaptDoubleEliminationFields(templateFields)
+      : defaultTeamScoreFields();
+
+  return {
+    schemaVersion: SCORESHEET_SCHEMA_VERSION,
     layout: 'two-column',
     mode: 'head-to-head',
     title: title || 'Double Elimination Score Sheet',
@@ -504,130 +781,8 @@ export function buildDoubleEliminationSchema(options: {
       teamNumberField: 'team_number',
       teamNameField: 'team_name',
     },
-    fields: [],
-  };
-
-  schema.fields.push({
-    id: 'game_number',
-    label: 'Game',
-    type: 'dropdown',
-    required: true,
-    dataSource: {
-      type: 'bracket',
-    },
-    cascades: {
-      team_a_number: 'team1.teamNumber',
-      team_a_name: 'team1.displayName',
-      team_b_number: 'team2.teamNumber',
-      team_b_name: 'team2.displayName',
-    },
-  });
-
-  schema.fields.push({
-    id: 'team_a_number',
-    label: 'Team A Number',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'team_a_name',
-    label: 'Team A Name',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_number',
-    label: 'Team B Number',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_name',
-    label: 'Team B Name',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'winner',
-    label: 'Winner',
-    type: 'winner-select',
-    required: true,
-    options: [
-      { value: 'team_a', label: 'Team A Wins' },
-      { value: 'team_b', label: 'Team B Wins' },
-    ],
-  });
-
-  if (templateFields && templateFields.length > 0) {
-    schema.fields.push(...adaptDoubleEliminationFields(templateFields));
-    return schema;
-  }
-
-  schema.fields.push({
-    id: 'section_header_team_a',
-    label: 'TEAM A',
-    type: 'section_header',
-    column: 'left',
-  });
-
-  schema.fields.push({
-    id: 'team_a_score',
-    label: 'Team A Score',
-    type: 'number',
-    column: 'left',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_a_total',
-    label: 'TEAM A TOTAL',
-    type: 'calculated',
-    column: 'left',
-    isTotal: true,
-    formula: 'team_a_score',
-  });
-
-  schema.fields.push({
-    id: 'section_header_team_b',
-    label: 'TEAM B',
-    type: 'section_header',
-    column: 'right',
-  });
-
-  schema.fields.push({
-    id: 'team_b_score',
-    label: 'Team B Score',
-    type: 'number',
-    column: 'right',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_b_total',
-    label: 'TEAM B TOTAL',
-    type: 'calculated',
-    column: 'right',
-    isTotal: true,
-    formula: 'team_b_score',
-  });
-
-  return schema;
+    fields: [...doubleEliminationIdentityFields(), ...scoringFields],
+  } satisfies ScoresheetSchema;
 }
 
 /**
@@ -639,10 +794,16 @@ export function buildDoubleEliminationSchema(options: {
 export function buildDoubleSeedingSchema(options: {
   title: string;
   eventId: number | null;
-  templateFields?: any[] | null;
-}): any {
+  templateFields?: ScoresheetField[] | null;
+}): ScoresheetSchema {
   const { title, eventId, templateFields } = options;
-  const schema: any = {
+  const scoringFields =
+    templateFields && templateFields.length > 0
+      ? adaptDoubleEliminationFields(templateFields)
+      : defaultTeamScoreFields();
+
+  return {
+    schemaVersion: SCORESHEET_SCHEMA_VERSION,
     layout: 'two-column',
     scoreKind: 'double_seeding',
     title: title || 'Double Seeding Score Sheet',
@@ -654,104 +815,8 @@ export function buildDoubleSeedingSchema(options: {
       teamNumberField: 'team_number',
       teamNameField: 'team_name',
     },
-    fields: [],
-  };
-
-  schema.fields.push({
-    id: 'team_a_number',
-    label: 'Team A Number',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  schema.fields.push({
-    id: 'team_a_name',
-    label: 'Team A Name',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_number',
-    label: 'Team B Number',
-    type: 'text',
-    required: false,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_name',
-    label: 'Team B Name',
-    type: 'text',
-    required: false,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  if (templateFields && templateFields.length > 0) {
-    // Reuse the side A/B field adaptation from DE; side totals stay separate.
-    schema.fields.push(...adaptDoubleEliminationFields(templateFields));
-    return schema;
-  }
-
-  schema.fields.push({
-    id: 'section_header_team_a',
-    label: 'TEAM A',
-    type: 'section_header',
-    column: 'left',
-  });
-
-  schema.fields.push({
-    id: 'team_a_score',
-    label: 'Team A Score',
-    type: 'number',
-    column: 'left',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_a_total',
-    label: 'TEAM A TOTAL',
-    type: 'calculated',
-    column: 'left',
-    isTotal: true,
-    formula: 'team_a_score',
-  });
-
-  schema.fields.push({
-    id: 'section_header_team_b',
-    label: 'TEAM B',
-    type: 'section_header',
-    column: 'right',
-  });
-
-  schema.fields.push({
-    id: 'team_b_score',
-    label: 'Team B Score',
-    type: 'number',
-    column: 'right',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_b_total',
-    label: 'TEAM B TOTAL',
-    type: 'calculated',
-    column: 'right',
-    isTotal: true,
-    formula: 'team_b_score',
-  });
-
-  return schema;
+    fields: [...doubleSeedingIdentityFields(), ...scoringFields],
+  } satisfies ScoresheetSchema;
 }
 
 export function formatBracketGameOptionLabel(game: BracketGameOption): string {

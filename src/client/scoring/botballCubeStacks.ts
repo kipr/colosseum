@@ -44,7 +44,7 @@ function coerceBoolean(value: unknown): boolean {
 }
 
 export function scoreBotballCubeStacks(
-  rows: BotballCubeStackRow[],
+  rows: ReadonlyArray<Record<string, unknown>>,
   values: { sortedValue: number; unsortedValue: number },
 ): BotballCubeStackResult {
   const sortedValue = coerceCount(values.sortedValue);

@@ -3,12 +3,11 @@ import {
   buildDoubleSeedingSchema,
   shouldHideSoloDoubleSeedingField,
 } from '../../src/client/components/scoresheetUtils';
-
-interface SchemaField {
-  id: string;
-  type: string;
-  formula?: string;
-}
+import {
+  parseScoresheetSchema,
+  SCORESHEET_SCHEMA_VERSION,
+  type ScoresheetField,
+} from '../../src/shared/scoresheetSchema';
 
 describe('buildDoubleSeedingSchema', () => {
   it('builds schemas with the explicit double-seeding marker and no winner selection', () => {
@@ -18,17 +17,18 @@ describe('buildDoubleSeedingSchema', () => {
       templateFields: null,
     });
 
+    expect(schema.schemaVersion).toBe(SCORESHEET_SCHEMA_VERSION);
     expect(schema.scoreKind).toBe('double_seeding');
     expect(schema.scoreDestination).toBe('db');
     expect(schema.eventId).toBe(42);
     // Never head-to-head: that means bracket scoring with a winner
     expect(schema.mode).toBeUndefined();
     expect(schema.bracketSource).toBeUndefined();
+    expect(parseScoresheetSchema(schema).success).toBe(true);
 
-    const fields = schema.fields as SchemaField[];
-    expect(fields.some((f) => f.type === 'winner-select')).toBe(false);
-    expect(fields.some((f) => f.id === 'team_a_number')).toBe(true);
-    expect(fields.some((f) => f.id === 'team_b_number')).toBe(true);
+    expect(schema.fields.some((f) => f.type === 'winner-select')).toBe(false);
+    expect(schema.fields.some((f) => f.id === 'team_a_number')).toBe(true);
+    expect(schema.fields.some((f) => f.id === 'team_b_number')).toBe(true);
   });
 
   it('keeps side-specific totals instead of a combined grand_total', () => {
@@ -38,41 +38,43 @@ describe('buildDoubleSeedingSchema', () => {
       templateFields: null,
     });
 
-    const fields = schema.fields as SchemaField[];
-    expect(fields.some((f) => f.id === 'team_a_total')).toBe(true);
-    expect(fields.some((f) => f.id === 'team_b_total')).toBe(true);
-    expect(fields.some((f) => f.id === 'grand_total')).toBe(false);
+    expect(schema.fields.some((f) => f.id === 'team_a_total')).toBe(true);
+    expect(schema.fields.some((f) => f.id === 'team_b_total')).toBe(true);
+    expect(schema.fields.some((f) => f.id === 'grand_total')).toBe(false);
   });
 
   it('adapts side A/B template fields to team A/B without a winner field', () => {
+    const templateFields: ScoresheetField[] = [
+      { id: 'side_a_score', label: 'Side A Score', type: 'number' },
+      {
+        id: 'side_a_total',
+        label: 'Side A Total',
+        type: 'calculated',
+        formula: 'side_a_score',
+      },
+      {
+        id: 'side_b_total',
+        label: 'Side B Total',
+        type: 'calculated',
+        formula: 'side_b_score',
+      },
+    ];
     const schema = buildDoubleSeedingSchema({
       title: 'Adapted Sheet',
       eventId: 7,
-      templateFields: [
-        { id: 'side_a_score', label: 'Side A Score', type: 'number' },
-        {
-          id: 'side_a_total',
-          label: 'Side A Total',
-          type: 'calculated',
-          formula: 'side_a_score',
-        },
-        {
-          id: 'side_b_total',
-          label: 'Side B Total',
-          type: 'calculated',
-          formula: 'side_b_score',
-        },
-      ],
+      templateFields,
     });
 
-    const fields = schema.fields as SchemaField[];
-    expect(fields.some((f) => f.id === 'team_a_score')).toBe(true);
-    expect(fields.some((f) => f.id === 'team_a_total')).toBe(true);
-    expect(fields.some((f) => f.id === 'team_b_total')).toBe(true);
-    expect(fields.some((f) => f.type === 'winner-select')).toBe(false);
-    expect(fields.find((f) => f.id === 'team_a_total')?.formula).toBe(
-      'team_a_score',
-    );
+    expect(parseScoresheetSchema(schema).success).toBe(true);
+    expect(schema.fields.some((f) => f.id === 'team_a_score')).toBe(true);
+    expect(schema.fields.some((f) => f.id === 'team_a_total')).toBe(true);
+    expect(schema.fields.some((f) => f.id === 'team_b_total')).toBe(true);
+    expect(schema.fields.some((f) => f.type === 'winner-select')).toBe(false);
+    const teamATotal = schema.fields.find((f) => f.id === 'team_a_total');
+    expect(teamATotal?.type).toBe('calculated');
+    if (teamATotal?.type === 'calculated') {
+      expect(teamATotal.formula).toBe('team_a_score');
+    }
   });
 
   it('hides only side-B initials for solo double-seeding matches', () => {

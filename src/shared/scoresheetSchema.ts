@@ -41,6 +41,15 @@ export function isPlainObject(
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export function isScoresheetValue(value: unknown): value is ScoresheetValue {
+  return (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
+}
+
 export function discriminateShape(input: unknown): ScoresheetDocumentShape {
   if (Array.isArray(input)) {
     return 'bare_field_array';
@@ -687,6 +696,14 @@ export type RepeatableGroupField = z.infer<typeof repeatableGroupFieldSchema>;
 export type ScoresheetField = z.infer<typeof scoresheetFieldSchema>;
 export type ScoresheetFieldType = ScoresheetField['type'];
 export type ScoresheetSchema = z.infer<typeof scoresheetSchema>;
+export type BracketSource = z.infer<typeof bracketSourceSchema>;
+export type DbBracketSource = Extract<BracketSource, { type: 'db' }>;
+
+export function isRepeatableGroupField(
+  field: unknown,
+): field is RepeatableGroupField {
+  return isPlainObject(field) && field.type === 'repeatableGroup';
+}
 
 export interface ScoresheetTemplate {
   name?: string;
