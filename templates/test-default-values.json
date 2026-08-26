@@ -2,6 +2,7 @@
   "name": "Portable Defaults Fixture",
   "description": "Exercises defaultValue across portable interactive field types",
   "schema": {
+    "schemaVersion": 1,
     "title": "Portable Defaults Fixture",
     "layout": "two-column",
     "fields": [

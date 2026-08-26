@@ -63,6 +63,7 @@ describe('portable scoresheet exporter', () => {
       inputPath,
       JSON.stringify({
         schema: {
+          schemaVersion: 1,
           title: 'Bad',
           layout: 'two-column',
           fields: [
@@ -91,6 +92,7 @@ describe('portable scoresheet exporter', () => {
       inputPath,
       JSON.stringify({
         schema: {
+          schemaVersion: 1,
           title: 'Legacy',
           layout: 'two-column',
           fields: [

@@ -37,7 +37,7 @@ describe('Field Templates - additional coverage', () => {
       // Create
       const createRes = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'Original',
-        fields: [{ name: 'field1', type: 'number' }],
+        fields: [{ id: 'field1', label: 'Field 1', type: 'number' }],
       });
       expect(createRes.status).toBe(200);
       const created = createRes.json as { id: number };
@@ -47,7 +47,7 @@ describe('Field Templates - additional coverage', () => {
         `${server.baseUrl}/field-templates/${created.id}`,
         {
           name: 'Updated',
-          fields: [{ name: 'field1', type: 'text' }],
+          fields: [{ id: 'field1', label: 'Field 1', type: 'text' }],
         },
       );
       expect(updateRes.status).toBe(200);
@@ -74,7 +74,7 @@ describe('Field Templates - additional coverage', () => {
     it('deletes a field template', async () => {
       const createRes = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'To Delete',
-        fields: [{ name: 'f1' }],
+        fields: [{ id: 'f1', label: 'F1', type: 'text' }],
       });
       const created = createRes.json as { id: number };
 
@@ -99,7 +99,14 @@ describe('Field Templates - additional coverage', () => {
     it('returns 400 for invalid defaultValue', async () => {
       const res = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'Bad Defaults',
-        fields: [{ id: 'flag', type: 'checkbox', defaultValue: 'yes' }],
+        fields: [
+          {
+            id: 'flag',
+            label: 'Flag',
+            type: 'checkbox',
+            defaultValue: 'yes',
+          },
+        ],
       });
       expect(res.status).toBe(400);
       expect((res.json as { error: string }).error).toContain('boolean');
@@ -107,8 +114,15 @@ describe('Field Templates - additional coverage', () => {
 
     it('persists valid typed defaults', async () => {
       const fields = [
-        { id: 'score', type: 'number', min: 0, max: 100, defaultValue: 10 },
-        { id: 'ok', type: 'checkbox', defaultValue: false },
+        {
+          id: 'score',
+          label: 'Score',
+          type: 'number',
+          min: 0,
+          max: 100,
+          defaultValue: 10,
+        },
+        { id: 'ok', label: 'Ok', type: 'checkbox', defaultValue: false },
       ];
       const res = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'Good Defaults',
@@ -123,7 +137,9 @@ describe('Field Templates - additional coverage', () => {
     it('returns 400 on update when defaultValue is invalid', async () => {
       const createRes = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'Original',
-        fields: [{ id: 'score', type: 'number', defaultValue: 1 }],
+        fields: [
+          { id: 'score', label: 'Score', type: 'number', defaultValue: 1 },
+        ],
       });
       const created = createRes.json as { id: number };
 
@@ -131,7 +147,14 @@ describe('Field Templates - additional coverage', () => {
         `${server.baseUrl}/field-templates/${created.id}`,
         {
           name: 'Updated',
-          fields: [{ id: 'score', type: 'number', defaultValue: 'nope' }],
+          fields: [
+            {
+              id: 'score',
+              label: 'Score',
+              type: 'number',
+              defaultValue: 'nope',
+            },
+          ],
         },
       );
       expect(updateRes.status).toBe(400);

@@ -18,6 +18,7 @@ import {
   seedEventScoresheetTemplate,
 } from './helpers/seed';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
+import { canonicalSchema } from '../helpers/canonicalSchema';
 
 describe('Scoresheet Routes – extra coverage', () => {
   let testDb: TestDb;
@@ -235,20 +236,20 @@ describe('Scoresheet Routes – extra coverage', () => {
     it('creates template without eventId', async () => {
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'New Template',
-        schema: { fields: [] },
+        schema: canonicalSchema(),
         accessCode: 'abc123',
       });
       expect(res.status).toBe(200);
       const body = res.json as { name: string; schema: { fields: unknown[] } };
       expect(body.name).toBe('New Template');
-      expect(body.schema).toEqual({ fields: [] });
+      expect(body.schema).toEqual(canonicalSchema());
     });
 
     it('creates template with eventId and links to event', async () => {
       const event = await seedEvent(testDb.db);
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Linked Template',
-        schema: { fields: [] },
+        schema: canonicalSchema(),
         accessCode: 'link123',
         eventId: event.id,
       });
@@ -269,7 +270,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const event = await seedEvent(testDb.db);
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bracket Template',
-        schema: { mode: 'head-to-head' },
+        schema: canonicalSchema({ mode: 'head-to-head' }),
         accessCode: 'bracket123',
         eventId: event.id,
       });
@@ -287,7 +288,9 @@ describe('Scoresheet Routes – extra coverage', () => {
       const event = await seedEvent(testDb.db);
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bracket Source Template',
-        schema: { bracketSource: true },
+        schema: canonicalSchema({
+          bracketSource: { type: 'db', scope: 'event', eventId: event.id },
+        }),
         accessCode: 'bs123',
         eventId: event.id,
       });
@@ -305,11 +308,18 @@ describe('Scoresheet Routes – extra coverage', () => {
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bad Defaults',
         accessCode: 'bad-defaults',
-        schema: {
+        schema: canonicalSchema({
           fields: [
-            { id: 'score', type: 'number', min: 0, max: 10, defaultValue: 99 },
+            {
+              id: 'score',
+              label: 'Score',
+              type: 'number',
+              min: 0,
+              max: 10,
+              defaultValue: 99,
+            },
           ],
-        },
+        }),
       });
       expect(res.status).toBe(400);
       const body = res.json as { error: string; errors: string[] };
@@ -321,21 +331,31 @@ describe('Scoresheet Routes – extra coverage', () => {
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Legacy Start Value',
         accessCode: 'legacy-start',
-        schema: {
-          fields: [{ id: 'name', type: 'text', startValue: 'Ada' }],
-        },
+        schema: canonicalSchema({
+          fields: [
+            { id: 'name', label: 'Name', type: 'text', startValue: 'Ada' },
+          ],
+        }),
       });
       expect(res.status).toBe(400);
       expect((res.json as { error: string }).error).toContain('startValue');
     });
 
     it('persists templates with valid typed defaults', async () => {
-      const schema = {
+      const schema = canonicalSchema({
         fields: [
-          { id: 'name', type: 'text', defaultValue: 'Ada' },
-          { id: 'score', type: 'number', min: 0, max: 10, defaultValue: 7 },
+          { id: 'name', label: 'Name', type: 'text', defaultValue: 'Ada' },
+          {
+            id: 'score',
+            label: 'Score',
+            type: 'number',
+            min: 0,
+            max: 10,
+            defaultValue: 7,
+          },
           {
             id: 'division',
+            label: 'Division',
             type: 'dropdown',
             options: [
               { label: 'Junior', value: 'junior' },
@@ -343,9 +363,9 @@ describe('Scoresheet Routes – extra coverage', () => {
             ],
             defaultValue: 'senior',
           },
-          { id: 'dq', type: 'checkbox', defaultValue: true },
+          { id: 'dq', label: 'DQ', type: 'checkbox', defaultValue: true },
         ],
-      };
+      });
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Good Defaults',
         accessCode: 'good-defaults',
@@ -371,15 +391,15 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Updated',
-          schema: { fields: ['x'] },
+          schema: canonicalSchema(),
           accessCode: 'new',
           eventId: event.id,
         },
       );
       expect(res.status).toBe(200);
-      const body = res.json as { name: string; schema: { fields: string[] } };
+      const body = res.json as { name: string; schema: { fields: unknown[] } };
       expect(body.name).toBe('Updated');
-      expect(body.schema).toEqual({ fields: ['x'] });
+      expect(body.schema).toEqual(canonicalSchema());
 
       const link = await testDb.db.get(
         'SELECT * FROM event_scoresheet_templates WHERE template_id = ?',
@@ -407,7 +427,7 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Unlinked',
-          schema: {},
+          schema: canonicalSchema(),
           accessCode: 'y',
         },
       );
@@ -432,16 +452,17 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Updated',
-          schema: {
+          schema: canonicalSchema({
             fields: [
               {
                 id: 'division',
+                label: 'Division',
                 type: 'dropdown',
                 options: [{ label: 'Junior', value: 'junior' }],
                 defaultValue: 'senior',
               },
             ],
-          },
+          }),
           accessCode: 'new',
         },
       );
