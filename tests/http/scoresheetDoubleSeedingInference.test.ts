@@ -14,6 +14,7 @@ import {
 } from './helpers/testServer';
 import { seedUser, seedEvent } from './helpers/seed';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
+import { canonicalSchema } from '../helpers/canonicalSchema';
 
 describe('Scoresheet template inference - double seeding', () => {
   let testDb: TestDb;
@@ -44,12 +45,11 @@ describe('Scoresheet template inference - double seeding', () => {
       name: 'Double Seeding Sheet',
       description: 'Test',
       accessCode: 'code-ds',
-      schema: {
+      schema: canonicalSchema({
         scoreKind: 'double_seeding',
         scoreDestination: 'db',
         eventId: event.id,
-        fields: [],
-      },
+      }),
       eventId: event.id,
     });
 
@@ -70,7 +70,7 @@ describe('Scoresheet template inference - double seeding', () => {
       name: 'DE Sheet',
       description: 'Test',
       accessCode: 'code-de',
-      schema: { mode: 'head-to-head', fields: [] },
+      schema: canonicalSchema({ mode: 'head-to-head' }),
       eventId: event.id,
     });
 

@@ -1,4 +1,5 @@
 import {
+  discriminateShape,
   validateScoresheetFields,
   validateScoresheetSchema,
 } from '../../shared/scoresheetSchema';
@@ -22,24 +23,10 @@ export function isPlainObject(
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+export { discriminateShape };
+
 export function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
-}
-
-export function discriminateShape(input: unknown): DocumentShape {
-  if (Array.isArray(input)) {
-    return 'bare_field_array';
-  }
-  if (!isPlainObject(input)) {
-    return 'unknown';
-  }
-  if (isPlainObject(input.schema)) {
-    return 'wrapper';
-  }
-  if ('fields' in input) {
-    return 'schema_object';
-  }
-  return 'unknown';
 }
 
 export function kindFromShape(shape: DocumentShape): DocumentKind {

@@ -20,6 +20,7 @@ import {
   seedEventScoresheetTemplate,
 } from './helpers/seed';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
+import { canonicalSchema } from '../helpers/canonicalSchema';
 
 describe('Scoresheet Templates Event Scope', () => {
   let testDb: TestDb;
@@ -53,7 +54,7 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Seeding Sheet',
         description: 'Test',
         accessCode: 'code123',
-        schema: { fields: [], eventId: event.id },
+        schema: canonicalSchema({ eventId: event.id }),
         eventId: event.id,
       });
 
@@ -75,7 +76,7 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Unlinked Sheet',
         description: 'Test',
         accessCode: 'code456',
-        schema: { fields: [] },
+        schema: canonicalSchema(),
       });
 
       expect(res.status).toBe(200);
@@ -94,7 +95,7 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'DE Sheet',
         description: 'Bracket',
         accessCode: 'code789',
-        schema: { mode: 'head-to-head', fields: [] },
+        schema: canonicalSchema({ mode: 'head-to-head' }),
         eventId: event.id,
       });
 
@@ -114,7 +115,9 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Bracket Sheet',
         description: 'Bracket via bracketSource',
         accessCode: 'code999',
-        schema: { bracketSource: 'winners', fields: [] },
+        schema: canonicalSchema({
+          bracketSource: { type: 'db', scope: 'event', eventId: event.id },
+        }),
         eventId: event.id,
       });
 
@@ -361,7 +364,7 @@ describe('Scoresheet Templates Event Scope', () => {
           name: 'Shared Sheet',
           description: '',
           accessCode: 'code',
-          schema: { fields: [] },
+          schema: canonicalSchema(),
           eventId: event2.id,
         },
       );
@@ -392,7 +395,7 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Sheet',
         description: '',
         accessCode: 'code',
-        schema: { fields: [] },
+        schema: canonicalSchema(),
       });
 
       const links = await testDb.db.all(

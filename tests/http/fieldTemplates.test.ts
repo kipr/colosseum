@@ -244,8 +244,8 @@ describe('Field Templates Routes', () => {
 
     it('creates a field template', async () => {
       const fields = [
-        { name: 'speed', type: 'number' },
-        { name: 'accuracy', type: 'number' },
+        { id: 'speed', label: 'Speed', type: 'number' },
+        { id: 'accuracy', label: 'Accuracy', type: 'number' },
       ];
       const res = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'Performance',
@@ -296,7 +296,7 @@ describe('Field Templates Routes', () => {
 
     it('updates a field template', async () => {
       const tmpl = await seedFieldTemplate(testDb.db, { name: 'Old Name' });
-      const newFields = [{ name: 'updated_field', type: 'text' }];
+      const newFields = [{ id: 'updated_field', label: 'Updated', type: 'text' }];
 
       const res = await http.put(
         `${server.baseUrl}/field-templates/${tmpl.id}`,

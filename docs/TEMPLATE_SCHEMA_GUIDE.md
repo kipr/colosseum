@@ -2,19 +2,30 @@
 
 This guide explains how to create custom score sheet templates for the Colosseum application.
 
+The executable contract is the Zod model in `src/shared/scoresheetSchema.ts`.
+Types are inferred from that schema; this document is a human-readable overview.
+
 ## Schema Structure
 
-A template schema is a JSON object with a `fields` array containing field definitions:
+A template schema is a JSON object with `schemaVersion: 1` and a `fields` array:
 
 ```json
 {
+  "schemaVersion": 1,
   "fields": [
     // Field definitions here
   ]
 }
 ```
 
+Bare field-template arrays (no wrapper object) are unversioned and validated
+against the same field schemas.
+
 ## Field Types
+
+Every persisted field requires a non-empty `id`, `label`, and `type`. Supported
+types: `text`, `number`, `dropdown`, `buttons`, `checkbox`, `calculated`,
+`section_header`, `group_header`, `winner-select`, `repeatableGroup`.
 
 ### 1. Text Field
 
@@ -150,6 +161,7 @@ Boolean (true/false) field.
 
 ```json
 {
+  "schemaVersion": 1,
   "fields": [
     {
       "id": "judge_name",
@@ -223,6 +235,7 @@ Boolean (true/false) field.
 
 ```json
 {
+  "schemaVersion": 1,
   "fields": [
     {
       "id": "product_name",
@@ -284,6 +297,7 @@ Boolean (true/false) field.
 
 ```json
 {
+  "schemaVersion": 1,
   "fields": [
     {
       "id": "sport",
@@ -355,6 +369,13 @@ Accepted shapes:
 
 `defaultValue` is **not** allowed on `calculated`, `section_header`, `group_header`, or `winner-select` fields.
 
+Additional types not shown in the numbered examples above:
+
+- `calculated` — requires `formula`; may set `isTotal` / `isGrandTotal`
+- `section_header` / `group_header` — layout labels; `id` and `label` required
+- `winner-select` — head-to-head winner control; optional `options`
+- `repeatableGroup` — child fields limited to `text`, `number`, `dropdown`, `buttons`, `checkbox`
+
 The legacy `startValue` property is no longer supported and will be rejected.
 
 ### Repeatable group example
@@ -408,7 +429,8 @@ When converting a PDF scoresheet to JSON:
 When creating or updating templates (and when exporting portable HTML), the system validates:
 
 - Valid JSON syntax
-- `schema` is an object; when `fields` is present it must be an array
+- Schema objects include `schemaVersion: 1` and a `fields` array
+- Field `id`, `label`, and `type` are present
 - `defaultValue` entries match the field type rules above
 - Option-based defaults match declared options
 - `startValue` is rejected (use `defaultValue`)

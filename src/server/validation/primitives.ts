@@ -1,7 +1,11 @@
 import { z } from 'zod';
+import {
+  positiveId as sharedPositiveId,
+  trimmedNonEmptyString as sharedTrimmedNonEmptyString,
+} from '../../shared/validationPrimitives';
 
 /** JSON body IDs: integers > 0, no string coercion. */
-export const positiveId = z.number().int().positive();
+export const positiveId = sharedPositiveId;
 
 export const nullablePositiveId = positiveId.nullable();
 
@@ -27,7 +31,7 @@ export const eventIdParamsSchema = z
   })
   .strict();
 
-export const trimmedNonEmptyString = z.string().trim().min(1);
+export const trimmedNonEmptyString = sharedTrimmedNonEmptyString;
 
 export const isoDateInput = z
   .string()

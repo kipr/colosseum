@@ -132,6 +132,13 @@ example positive database IDs, bounded pagination, trimmed non-empty strings,
 and ISO date inputs. Domain files should compose those primitives and own their
 request schemas.
 
+Primitives that both the server and the client need (`positiveId`,
+`trimmedNonEmptyString`) live in `src/shared/validationPrimitives.ts` and are
+re-exported from `src/server/validation/primitives.ts`. The scoresheet
+_document_ model lives in `src/shared/scoresheetSchema.ts`. The HTTP _envelope_
+for template create/update (`name`, `description`, `accessCode`, `eventId`,
+`schema`) remains a future `src/server/validation/templates.ts` schema.
+
 Avoid a single global schema collection and avoid abstractions that merely save
 one line. A developer should be able to find a route's schema from the route's
 domain and name, such as `updateScoreBodySchema` or
@@ -329,6 +336,13 @@ The current dependency is server-side, so it does not increase the browser
 bundle. Keep server schemas server-only unless client runtime validation has a
 specific benefit.
 
+**Exception — scoresheet documents.** The canonical scoresheet schema lives in
+`src/shared/scoresheetSchema.ts` and is imported by the client, the server, and
+the audit command. The admin editor needs issue paths before a round trip, and
+the portable exporter must agree on one field model. That cost is accepted:
+Zod now enters the browser bundle through this shared module. HTTP envelopes
+and other request schemas stay server-only.
+
 For compile-time sharing, prefer small transport types or generated API types
 over importing server modules into React code. Importing a schema into the
 client should be intentional because it adds runtime code to the bundle and can
@@ -396,8 +410,10 @@ Inventory to convert later:
 
 ### Phase 4 — complex / externally sensitive inputs
 
-- Scoresheet templates: HTTP envelope in Zod; keep
-  `validateScoresheetSchema` as the template-aware step.
+- Scoresheet templates: canonical document model is a Zod schema in
+  `src/shared/scoresheetSchema.ts`. `validateScoresheetSchema` remains the
+  exported template-aware step; its body is a Zod parse. HTTP envelopes in
+  `validation/templates.ts` are still later work.
 - `scoreData` contents: stable `ScoreFieldEntry` (`{ value, type?, label? }`);
   validate against the stored template in a dedicated service after the request
   schema.
