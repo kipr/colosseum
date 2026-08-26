@@ -84,6 +84,18 @@ describe('initializePostgres parity with SQLite', () => {
       );
       expect(allSql).toContain('idx_bracket_games_play_order');
     });
+
+    it('creates bracket special-result metadata on games and submissions', () => {
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_games[\s\S]*result_type TEXT NOT NULL DEFAULT 'standard'/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*bracket_games[\s\S]*disqualified_team_id INTEGER REFERENCES teams\(id\)/i,
+      );
+      expect(allSql).toMatch(
+        /CREATE TABLE.*score_submissions[\s\S]*result_note TEXT/i,
+      );
+    });
   });
 
   describe('double-seeding baseline', () => {

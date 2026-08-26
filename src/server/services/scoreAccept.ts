@@ -5,6 +5,7 @@ import { resolveBracketByes } from './bracketByeResolver';
 import { recalculateSeedingRankings } from './seedingRankings';
 import { recalculateDoubleSeedingRankings } from './doubleSeedingRankings';
 import { bumpQueueVersion, markQueueDirty } from './queueVersion';
+import type { BracketResultType } from '../../shared/bracketResult';
 
 /**
  * Pending score submission: set queue to `scored`. Revert/reject: `queued`.
@@ -279,6 +280,8 @@ export interface AcceptEventScoreError {
   newScore?: number;
   existingWinnerId?: number;
   newWinnerId?: number;
+  existingResultType?: BracketResultType;
+  newResultType?: BracketResultType;
 }
 
 export type AcceptEventScoreResult =
@@ -402,8 +405,8 @@ export async function acceptEventScore(
 
   if (scoreType === 'bracket') {
     const bracketGameId = score.bracket_game_id;
-    const winnerTeamId =
-      scoreData.winner_team_id?.value || scoreData.winner_id?.value;
+    const resultType = (score.result_type ?? 'standard') as BracketResultType;
+    const disqualifiedTeamId = score.disqualified_team_id as number | null;
     const team1Score = scoreData.team1_score?.value;
     const team2Score = scoreData.team2_score?.value;
 
@@ -412,6 +415,46 @@ export async function acceptEventScore(
         ok: false,
         status: 400,
         error: 'Bracket score must have bracket_game_id linked',
+      };
+    }
+
+    const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
+      bracketGameId,
+    ]);
+
+    if (!game) {
+      return { ok: false, status: 404, error: 'Bracket game not found' };
+    }
+
+    let winnerTeamId =
+      scoreData.winner_team_id?.value || scoreData.winner_id?.value;
+
+    if (resultType === 'disqualification') {
+      if (
+        disqualifiedTeamId == null ||
+        (game.team1_id !== disqualifiedTeamId &&
+          game.team2_id !== disqualifiedTeamId)
+      ) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'Disqualified team must be one of the teams in the game',
+        };
+      }
+      if (!String(score.result_note ?? '').trim()) {
+        return {
+          ok: false,
+          status: 400,
+          error: 'A disqualification requires a private reason',
+        };
+      }
+      winnerTeamId =
+        game.team1_id === disqualifiedTeamId ? game.team2_id : game.team1_id;
+    } else if (disqualifiedTeamId != null) {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Only a disqualification can specify a disqualified team',
       };
     }
 
@@ -424,14 +467,6 @@ export async function acceptEventScore(
       };
     }
 
-    const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
-      bracketGameId,
-    ]);
-
-    if (!game) {
-      return { ok: false, status: 404, error: 'Bracket game not found' };
-    }
-
     if (game.team1_id !== winnerTeamId && game.team2_id !== winnerTeamId) {
       return {
         ok: false,
@@ -440,14 +475,21 @@ export async function acceptEventScore(
       };
     }
 
-    if (game.winner_id && game.winner_id !== winnerTeamId && !force) {
+    const resultConflict =
+      game.winner_id &&
+      (game.winner_id !== winnerTeamId ||
+        (game.result_type ?? 'standard') !== resultType ||
+        (game.disqualified_team_id ?? null) !== disqualifiedTeamId);
+    if (resultConflict && !force) {
       return {
         ok: false,
         status: 409,
         error:
-          'Game already has a different winner. Use force=true to override.',
+          'Game already has a different winner or result type. Use force=true to override.',
         existingWinnerId: game.winner_id,
         newWinnerId: winnerTeamId,
+        existingResultType: game.result_type ?? 'standard',
+        newResultType: resultType,
       };
     }
 
@@ -493,6 +535,8 @@ export async function acceptEventScore(
           loser_id = ?,
           team1_score = ?,
           team2_score = ?,
+          result_type = ?,
+          disqualified_team_id = ?,
           status = 'completed',
           completed_at = CURRENT_TIMESTAMP,
           score_submission_id = ?
@@ -500,8 +544,10 @@ export async function acceptEventScore(
         [
           winnerTeamId,
           loserId,
-          team1Score ?? null,
-          team2Score ?? null,
+          resultType === 'standard' ? (team1Score ?? null) : null,
+          resultType === 'standard' ? (team2Score ?? null) : null,
+          resultType,
+          disqualifiedTeamId,
           id,
           bracketGameId,
         ],

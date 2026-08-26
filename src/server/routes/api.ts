@@ -14,6 +14,8 @@ import {
   updateSeedingQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import { parseRequest } from '../validation/request';
+import { scoreSubmitBodySchema } from '../validation/bracketResult';
 
 const router = express.Router();
 
@@ -24,11 +26,14 @@ router.post(
   requireJudgeSession,
   async (req: express.Request, res: express.Response) => {
     try {
+      const payload = parseRequest(scoreSubmitBodySchema, req.body ?? {}, res);
+      if (!payload) return;
+
       const {
         templateId,
         participantName,
         matchId,
-        scoreData,
+        scoreData: parsedScoreData,
         isHeadToHead,
         bracketSource,
         eventId,
@@ -36,13 +41,13 @@ router.post(
         game_queue_id,
         bracket_game_id,
         double_seeding_match_id,
-      } = req.body;
-
-      if (!templateId || !scoreData) {
-        return res
-          .status(400)
-          .json({ error: 'Template ID and score data are required' });
-      }
+        resultType,
+        disqualifiedTeamId,
+        resultNote,
+      } = payload;
+      // Scoresheet fields are template-defined and intentionally dynamic.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const scoreData = parsedScoreData as Record<string, any>;
 
       const db = await getDatabase();
 
@@ -77,18 +82,59 @@ router.post(
       const attemptingDbBackedBracket =
         eventId && scoreType === 'bracket' && bracket_game_id != null;
       let isDbBackedBracket = false;
+      let bracketGame:
+        | { id: number; team1_id: number | null; team2_id: number | null }
+        | undefined;
       if (attemptingDbBackedBracket) {
-        const game = await db.get(
-          `SELECT bg.id FROM bracket_games bg
+        bracketGame = await db.get(
+          `SELECT bg.id, bg.team1_id, bg.team2_id FROM bracket_games bg
            JOIN brackets b ON bg.bracket_id = b.id
            WHERE bg.id = ? AND b.event_id = ?`,
           [bracket_game_id, eventId],
         );
-        if (!game) {
+        if (!bracketGame) {
           return res.status(400).json({
             error:
               'Bracket game not found or does not belong to this event. Invalid event.',
           });
+        }
+
+        const participants = [
+          bracketGame.team1_id,
+          bracketGame.team2_id,
+        ].filter((teamId): teamId is number => teamId != null);
+        if (resultType === 'disqualification') {
+          if (!participants.includes(disqualifiedTeamId!)) {
+            return res.status(400).json({
+              error: 'Disqualified team must be a participant in the game',
+            });
+          }
+          const winnerTeamId = participants.find(
+            (teamId) => teamId !== disqualifiedTeamId,
+          );
+          if (winnerTeamId == null) {
+            return res.status(400).json({
+              error: 'A disqualification requires two participating teams',
+            });
+          }
+          scoreData.winner_team_id = {
+            label: 'Winner Team ID',
+            value: winnerTeamId,
+            type: 'number',
+          };
+        } else {
+          const winnerEntry = scoreData.winner_team_id ?? scoreData.winner_id;
+          const winnerTeamId =
+            winnerEntry &&
+            typeof winnerEntry === 'object' &&
+            'value' in winnerEntry
+              ? Number(winnerEntry.value)
+              : null;
+          if (winnerTeamId == null || !participants.includes(winnerTeamId)) {
+            return res
+              .status(400)
+              .json({ error: 'Winner must be a participant in the game' });
+          }
         }
         isDbBackedBracket = true;
       }
@@ -181,8 +227,8 @@ router.post(
 
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           null,
           templateId,
@@ -194,6 +240,9 @@ router.post(
           game_queue_id ?? null,
           isDbBackedBracket ? bracket_game_id : null,
           isDbBackedDoubleSeeding ? double_seeding_match_id : null,
+          isDbBackedBracket ? resultType : 'standard',
+          isDbBackedBracket ? (disqualifiedTeamId ?? null) : null,
+          isDbBackedBracket ? (resultNote?.trim() ?? null) : null,
         ],
       );
 
@@ -204,8 +253,9 @@ router.post(
 
       // Audit event-scoped submissions
       if (isDbBacked && submission) {
+        const scopedEventId = Number(eventId);
         await createAuditEntry(db, {
-          event_id: eventId,
+          event_id: scopedEventId,
           user_id: null,
           action: 'score_submitted',
           entity_type: 'score_submission',
@@ -217,6 +267,9 @@ router.post(
             score_type: submission.score_type,
             status: submission.status,
             score_data: submission.score_data,
+            result_type: submission.result_type,
+            disqualified_team_id: submission.disqualified_team_id,
+            result_note: submission.result_note,
           }),
           ip_address: req.ip ?? null,
         });
@@ -229,7 +282,7 @@ router.post(
           if (roundNumber != null) {
             await updateSeedingQueueItem(
               db,
-              eventId,
+              scopedEventId,
               resolvedTeamId,
               Number(roundNumber),
               true,
@@ -238,7 +291,7 @@ router.post(
         } else if (scoreType === 'bracket' && bracket_game_id != null) {
           await updateBracketQueueItem(
             db,
-            eventId,
+            scopedEventId,
             Number(bracket_game_id),
             true,
           );
@@ -248,7 +301,7 @@ router.post(
         ) {
           await updateDoubleSeedingQueueItem(
             db,
-            eventId,
+            scopedEventId,
             Number(double_seeding_match_id),
             true,
           );
@@ -257,7 +310,7 @@ router.post(
         // Auto-accept when event's score_accept_mode matches (force=false, reviewed_by=null)
         const event = await db.get<{ score_accept_mode?: string }>(
           'SELECT score_accept_mode FROM events WHERE id = ?',
-          [eventId],
+          [scopedEventId],
         );
         const mode = event?.score_accept_mode ?? 'manual';
         const shouldAutoAccept =

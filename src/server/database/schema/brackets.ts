@@ -65,6 +65,9 @@ export const bracketsSchema: SchemaModule = {
           loser_slot TEXT,
           team1_score INTEGER,
           team2_score INTEGER,
+          result_type TEXT NOT NULL DEFAULT 'standard'
+            CHECK (result_type IN ('standard', 'no_contest', 'disqualification')),
+          disqualified_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
           score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
           scheduled_time TIMESTAMP,
           started_at TIMESTAMP,
@@ -106,6 +109,17 @@ export const bracketsSchema: SchemaModule = {
         table: 'bracket_games',
         column: 'play_order',
         definition: 'INTEGER',
+      },
+      {
+        table: 'bracket_games',
+        column: 'result_type',
+        definition:
+          "TEXT NOT NULL DEFAULT 'standard' CHECK (result_type IN ('standard', 'no_contest', 'disqualification'))",
+      },
+      {
+        table: 'bracket_games',
+        column: 'disqualified_team_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
       },
     ],
     triggers: [
@@ -206,6 +220,9 @@ export const bracketsSchema: SchemaModule = {
           loser_slot TEXT,
           team1_score INTEGER,
           team2_score INTEGER,
+          result_type TEXT NOT NULL DEFAULT 'standard'
+            CHECK (result_type IN ('standard', 'no_contest', 'disqualification')),
+          disqualified_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
           score_submission_id INTEGER REFERENCES score_submissions(id) ON DELETE SET NULL,
           scheduled_time DATETIME,
           started_at DATETIME,
@@ -247,6 +264,17 @@ export const bracketsSchema: SchemaModule = {
         table: 'bracket_games',
         column: 'play_order',
         definition: 'INTEGER',
+      },
+      {
+        table: 'bracket_games',
+        column: 'result_type',
+        definition:
+          "TEXT NOT NULL DEFAULT 'standard' CHECK (result_type IN ('standard', 'no_contest', 'disqualification'))",
+      },
+      {
+        table: 'bracket_games',
+        column: 'disqualified_team_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
       },
     ],
     triggers: [

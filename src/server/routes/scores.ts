@@ -10,6 +10,15 @@ import {
   updateBracketQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import { parseRequest } from '../validation/request';
+import {
+  acceptEventBodySchema,
+  bulkAcceptBodySchema,
+  bulkAcceptParamsSchema,
+  revertEventBodySchema,
+  scoreIdParamsSchema,
+  scoreUpdateBodySchema,
+} from '../validation/bracketResult';
 
 const router = express.Router();
 
@@ -170,12 +179,12 @@ router.post(
   requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
-      const { eventId } = req.params;
-      const { score_ids } = req.body as { score_ids?: number[] };
-
-      if (!Array.isArray(score_ids) || score_ids.length === 0) {
-        return res.status(400).json({ error: 'score_ids array is required' });
-      }
+      const routeParams = parseRequest(bulkAcceptParamsSchema, req.params, res);
+      if (!routeParams) return;
+      const payload = parseRequest(bulkAcceptBodySchema, req.body ?? {}, res);
+      if (!payload) return;
+      const { eventId } = routeParams;
+      const { score_ids } = payload;
 
       const db = await getDatabase();
 
@@ -187,7 +196,7 @@ router.post(
         return res.status(400).json({ error: 'Event does not exist' });
       }
 
-      const eventIdNum = Number(eventId);
+      const eventIdNum = eventId;
       const reviewedBy = req.user?.id ?? null;
       const ipAddress = req.ip ?? null;
 
@@ -252,13 +261,17 @@ router.post(
   requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
-      const { id } = req.params;
-      const { force } = req.body as { force?: boolean };
+      const routeParams = parseRequest(scoreIdParamsSchema, req.params, res);
+      if (!routeParams) return;
+      const payload = parseRequest(acceptEventBodySchema, req.body ?? {}, res);
+      if (!payload) return;
+      const { id } = routeParams;
+      const { force } = payload;
       const db = await getDatabase();
 
       const result = await acceptEventScore({
         db,
-        submissionId: Number(id),
+        submissionId: id,
         force: force ?? false,
         reviewedBy: req.user?.id ?? null,
         ipAddress: req.ip ?? null,
@@ -272,6 +285,8 @@ router.post(
           newScore,
           existingWinnerId,
           newWinnerId,
+          existingResultType,
+          newResultType,
         } = result;
         const body: Record<string, unknown> = { error };
         if (existingScore !== undefined) body.existingScore = existingScore;
@@ -279,6 +294,9 @@ router.post(
         if (existingWinnerId !== undefined)
           body.existingWinnerId = existingWinnerId;
         if (newWinnerId !== undefined) body.newWinnerId = newWinnerId;
+        if (existingResultType !== undefined)
+          body.existingResultType = existingResultType;
+        if (newResultType !== undefined) body.newResultType = newResultType;
         return res.status(status).json(body);
       }
 
@@ -644,11 +662,12 @@ router.post(
   requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
-      const { id } = req.params;
-      const { dryRun, confirm } = req.body as {
-        dryRun?: boolean;
-        confirm?: boolean;
-      };
+      const routeParams = parseRequest(scoreIdParamsSchema, req.params, res);
+      if (!routeParams) return;
+      const payload = parseRequest(revertEventBodySchema, req.body ?? {}, res);
+      if (!payload) return;
+      const { id } = routeParams;
+      const { dryRun, confirm } = payload;
       const db = await getDatabase();
 
       // Get the score submission
@@ -893,6 +912,8 @@ router.post(
               loser_id = NULL,
               team1_score = NULL,
               team2_score = NULL,
+              result_type = 'standard',
+              disqualified_team_id = NULL,
               status = CASE 
                 WHEN team1_id IS NOT NULL AND team2_id IS NOT NULL THEN 'ready'
                 ELSE 'pending'
@@ -917,6 +938,8 @@ router.post(
                 'loser_id = NULL',
                 'team1_score = NULL',
                 'team2_score = NULL',
+                "result_type = 'standard'",
+                'disqualified_team_id = NULL',
                 'completed_at = NULL',
               );
             }
@@ -1231,8 +1254,12 @@ router.put(
   requireAuth,
   async (req: AuthRequest, res: express.Response) => {
     try {
-      const { id } = req.params;
-      const { scoreData } = req.body;
+      const routeParams = parseRequest(scoreIdParamsSchema, req.params, res);
+      if (!routeParams) return;
+      const payload = parseRequest(scoreUpdateBodySchema, req.body ?? {}, res);
+      if (!payload) return;
+      const { id } = routeParams;
+      const { scoreData, resultType, disqualifiedTeamId, resultNote } = payload;
       const db = await getDatabase();
 
       const oldScore = await db.get(
@@ -1243,11 +1270,57 @@ router.put(
         return res.status(404).json({ error: 'Score not found' });
       }
 
+      const nextResultType = resultType ?? oldScore.result_type ?? 'standard';
+      const nextDisqualifiedTeamId =
+        disqualifiedTeamId !== undefined
+          ? disqualifiedTeamId
+          : oldScore.disqualified_team_id;
+      const nextResultNote =
+        resultNote !== undefined ? resultNote : oldScore.result_note;
+
+      if (oldScore.score_type !== 'bracket' && nextResultType !== 'standard') {
+        return res.status(400).json({
+          error: 'Special results are only supported for bracket scores',
+        });
+      }
+
+      if (nextResultType === 'disqualification') {
+        const game = await db.get(
+          'SELECT team1_id, team2_id FROM bracket_games WHERE id = ?',
+          [oldScore.bracket_game_id],
+        );
+        if (
+          !game ||
+          nextDisqualifiedTeamId == null ||
+          (game.team1_id !== nextDisqualifiedTeamId &&
+            game.team2_id !== nextDisqualifiedTeamId)
+        ) {
+          return res.status(400).json({
+            error: 'Disqualified team must be a participant in the game',
+          });
+        }
+        if (!String(nextResultNote ?? '').trim()) {
+          return res.status(400).json({
+            error: 'A disqualification requires a private reason',
+          });
+        }
+      } else if (nextDisqualifiedTeamId != null || nextResultNote != null) {
+        return res.status(400).json({
+          error: 'Disqualification details require a disqualification result',
+        });
+      }
+
       await db.run(
         `UPDATE score_submissions 
-       SET score_data = ?, updated_at = CURRENT_TIMESTAMP
+       SET score_data = ?, result_type = ?, disqualified_team_id = ?, result_note = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-        [JSON.stringify(scoreData), id],
+        [
+          JSON.stringify(scoreData),
+          nextResultType,
+          nextDisqualifiedTeamId ?? null,
+          nextResultNote?.trim() ?? null,
+          id,
+        ],
       );
 
       if (oldScore.event_id) {

@@ -10,6 +10,7 @@ import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
 import '../Modal.css';
 import './ScoringTab.css';
+import type { BracketResultType } from '../../../shared/bracketResult';
 
 interface ScoreSubmission {
   id: number;
@@ -22,6 +23,9 @@ interface ScoreSubmission {
   reviewed_at: string | null;
   reviewer_name: string | null;
   score_data: any;
+  result_type: BracketResultType;
+  disqualified_team_id: number | null;
+  result_note: string | null;
   // Event-scoped fields
   event_id?: number;
   score_type?: 'seeding' | 'bracket' | 'double_seeding';
@@ -192,9 +196,15 @@ export default function ScoringTab() {
 
       if (response.status === 409 && !force) {
         // Conflict - ask user to confirm override
+        const existingDescription = data.existingResultType
+          ? `${data.existingResultType} (winner ${data.existingWinnerId})`
+          : (data.existingScore ?? data.existingWinnerId);
+        const newDescription = data.newResultType
+          ? `${data.newResultType} (winner ${data.newWinnerId})`
+          : (data.newScore ?? data.newWinnerId);
         const confirmed = await confirm({
           title: 'Score Conflict',
-          message: `A score already exists for this entry.\n\nExisting: ${data.existingScore ?? data.existingWinnerId}\nNew: ${data.newScore ?? data.newWinnerId}\n\nDo you want to override?`,
+          message: `A score already exists for this entry.\n\nExisting: ${existingDescription}\nNew: ${newDescription}\n\nDo you want to override?`,
           confirmText: 'Override',
           confirmStyle: 'warning',
         });
@@ -444,10 +454,23 @@ export default function ScoringTab() {
       data.team1_score?.value ?? score.bracket_team1_score ?? null;
     const team2Score =
       data.team2_score?.value ?? score.bracket_team2_score ?? null;
-    const scoreLabel =
-      team1Score != null && team2Score != null
-        ? `${team1Score} – ${team2Score}`
-        : '-';
+    let scoreLabel: string;
+    if (score.result_type === 'no_contest') {
+      scoreLabel = 'No contest';
+    } else if (score.result_type === 'disqualification') {
+      const disqualifiedLabel =
+        score.disqualified_team_id === score.bracket_team1_id
+          ? team1Label
+          : score.disqualified_team_id === score.bracket_team2_id
+            ? team2Label
+            : 'Unknown team';
+      scoreLabel = `DQ — ${disqualifiedLabel}`;
+    } else {
+      scoreLabel =
+        team1Score != null && team2Score != null
+          ? `${team1Score} – ${team2Score}`
+          : '-';
+    }
 
     let winnerLabel =
       score.bracket_winner_display ||

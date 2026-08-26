@@ -574,5 +574,143 @@ describe('acceptEventScore', () => {
         'score_accepted',
       );
     });
+
+    it('accepts a no-contest result without publishing canonical scores', async () => {
+      await seedUser(testDb.db);
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'ready',
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const scoreData = JSON.stringify({
+        winner_team_id: { value: team1.id },
+        team1_score: { value: 1000 },
+        team2_score: { value: 10 },
+        detail: { value: 'retained privately' },
+      });
+      const submission = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: scoreData,
+        event_id: event.id,
+        score_type: 'bracket',
+        bracket_game_id: game.id,
+        result_type: 'no_contest',
+      });
+
+      const result = await acceptEventScore({
+        db: testDb.db,
+        submissionId: submission.id,
+        force: false,
+        reviewedBy: 1,
+        ipAddress: null,
+      });
+
+      expect(result.ok).toBe(true);
+      const updatedGame = await testDb.db.get(
+        'SELECT * FROM bracket_games WHERE id = ?',
+        [game.id],
+      );
+      expect(updatedGame).toMatchObject({
+        winner_id: team1.id,
+        loser_id: team2.id,
+        result_type: 'no_contest',
+        disqualified_team_id: null,
+        team1_score: null,
+        team2_score: null,
+        status: 'completed',
+      });
+      const retained = await testDb.db.get<{ score_data: string }>(
+        'SELECT score_data FROM score_submissions WHERE id = ?',
+        [submission.id],
+      );
+      expect(retained?.score_data).toBe(scoreData);
+    });
+
+    it('derives the winner for a disqualification and requires its private reason', async () => {
+      await seedUser(testDb.db);
+      const event = await seedEvent(testDb.db);
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'ready',
+      });
+      const template = await seedScoresheetTemplate(testDb.db);
+      const submission = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: JSON.stringify({
+          winner_team_id: { value: team2.id },
+          team1_score: { value: 500 },
+          team2_score: { value: 600 },
+        }),
+        event_id: event.id,
+        score_type: 'bracket',
+        bracket_game_id: game.id,
+        result_type: 'disqualification',
+        disqualified_team_id: team2.id,
+      });
+
+      const missingReason = await acceptEventScore({
+        db: testDb.db,
+        submissionId: submission.id,
+        force: false,
+        reviewedBy: 1,
+        ipAddress: null,
+      });
+      expect(missingReason.ok).toBe(false);
+      if (!missingReason.ok) {
+        expect(missingReason.error).toContain('private reason');
+      }
+
+      await testDb.db.run(
+        'UPDATE score_submissions SET result_note = ? WHERE id = ?',
+        ['Rule 7.2 violation', submission.id],
+      );
+      const result = await acceptEventScore({
+        db: testDb.db,
+        submissionId: submission.id,
+        force: false,
+        reviewedBy: 1,
+        ipAddress: null,
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) expect(result.winnerId).toBe(team1.id);
+      const updatedGame = await testDb.db.get(
+        'SELECT * FROM bracket_games WHERE id = ?',
+        [game.id],
+      );
+      expect(updatedGame).toMatchObject({
+        winner_id: team1.id,
+        loser_id: team2.id,
+        result_type: 'disqualification',
+        disqualified_team_id: team2.id,
+        team1_score: null,
+        team2_score: null,
+      });
+    });
   });
 });

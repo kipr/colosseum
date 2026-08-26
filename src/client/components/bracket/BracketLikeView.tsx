@@ -286,8 +286,17 @@ export default function BracketLikeView({
   ) => {
     const isTeam1Winner = game.winner_id === game.team1_id && game.winner_id;
     const isTeam2Winner = game.winner_id === game.team2_id && game.winner_id;
-    const hasScores = game.team1_score !== null || game.team2_score !== null;
+    const resultType = game.result_type ?? 'standard';
+    const hasScores =
+      resultType === 'standard' &&
+      (game.team1_score !== null || game.team2_score !== null);
     const isCompleted = game.status === 'completed';
+    const specialResultLabel =
+      resultType === 'no_contest'
+        ? 'No contest'
+        : resultType === 'disqualification'
+          ? 'Disqualification'
+          : null;
 
     return (
       <div
@@ -298,6 +307,7 @@ export default function BracketLikeView({
         {/* Status header */}
         <div className={`match-header match-status-${game.status}`}>
           {getStatusLabel(game.status)}
+          {isCompleted && specialResultLabel ? ` · ${specialResultLabel}` : ''}
         </div>
 
         {/* Team 1 row */}
@@ -322,6 +332,10 @@ export default function BracketLikeView({
               {game.team1_score ?? '-'}
             </span>
           )}
+          {game.disqualified_team_id != null &&
+            game.disqualified_team_id === game.team1_id && (
+              <span className="team-dq-badge">DQ</span>
+            )}
           {isTeam1Winner && <span className="winner-indicator">◀</span>}
         </div>
 
@@ -347,6 +361,10 @@ export default function BracketLikeView({
               {game.team2_score ?? '-'}
             </span>
           )}
+          {game.disqualified_team_id != null &&
+            game.disqualified_team_id === game.team2_id && (
+              <span className="team-dq-badge">DQ</span>
+            )}
           {isTeam2Winner && <span className="winner-indicator">◀</span>}
         </div>
       </div>

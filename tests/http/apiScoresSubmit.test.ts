@@ -67,8 +67,8 @@ describe('API Score Submit Routes', () => {
         });
 
         expect(res.status).toBe(400);
-        expect((res.json as { error: string }).error).toContain(
-          'Template ID and score data are required',
+        expect((res.json as { error: string }).error).toBe(
+          'Invalid request payload',
         );
       });
 
@@ -78,8 +78,8 @@ describe('API Score Submit Routes', () => {
         });
 
         expect(res.status).toBe(400);
-        expect((res.json as { error: string }).error).toContain(
-          'Template ID and score data are required',
+        expect((res.json as { error: string }).error).toBe(
+          'Invalid request payload',
         );
       });
 
@@ -87,9 +87,40 @@ describe('API Score Submit Routes', () => {
         const res = await http.post(`${baseUrl}/api/scores/submit`, {});
 
         expect(res.status).toBe(400);
-        expect((res.json as { error: string }).error).toContain(
-          'Template ID and score data are required',
+        expect((res.json as { error: string }).error).toBe(
+          'Invalid request payload',
         );
+      });
+
+      it('returns structured Zod issues for unknown keys and incomplete DQs', async () => {
+        const unknown = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: 1,
+          scoreData: {},
+          unexpected: true,
+        });
+        expect(unknown.status).toBe(400);
+        expect(
+          (unknown.json as { issues: Array<{ code: string }> }).issues,
+        ).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ code: 'unrecognized_keys' }),
+          ]),
+        );
+
+        const incompleteDq = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: 1,
+          scoreData: {},
+          eventId: 1,
+          scoreType: 'bracket',
+          bracket_game_id: 1,
+          resultType: 'disqualification',
+        });
+        expect(incompleteDq.status).toBe(400);
+        const paths = (
+          incompleteDq.json as { issues: Array<{ path: string }> }
+        ).issues.map((issue) => issue.path);
+        expect(paths).toContain('disqualifiedTeamId');
+        expect(paths).toContain('resultNote');
       });
     });
 
@@ -991,6 +1022,87 @@ describe('API Score Submit Routes', () => {
                 entry.final_rank == null,
             ),
           ).toBe(true);
+        });
+
+        it('auto-accepts no contest while retaining its private scoresheet through revert', async () => {
+          const event = await seedEvent(testDb.db, {
+            score_accept_mode: 'auto_accept_all',
+          });
+          const team1 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 31,
+            team_name: 'Dominant',
+          });
+          const team2 = await seedTeam(testDb.db, {
+            event_id: event.id,
+            team_number: 32,
+            team_name: 'Opponent',
+          });
+          const bracket = await seedBracket(testDb.db, {
+            event_id: event.id,
+          });
+          const game = await seedBracketGame(testDb.db, {
+            bracket_id: bracket.id,
+            game_number: 1,
+            team1_id: team1.id,
+            team2_id: team2.id,
+            status: 'ready',
+          });
+          const template = await seedScoresheetTemplate(testDb.db);
+          const privateScoreData = {
+            winner_team_id: { value: team1.id, type: 'number' },
+            team1_score: { value: 1000, type: 'number' },
+            team2_score: { value: 10, type: 'number' },
+            field_notes: { value: 'kept for the teams', type: 'text' },
+          };
+
+          const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
+            templateId: template.id,
+            scoreData: privateScoreData,
+            eventId: event.id,
+            scoreType: 'bracket',
+            bracket_game_id: game.id,
+            resultType: 'no_contest',
+          });
+
+          expect(submitRes.status).toBe(200);
+          const submission = submitRes.json as { id: number; status: string };
+          expect(submission.status).toBe('accepted');
+          const acceptedGame = await testDb.db.get(
+            'SELECT * FROM bracket_games WHERE id = ?',
+            [game.id],
+          );
+          expect(acceptedGame).toMatchObject({
+            result_type: 'no_contest',
+            winner_id: team1.id,
+            team1_score: null,
+            team2_score: null,
+          });
+
+          const revertRes = await http.post(
+            `${baseUrl}/scores/${submission.id}/revert-event`,
+            { confirm: true },
+          );
+          expect(revertRes.status).toBe(200);
+          const retained = await testDb.db.get(
+            'SELECT status, result_type, score_data FROM score_submissions WHERE id = ?',
+            [submission.id],
+          );
+          expect(retained?.status).toBe('pending');
+          expect(retained?.result_type).toBe('no_contest');
+          expect(JSON.parse(retained?.score_data)).toMatchObject(
+            privateScoreData,
+          );
+          const revertedGame = await testDb.db.get(
+            'SELECT result_type, disqualified_team_id, team1_score, team2_score FROM bracket_games WHERE id = ?',
+            [game.id],
+          );
+          expect(revertedGame).toMatchObject({
+            result_type: 'standard',
+            disqualified_team_id: null,
+            team1_score: null,
+            team2_score: null,
+          });
         });
 
         it('allows reverting auto-accepted bracket score via revert-event', async () => {

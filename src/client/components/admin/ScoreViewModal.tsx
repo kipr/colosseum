@@ -12,6 +12,7 @@ import {
   normalizeRepeatableGroupRows,
   shouldAutoAppendRepeatableGroupRow,
 } from '../scoresheetUtils';
+import type { BracketResultType } from '../../../shared/bracketResult';
 
 interface ScoreViewModalProps {
   score: any;
@@ -31,6 +32,13 @@ export default function ScoreViewModal({
   >({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [resultType, setResultType] = useState<BracketResultType>(
+    score.result_type ?? 'standard',
+  );
+  const [disqualifiedTeamId, setDisqualifiedTeamId] = useState<number | null>(
+    score.disqualified_team_id ?? null,
+  );
+  const [resultNote, setResultNote] = useState(score.result_note ?? '');
   const isReadOnly = score.status !== 'pending';
 
   useEffect(() => {
@@ -123,6 +131,34 @@ export default function ScoreViewModal({
     setCalculatedValues(calculateFormulaValues(formData));
   };
 
+  const handleDisqualifiedTeamChange = (teamId: number | null) => {
+    setDisqualifiedTeamId(teamId);
+    if (teamId == null) return;
+
+    const disqualifiedIsTeam1 = teamId === score.bracket_team1_id;
+    const winnerId = disqualifiedIsTeam1
+      ? score.bracket_team2_id
+      : score.bracket_team1_id;
+    const winnerNumber = disqualifiedIsTeam1
+      ? score.bracket_team2_number
+      : score.bracket_team1_number;
+    const winnerName = disqualifiedIsTeam1
+      ? score.bracket_team2_name
+      : score.bracket_team1_name;
+    const winnerDisplay = disqualifiedIsTeam1
+      ? score.bracket_team2_display
+      : score.bracket_team1_display;
+
+    setFormData((previous) => ({
+      ...previous,
+      winner: disqualifiedIsTeam1 ? 'team_b' : 'team_a',
+      winner_team_id: winnerId,
+      winner_team_number: winnerNumber,
+      winner_team_name: winnerName,
+      winner_display: winnerDisplay,
+    }));
+  };
+
   const evaluateFormula = (
     formula: string,
     data: Record<string, any>,
@@ -206,6 +242,13 @@ export default function ScoreViewModal({
       onClose();
       return;
     }
+    if (
+      resultType === 'disqualification' &&
+      (disqualifiedTeamId == null || !resultNote.trim())
+    ) {
+      alert('Select the disqualified team and enter a private reason.');
+      return;
+    }
 
     setSaving(true);
     try {
@@ -265,7 +308,14 @@ export default function ScoreViewModal({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ scoreData: updatedScoreData }),
+        body: JSON.stringify({
+          scoreData: updatedScoreData,
+          resultType,
+          disqualifiedTeamId:
+            resultType === 'disqualification' ? disqualifiedTeamId : null,
+          resultNote:
+            resultType === 'disqualification' ? resultNote.trim() : null,
+        }),
       });
 
       if (!response.ok) throw new Error('Failed to update score');
@@ -891,6 +941,12 @@ export default function ScoreViewModal({
 
   // Derive winner display for bracket games
   const isBracket = score.score_type === 'bracket';
+  const resultLabel =
+    resultType === 'no_contest'
+      ? 'No contest'
+      : resultType === 'disqualification'
+        ? 'Disqualification'
+        : 'Standard score';
   const winnerDisplay = isBracket
     ? (() => {
         const data = score.score_data || {};
@@ -937,6 +993,76 @@ export default function ScoreViewModal({
           </div>
         </div>
 
+        {isBracket && (
+          <div className="score-view-result-panel">
+            <label>
+              Result
+              <select
+                className="score-input"
+                value={resultType}
+                disabled={isReadOnly}
+                onChange={(event) => {
+                  const next = event.target.value as BracketResultType;
+                  setResultType(next);
+                  if (next !== 'disqualification') {
+                    setDisqualifiedTeamId(null);
+                    setResultNote('');
+                  }
+                }}
+              >
+                <option value="standard">Normal score</option>
+                <option value="no_contest">No contest</option>
+                <option value="disqualification">Disqualification</option>
+              </select>
+            </label>
+            {resultType === 'disqualification' && (
+              <>
+                <label>
+                  Disqualified team
+                  <select
+                    className="score-input"
+                    value={disqualifiedTeamId ?? ''}
+                    disabled={isReadOnly}
+                    onChange={(event) =>
+                      handleDisqualifiedTeamChange(
+                        Number(event.target.value) || null,
+                      )
+                    }
+                  >
+                    <option value="">Select team...</option>
+                    {score.bracket_team1_id != null && (
+                      <option value={score.bracket_team1_id}>
+                        {score.bracket_team1_display ||
+                          score.bracket_team1_name ||
+                          score.bracket_team1_number}
+                      </option>
+                    )}
+                    {score.bracket_team2_id != null && (
+                      <option value={score.bracket_team2_id}>
+                        {score.bracket_team2_display ||
+                          score.bracket_team2_name ||
+                          score.bracket_team2_number}
+                      </option>
+                    )}
+                  </select>
+                </label>
+                <label>
+                  Private reason or rule reference
+                  <textarea
+                    className="score-input"
+                    rows={3}
+                    maxLength={1000}
+                    value={resultNote}
+                    disabled={isReadOnly}
+                    onChange={(event) => setResultNote(event.target.value)}
+                  />
+                </label>
+              </>
+            )}
+            {isReadOnly && <strong>{resultLabel}</strong>}
+          </div>
+        )}
+
         {isBracket && winnerDisplay && (
           <div
             className="score-view-winner-banner"
@@ -962,7 +1088,11 @@ export default function ScoreViewModal({
             >
               ✓
             </span>
-            <span>Winner: {winnerDisplay}</span>
+            <span>
+              {resultType === 'standard'
+                ? `Winner: ${winnerDisplay}`
+                : `Winner by ${resultLabel.toLowerCase()}: ${winnerDisplay}`}
+            </span>
           </div>
         )}
 

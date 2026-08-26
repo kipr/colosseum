@@ -107,6 +107,46 @@ describe('Brackets CRUD & Game Management', () => {
       expect('weighted_bracket_raw_score' in body.entries[0]).toBe(false);
     });
 
+    it('exposes special-result metadata without private scoresheet data', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const team1 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const team2 = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 2,
+      });
+      const game = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: team1.id,
+        team2_id: team2.id,
+        status: 'completed',
+      });
+      await testDb.db.run(
+        `UPDATE bracket_games
+         SET winner_id = ?, loser_id = ?, result_type = 'disqualification',
+             disqualified_team_id = ?, team1_score = NULL, team2_score = NULL
+         WHERE id = ?`,
+        [team1.id, team2.id, team2.id, game.id],
+      );
+
+      const res = await http.get(`${baseUrl}/brackets/${bracket.id}`);
+      expect(res.status).toBe(200);
+      const publicGame = (res.json as { games: Record<string, unknown>[] })
+        .games[0];
+      expect(publicGame).toMatchObject({
+        result_type: 'disqualification',
+        disqualified_team_id: team2.id,
+        team1_score: null,
+        team2_score: null,
+      });
+      expect('result_note' in publicGame).toBe(false);
+      expect('score_data' in publicGame).toBe(false);
+    });
+
     it('returns 404 for non-existent bracket', async () => {
       const res = await http.get(`${baseUrl}/brackets/9999`);
       expect(res.status).toBe(404);
