@@ -1,10 +1,4 @@
-import {
-  useState,
-  useEffect,
-  useCallback,
-  useMemo,
-  useRef,
-} from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { UnifiedTable } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
