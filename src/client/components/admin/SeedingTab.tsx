@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import type {

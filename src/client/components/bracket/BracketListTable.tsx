@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { Bracket, BracketStatus, STATUS_LABELS } from '../../types/brackets';

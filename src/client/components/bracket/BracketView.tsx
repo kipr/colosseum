@@ -1,4 +1,3 @@
-import React from 'react';
 import { BracketDetail, BracketSide } from '../../types/brackets';
 import { getBracketWinner } from './bracketUtils';
 import BracketLikeView from './BracketLikeView';
