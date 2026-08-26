@@ -19,9 +19,10 @@
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "lint": "npx eslint src",
-    "pretty": "npx prettier src/ --check",
-    "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs"
+    "lint": "npx eslint src scripts",
+    "pretty": "npx prettier src/ scripts/ --check",
+    "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs",
+    "audit:scoresheets": "ts-node --project tsconfig.scripts.json scripts/audit-scoresheet-templates.ts"
   },
   "keywords": [],
   "author": "",

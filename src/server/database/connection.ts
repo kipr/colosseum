@@ -359,6 +359,44 @@ export function createSqliteDatabase(db: SQLiteDatabase): Database {
 }
 
 /**
+ * Wrap a caller-owned PostgreSQL pool. The caller must end the pool.
+ */
+export function createPostgresDatabase(pool: Pool): Database {
+  return new PostgresAdapter(pool);
+}
+
+/**
+ * Open a SQLite file as a Database adapter.
+ * Audit tooling should pass `{ readonly: true }` so the file is never created
+ * or written.
+ */
+export function openSqliteFile(
+  filePath: string,
+  options?: { readonly?: boolean },
+): { db: Database; close: () => void } {
+  const readonly = options?.readonly ?? false;
+  let sqlite: SQLiteDatabase;
+  try {
+    sqlite = new SQLite(filePath, {
+      readonly,
+      fileMustExist: readonly,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Failed to open SQLite database at ${filePath}${
+        readonly ? ' (read-only)' : ''
+      }: ${message}`,
+    );
+  }
+  const db = createSqliteDatabase(sqlite);
+  return {
+    db,
+    close: () => sqlite.close(),
+  };
+}
+
+/**
  * Export normalizeParam for unit testing.
  */
 export { normalizeParam };

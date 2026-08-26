@@ -3,10 +3,16 @@
  * Tests normalizeParam and SqliteAdapter behavior.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import SQLite from 'better-sqlite3';
+import type { Pool } from 'pg';
 import {
   normalizeParam,
   createSqliteDatabase,
+  createPostgresDatabase,
+  openSqliteFile,
   closeDatabase,
   __setTestDatabaseAdapter,
 } from '../../../src/server/database/connection';
@@ -135,6 +141,65 @@ describe('createSqliteDatabase', () => {
     });
 
     db.close();
+  });
+});
+
+describe('createPostgresDatabase', () => {
+  it('wraps a pg Pool and converts placeholders', async () => {
+    const queries: { sql: string; params: unknown[] | undefined }[] = [];
+    const pool = {
+      query: async (sql: string, params?: unknown[]) => {
+        queries.push({ sql, params });
+        return { rows: [{ id: 7, name: 't' }], rowCount: 1 };
+      },
+    } as unknown as Pool;
+
+    const db = createPostgresDatabase(pool);
+    const row = await db.get<{ id: number; name: string }>(
+      'SELECT id, name FROM scoresheet_templates WHERE id = ?',
+      [7],
+    );
+
+    expect(row).toEqual({ id: 7, name: 't' });
+    expect(queries[0].sql).toContain('$1');
+    expect(queries[0].sql).not.toContain('?');
+    expect(queries[0].params).toEqual([7]);
+  });
+});
+
+describe('openSqliteFile', () => {
+  it('fails clearly when a read-only file is missing', () => {
+    expect(() =>
+      openSqliteFile(path.join(os.tmpdir(), 'colosseum-missing-audit.db'), {
+        readonly: true,
+      }),
+    ).toThrow(/Failed to open SQLite database/);
+  });
+
+  it('opens an existing file read-only', async () => {
+    const filePath = path.join(
+      os.tmpdir(),
+      `colosseum-audit-${process.pid}-${Date.now()}.db`,
+    );
+    const setup = new SQLite(filePath);
+    setup.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)');
+    setup.prepare('INSERT INTO t (val) VALUES (?)').run('ok');
+    setup.close();
+
+    const opened = openSqliteFile(filePath, { readonly: true });
+    try {
+      const row = await opened.db.get<{ val: string }>(
+        'SELECT val FROM t WHERE id = ?',
+        [1],
+      );
+      expect(row?.val).toBe('ok');
+      await expect(
+        opened.db.run('INSERT INTO t (val) VALUES (?)', ['nope']),
+      ).rejects.toThrow();
+    } finally {
+      opened.close();
+      fs.unlinkSync(filePath);
+    }
   });
 });
 
