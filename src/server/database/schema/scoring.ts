@@ -22,6 +22,10 @@ export const scoringSchema: SchemaModule = {
           score_type TEXT,
           game_queue_id INTEGER,
           double_seeding_match_id INTEGER,
+          result_type TEXT NOT NULL DEFAULT 'standard'
+            CHECK (result_type IN ('standard', 'no_contest', 'disqualification')),
+          disqualified_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+          result_note TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -90,6 +94,24 @@ export const scoringSchema: SchemaModule = {
         END $$
       `,
     ],
+    columns: [
+      {
+        table: 'score_submissions',
+        column: 'result_type',
+        definition:
+          "TEXT NOT NULL DEFAULT 'standard' CHECK (result_type IN ('standard', 'no_contest', 'disqualification'))",
+      },
+      {
+        table: 'score_submissions',
+        column: 'disqualified_team_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
+      },
+      {
+        table: 'score_submissions',
+        column: 'result_note',
+        definition: 'TEXT',
+      },
+    ],
     indexes: [
       `CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_score_submissions_event_status ON score_submissions(event_id, status, created_at DESC)`,
@@ -120,6 +142,10 @@ export const scoringSchema: SchemaModule = {
           score_type TEXT,
           game_queue_id INTEGER REFERENCES game_queue(id) ON DELETE SET NULL,
           double_seeding_match_id INTEGER REFERENCES double_seeding_matches(id) ON DELETE SET NULL,
+          result_type TEXT NOT NULL DEFAULT 'standard'
+            CHECK (result_type IN ('standard', 'no_contest', 'disqualification')),
+          disqualified_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+          result_note TEXT,
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -149,6 +175,24 @@ export const scoringSchema: SchemaModule = {
           UNIQUE(event_id, template_id, template_type)
         )
       `,
+    ],
+    columns: [
+      {
+        table: 'score_submissions',
+        column: 'result_type',
+        definition:
+          "TEXT NOT NULL DEFAULT 'standard' CHECK (result_type IN ('standard', 'no_contest', 'disqualification'))",
+      },
+      {
+        table: 'score_submissions',
+        column: 'disqualified_team_id',
+        definition: 'INTEGER REFERENCES teams(id) ON DELETE SET NULL',
+      },
+      {
+        table: 'score_submissions',
+        column: 'result_note',
+        definition: 'TEXT',
+      },
     ],
     indexes: [
       `CREATE INDEX IF NOT EXISTS idx_score_submissions_user ON score_submissions(user_id)`,

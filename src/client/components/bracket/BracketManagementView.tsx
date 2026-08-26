@@ -83,6 +83,27 @@ const bracketGameColumns: UnifiedColumnDef<BracketGame>[] = [
           )
         : '—',
   },
+  {
+    kind: 'data',
+    id: 'result',
+    header: { full: 'Result' },
+    renderCell: (game) => {
+      if (game.status !== 'completed') return '—';
+      if (game.result_type === 'no_contest') return 'No contest';
+      if (game.result_type === 'disqualification') {
+        const disqualified =
+          game.disqualified_team_id === game.team1_id
+            ? game.team1_number
+            : game.disqualified_team_id === game.team2_id
+              ? game.team2_number
+              : null;
+        return disqualified != null ? `DQ — ${disqualified}` : 'DQ';
+      }
+      return game.team1_score != null || game.team2_score != null
+        ? `${game.team1_score ?? '—'} – ${game.team2_score ?? '—'}`
+        : 'Standard';
+    },
+  },
 ];
 
 interface BracketManagementViewProps {

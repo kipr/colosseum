@@ -806,8 +806,8 @@ describe('Event-Scoped Scores Routes', () => {
         { score_ids: [] },
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'score_ids array is required',
+      expect((res.json as { error: string }).error).toBe(
+        'Invalid request payload',
       );
     });
 

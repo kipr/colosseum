@@ -36,6 +36,54 @@ describe('Schema Constraints', () => {
     });
   });
 
+  describe('bracket special-result schema', () => {
+    it('creates result metadata with standard defaults and enum checks', async () => {
+      const submissionColumns = await testDb.db.all<{
+        name: string;
+        dflt_value: string | null;
+      }>(`SELECT name, dflt_value FROM pragma_table_info('score_submissions')`);
+      const gameColumns = await testDb.db.all<{
+        name: string;
+        dflt_value: string | null;
+      }>(`SELECT name, dflt_value FROM pragma_table_info('bracket_games')`);
+
+      expect(submissionColumns).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'result_type',
+            dflt_value: "'standard'",
+          }),
+          expect.objectContaining({ name: 'disqualified_team_id' }),
+          expect.objectContaining({ name: 'result_note' }),
+        ]),
+      );
+      expect(gameColumns).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            name: 'result_type',
+            dflt_value: "'standard'",
+          }),
+          expect.objectContaining({ name: 'disqualified_team_id' }),
+        ]),
+      );
+
+      const event = await testDb.db.run(
+        `INSERT INTO events (name) VALUES ('Special Result Event')`,
+      );
+      const bracket = await testDb.db.run(
+        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, 'Main', 4)`,
+        [event.lastID],
+      );
+      await expect(
+        testDb.db.run(
+          `INSERT INTO bracket_games (bracket_id, game_number, result_type)
+           VALUES (?, 1, 'invalid')`,
+          [bracket.lastID],
+        ),
+      ).rejects.toThrow(/CHECK constraint failed/);
+    });
+  });
+
   describe('event rest configuration schema', () => {
     it('creates min_rest_minutes with a default and non-negative check', async () => {
       const column = await testDb.db.get<{

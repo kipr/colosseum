@@ -1,5 +1,7 @@
 // Bracket-related types shared across components
 
+import type { BracketResultType } from '../../shared/bracketResult';
+
 export type BracketStatus = 'setup' | 'in_progress' | 'completed';
 export type GameStatus =
   | 'pending'
@@ -65,6 +67,8 @@ export interface BracketGame {
   loser_slot: string | null;
   team1_score: number | null;
   team2_score: number | null;
+  result_type: BracketResultType;
+  disqualified_team_id: number | null;
   scheduled_time: string | null;
   started_at: string | null;
   completed_at: string | null;

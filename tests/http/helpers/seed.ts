@@ -159,6 +159,9 @@ export interface SeedQueueItemData {
   seeding_team_id?: number | null;
   seeding_round?: number | null;
   double_seeding_match_id?: number | null;
+  result_type?: 'standard' | 'no_contest' | 'disqualification';
+  disqualified_team_id?: number | null;
+  result_note?: string | null;
   status?: string;
   table_number?: number | null;
   present_team1_id?: number | null;
@@ -286,8 +289,8 @@ export async function seedScoreSubmission(
   data: SeedScoreSubmissionData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO score_submissions (user_id, template_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id, double_seeding_match_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO score_submissions (user_id, template_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.user_id ?? null,
       data.template_id,
@@ -301,6 +304,9 @@ export async function seedScoreSubmission(
       data.score_type ?? null,
       data.game_queue_id ?? null,
       data.double_seeding_match_id ?? null,
+      data.result_type ?? 'standard',
+      data.disqualified_team_id ?? null,
+      data.result_note ?? null,
     ],
   );
   return { id: result.lastID! };

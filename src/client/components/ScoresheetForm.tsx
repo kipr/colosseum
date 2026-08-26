@@ -16,6 +16,7 @@ import {
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
 import { getFieldDefaultValue } from '../../shared/scoresheetSchema';
+import type { BracketResultType } from '../../shared/bracketResult';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -87,6 +88,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const [formData, setFormData] =
     useState<Record<string, any>>(getInitialFormData);
+  const [resultType, setResultType] = useState<BracketResultType>('standard');
+  const [disqualifiedSide, setDisqualifiedSide] = useState<
+    '' | 'team_a' | 'team_b'
+  >('');
+  const [resultNote, setResultNote] = useState('');
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>(
     {},
   );
@@ -580,6 +586,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const handleBracketGameSelect = (selectedValue: string) => {
+    setResultType('standard');
+    setDisqualifiedSide('');
+    setResultNote('');
     const selectedGame = findBracketGameBySelection(
       bracketGames,
       selectedValue,
@@ -890,9 +899,20 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     e.preventDefault();
 
     // Validate winner selection for head-to-head
-    if (isHeadToHead && !formData.winner) {
+    if (isHeadToHead && resultType !== 'disqualification' && !formData.winner) {
       alert('Please select a winner before submitting.');
       return;
+    }
+
+    if (isHeadToHead && resultType === 'disqualification') {
+      if (!disqualifiedSide) {
+        alert('Please select the disqualified team before submitting.');
+        return;
+      }
+      if (!resultNote.trim()) {
+        alert('Please enter the reason or rule reference for the DQ.');
+        return;
+      }
     }
 
     // Validate bracket_game_id for DB-backed bracket submissions
@@ -916,6 +936,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     // Validate match selection for double seeding
     if (useQueueForDoubleSeeding && formData.double_seeding_match_id == null) {
       alert('Please select a match from the queue before submitting.');
+      return;
+    }
+
+    if (
+      isHeadToHead &&
+      resultType !== 'standard' &&
+      !window.confirm(
+        resultType === 'no_contest'
+          ? 'Submit this match as a no contest? The scoresheet will be kept privately, but no numeric score will be published.'
+          : 'Submit this match as a disqualification? The scoresheet and private DQ reason will be retained, but no numeric score will be published.',
+      )
+    ) {
       return;
     }
 
@@ -1098,6 +1130,23 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       };
     }
 
+    let disqualifiedTeamId: number | undefined;
+    if (isDbBackedBracket && resultType === 'disqualification') {
+      const disqualifiedTeamNumber =
+        disqualifiedSide === 'team_a'
+          ? formData.team_a_number
+          : formData.team_b_number;
+      const disqualifiedTeam = teamsData.find((team: any) => {
+        const number = String(team.team_number ?? team['Team Number'] ?? '');
+        return number === String(disqualifiedTeamNumber);
+      });
+      disqualifiedTeamId = disqualifiedTeam?.id;
+      if (disqualifiedTeamId == null) {
+        alert('Could not resolve the disqualified team. Please reload.');
+        return;
+      }
+    }
+
     if (isDbBackedDoubleSeeding) {
       // Side totals: each team only receives its own side's score
       const teamATotal =
@@ -1166,6 +1215,12 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           double_seeding_match_id: isDbBackedDoubleSeeding
             ? formData.double_seeding_match_id
             : undefined,
+          resultType: isDbBackedBracket ? resultType : 'standard',
+          disqualifiedTeamId,
+          resultNote:
+            isDbBackedBracket && resultType === 'disqualification'
+              ? resultNote.trim()
+              : undefined,
         }),
       });
 
@@ -1195,6 +1250,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       if (isHeadToHead) {
         // For head-to-head, reset completely so user can select a new game
         setFormData({});
+        setResultType('standard');
+        setDisqualifiedSide('');
+        setResultNote('');
         // Reload bracket games in case some are now decided
         loadBracketGames();
       } else if (useQueueForSeeding || useQueueForDoubleSeeding) {
@@ -1212,6 +1270,88 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
   };
 
+  const handleResultTypeChange = (nextResultType: BracketResultType) => {
+    setResultType(nextResultType);
+    setDisqualifiedSide('');
+    setResultNote('');
+    setFormData((previous) => ({ ...previous, winner: '' }));
+  };
+
+  const handleDisqualifiedSideChange = (side: 'team_a' | 'team_b') => {
+    setDisqualifiedSide(side);
+    setFormData((previous) => ({
+      ...previous,
+      winner: side === 'team_a' ? 'team_b' : 'team_a',
+    }));
+  };
+
+  const renderBracketResultControls = () => (
+    <div className="bracket-result-container">
+      <h3 className="winner-select-title">Match Result</h3>
+      <div className="bracket-result-options">
+        {(
+          [
+            ['standard', 'Normal score'],
+            ['no_contest', 'No contest'],
+            ['disqualification', 'Disqualification'],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            className={`bracket-result-button ${resultType === value ? 'selected' : ''}`}
+            onClick={() => handleResultTypeChange(value)}
+            disabled={!formData.game_number}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {resultType === 'no_contest' && (
+        <p className="bracket-result-help">
+          Select the winner below. The entered scoresheet is retained privately,
+          but no point totals will be published.
+        </p>
+      )}
+
+      {resultType === 'disqualification' && (
+        <div className="dq-controls">
+          <p className="bracket-result-help">
+            Select the team receiving the DQ. The other team will advance.
+          </p>
+          <div className="bracket-result-options">
+            <button
+              type="button"
+              className={`bracket-result-button danger ${disqualifiedSide === 'team_a' ? 'selected' : ''}`}
+              onClick={() => handleDisqualifiedSideChange('team_a')}
+            >
+              DQ {formData.team_a_number || 'Team A'}
+            </button>
+            <button
+              type="button"
+              className={`bracket-result-button danger ${disqualifiedSide === 'team_b' ? 'selected' : ''}`}
+              onClick={() => handleDisqualifiedSideChange('team_b')}
+            >
+              DQ {formData.team_b_number || 'Team B'}
+            </button>
+          </div>
+          <label className="dq-reason-label">
+            Private reason or rule reference
+            <textarea
+              className="score-input dq-reason-input"
+              value={resultNote}
+              onChange={(event) => setResultNote(event.target.value)}
+              maxLength={1000}
+              rows={3}
+              required
+            />
+          </label>
+        </div>
+      )}
+    </div>
+  );
+
   const renderWinnerSelect = (field: any) => {
     const teamATotal = calculatedValues['team_a_total'] || 0;
     const teamBTotal = calculatedValues['team_b_total'] || 0;
@@ -1223,7 +1363,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     return (
       <div key={field.id} className="winner-select-container">
-        <h3 className="winner-select-title">Select Winner</h3>
+        <h3 className="winner-select-title">
+          {resultType === 'no_contest'
+            ? 'Select No-Contest Winner'
+            : 'Select Winner'}
+        </h3>
         <div className="winner-options">
           <button
             type="button"
@@ -1921,7 +2065,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="scoresheet-form">
+      <form
+        onSubmit={handleSubmit}
+        className="scoresheet-form"
+        noValidate={isHeadToHead && resultType !== 'standard'}
+      >
         {/* Title row: Reset | title | Event Staff */}
         <div
           style={{
@@ -2101,8 +2249,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           </div>
         )}
 
+        {isHeadToHead &&
+          schema.scoreDestination === 'db' &&
+          renderBracketResultControls()}
+
         {/* Winner selection for head-to-head mode */}
         {isHeadToHead &&
+          resultType !== 'disqualification' &&
           schema.fields
             .filter((f: any) => f.type === 'winner-select')
             .map(renderField)}
@@ -2112,7 +2265,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
         <div className="scoresheet-footer">
           <button type="submit" className="btn btn-primary btn-large">
-            {isHeadToHead ? 'Submit Winner' : 'Submit Score'}
+            {isHeadToHead
+              ? resultType === 'standard'
+                ? 'Submit Winner'
+                : resultType === 'no_contest'
+                  ? 'Submit No Contest'
+                  : 'Submit Disqualification'
+              : 'Submit Score'}
           </button>
         </div>
       </form>

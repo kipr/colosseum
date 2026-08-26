@@ -22,6 +22,11 @@ import {
   markQueueDirty,
   queueEtag,
 } from '../services/queueVersion';
+import { parseRequest } from '../validation/request';
+import {
+  advanceWinnerBodySchema,
+  advanceWinnerParamsSchema,
+} from '../validation/bracketResult';
 
 const router = express.Router();
 
@@ -148,6 +153,8 @@ router.get('/event/:eventId/games', async (req: Request, res: Response) => {
          bg.bracket_side,
          bg.status,
          bg.winner_id,
+         bg.result_type,
+         bg.disqualified_team_id,
          gq.queue_position,
          bg.team1_id,
          t1.team_number AS team1_number,
@@ -1518,15 +1525,21 @@ router.post(
   requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
-      const { id: bracketId } = req.params;
-      const { game_id, winner_id } = req.body;
+      const routeParams = parseRequest(
+        advanceWinnerParamsSchema,
+        req.params,
+        res,
+      );
+      if (!routeParams) return;
+      const payload = parseRequest(
+        advanceWinnerBodySchema,
+        req.body ?? {},
+        res,
+      );
+      if (!payload) return;
+      const { id: bracketId } = routeParams;
+      const { game_id, winner_id } = payload;
       const db = await getDatabase();
-
-      if (!game_id || !winner_id) {
-        return res
-          .status(400)
-          .json({ error: 'game_id and winner_id are required' });
-      }
 
       // Get the game and verify it belongs to this bracket
       const game = await db.get(
@@ -1581,6 +1594,8 @@ router.post(
           `UPDATE bracket_games SET
             winner_id = ?,
             loser_id = ?,
+            result_type = 'standard',
+            disqualified_team_id = NULL,
             status = 'completed',
             completed_at = CURRENT_TIMESTAMP
           WHERE id = ?`,
@@ -1616,10 +1631,7 @@ router.post(
       }
 
       // Resolve any downstream bye chains that may have been created
-      const byeResolution = await resolveBracketByes(
-        db,
-        parseInt(bracketId, 10),
-      );
+      const byeResolution = await resolveBracketByes(db, bracketId);
 
       const owner = await db.get<{ event_id: number }>(
         'SELECT event_id FROM brackets WHERE id = ?',
