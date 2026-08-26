@@ -40,6 +40,7 @@ interface QueuePresenceSource {
   event_id: number;
   queue_type: string;
   status: string;
+  table_number: number | null;
   present_team1_id: number | null;
   present_team2_id: number | null;
   team1_id: number | null;
@@ -93,7 +94,7 @@ async function getQueuePresenceSource(
   id: string | number,
 ): Promise<QueuePresenceSource | undefined> {
   return db.get<QueuePresenceSource>(
-    `SELECT gq.id, gq.event_id, gq.queue_type, gq.status,
+    `SELECT gq.id, gq.event_id, gq.queue_type, gq.status, gq.table_number,
             gq.present_team1_id, gq.present_team2_id,
             bg.team1_id, bg.team2_id,
             dsm.team1_id AS double_seeding_team1_id,
