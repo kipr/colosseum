@@ -70,10 +70,8 @@ Compose this with the common submission fields. After a successful parse, a
 check for `resultType === 'disqualification'` will narrow the other two fields
 to their required types.
 
-For backward compatibility, normalize a missing result type to `standard`
-before parsing the union. Keep that compatibility transformation outside the
-canonical union and document when it can be removed. New clients should always
-send the discriminator.
+**Implemented:** `resultType` is required on submit and update. A missing
+discriminator is rejected; there is no preprocess default to `standard`.
 
 Use `superRefine()` only for relationships that cannot reasonably be encoded as
 a union. Prefer schemas whose inferred TypeScript type represents only valid
@@ -226,9 +224,10 @@ Decide and document:
   message for errors without a matching field.
 
 Create shared server constructors for validation, not-found, forbidden, and
-conflict responses. Migrate the public response contract separately if existing
-clients depend on `{ "error": "message" }`; a temporary compatibility field is
-preferable to an unannounced breaking change.
+conflict responses. **Implemented (off-season):** converted routes use the
+nested object only; there is no compatibility string `error` field. In-repo
+clients read `error.message` via `getApiErrorMessage`. Unconverted routes may
+still return `{ error: string }`; the helper accepts both.
 
 ### 6. Create a repeatable validation test matrix
 
@@ -341,55 +340,73 @@ generation as a later optimization, not a prerequisite for validating routes.
 Verify that any selected generator supports Zod 4 and the refinements and
 transformations used by the project.
 
-## Recommended rollout sequence
+## Implemented: Phases 1 and 2
 
-### Phase 1: harden the pilot
+Phases 1 and 2 are in the codebase. Off-season: there is no old-client
+compatibility layer. Converted routes use a nested `{ error: { code, message,
+issues? } }` contract, require `resultType` on score submit/update, treat score
+`PUT` as full replacement, reject unknown keys, and coerce IDs only on params
+and query strings.
 
-1. Replace bracket-result refinements with a discriminated union.
-2. Make score `PUT` explicitly full-replacement, or introduce `PATCH` using the
-   parse-load-merge-revalidate sequence.
-3. Define the error contract and compatibility strategy.
-4. Implement typed request-validation middleware.
-5. Reorganize the current schemas by domain.
-6. Add the missing schema and HTTP validation tests.
+**Phase 1 (pilot hardened)**
 
-Do not begin broad route conversion until this phase is complete; otherwise the
-same migration will need to be repeated across every endpoint.
+- Discriminated `resultType` union; `resultType` is required (no preprocess to
+  `standard`).
+- Score `PUT /scores/:id` is a full replacement of the editable representation.
+- Typed `validateRequest` / `validatedHandler` middleware with `req.validated`.
+- Nested error constructors in `src/server/validation/errors.ts`.
+- Schemas split by domain under `src/server/validation/`.
+- Pilot routes: score submit, score PUT, accept/revert/bulk-accept,
+  advance-winner.
 
-### Phase 2: low-risk mutation routes
+**Phase 2 (low-risk admin mutations)**
 
-Convert small admin mutations with simple bodies and parameters, one domain at
-a time. Good candidates are status changes, queue operations, and CRUD create
-or update routes that already have clear replacement semantics.
+Converted mutation params/bodies (GET list filters remain until Phase 3):
 
-For each converted domain:
+- Events create / patch / delete (PATCH parse-load-merge-revalidate)
+- Teams create / patch / check-in / bulk check-in / delete (not bulk import)
+- Queue create / presence / status-table patch / call / delete /
+  populate-from-seeding / populate-from-bracket
+- Seeding score create / patch / delete
+- Remaining scores reject / un-reject (`/:id/revert`) / delete
+- Simple bracket create / patch / delete
+- Awards template, event-award, and recipient CRUD (not automatic-award
+  preview query params)
+- Chat post / delete conversation
+- Double-seeding generate / delete-all / delete-round
 
-1. Inventory the accepted request behavior from route code and tests.
-2. Identify accidental behavior that should not become part of the contract.
-3. Add characterization tests before changing validation.
-4. Add schemas and middleware.
-5. Remove redundant casts and manual structural checks.
-6. Retain authorization and database-dependent checks.
-7. Run the full test and build suite.
+## Remaining later work
 
-### Phase 3: query endpoints
+### Phase 3 — query endpoints
 
-Add bounded schemas for pagination, sorting, filters, and IDs. Preserve existing
-documented defaults. Decide whether invalid filters should be rejected rather
-than silently ignored; changing that behavior may require client updates.
+Replace unbounded `parseInt` / `as string` query handling with bounded schemas.
+Preserve documented defaults. Off-season: prefer **rejecting** invalid
+filters/enums rather than silently ignoring them; note any remaining
+ignore/default exceptions next to the schema.
 
-This phase should eliminate patterns such as unbounded `parseInt()` calls and
-handwritten enum checks while preventing excessive page sizes.
+Inventory to convert later:
 
-### Phase 4: complex and externally sensitive inputs
+- `GET /scores/by-event/:eventId` — page/limit (already clamped 1–100),
+  status/score_type enums
+- `GET /audit/event/:eventId` — unbounded `limit`/`offset`
+- Chat message list — replace `parseMessagePagination` (max 100)
+- Events/teams/queue list filters (`status`, `queue_type`)
+- Awards preview query params (`*_top_n`, award types)
+- Bracket list `bracket_size` / `eligible`
 
-Convert template creation, scoresheet data, bulk imports, and judge-facing
-flows last. These endpoints have dynamic data or greater compatibility risk and
-need domain-specific design rather than generic object schemas.
+### Phase 4 — complex / externally sensitive inputs
 
-Monitor validation failures by application error code and route during rollout.
-Log only safe metadata, never full scoresheets, access codes, session material,
-or private DQ notes.
+- Scoresheet templates: HTTP envelope in Zod; keep
+  `validateScoresheetSchema` as the template-aware step.
+- `scoreData` contents: stable `ScoreFieldEntry` (`{ value, type?, label? }`);
+  validate against the stored template in a dedicated service after the request
+  schema.
+- Teams bulk import and documentation scores bulk PUT: item-level issues with
+  array indexes in `path`.
+- Judge submit field contents remain envelope-at-boundary + template service.
+- Monitor failures by `code` + route; log metadata only (never scoresheets,
+  access codes, session material, or DQ notes).
+- OpenAPI generation remains out of scope.
 
 ## Definition of done for each converted route
 
@@ -408,19 +425,24 @@ A route is considered migrated only when:
 
 ## Full-rollout readiness checklist
 
-Begin repo-wide adoption when all of the following are true:
+Phase 1–2 items completed by this rollout:
 
-- [ ] The bracket-result union narrows correctly without non-null assertions.
-- [ ] Score update semantics are documented and enforced consistently.
-- [ ] Typed validation middleware has been proven on body, params, and query.
-- [ ] A stable, client-consumable error contract is tested.
-- [ ] Strictness and coercion defaults are documented.
-- [ ] Pilot schemas are organized by domain.
-- [ ] Every pilot schema has boundary and invalid-variant tests.
-- [ ] Database-aware validation remains in services with typed inputs.
+- [x] The bracket-result union narrows correctly without non-null assertions.
+- [x] Score update semantics are documented and enforced consistently.
+- [x] Typed validation middleware has been proven on body, params, and query.
+- [x] A stable, client-consumable error contract is tested.
+- [x] Strictness and coercion defaults are documented.
+- [x] Pilot schemas are organized by domain.
+- [x] Every pilot schema has boundary and invalid-variant tests.
+- [x] Database-aware validation remains in services with typed inputs.
+- [x] At least one additional low-risk domain has been migrated successfully.
+- [x] Full formatting, lint, test, and build verification passes.
+
+Still open for Phases 3–4:
+
+- [ ] Query/pagination/filter endpoints use bounded schemas.
 - [ ] Dynamic scoresheet validation has an explicit strategy.
-- [ ] At least one additional low-risk domain has been migrated successfully.
-- [ ] Full formatting, lint, test, and build verification passes.
+- [ ] Bulk import and documentation-score bulk PUT report item-level issues.
 
 ## Expected payoff
 

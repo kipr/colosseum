@@ -17,6 +17,7 @@ import {
 } from './scoresheetUtils';
 import { getFieldDefaultValue } from '../../shared/scoresheetSchema';
 import type { BracketResultType } from '../../shared/bracketResult';
+import { getApiErrorMessage } from '../../shared/apiError';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -1216,19 +1217,23 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             ? formData.double_seeding_match_id
             : undefined,
           resultType: isDbBackedBracket ? resultType : 'standard',
-          disqualifiedTeamId,
+          disqualifiedTeamId:
+            isDbBackedBracket && resultType === 'disqualification'
+              ? disqualifiedTeamId
+              : null,
           resultNote:
             isDbBackedBracket && resultType === 'disqualification'
               ? resultNote.trim()
-              : undefined,
+              : null,
         }),
       });
 
       if (response.status === 401 || response.status === 403) {
         const data = await response.json().catch(() => ({}));
-        const msg =
-          (data as { error?: string }).error ||
-          'Session expired. Redirecting to scoresheet selection...';
+        const msg = getApiErrorMessage(
+          data,
+          'Session expired. Redirecting to scoresheet selection...',
+        );
         showNotification(msg, 'error');
         sessionStorage.removeItem('currentTemplate');
         setTimeout(() => {
@@ -1236,7 +1241,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         }, 2000);
         return;
       }
-      if (!response.ok) throw new Error('Failed to submit score');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(getApiErrorMessage(data, 'Failed to submit score'));
+      }
 
       // Cache the round number for next submission (seeding only, not queue-based)
       if (!isHeadToHead && !useQueueForSeeding && scoreData['round']?.value) {

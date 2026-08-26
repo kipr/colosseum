@@ -16,6 +16,7 @@ import {
   type AwardType,
 } from '@shared/awards';
 import AwardRecipientModal from './AwardRecipientModal';
+import { getApiErrorMessage } from '../../../shared/apiError';
 import '../Modal.css';
 import './AwardsTab.css';
 
@@ -255,7 +256,11 @@ export default function AwardsTab() {
           credentials: 'include',
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.json()).error);
+        if (!res.ok) {
+          throw new Error(
+            getApiErrorMessage(await res.json(), 'Failed to save template'),
+          );
+        }
         toast.success('Template updated');
       } else {
         const res = await fetch('/awards/templates', {
@@ -264,7 +269,11 @@ export default function AwardsTab() {
           credentials: 'include',
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.json()).error);
+        if (!res.ok) {
+          throw new Error(
+            getApiErrorMessage(await res.json(), 'Failed to save template'),
+          );
+        }
         toast.success('Template created');
       }
       setShowTemplateModal(false);
@@ -348,7 +357,11 @@ export default function AwardsTab() {
           credentials: 'include',
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.json()).error);
+        if (!res.ok) {
+          throw new Error(
+            getApiErrorMessage(await res.json(), 'Failed to save template'),
+          );
+        }
         toast.success('Award updated');
       } else {
         const body: Record<string, unknown> = {
@@ -366,7 +379,11 @@ export default function AwardsTab() {
           credentials: 'include',
           body: JSON.stringify(body),
         });
-        if (!res.ok) throw new Error((await res.json()).error);
+        if (!res.ok) {
+          throw new Error(
+            getApiErrorMessage(await res.json(), 'Failed to save template'),
+          );
+        }
         toast.success('Award added');
       }
       setShowAwardModal(false);
@@ -609,7 +626,7 @@ export default function AwardsTab() {
       );
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error);
+        throw new Error(getApiErrorMessage(data, 'Failed to add'));
       }
       toast.success('Individual added');
       setIndividualName('');

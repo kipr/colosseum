@@ -18,6 +18,7 @@ import {
 } from '../../utils/queueRest';
 import '../Modal.css';
 import './QueueTab.css';
+import { getApiErrorMessage } from '../../../shared/apiError';
 
 interface QueueItem {
   id: number;
@@ -418,7 +419,9 @@ export default function QueueTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to populate queue');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to populate queue'),
+        );
       }
 
       const data = await response.json();
@@ -461,7 +464,9 @@ export default function QueueTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to populate queue');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to populate queue'),
+        );
       }
 
       const data = await response.json();
@@ -508,7 +513,9 @@ export default function QueueTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add to queue');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to add to queue'),
+        );
       }
 
       toast.success('Seeding round added to queue');
@@ -553,7 +560,9 @@ export default function QueueTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add to queue');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to add to queue'),
+        );
       }
 
       toast.success('Bracket game added to queue');
@@ -643,7 +652,9 @@ export default function QueueTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update status');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to update status'),
+        );
       }
 
       const updatedItem = (await response.json()) as QueueItem;
@@ -698,7 +709,9 @@ export default function QueueTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update team presence');
+        throw new Error(
+          getApiErrorMessage(errorData, 'Failed to update team presence'),
+        );
       }
 
       const updatedItem = (await response.json()) as Pick<

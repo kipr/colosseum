@@ -13,6 +13,7 @@ import {
   shouldAutoAppendRepeatableGroupRow,
 } from '../scoresheetUtils';
 import type { BracketResultType } from '../../../shared/bracketResult';
+import { getApiErrorMessage } from '../../../shared/apiError';
 
 interface ScoreViewModalProps {
   score: any;
@@ -318,13 +319,20 @@ export default function ScoreViewModal({
         }),
       });
 
-      if (!response.ok) throw new Error('Failed to update score');
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(getApiErrorMessage(data, 'Failed to update score'));
+      }
 
       alert('Score updated successfully!');
       onSave();
     } catch (error) {
       console.error('Error updating score:', error);
-      alert('Failed to update score');
+      alert(
+        error instanceof Error
+          ? error.message
+          : getApiErrorMessage(error, 'Failed to update score'),
+      );
     } finally {
       setSaving(false);
     }

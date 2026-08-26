@@ -12,6 +12,9 @@ export default defineConfig({
 
     // Node environment for server-side SQL tests
     environment: 'node',
+    env: {
+      NODE_ENV: 'test',
+    },
 
     // Include SQL tests from tests/ directory (keeps them out of server tsc build)
     include: ['tests/**/*.test.ts'],

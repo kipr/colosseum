@@ -171,10 +171,10 @@ export async function ensureQueueFresh(
  * Self-healing safety net: at most once per minute per actively-read event,
  * run a background repair sync. Catches any drift source that was not
  * explicitly flagged dirty. Fire-and-forget; never delays the read.
- * Disabled under tests to avoid stray async work on closed databases.
+ * Disabled under Vitest to avoid stray async work on closed databases.
  */
 export function scheduleQueueRepair(db: Database, eventId: number): void {
-  if (process.env.NODE_ENV === 'test') return;
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST) return;
 
   let times = queueRepairTimes.get(db as object);
   if (!times) {

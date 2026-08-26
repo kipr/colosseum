@@ -11,6 +11,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedTeam,
@@ -390,7 +391,7 @@ describe('Queue Routes – sync edge cases', () => {
         seeding_round: 1,
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain('does not exist');
+      expect(getApiErrorMessage(res.json)).toContain('does not exist');
     });
   });
 });

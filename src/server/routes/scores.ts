@@ -10,15 +10,15 @@ import {
   updateBracketQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
-import { parseRequest } from '../validation/request';
+import { sendInvalidState, sendNotFound } from '../validation/errors';
+import { validatedHandler } from '../validation/middleware';
 import {
-  acceptEventBodySchema,
-  bulkAcceptBodySchema,
-  bulkAcceptParamsSchema,
-  revertEventBodySchema,
-  scoreIdParamsSchema,
-  scoreUpdateBodySchema,
-} from '../validation/bracketResult';
+  acceptEventRequest,
+  bulkAcceptRequest,
+  revertEventRequest,
+  scoreIdRequest,
+  scoreUpdateRequest,
+} from '../validation/scores';
 
 const router = express.Router();
 
@@ -177,14 +177,10 @@ router.get(
 router.post(
   '/event/:eventId/accept/bulk',
   requireAdmin,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(bulkAcceptRequest, async (req, res) => {
     try {
-      const routeParams = parseRequest(bulkAcceptParamsSchema, req.params, res);
-      if (!routeParams) return;
-      const payload = parseRequest(bulkAcceptBodySchema, req.body ?? {}, res);
-      if (!payload) return;
-      const { eventId } = routeParams;
-      const { score_ids } = payload;
+      const { eventId } = req.validated.params;
+      const { score_ids } = req.validated.body;
 
       const db = await getDatabase();
 
@@ -193,7 +189,7 @@ router.post(
         eventId,
       ]);
       if (!event) {
-        return res.status(400).json({ error: 'Event does not exist' });
+        return sendInvalidState(res, 'Event does not exist');
       }
 
       const eventIdNum = eventId;
@@ -252,21 +248,17 @@ router.post(
       console.error('Error bulk accepting scores:', error);
       res.status(500).json({ error: 'Failed to bulk accept scores' });
     }
-  },
+  }),
 );
 
 // Accept event-scoped score (admin-only, DB-only, no sheets)
 router.post(
   '/:id/accept-event',
   requireAdmin,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(acceptEventRequest, async (req, res) => {
     try {
-      const routeParams = parseRequest(scoreIdParamsSchema, req.params, res);
-      if (!routeParams) return;
-      const payload = parseRequest(acceptEventBodySchema, req.body ?? {}, res);
-      if (!payload) return;
-      const { id } = routeParams;
-      const { force } = payload;
+      const { id } = req.validated.params;
+      const { force } = req.validated.body;
       const db = await getDatabase();
 
       const result = await acceptEventScore({
@@ -288,7 +280,12 @@ router.post(
           existingResultType,
           newResultType,
         } = result;
-        const body: Record<string, unknown> = { error };
+        const body: Record<string, unknown> = {
+          error: {
+            code: status === 409 ? 'CONFLICT' : 'INVALID_STATE',
+            message: error,
+          },
+        };
         if (existingScore !== undefined) body.existingScore = existingScore;
         if (newScore !== undefined) body.newScore = newScore;
         if (existingWinnerId !== undefined)
@@ -307,7 +304,7 @@ router.post(
       console.error('Error accepting event score:', error);
       res.status(500).json({ error: 'Failed to accept score' });
     }
-  },
+  }),
 );
 
 /**
@@ -660,14 +657,10 @@ function flattenAffectedSlots(affected: AffectedBracketGame[]): {
 router.post(
   '/:id/revert-event',
   requireAdmin,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(revertEventRequest, async (req, res) => {
     try {
-      const routeParams = parseRequest(scoreIdParamsSchema, req.params, res);
-      if (!routeParams) return;
-      const payload = parseRequest(revertEventBodySchema, req.body ?? {}, res);
-      if (!payload) return;
-      const { id } = routeParams;
-      const { dryRun, confirm } = payload;
+      const { id } = req.validated.params;
+      const { dryRun, confirm } = req.validated.body;
       const db = await getDatabase();
 
       // Get the score submission
@@ -676,21 +669,19 @@ router.post(
         [id],
       );
       if (!score) {
-        return res.status(404).json({ error: 'Score submission not found' });
+        return sendNotFound(res, 'Score submission not found');
       }
 
       // Verify this is an event-scoped score
       if (!score.event_id) {
-        return res.status(400).json({
-          error:
-            'This score is not event-scoped. Use the standard revert endpoint.',
-        });
+        return sendInvalidState(
+          res,
+          'This score is not event-scoped. Use the standard revert endpoint.',
+        );
       }
 
       if (score.status !== 'accepted') {
-        return res.status(400).json({
-          error: 'Only accepted scores can be reverted',
-        });
+        return sendInvalidState(res, 'Only accepted scores can be reverted');
       }
 
       const scoreType = score.score_type;
@@ -843,7 +834,7 @@ router.post(
         ]);
 
         if (!game) {
-          return res.status(404).json({ error: 'Bracket game not found' });
+          return sendNotFound(res, 'Bracket game not found');
         }
 
         if (!game.winner_id) {
@@ -1115,23 +1106,24 @@ router.post(
       }
 
       // Unknown score type
-      return res.status(400).json({
-        error: `Unknown score_type: ${scoreType}. Expected 'seeding', 'bracket', or 'double_seeding'.`,
-      });
+      return sendInvalidState(
+        res,
+        `Unknown score_type: ${scoreType}. Expected 'seeding', 'bracket', or 'double_seeding'.`,
+      );
     } catch (error) {
       console.error('Error reverting event score:', error);
       res.status(500).json({ error: 'Failed to revert score' });
     }
-  },
+  }),
 );
 
 // Reject a score
 router.post(
   '/:id/reject',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoreIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       const oldScore = await db.get(
@@ -1139,7 +1131,7 @@ router.post(
         [id],
       );
       if (!oldScore) {
-        return res.status(404).json({ error: 'Score not found' });
+        return sendNotFound(res, 'Score not found');
       }
 
       await db.run(
@@ -1213,16 +1205,16 @@ router.post(
       console.error('Error rejecting score:', error);
       res.status(500).json({ error: 'Failed to reject score' });
     }
-  },
+  }),
 );
 
 // Revert a score (undo accept/reject) - DB-only, no sheet operations
 router.post(
   '/:id/revert',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoreIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       const score = await db.get(
@@ -1230,7 +1222,7 @@ router.post(
         [id],
       );
       if (!score) {
-        return res.status(404).json({ error: 'Score not found' });
+        return sendNotFound(res, 'Score not found');
       }
 
       await db.run(
@@ -1245,21 +1237,18 @@ router.post(
       console.error('Error reverting score:', error);
       res.status(500).json({ error: 'Failed to revert score' });
     }
-  },
+  }),
 );
 
 // Update a score
 router.put(
   '/:id',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoreUpdateRequest, async (req, res) => {
     try {
-      const routeParams = parseRequest(scoreIdParamsSchema, req.params, res);
-      if (!routeParams) return;
-      const payload = parseRequest(scoreUpdateBodySchema, req.body ?? {}, res);
-      if (!payload) return;
-      const { id } = routeParams;
-      const { scoreData, resultType, disqualifiedTeamId, resultNote } = payload;
+      const { id } = req.validated.params;
+      const payload = req.validated.body;
+      const { scoreData, resultType } = payload;
       const db = await getDatabase();
 
       const oldScore = await db.get(
@@ -1267,47 +1256,35 @@ router.put(
         [id],
       );
       if (!oldScore) {
-        return res.status(404).json({ error: 'Score not found' });
+        return sendNotFound(res, 'Score not found');
       }
 
-      const nextResultType = resultType ?? oldScore.result_type ?? 'standard';
-      const nextDisqualifiedTeamId =
-        disqualifiedTeamId !== undefined
-          ? disqualifiedTeamId
-          : oldScore.disqualified_team_id;
-      const nextResultNote =
-        resultNote !== undefined ? resultNote : oldScore.result_note;
-
-      if (oldScore.score_type !== 'bracket' && nextResultType !== 'standard') {
-        return res.status(400).json({
-          error: 'Special results are only supported for bracket scores',
-        });
+      if (oldScore.score_type !== 'bracket' && resultType !== 'standard') {
+        return sendInvalidState(
+          res,
+          'Special results are only supported for bracket scores',
+        );
       }
 
-      if (nextResultType === 'disqualification') {
+      let nextDisqualifiedTeamId: number | null = null;
+      let nextResultNote: string | null = null;
+      if (resultType === 'disqualification') {
+        nextDisqualifiedTeamId = payload.disqualifiedTeamId;
+        nextResultNote = payload.resultNote;
         const game = await db.get(
           'SELECT team1_id, team2_id FROM bracket_games WHERE id = ?',
           [oldScore.bracket_game_id],
         );
         if (
           !game ||
-          nextDisqualifiedTeamId == null ||
           (game.team1_id !== nextDisqualifiedTeamId &&
             game.team2_id !== nextDisqualifiedTeamId)
         ) {
-          return res.status(400).json({
-            error: 'Disqualified team must be a participant in the game',
-          });
+          return sendInvalidState(
+            res,
+            'Disqualified team must be a participant in the game',
+          );
         }
-        if (!String(nextResultNote ?? '').trim()) {
-          return res.status(400).json({
-            error: 'A disqualification requires a private reason',
-          });
-        }
-      } else if (nextDisqualifiedTeamId != null || nextResultNote != null) {
-        return res.status(400).json({
-          error: 'Disqualification details require a disqualification result',
-        });
       }
 
       await db.run(
@@ -1316,9 +1293,9 @@ router.put(
        WHERE id = ?`,
         [
           JSON.stringify(scoreData),
-          nextResultType,
-          nextDisqualifiedTeamId ?? null,
-          nextResultNote?.trim() ?? null,
+          resultType,
+          nextDisqualifiedTeamId,
+          nextResultNote,
           id,
         ],
       );
@@ -1345,16 +1322,16 @@ router.put(
       console.error('Error updating score:', error);
       res.status(500).json({ error: 'Failed to update score' });
     }
-  },
+  }),
 );
 
 // Delete a score
 router.delete(
   '/:id',
   requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
+  ...validatedHandler(scoreIdRequest, async (req, res) => {
     try {
-      const { id } = req.params;
+      const { id } = req.validated.params;
       const db = await getDatabase();
 
       const oldScore = await db.get(
@@ -1382,7 +1359,7 @@ router.delete(
       console.error('Error deleting score:', error);
       res.status(500).json({ error: 'Failed to delete score' });
     }
-  },
+  }),
 );
 
 export default router;

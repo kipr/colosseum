@@ -11,6 +11,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import { seedEvent, seedTeam, seedUser } from './helpers/seed';
 import teamsRoutes from '../../src/server/routes/teams';
 
@@ -225,7 +226,7 @@ describe('Teams Routes', () => {
     it('returns 404 when team not found', async () => {
       const res = await http.get(`${server.baseUrl}/teams/999`);
       expect(res.status).toBe(404);
-      expect((res.json as { error: string }).error).toContain('Team not found');
+      expect(getApiErrorMessage(res.json)).toContain('Team not found');
     });
 
     it('returns the team when found', async () => {
@@ -271,9 +272,7 @@ describe('Teams Routes', () => {
     it('returns 400 when required fields are missing', async () => {
       const res = await http.post(`${server.baseUrl}/teams`, {});
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'event_id, team_number, and team_name are required',
-      );
+      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
     });
 
     it('creates team with defaults', async () => {
@@ -320,7 +319,7 @@ describe('Teams Routes', () => {
       });
 
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain(
+      expect(getApiErrorMessage(res.json)).toContain(
         'Team number already exists',
       );
     });
@@ -333,9 +332,7 @@ describe('Teams Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'Event does not exist',
-      );
+      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
     });
   });
 
@@ -426,9 +423,7 @@ describe('Teams Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'Event does not exist',
-      );
+      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
     });
   });
 
@@ -468,9 +463,7 @@ describe('Teams Routes', () => {
         invalid_field: 'value',
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'No valid fields',
-      );
+      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
     });
 
     it('updates team_name', async () => {
@@ -523,7 +516,7 @@ describe('Teams Routes', () => {
       });
 
       expect(res.status).toBe(409);
-      expect((res.json as { error: string }).error).toContain(
+      expect(getApiErrorMessage(res.json)).toContain(
         'Team number already exists',
       );
     });
@@ -541,9 +534,7 @@ describe('Teams Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'Invalid team_number or status',
-      );
+      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
     });
   });
 
@@ -686,9 +677,7 @@ describe('Teams Routes', () => {
         {},
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'team_numbers array is required',
-      );
+      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
     });
 
     it('returns 400 when team_numbers is empty array', async () => {
@@ -706,9 +695,7 @@ describe('Teams Routes', () => {
         { team_numbers: [1, 2] },
       );
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'Event does not exist',
-      );
+      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
     });
 
     it('bulk checks in teams by team numbers', async () => {

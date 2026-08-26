@@ -10,6 +10,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
+import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -166,9 +167,7 @@ describe('Seeding Routes - additional coverage', () => {
         score: 100,
       });
       expect(res.status).toBe(400);
-      expect((res.json as { error: string }).error).toContain(
-        'Team does not exist',
-      );
+      expect(getApiErrorMessage(res.json)).toContain('Team does not exist');
     });
 
     it('returns 400 when missing required fields', async () => {
