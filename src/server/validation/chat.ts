@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './schema';
 import { coercedPositiveId, trimmedNonEmptyString } from './primitives';
 
 export const JUDGE_CHAT_MESSAGE_MAX = 1000;

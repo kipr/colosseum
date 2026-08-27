@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './schema';
 import { QUEUE_STATUSES } from '../constants/queueStatus';
 import {
   coercedPositiveId,

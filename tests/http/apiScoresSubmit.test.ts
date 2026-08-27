@@ -87,7 +87,7 @@ describe('API Score Submit Routes', () => {
         expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
       });
 
-      it('returns structured Zod issues for unknown keys and incomplete DQs', async () => {
+      it('returns structured validation issues for unknown keys and incomplete DQs', async () => {
         const unknown = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: 1,
           scoreData: {},

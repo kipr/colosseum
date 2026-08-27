@@ -4,7 +4,7 @@ import { requireAuth } from '../../../src/server/middleware/auth';
 import { validateRequest } from '../../../src/server/validation/middleware';
 import { scoreIdParamsSchema } from '../../../src/server/validation/scores';
 import { getApiError } from '../../../src/shared/apiError';
-import { z } from 'zod';
+import { z } from '../../../src/server/validation/schema';
 import {
   createTestApp,
   http,

@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './schema';
 import { DEFAULT_AWARD_TYPE } from '../../shared/awards';
 import {
   coercedPositiveId,

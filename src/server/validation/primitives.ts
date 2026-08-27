@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z, type ObjectSchema, type SchemaShape } from './schema';
 
 /** JSON body IDs: integers > 0, no string coercion. */
 export const positiveId = z.number().int().positive();
@@ -53,9 +53,7 @@ export function mergePatch<T extends Record<string, unknown>>(
   return merged;
 }
 
-export function nonEmptyObject<T extends z.ZodRawShape>(
-  schema: z.ZodObject<T>,
-) {
+export function nonEmptyObject<T extends SchemaShape>(schema: ObjectSchema<T>) {
   return schema.strict().refine((value) => Object.keys(value).length > 0, {
     message: 'No valid fields to update',
   });

@@ -1,5 +1,5 @@
 import type { Response } from 'express';
-import type { ZodError } from 'zod';
+import type { Issue } from './schema';
 import type {
   ApiErrorCode,
   ApiErrorIssue,
@@ -8,15 +8,13 @@ import type {
 
 export type { ApiErrorCode, ApiErrorIssue, ApiErrorLocation };
 
-export function mapZodIssues(
-  error: ZodError,
+export function mapSchemaIssues(
+  error: { issues: Issue[] },
   location: ApiErrorLocation,
 ): ApiErrorIssue[] {
   return error.issues.map((issue) => ({
     location,
-    path: issue.path.map((segment) =>
-      typeof segment === 'symbol' ? String(segment) : segment,
-    ),
+    path: [...issue.path],
     code: issue.code,
     message: issue.message,
   }));

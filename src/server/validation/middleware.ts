@@ -1,19 +1,24 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import type { ZodType } from 'zod';
+import type { Schema } from './schema';
 import type { AuthRequest } from '../middleware/auth';
 import type { ApiErrorIssue, ApiErrorLocation } from './errors';
-import { mapZodIssues, sendValidationError } from './errors';
+import { mapSchemaIssues, sendValidationError } from './errors';
 
 export interface RequestSchemas {
-  params?: ZodType;
-  query?: ZodType;
-  body?: ZodType;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  params?: Schema<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query?: Schema<any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  body?: Schema<any>;
 }
 
-type InferSchema<T> = T extends ZodType ? T['_output'] : never;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type InferSchema<T> = T extends Schema<infer U> ? U : never;
 
 export type Validated<S extends RequestSchemas> = {
-  [K in keyof S as S[K] extends ZodType ? K : never]: InferSchema<S[K]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [K in keyof S as S[K] extends Schema<any> ? K : never]: InferSchema<S[K]>;
 };
 
 export type ValidatedRequest<S extends RequestSchemas> = AuthRequest & {
@@ -51,7 +56,7 @@ export function validateRequest<S extends RequestSchemas>(
         if (result.success) {
           validated[location] = result.data;
         } else {
-          issues.push(...mapZodIssues(result.error, location));
+          issues.push(...mapSchemaIssues(result.error, location));
         }
       }
 

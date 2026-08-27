@@ -16,9 +16,9 @@ export COOKIE="connect.sid=COOKIE_VALUE"
 
 ## Request validation
 
-Converted mutation endpoints parse `params`, `query`, and `body` with Zod **after**
-auth and **before** any database work. Expected client errors use a nested
-object (not a top-level string):
+Converted mutation endpoints parse `params`, `query`, and `body` with request
+schemas **after** auth and **before** any database work. Expected client errors
+use a nested object (not a top-level string):
 
 ```json
 {

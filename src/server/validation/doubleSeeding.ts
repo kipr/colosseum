@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z } from './schema';
 import { coercedPositiveId } from './primitives';
 
 export const generateDoubleSeedingBodySchema = z

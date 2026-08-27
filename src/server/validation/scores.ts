@@ -1,4 +1,4 @@
-import { z } from 'zod';
+import { z, type RefinementCtx } from './schema';
 import { BRACKET_RESULT_TYPES } from '../../shared/bracketResult';
 import {
   coercedPositiveId,
@@ -63,7 +63,7 @@ function refineScoreSubmit(
     scoreType?: 'seeding' | 'bracket' | 'double_seeding';
     scoreData: Record<string, unknown>;
   },
-  context: z.RefinementCtx,
+  context: RefinementCtx,
 ): void {
   if (value.resultType !== 'standard' && value.scoreType !== 'bracket') {
     context.addIssue({
