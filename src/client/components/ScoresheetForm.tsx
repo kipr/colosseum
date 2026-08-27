@@ -15,7 +15,7 @@ import {
   shouldHideSoloDoubleSeedingField,
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
-import { getFieldDefaultValue } from '../../shared/scoresheetSchema';
+import { getFieldDefaultValue } from '../../shared/scoresheetDocument';
 import type { BracketResultType } from '../../shared/bracketResult';
 import { getApiErrorMessage } from '../../shared/apiError';
 import '../pages/Scoresheet.css';

@@ -41,4 +41,39 @@ export default defineConfig([
       'react/no-unescaped-entities': 'off',
     },
   },
+  {
+    // Zod must not reach the browser bundle. The client may use inferred types
+    // from the canonical schemas, because type imports are erased, but a value
+    // import pulls the whole Zod runtime into a chunk. Zod-free helpers live in
+    // `src/shared/scoresheetDocument.ts`.
+    files: ['src/client/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'zod',
+              message:
+                'Zod must stay out of the client bundle. Validate on the server, or use the Zod-free helpers in src/shared/scoresheetDocument.ts.',
+            },
+          ],
+          patterns: [
+            {
+              group: [
+                '**/shared/scoresheetSchema',
+                '**/shared/validationPrimitives',
+                '**/server/validation/*',
+                '@shared/scoresheetSchema',
+                '@shared/validationPrimitives',
+              ],
+              allowTypeImports: true,
+              message:
+                'Import types only from this module; its value exports pull the Zod runtime into the client bundle. Runtime helpers live in src/shared/scoresheetDocument.ts.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);

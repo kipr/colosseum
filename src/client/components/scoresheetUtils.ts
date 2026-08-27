@@ -6,15 +6,17 @@ import {
   isRepeatableGroupField,
   isScoresheetValue,
   SCORESHEET_SCHEMA_VERSION,
-  type DbBracketSource,
   type RepeatableGroupDerivedResult,
-  type RepeatableGroupField,
   type RepeatableGroupRows,
-  type ScoreFieldEntry,
-  type ScoresheetField,
-  type ScoresheetFieldType,
-  type ScoresheetSchema,
   type ScoresheetValue,
+} from '../../shared/scoresheetDocument';
+import type {
+  DbBracketSource,
+  RepeatableGroupField,
+  ScoreFieldEntry,
+  ScoresheetField,
+  ScoresheetFieldType,
+  ScoresheetSchema,
 } from '../../shared/scoresheetSchema';
 
 export type { DbBracketSource };

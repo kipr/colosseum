@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
-import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
+import { getFieldDefaultValue } from '../../../shared/scoresheetDocument';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 

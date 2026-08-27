@@ -8,7 +8,7 @@
     "dev:server": "nodemon --watch src/server --watch src/shared --exec ts-node src/server/server.ts",
     "dev:client": "wait-on http://localhost:3000/health && vite --host 0.0.0.0",
     "build": "npm run clean && npm run typecheck:client && npm run build:client && npm run build:server",
-    "build:client": "vite build",
+    "build:client": "vite build && node scripts/check-client-bundle.mjs",
     "build:server": "tsc",
     "typecheck:client": "tsc -p tsconfig.client.json",
     "typecheck:server": "tsc -p tsconfig.json --noEmit",

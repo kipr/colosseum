@@ -1,32 +1,35 @@
 /**
  * Canonical scoresheet document model. Types are inferred from Zod schemas.
+ *
+ * Zod-free constants, guards, and field helpers live in `./scoresheetDocument`
+ * so the client can use them without bundling Zod. They are re-exported here
+ * for server and script call sites, which already depend on Zod.
  */
 import { z, type ZodSafeParseResult } from 'zod';
 import { positiveId, trimmedNonEmptyString } from './validationPrimitives';
+import {
+  discriminateShape,
+  isPlainObject,
+  SCORESHEET_SCHEMA_VERSION,
+  type RepeatableGroupDerivedResult,
+  type SchemaValidationResult,
+} from './scoresheetDocument';
 
-export const SCORESHEET_SCHEMA_VERSION = 1 as const;
-
-export type ScoresheetDocumentShape =
-  | 'schema_object'
-  | 'bare_field_array'
-  | 'wrapper'
-  | 'unknown';
-
-export interface SchemaValidationResult {
-  ok: boolean;
-  errors: string[];
-}
-
-export type ScoresheetValue = string | number | boolean | null;
-
-export type RepeatableGroupRows = Record<string, ScoresheetValue>[];
-
-export interface RepeatableGroupDerivedResult {
-  rows: Array<Record<string, ScoresheetValue>>;
-  sortedEquivalent?: number;
-  unsortedEquivalent?: number;
-  subtotal?: number;
-}
+export {
+  discriminateShape,
+  formatSchemaValidationError,
+  getBlankFieldValue,
+  getFieldDefaultValue,
+  isPlainObject,
+  isRepeatableGroupField,
+  isScoresheetValue,
+  SCORESHEET_SCHEMA_VERSION,
+  type RepeatableGroupDerivedResult,
+  type RepeatableGroupRows,
+  type SchemaValidationResult,
+  type ScoresheetDocumentShape,
+  type ScoresheetValue,
+} from './scoresheetDocument';
 
 const NO_DEFAULT_TYPES = new Set([
   'calculated',
@@ -34,37 +37,6 @@ const NO_DEFAULT_TYPES = new Set([
   'group_header',
   'winner-select',
 ]);
-
-export function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-export function isScoresheetValue(value: unknown): value is ScoresheetValue {
-  return (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  );
-}
-
-export function discriminateShape(input: unknown): ScoresheetDocumentShape {
-  if (Array.isArray(input)) {
-    return 'bare_field_array';
-  }
-  if (!isPlainObject(input)) {
-    return 'unknown';
-  }
-  if (isPlainObject(input.schema)) {
-    return 'wrapper';
-  }
-  if ('fields' in input) {
-    return 'schema_object';
-  }
-  return 'unknown';
-}
 
 function formatIssuePath(path: readonly PropertyKey[]): string {
   let out = '';
@@ -696,12 +668,6 @@ export type ScoresheetSchema = z.infer<typeof scoresheetSchema>;
 export type BracketSource = z.infer<typeof bracketSourceSchema>;
 export type DbBracketSource = Extract<BracketSource, { type: 'db' }>;
 
-export function isRepeatableGroupField(
-  field: unknown,
-): field is RepeatableGroupField {
-  return isPlainObject(field) && field.type === 'repeatableGroup';
-}
-
 export interface ScoresheetTemplate {
   name?: string;
   description?: string;
@@ -755,30 +721,4 @@ export function validateScoresheetSchema(
     return { ok: false, errors: ['schema must be an object.'] };
   }
   return toValidationResult(parseScoresheetSchema(input));
-}
-
-export function formatSchemaValidationError(errors: string[]): string {
-  if (errors.length === 1) {
-    return errors[0];
-  }
-  return `Invalid scoresheet schema:\n${errors.map((e) => `  - ${e}`).join('\n')}`;
-}
-
-export function getFieldDefaultValue(field: unknown): unknown {
-  if (!isPlainObject(field)) return undefined;
-  if (!('defaultValue' in field)) return undefined;
-  return field.defaultValue;
-}
-
-export function getBlankFieldValue(field: unknown): unknown {
-  const defaultValue = getFieldDefaultValue(field);
-  if (defaultValue !== undefined) {
-    return defaultValue;
-  }
-
-  if (isPlainObject(field) && field.type === 'checkbox') {
-    return false;
-  }
-
-  return '';
 }
