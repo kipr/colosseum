@@ -1,4 +1,4 @@
-import { z } from './schema';
+import { type Infer, z } from './schema';
 import { QUEUE_STATUSES } from '../constants/queueStatus';
 import {
   coercedPositiveId,
@@ -68,7 +68,7 @@ export const queueItemUpdateSchema = z
   })
   .strict();
 
-export type QueueItemUpdate = z.infer<typeof queueItemUpdateSchema>;
+export type QueueItemUpdate = Infer<typeof queueItemUpdateSchema>;
 
 export const queueCallBodySchema = z
   .object({
@@ -128,7 +128,7 @@ export function queueRowToUpdateCandidate(row: {
 
 export function mergeQueuePatch(
   current: QueueItemUpdate,
-  patch: z.infer<typeof queuePatchBodySchema>,
+  patch: Infer<typeof queuePatchBodySchema>,
 ): QueueItemUpdate {
   return mergePatch(current, patch);
 }

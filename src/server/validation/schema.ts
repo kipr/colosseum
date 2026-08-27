@@ -392,7 +392,8 @@ export class NullSchema extends Schema<null> {
 }
 
 export class UnknownSchema extends Schema<unknown> {
-  _parse(data: unknown, _path: Path): ParseResult<unknown> {
+  _parse(data: unknown, path: Path): ParseResult<unknown> {
+    void path;
     return { success: true, data };
   }
 }
@@ -478,6 +479,13 @@ export class ArraySchema<T> extends Schema<T[]> {
 }
 
 export class RecordSchema extends Schema<Record<string, unknown>> {
+  constructor(
+    private readonly keySchema: Schema<string>,
+    private readonly valueSchema: Schema<unknown>,
+  ) {
+    super();
+  }
+
   _parse(data: unknown, path: Path): ParseResult<Record<string, unknown>> {
     if (!isObject(data)) {
       return fail(
@@ -486,7 +494,24 @@ export class RecordSchema extends Schema<Record<string, unknown>> {
         `Expected object, received ${receivedType(data)}`,
       );
     }
-    return { success: true, data: { ...data } };
+    const issues: Issue[] = [];
+    const output: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      const keyResult = this.keySchema._parse(key, [...path, key]);
+      if (!keyResult.success) {
+        issues.push(...keyResult.error.issues);
+      }
+      const valueResult = this.valueSchema._parse(value, [...path, key]);
+      if (!valueResult.success) {
+        issues.push(...valueResult.error.issues);
+        continue;
+      }
+      output[key] = valueResult.data;
+    }
+    if (issues.length > 0) {
+      return { success: false, error: { issues } };
+    }
+    return { success: true, data: output };
   }
 }
 
@@ -638,7 +663,8 @@ export const z = {
     new EnumSchema<T[number]>(values),
   array: <T>(schema: Schema<T>) => new ArraySchema(schema),
   object: <S extends SchemaShape>(shape: S) => new ObjectSchema(shape),
-  record: (_key: Schema<string>, _value: Schema<unknown>) => new RecordSchema(),
+  record: (key: Schema<string>, value: Schema<unknown>) =>
+    new RecordSchema(key, value),
   union: <
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     T extends readonly [Schema<any>, ...Schema<any>[]],
@@ -657,8 +683,3 @@ export const z = {
     number: () => new NumberSchema({ coerce: true, checks: [] }),
   },
 };
-
-export namespace z {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  export type infer<T extends Schema<any>> = Infer<T>;
-}

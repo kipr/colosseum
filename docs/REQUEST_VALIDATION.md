@@ -37,7 +37,7 @@ Domain files compose those primitives and own their request schemas.
 Export inferred types only when code outside the route benefits from them:
 
 ```ts
-export type EventUpdate = z.infer<typeof eventUpdateSchema>;
+export type EventUpdate = Infer<typeof eventUpdateSchema>;
 ```
 
 Do not maintain a separate handwritten request interface alongside its schema.

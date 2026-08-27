@@ -13,7 +13,6 @@ export interface RequestSchemas {
   body?: Schema<any>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type InferSchema<T> = T extends Schema<infer U> ? U : never;
 
 export type Validated<S extends RequestSchemas> = {

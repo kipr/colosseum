@@ -1,4 +1,4 @@
-import { z } from './schema';
+import { type Infer, z } from './schema';
 import {
   coercedPositiveId,
   isoDateInput,
@@ -72,7 +72,7 @@ export const eventUpdateSchema = z
   })
   .strict();
 
-export type EventUpdate = z.infer<typeof eventUpdateSchema>;
+export type EventUpdate = Infer<typeof eventUpdateSchema>;
 
 export const eventIdParamsSchema = z
   .object({
@@ -126,7 +126,7 @@ export function eventRowToUpdateCandidate(row: {
 
 export function mergeEventPatch(
   current: EventUpdate,
-  patch: z.infer<typeof eventPatchBodySchema>,
+  patch: Infer<typeof eventPatchBodySchema>,
 ): EventUpdate {
   return mergePatch(current, patch);
 }

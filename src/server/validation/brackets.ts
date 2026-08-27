@@ -1,4 +1,4 @@
-import { z } from './schema';
+import { type Infer, z } from './schema';
 import {
   coercedPositiveId,
   mergePatch,
@@ -40,7 +40,7 @@ export const bracketUpdateSchema = z
   })
   .strict();
 
-export type BracketUpdate = z.infer<typeof bracketUpdateSchema>;
+export type BracketUpdate = Infer<typeof bracketUpdateSchema>;
 
 export const bracketIdParamsSchema = z
   .object({
@@ -94,7 +94,7 @@ export function bracketRowToUpdateCandidate(row: {
 
 export function mergeBracketPatch(
   current: BracketUpdate,
-  patch: z.infer<typeof bracketPatchBodySchema>,
+  patch: Infer<typeof bracketPatchBodySchema>,
 ): BracketUpdate {
   return mergePatch(current, patch);
 }

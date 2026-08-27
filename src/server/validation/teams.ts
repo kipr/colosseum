@@ -1,4 +1,4 @@
-import { z } from './schema';
+import { type Infer, z } from './schema';
 import {
   coercedPositiveId,
   mergePatch,
@@ -44,7 +44,7 @@ export const teamUpdateSchema = z
   })
   .strict();
 
-export type TeamUpdate = z.infer<typeof teamUpdateSchema>;
+export type TeamUpdate = Infer<typeof teamUpdateSchema>;
 
 export const bulkCheckInBodySchema = z
   .object({
@@ -85,7 +85,7 @@ export function teamRowToUpdateCandidate(row: {
 
 export function mergeTeamPatch(
   current: TeamUpdate,
-  patch: z.infer<typeof teamPatchBodySchema>,
+  patch: Infer<typeof teamPatchBodySchema>,
 ): TeamUpdate {
   return mergePatch(current, patch);
 }

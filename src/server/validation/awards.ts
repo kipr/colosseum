@@ -1,4 +1,4 @@
-import { z } from './schema';
+import { type Infer, z } from './schema';
 import { DEFAULT_AWARD_TYPE } from '../../shared/awards';
 import {
   coercedPositiveId,
@@ -37,7 +37,7 @@ export const awardTemplateUpdateSchema = z
   })
   .strict();
 
-export type AwardTemplateUpdate = z.infer<typeof awardTemplateUpdateSchema>;
+export type AwardTemplateUpdate = Infer<typeof awardTemplateUpdateSchema>;
 
 export const createEventAwardBodySchema = z
   .object({
@@ -71,7 +71,7 @@ export const eventAwardUpdateSchema = z
   })
   .strict();
 
-export type EventAwardUpdate = z.infer<typeof eventAwardUpdateSchema>;
+export type EventAwardUpdate = Infer<typeof eventAwardUpdateSchema>;
 
 export const addRecipientsBodySchema = z
   .object({
@@ -155,7 +155,7 @@ export function awardTemplateRowToUpdateCandidate(row: {
 
 export function mergeAwardTemplatePatch(
   current: AwardTemplateUpdate,
-  patch: z.infer<typeof awardTemplatePatchBodySchema>,
+  patch: Infer<typeof awardTemplatePatchBodySchema>,
 ): AwardTemplateUpdate {
   return mergePatch(current, patch);
 }
@@ -176,7 +176,7 @@ export function eventAwardRowToUpdateCandidate(row: {
 
 export function mergeEventAwardPatch(
   current: EventAwardUpdate,
-  patch: z.infer<typeof eventAwardPatchBodySchema>,
+  patch: Infer<typeof eventAwardPatchBodySchema>,
 ): EventAwardUpdate {
   return mergePatch(current, patch);
 }

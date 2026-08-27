@@ -1,4 +1,4 @@
-import { z } from './schema';
+import { type Infer, z } from './schema';
 import {
   coercedPositiveId,
   mergePatch,
@@ -32,7 +32,7 @@ export const seedingScoreUpdateSchema = z
   })
   .strict();
 
-export type SeedingScoreUpdate = z.infer<typeof seedingScoreUpdateSchema>;
+export type SeedingScoreUpdate = Infer<typeof seedingScoreUpdateSchema>;
 
 export const seedingScoreIdParamsSchema = z
   .object({
@@ -66,7 +66,7 @@ export function seedingScoreRowToUpdateCandidate(row: {
 
 export function mergeSeedingScorePatch(
   current: SeedingScoreUpdate,
-  patch: z.infer<typeof seedingScorePatchBodySchema>,
+  patch: Infer<typeof seedingScorePatchBodySchema>,
 ): SeedingScoreUpdate {
   return mergePatch(current, patch);
 }
