@@ -8,9 +8,13 @@ are checked at the HTTP boundary, route parameters are converted to typed
 numbers, invalid combinations receive structured errors, and route handlers no
 longer need to cast those payloads from `req.body`.
 
-The pilot should not yet be copied mechanically across every route. The items
-below should be completed first so that a full rollout produces consistent API
-behavior instead of a collection of locally correct but incompatible schemas.
+The pilot should not be copied mechanically across every route. The items below
+should be completed first so that conversions produce consistent API behavior
+instead of a collection of locally correct but incompatible schemas.
+
+The target is **Zod at meaningful runtime boundaries**, not Zod everywhere. See
+"Scope decisions" for what is deliberately not being converted, and section 9
+for why Zod stays out of the browser bundle.
 
 ## Current pilot: what it proves
 
@@ -132,12 +136,19 @@ example positive database IDs, bounded pagination, trimmed non-empty strings,
 and ISO date inputs. Domain files should compose those primitives and own their
 request schemas.
 
-Primitives that both the server and the client need (`positiveId`,
-`trimmedNonEmptyString`) live in `src/shared/validationPrimitives.ts` and are
-re-exported from `src/server/validation/primitives.ts`. The scoresheet
-_document_ model lives in `src/shared/scoresheetSchema.ts`. The HTTP _envelope_
-for template create/update (`name`, `description`, `accessCode`, `eventId`,
-`schema`) remains a future `src/server/validation/templates.ts` schema.
+Primitives shared between the request schemas and the scoresheet document model
+(`positiveId`, `trimmedNonEmptyString`) live in
+`src/shared/validationPrimitives.ts` and are re-exported from
+`src/server/validation/primitives.ts`. Despite living under `src/shared`, that
+module is Zod-based and therefore server-side; the client must not import its
+values.
+
+The scoresheet _document_ model is split: Zod schemas and inferred types in
+`src/shared/scoresheetSchema.ts`, Zod-free constants and helpers in
+`src/shared/scoresheetDocument.ts` (see section 9). The HTTP _envelope_ for
+template create/update (`name`, `description`, `accessCode`, `eventId`,
+`schema`) lives in `src/server/validation/templates.ts` and is applied through
+`validatedHandler`.
 
 Avoid a single global schema collection and avoid abstractions that merely save
 one line. A developer should be able to find a route's schema from the route's
@@ -332,21 +343,50 @@ entries so routes do not repeatedly inspect `{ value, type, label }` using
 
 ### 9. Decide how schemas are shared with the client and documentation
 
-The current dependency is server-side, so it does not increase the browser
-bundle. Keep server schemas server-only unless client runtime validation has a
-specific benefit.
+**Zod is a server-side dependency and must not reach the browser bundle.**
 
-**Exception — scoresheet documents.** The canonical scoresheet schema lives in
-`src/shared/scoresheetSchema.ts` and is imported by the client, the server, and
-the audit command. The admin editor needs issue paths before a round trip, and
-the portable exporter must agree on one field model. That cost is accepted:
-Zod now enters the browser bundle through this shared module. HTTP envelopes
-and other request schemas stay server-only.
+An earlier revision of this section accepted Zod in the client, reasoning that
+the admin editor needed issue paths before a round trip and that the portable
+exporter had to agree on one field model. Neither materialized. The editor in
+`src/client/components/admin/TemplateEditorModal.tsx` does a bare `JSON.parse`,
+posts, and discards the server's structured issues behind a generic `alert`.
+The exporter in `tools/portable-scoresheet/export-html.mjs` never imported the
+shared module at all. The client called no parser, yet paid an 88.5 kB raw /
+24.0 kB gzipped chunk for the Zod runtime, because six Zod-free helpers happened
+to live alongside the schema builders.
 
-For compile-time sharing, prefer small transport types or generated API types
-over importing server modules into React code. Importing a schema into the
-client should be intentional because it adds runtime code to the bundle and can
-couple deployment compatibility more tightly.
+The scoresheet document model is therefore split in two:
+
+- `src/shared/scoresheetDocument.ts` — no Zod. Constants, primitive types,
+  value guards (`isPlainObject`, `isScoresheetValue`, `discriminateShape`), and
+  field helpers (`getFieldDefaultValue`, `getBlankFieldValue`,
+  `isRepeatableGroupField`). The client imports values from here.
+- `src/shared/scoresheetSchema.ts` — the canonical Zod schemas, the inferred
+  types, and the parse/validate entry points. It re-exports the Zod-free
+  helpers for server and script callers, which already depend on Zod.
+
+Types stay inferred from the schemas; there is no second handwritten copy of
+the document model. The client reaches them with `import type`, which is erased
+at compile time, so the canonical schema remains the single source of truth
+without any runtime cost.
+
+Two guards keep this from silently regressing, because a type-only import
+becoming a value import produces no visible error:
+
+- A `src/client/**` block in `eslint.config.mjs` sets
+  `@typescript-eslint/no-restricted-imports` with `allowTypeImports: true`. Type
+  imports from the schema modules are allowed; value imports, and any import of
+  `zod`, are rejected.
+- `scripts/check-client-bundle.mjs` runs as part of `build:client` and fails if
+  any emitted chunk contains Zod runtime markers. This catches re-entry through
+  a transitive dependency or an `eslint-disable`, which lint alone cannot.
+
+Client-side runtime parsing is justified only for a complex persisted document
+or a genuinely critical response, not for CRUD responses from this same
+deployment. `src/shared/apiError.ts` is the pattern to follow for transport
+concerns: a small handwritten module with no validation library in it. If the
+admin editor later wants real issue paths before a round trip, load the schema
+with a dynamic `await import()` so the cost is confined to that one route.
 
 After the server conventions stabilize, consider generating OpenAPI from the
 canonical schemas or adding schema descriptions used by documentation. Treat
@@ -391,20 +431,29 @@ Converted mutation params/bodies (GET list filters remain until Phase 3):
 
 ## Remaining later work
 
-### Phase 3 — query endpoints
+### Phase 3 — query endpoints, narrowed
 
-Replace unbounded `parseInt` / `as string` query handling with bounded schemas.
-Preserve documented defaults. Off-season: prefer **rejecting** invalid
-filters/enums rather than silently ignoring them; note any remaining
-ignore/default exceptions next to the schema.
+Phase 3 is **not** a completeness goal. Converting every query endpoint for
+uniformity buys compile-time tidiness on values that are already read through a
+clamp or a narrow `if`, and it adds a schema to maintain per endpoint. Convert a
+query endpoint only where a bound or an enum prevents a real bug.
 
-Inventory to convert later:
+Where a schema is added, preserve documented defaults, and prefer **rejecting**
+invalid filters and enums over silently ignoring them. Note any remaining
+ignore/default exception next to the schema.
 
-- `GET /scores/by-event/:eventId` — page/limit (already clamped 1–100),
-  status/score_type enums
-- `GET /audit/event/:eventId` — unbounded `limit`/`offset`
+Worth converting — unbounded numbers reaching SQL, or enums that silently widen
+a result set:
+
+- `GET /audit/event/:eventId` — unbounded `limit` / `offset`
 - Chat message list — replace `parseMessagePagination` (max 100)
-- Events/teams/queue list filters (`status`, `queue_type`)
+- `GET /scores/by-event/:eventId` — `status` / `score_type` enums; page and
+  limit are already clamped 1–100, so the enums are the reason to do this one
+
+Deliberately not converting. These read one or two values, already behave
+correctly on garbage input, and gain nothing but a second place to look:
+
+- Events / teams / queue list filters (`status`, `queue_type`)
 - Awards preview query params (`*_top_n`, award types)
 - Bracket list `bracket_size` / `eligible`
 
@@ -424,6 +473,40 @@ Inventory to convert later:
 - Monitor failures by `code` + route; log metadata only (never scoresheets,
   access codes, session material, or DQ notes).
 - OpenAPI generation remains out of scope.
+
+## Scope decisions
+
+The endpoint of this rollout is **Zod at meaningful runtime boundaries**, not
+Zod everywhere. Value is concentrated in a few places and thins out quickly:
+
+| Area                                             | Value  | Status           |
+| ------------------------------------------------ | ------ | ---------------- |
+| Scoresheet/template documents and stored JSON    | High   | Done, keep       |
+| Judge score submissions, queue/bracket mutations | High   | Done, keep       |
+| Ordinary admin CRUD request bodies               | Modest | Done, keep as-is |
+| Client-side validation of same-server responses  | Low    | Not doing        |
+
+Zod earns its place where the data is nested, dynamic, persisted, or migrated
+from a legacy shape, and where a discriminated union can make an impossible
+state unrepresentable — an incomplete disqualification, a mismatched queue type.
+It does not verify that a team belongs to a match, that an operation is legal at
+the current tournament stage, or that a calculated score is correct. Database
+constraints and service-level rules remain more important for those.
+
+Explicitly out of scope:
+
+- **No client-side validation of responses from this same server.** Client and
+  server ship together, so re-parsing a teams, queue, or bracket response offers
+  little beyond the compile-time transport type. See section 9.
+- **No ad-hoc schemas defined inside React components.** Schemas stay
+  centralized under `src/server/validation/` and `src/shared/`.
+- **No Zod in the browser bundle.** Enforced by lint and by
+  `scripts/check-client-bundle.mjs`.
+- **No query-endpoint conversion for uniformity.** See the narrowed Phase 3.
+- **No removal of the existing server middleware.** With 15 route modules
+  wired through `validatedHandler`, unwinding it would cost more than it
+  returns and would leave a less coherent system. The request boundary stays.
+- **No OpenAPI generation.**
 
 ## Definition of done for each converted route
 
@@ -454,12 +537,18 @@ Phase 1–2 items completed by this rollout:
 - [x] Database-aware validation remains in services with typed inputs.
 - [x] At least one additional low-risk domain has been migrated successfully.
 - [x] Full formatting, lint, test, and build verification passes.
+- [x] The client bundle contains no Zod runtime, enforced by lint and build.
+- [x] The rollout has a stated endpoint and a documented out-of-scope list.
 
-Still open for Phases 3–4:
+Still open, narrowed:
 
-- [ ] Query/pagination/filter endpoints use bounded schemas.
+- [ ] Audit list and chat pagination use bounded schemas.
+- [ ] `GET /scores/by-event/:eventId` rejects invalid `status` / `score_type`.
 - [ ] Dynamic scoresheet validation has an explicit strategy.
 - [ ] Bulk import and documentation-score bulk PUT report item-level issues.
+
+Closed as not-planned: query/pagination/filter conversion across the remaining
+list endpoints, and client-side response validation.
 
 ## Expected payoff
 
@@ -473,3 +562,8 @@ checking but would preserve inconsistent errors, ambiguous updates, duplicated
 business rules, and schemas that do not fully narrow their types. Completing
 Phase 1 first is what turns the pilot from a local safety improvement into a
 maintainable API convention.
+
+The counterpart is knowing when to stop. Beyond the server request boundary the
+curve flattens, and past it — re-validating this server's own responses in the
+browser — it goes negative, trading bundle weight and a second definition for
+guarantees the transport type already gave. "Zod everywhere" was never the goal.
