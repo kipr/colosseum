@@ -1,4 +1,3 @@
-import React from 'react';
 import { useJudgeChat } from '../../contexts/JudgeChatContext';
 import './JudgeChat.css';
 

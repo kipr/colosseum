@@ -1,10 +1,12 @@
-import React, {
+import {
   useState,
   useMemo,
   useEffect,
   useLayoutEffect,
   useRef,
   useCallback,
+  type CSSProperties,
+  type ReactNode,
 } from 'react';
 import {
   BracketGame,
@@ -44,12 +46,17 @@ function getStatusLabel(status: GameStatus): string {
 }
 
 function getTeamDisplayName(
-  teamNumber?: number,
+  _teamNumber?: number,
   teamName?: string,
   teamDisplay?: string | null,
 ): string {
   return teamName || teamDisplay || '';
 }
+
+type AnchorRefs = {
+  registerTeam1: (el: HTMLElement | null) => void;
+  registerTeam2: (el: HTMLElement | null) => void;
+};
 
 interface BracketTreeDesktopProps {
   rounds: RoundData[];
@@ -57,7 +64,8 @@ interface BracketTreeDesktopProps {
     game: BracketGame,
     isLastRound: boolean,
     matchIndex: number,
-  ) => React.ReactNode;
+    anchorRefs?: AnchorRefs,
+  ) => ReactNode;
 }
 
 function BracketTreeDesktop({
@@ -152,7 +160,7 @@ function BracketTreeDesktop({
             {
               '--total-rounds': rounds.length,
               '--first-round-matches': rounds[0]?.games.length || 1,
-            } as React.CSSProperties
+            } as CSSProperties
           }
         >
           {rounds.map((round, roundIndex) => {
@@ -271,11 +279,6 @@ export default function BracketLikeView({
   useEffect(() => {
     setSelectedRoundIndex(0);
   }, [selectedSide]);
-
-  type AnchorRefs = {
-    registerTeam1: (el: HTMLElement | null) => void;
-    registerTeam2: (el: HTMLElement | null) => void;
-  };
 
   // Render a single match card
   const renderMatchCard = (

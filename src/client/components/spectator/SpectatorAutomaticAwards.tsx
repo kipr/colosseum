@@ -1,4 +1,3 @@
-import React from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import {

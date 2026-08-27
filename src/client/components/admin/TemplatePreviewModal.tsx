@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
 import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
 import '../Modal.css';

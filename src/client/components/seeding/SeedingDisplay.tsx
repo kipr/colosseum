@@ -1,4 +1,3 @@
-import React from 'react';
 import SeedingScoresTable, {
   buildTeamRowData,
   type Team,
