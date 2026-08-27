@@ -85,9 +85,9 @@ old clients, imports, migrations, or manual database changes.
 
 Read-side client validation should be deliberately shallow. For example, loading
 a template from `sessionStorage` only needs to establish that the parsed value is
-an object with a schema and a fields array before passing it to typed application
-code. Repeating the complete schema validator after every `response.json()` is
-not warranted.
+an object with a schema, a supported `kind`, and a fields array before passing it
+to typed application code. Repeating the complete schema validator after every
+`response.json()` is not warranted.
 
 ### Judges
 
@@ -129,6 +129,46 @@ Keep an explicit distinction between:
 Application code should use concrete types. `unknown` should be reserved for
 actual boundaries such as JSON parsing, request bodies, and generic database
 normalization. It should be narrowed rather than cast through `any`.
+
+Use one required schema discriminator instead of encoding the scoring archetype
+through the presence or absence of `mode` and `scoreKind`:
+
+```ts
+type ScoresheetSchema = ScoresheetSchemaBase &
+  (
+    | { kind: 'seeding' }
+    | {
+        kind: 'head-to-head';
+        bracketSource: DbBracketSource;
+      }
+    | { kind: 'double-seeding' }
+  );
+```
+
+`ScoresheetSchemaBase` requires `teamsDataSource: DbTeamsDataSource`, because
+all three archetypes ultimately select teams from the event's DB-backed team
+collection even though their selection UI differs.
+
+`kind` is the sole archetype discriminator. Remove schema-level `mode` and
+`scoreKind` from the supported model rather than retaining them as deprecated or
+optional properties. Consumers must narrow on `kind` before reading
+variant-specific sources; the shared type should not use optional `never`
+properties merely to make those properties readable before narrowing.
+
+Migrate templates directly while the application is between competition
+seasons. Add an idempotent, transactional data migration that parses every
+stored `scoresheet_templates.schema`, maps current unambiguous schemas to the
+three `kind` values, removes `mode` and `scoreKind`, and writes the canonical JSON
+back to the database. The migration must stop with a diagnostic identifying the
+template if JSON is malformed, both old discriminators are present, or an old
+discriminator has an unsupported value. Update schema builders, supported
+checked-in templates, fixtures, and exports in the same change.
+
+Do not add runtime normalization or a compatibility fallback for schemas missing
+`kind`. Once the migration has run, template reads, writes, imports, and
+validation should require the new discriminator. Checked-in examples that still
+depend on unsupported spreadsheet sources must be retired or converted to DB
+sources rather than made valid by the discriminator migration.
 
 ### 2. Keep template validation server-side and focused
 
@@ -247,23 +287,38 @@ Advance template testing remains necessary for those concerns.
 1. **Completed:** inventory the currently supported schema features and
    representative production templates (see
    [`SCORESHEET_SCHEMA_FEATURE_INVENTORY.md`](SCORESHEET_SCHEMA_FEATURE_INVENTORY.md)).
-2. Complete the shared compile-time types without changing runtime behavior.
-3. Type `scoresheetUtils.ts` and its pure scoring helpers.
-4. Type `ScoresheetForm.tsx`, `ScoreViewModal.tsx`, and
+2. Replace the transitional `mode`/`scoreKind` schema union with the required
+   `kind` discriminated union.
+3. Add and run the direct stored-template migration; update schema builders,
+   supported checked-in templates, fixtures, exports, and validators atomically.
+4. Complete the remaining shared compile-time types.
+5. Type `scoresheetUtils.ts` and its pure scoring helpers.
+6. Type `ScoresheetForm.tsx`, `ScoreViewModal.tsx`, and
    `TemplatePreviewModal.tsx`, followed by the smaller files.
-5. Remove all 13 file-wide lint suppressions.
-6. Expand server-side template and field-template write validation.
-7. Define the permitted formula grammar and implement the shared safe evaluator.
-8. Move or expose derived scoring helpers so they can run on the server.
-9. Implement the canonical server score-validation/calculation service.
-10. Route judge submission and admin score edits through that service.
-11. Establish the active-event/template-version policy.
-12. Clean up the remaining line-level `any` suppressions in database,
+7. Remove all 13 file-wide lint suppressions.
+8. Expand server-side template and field-template write validation.
+9. Define the permitted formula grammar and implement the shared safe evaluator.
+10. Move or expose derived scoring helpers so they can run on the server.
+11. Implement the canonical server score-validation/calculation service.
+12. Route judge submission and admin score edits through that service.
+13. Establish the active-event/template-version policy.
+14. Clean up the remaining line-level `any` suppressions in database,
     Passport/Express, session-store, route, and test boundaries separately.
 
-The type-only stages should remain behavior-preserving. Server-authoritative
-calculation should be introduced with comparison logging or tests against known
-scores before it begins rejecting mismatches at live events.
+Except for the deliberate template-discriminator data migration, the type-only
+stages should remain behavior-preserving. The migration and all updated readers
+and writers must ship atomically; there is intentionally no runtime compatibility
+period. Server-authoritative calculation should be introduced with comparison
+logging or tests against known scores before it begins rejecting mismatches at
+live events.
+
+The compile-time model includes `gameAreasImage`, which is used in production,
+and `maxRows`, whose client and server enforcement remains future work. It does
+not include legacy spreadsheet-related source keys. Canonical number entries use
+JSON numbers; finite historical numeric strings require a one-time migration
+before strict typed consumers are adopted. Repeatable-group derivations use a
+generic registry contract so the permanent shared model does not encode fields
+or outputs from a particular year's game.
 
 ## Verification
 
@@ -284,6 +339,12 @@ Integration tests should exercise submit, edit, and accept paths and prove that
 the stored and accepted score is the server-computed value. Existing official
 templates should be run through the expanded template validator and used as
 golden calculation fixtures.
+
+Migration tests should cover all three old archetypes, verify removal of `mode`
+and `scoreKind`, prove the migration is idempotent, and verify that malformed or
+ambiguous templates fail with their template ID. After migration, template
+validation and shallow client boundary checks must reject schemas without a
+supported `kind`.
 
 Before merging each stage, run:
 

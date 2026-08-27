@@ -440,8 +440,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         const ds = field.dataSource;
 
         // DB backend: load teams from event for dropdown
-        if (ds.type === 'db' && ds.eventId) {
-          const response = await fetch(`/teams/event/${ds.eventId}`, {
+        const dataSourceEventId = ds.eventId ?? schema.teamsDataSource?.eventId;
+        if (ds.type === 'db' && dataSourceEventId) {
+          const response = await fetch(`/teams/event/${dataSourceEventId}`, {
             credentials: 'include',
           });
           if (!response.ok) {

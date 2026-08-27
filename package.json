@@ -12,6 +12,7 @@
     "build:server": "tsc",
     "typecheck:client": "tsc -p tsconfig.client.json",
     "typecheck:server": "tsc -p tsconfig.json --noEmit",
+    "typecheck:shared": "tsc -p tsconfig.shared-types.json",
     "clean": "node -e \"const fs = require('fs'); if(fs.existsSync('dist')) fs.rmSync('dist', {recursive:true});\"",
     "start": "cross-env NODE_ENV=production node dist/server/server.js",
     "preview": "vite preview",

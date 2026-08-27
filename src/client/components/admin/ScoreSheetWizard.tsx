@@ -89,6 +89,12 @@ export default function ScoreSheetWizard({
       title: name || 'Seeding Score Sheet',
       eventId: selectedEvent?.id ?? null,
       scoreDestination: 'db',
+      teamsDataSource: {
+        type: 'db',
+        eventId: selectedEvent?.id,
+        teamNumberField: 'team_number',
+        teamNameField: 'team_name',
+      },
       fields: [],
     };
 
@@ -100,7 +106,6 @@ export default function ScoreSheetWizard({
       required: true,
       dataSource: {
         type: 'db',
-        eventId: selectedEvent?.id,
         labelField: 'team_number',
         valueField: 'team_number',
       },

@@ -42,18 +42,18 @@ It also adapts `side_a`/`side_b` IDs, formulas, and derived-output references to
 
 ## Schema-level features
 
-| Feature                       | Purpose and current behavior                                                                                                                                                                                  |                                                Frequency |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------: |
-| `fields`                      | Ordered list of fields. Order controls rendering and formula evaluation order.                                                                                                                                |                                                      9/9 |
-| `title`                       | Heading displayed on the judge form and admin views.                                                                                                                                                          |                                                      9/9 |
-| `layout: "two-column"`        | Renders fields with `column: "left"` and `"right"` side by side. Any other or absent value falls back to the limited single-column path.                                                                      |                                                      9/9 |
-| `eventId`                     | Scopes team, queue, bracket, chat, and submission operations to an event.                                                                                                                                     |                                                      9/9 |
-| `scoreDestination: "db"`      | Enables the event-backed submission paths. The current server rejects submissions that are not event scoped, so this is effectively required for usable online scoring.                                       |                                                      9/9 |
-| `mode: "head-to-head"`        | Selects bracket scoring: bracket-game selection, two teams, winner/result controls, and bracket submission metadata.                                                                                          |                                      3/9; 30 submissions |
-| `scoreKind: "double_seeding"` | Selects double-seeding queue behavior, separate side totals, solo-run handling, and no winner control.                                                                                                        |                                      3/9; 14 submissions |
-| `bracketSource`               | Configures DB bracket-game lookup. Current generated schemas use `{type:"db", scope:"event", eventId}`; the client also retains a bracket-specific `{type:"db", bracketId}` compatibility path.               |                                      3/9; 30 submissions |
-| `teamsDataSource`             | Configures DB team lookup and team-number/name property names for head-to-head display. It is also emitted on double-seeding schemas, although those team values come from the queue rather than this source. | Present in 6/9; actively consumed by 3 bracket templates |
-| `gameAreasImage`              | Data URL or URL shown in an optional full-screen game-area reference overlay; the template editor manages it separately from the JSON textarea. Portable export also supports it.                             |                0/9; implemented but unused in the sample |
+| Feature                       | Purpose and current behavior                                                                                                                                                                                                                                                                                                  |                                                               Frequency |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------: |
+| `fields`                      | Ordered list of fields. Order controls rendering and formula evaluation order.                                                                                                                                                                                                                                                |                                                                     9/9 |
+| `title`                       | Heading displayed on the judge form and admin views.                                                                                                                                                                                                                                                                          |                                                                     9/9 |
+| `layout: "two-column"`        | Renders fields with `column: "left"` and `"right"` side by side. Any other or absent value falls back to the limited single-column path.                                                                                                                                                                                      |                                                                     9/9 |
+| `eventId`                     | Scopes team, queue, bracket, chat, and submission operations to an event.                                                                                                                                                                                                                                                     |                                                                     9/9 |
+| `scoreDestination: "db"`      | Enables the event-backed submission paths. The current server rejects submissions that are not event scoped, so this is effectively required for usable online scoring.                                                                                                                                                       |                                                                     9/9 |
+| `mode: "head-to-head"`        | Selects bracket scoring: bracket-game selection, two teams, winner/result controls, and bracket submission metadata.                                                                                                                                                                                                          |                                                     3/9; 30 submissions |
+| `scoreKind: "double_seeding"` | Selects double-seeding queue behavior, separate side totals, solo-run handling, and no winner control.                                                                                                                                                                                                                        |                                                     3/9; 14 submissions |
+| `bracketSource`               | Configures DB bracket-game lookup. Current generated schemas use `{type:"db", scope:"event", eventId}`; the client also retains a bracket-specific `{type:"db", bracketId}` compatibility path.                                                                                                                               |                                                     3/9; 30 submissions |
+| `teamsDataSource`             | Canonical event-team collection and team-number/name property mapping. Head-to-head consumes it for display lookup; seeding and double-seeding selectors are populated through their DB-backed queues (with legacy seeding dropdowns also declaring the endpoint at field level). New schemas require it for every archetype. | Present in 6/9 legacy samples; actively consumed by 3 bracket templates |
+| `gameAreasImage`              | Data URL or URL shown in an optional full-screen game-area reference overlay; the template editor manages it separately from the JSON textarea. Portable export also supports it. It is confirmed in production use even though it is absent from this local sample.                                                          |                0/9 locally; confirmed production use outside the sample |
 
 ### Scoring archetype selection
 
@@ -170,16 +170,16 @@ plan.
 The following accepted or declared properties must not be mistaken for fully
 supported behavior:
 
-| Property/configuration                     | Current status                                                                                                       |
-| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `maxRows`                                  | Declared in the shared type but never read; automatic append does not enforce a maximum.                             |
-| `schemaVersion`                            | Present on one operational template but not read by application code; passive metadata only.                         |
-| `schema.description` / field `description` | Rendered by portable export, not by the main React judge form or admin score view.                                   |
-| `checkboxLabel`                            | Documented and present in fixtures but ignored by both current renderers; the normal field `label` is shown instead. |
-| Bracket `cascades` mapping                 | Emitted and stored, but bracket population is hard-coded to the standard team field IDs.                             |
-| Arbitrary `layout` strings                 | Only the exact `two-column` value has specialized behavior.                                                          |
-| Spreadsheet `dataSource` / `bracketSource` | Retained in older JSON examples, but the current online client loads only DB-backed sources.                         |
-| `winner-select.options`                    | Stored but ignored by the specialized winner renderer.                                                               |
+| Property/configuration                     | Current status                                                                                                                                      |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxRows`                                  | Supported by the shared type but not yet enforced; automatic append, submission validation, and server validation must enforce it in a later stage. |
+| `schemaVersion`                            | Present on one operational template but not read by application code; passive metadata only.                                                        |
+| `schema.description` / field `description` | Rendered by portable export, not by the main React judge form or admin score view.                                                                  |
+| `checkboxLabel`                            | Documented and present in fixtures but ignored by both current renderers; the normal field `label` is shown instead.                                |
+| Bracket `cascades` mapping                 | Emitted and stored, but bracket population is hard-coded to the standard team field IDs.                                                            |
+| Arbitrary `layout` strings                 | Only the exact `two-column` value has specialized behavior.                                                                                         |
+| Spreadsheet `dataSource` / `bracketSource` | Retained in older JSON examples, but the current online client loads only DB-backed sources.                                                        |
+| `winner-select.options`                    | Stored but ignored by the specialized winner renderer.                                                                                              |
 
 Portable scoresheet V1 is intentionally a smaller surface: it supports scalar
 interactive fields, calculated fields, headers, two-column layout, defaults,
@@ -191,3 +191,15 @@ the `defaultValue`/`startValue` rules. Browser controls provide most other field
 validation, while the submission route validates event/team/game relationships
 but trusts submitted field values and calculated totals. Frequency in this
 inventory therefore describes real client usage, not current server authority.
+
+The canonical compile-time score model uses JSON numbers for `number` fields;
+numeric strings are not supported. Before strict consumers adopt that model, a
+one-time data migration must convert finite historical numeric strings to JSON
+numbers and report any nonnumeric values. This type-model stage does not perform
+that migration or change current form and storage behavior.
+
+Repeatable-group derivations are modeled as an extensible registry protocol:
+the shared schema defines a derivation identifier, primitive parameters, output
+field mappings, numeric aggregates, and optional row metadata. Game-specific
+derivation configuration and result types belong with their registered helpers,
+not in the permanent shared scoresheet vocabulary.
