@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
@@ -168,7 +168,7 @@ export default function OverallScoresDisplay({
         renderCell: (row) => formatScore(row.raw_seed_score),
       },
       ...(showDoubleSeeding
-        ? [
+        ? ([
             { kind: 'separator' as const, id: 'sep-plus-2', symbol: '+' },
             {
               kind: 'data' as const,
@@ -178,9 +178,10 @@ export default function OverallScoresDisplay({
               headerClassName: 'overall-raw-double-seed-col doc-sortable',
               cellClassName: 'overall-raw-double-seed-cell',
               sortAriaLabel: 'Sort by raw double seed score',
-              renderCell: (row) => formatScore(row.raw_double_seed_score ?? 0),
+              renderCell: (row: OverallRow) =>
+                formatScore(row.raw_double_seed_score ?? 0),
             },
-          ]
+          ] satisfies UnifiedColumnDef<OverallRow>[])
         : []),
       { kind: 'separator', id: 'sep-plus-3', symbol: '+' },
       {

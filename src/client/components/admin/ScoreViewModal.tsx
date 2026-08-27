@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -255,7 +255,7 @@ export default function ScoreViewModal({
       // Build updated score data with labels and types preserved
       const updatedScoreData: Record<string, any> = {};
 
-      const fieldsById = new Map(
+      const fieldsById = new Map<string, any>(
         (template?.schema?.fields || []).map((field: any) => [field.id, field]),
       );
       const saveCalculatedValues = calculateFormulaValues(formData);
@@ -481,7 +481,9 @@ export default function ScoreViewModal({
     );
   };
 
-  const getRepeatableGroupRowsForRender = (field: any) => {
+  const getRepeatableGroupRowsForRender = (
+    field: any,
+  ): Array<Record<string, any>> => {
     const submittedRows = Array.isArray(score.score_data?.[field.id]?.value)
       ? score.score_data[field.id].value
       : [];

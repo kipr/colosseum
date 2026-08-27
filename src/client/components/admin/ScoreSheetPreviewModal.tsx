@@ -1,4 +1,3 @@
-import React from 'react';
 import TemplatePreviewModal from './TemplatePreviewModal';
 
 // Renamed export for ScoreSheet terminology

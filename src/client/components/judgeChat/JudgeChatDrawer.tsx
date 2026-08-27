@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useJudgeChat } from '../../contexts/JudgeChatContext';
 import JudgeChatMessageList from './JudgeChatMessageList';
 import JudgeChatInput from './JudgeChatInput';

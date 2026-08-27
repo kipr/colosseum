@@ -12,8 +12,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-build-lint-pretty:
-    runs-on: ubuntu-latest
+  CI:
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout
@@ -33,6 +33,11 @@ jobs:
 
       - name: Lint
         run: npm run lint
+
+      - name: Typecheck
+        run: |
+          npm run typecheck:client
+          npm run typecheck:server
 
       - name: Test
         run: npm run test:run
