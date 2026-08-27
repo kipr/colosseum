@@ -6,6 +6,8 @@ import {
   formatSchemaValidationError,
   getBlankFieldValue,
   getFieldDefaultValue,
+  isRepeatableGroupField,
+  isScoresheetValue,
   parseScoresheetFields,
   parseScoresheetSchema,
   SCORESHEET_SCHEMA_VERSION,
@@ -53,6 +55,37 @@ describe('discriminateShape', () => {
     expect(discriminateShape({ mode: 'head-to-head' })).toBe('unknown');
     expect(discriminateShape(null)).toBe('unknown');
     expect(discriminateShape('nope')).toBe('unknown');
+  });
+});
+
+describe('value and field type guards', () => {
+  it('accepts scalar scoresheet values', () => {
+    expect(isScoresheetValue('')).toBe(true);
+    expect(isScoresheetValue(0)).toBe(true);
+    expect(isScoresheetValue(false)).toBe(true);
+    expect(isScoresheetValue(null)).toBe(true);
+    expect(isScoresheetValue(undefined)).toBe(false);
+    expect(isScoresheetValue({ nested: true })).toBe(false);
+    expect(isScoresheetValue([])).toBe(false);
+  });
+
+  it('narrows repeatable group fields by type', () => {
+    expect(
+      isRepeatableGroupField({
+        id: 'stacks',
+        label: 'Stacks',
+        type: 'repeatableGroup',
+        fields: [],
+      }),
+    ).toBe(true);
+    expect(
+      isRepeatableGroupField({
+        id: 'score',
+        label: 'Score',
+        type: 'number',
+      }),
+    ).toBe(false);
+    expect(isRepeatableGroupField(null)).toBe(false);
   });
 });
 

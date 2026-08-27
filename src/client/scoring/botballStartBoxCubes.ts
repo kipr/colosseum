@@ -52,7 +52,7 @@ function getCubeValue(cubeType: unknown): number {
 }
 
 export function scoreBotballStartBoxCubes(
-  rows: BotballStartBoxCubeRow[],
+  rows: ReadonlyArray<Record<string, unknown>>,
 ): BotballStartBoxCubeResult {
   const result: BotballStartBoxCubeResult = {
     subtotal: 0,
