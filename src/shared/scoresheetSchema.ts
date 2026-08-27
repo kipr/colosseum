@@ -240,15 +240,12 @@ export const textFieldSchema = z.strictObject({
 export const numberFieldSchema = z.strictObject({
   ...fieldBase,
   type: z.literal('number'),
-  min: z.number().finite().optional(),
-  max: z.number().finite().optional(),
-  step: z.number().finite().optional(),
+  min: z.number().optional(),
+  max: z.number().optional(),
+  step: z.number().optional(),
   isMultiplier: z.boolean().optional(),
   defaultValue: z
     .number({
-      error: 'defaultValue must be a finite number for number fields.',
-    })
-    .finite({
       error: 'defaultValue must be a finite number for number fields.',
     })
     .optional(),
