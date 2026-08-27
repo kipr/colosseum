@@ -10,7 +10,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedTeam,
@@ -536,7 +535,7 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain('event_id');
     });
 
     it('returns 400 when queue_type is missing', async () => {
@@ -548,7 +547,7 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain('queue_type');
     });
 
     it('returns 400 when bracket_game_id missing for bracket type', async () => {
@@ -559,7 +558,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain(
+        'bracket_game_id',
+      );
     });
 
     it('returns 400 when seeding fields missing for seeding type', async () => {
@@ -570,7 +571,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain(
+        'seeding_team_id',
+      );
     });
 
     it('creates seeding queue item with auto position', async () => {
@@ -656,7 +659,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(409);
-      expect(getApiErrorMessage(res.json)).toContain('already in the queue');
+      expect((res.json as { error: string }).error).toContain(
+        'already in the queue',
+      );
     });
 
     it('returns 409 when seeding round already queued', async () => {
@@ -684,7 +689,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(409);
-      expect(getApiErrorMessage(res.json)).toContain('already in the queue');
+      expect((res.json as { error: string }).error).toContain(
+        'already in the queue',
+      );
     });
   });
 
@@ -715,7 +722,7 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain('event_id');
     });
 
     it('returns 404 when bracket not found', async () => {
@@ -726,7 +733,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(404);
-      expect(getApiErrorMessage(res.json)).toContain('Bracket not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Bracket not found',
+      );
     });
 
     it('returns 404 when event not found', async () => {
@@ -735,7 +744,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(404);
-      expect(getApiErrorMessage(res.json)).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('returns 400 when bracket belongs to different event', async () => {
@@ -749,7 +760,7 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain(
+      expect((res.json as { error: string }).error).toContain(
         'does not belong to this event',
       );
     });
@@ -861,7 +872,7 @@ describe('Queue Routes', () => {
       const res = await http.post(`${baseUrl}/queue/populate-from-seeding`, {});
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain('event_id');
     });
 
     it('returns 404 when event not found', async () => {
@@ -870,7 +881,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(404);
-      expect(getApiErrorMessage(res.json)).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('returns 400 when no teams found for event', async () => {
@@ -880,7 +893,7 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('No teams found');
+      expect((res.json as { error: string }).error).toContain('No teams found');
     });
 
     it('populates queue with unplayed seeding rounds', async () => {
@@ -1179,7 +1192,9 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain(
+        'No valid fields',
+      );
     });
 
     it('returns 404 when item not found', async () => {
@@ -1427,7 +1442,7 @@ describe('Queue Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain('Invalid status');
     });
   });
 

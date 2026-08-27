@@ -11,7 +11,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -128,7 +127,9 @@ describe('Brackets Entry & Game Generation', () => {
         `${baseUrl}/brackets/${bracket.id}/entries/generate`,
       );
       expect(res.status).toBe(409);
-      expect(getApiErrorMessage(res.json)).toContain('already has entries');
+      expect((res.json as { error: string }).error).toContain(
+        'already has entries',
+      );
     });
 
     it('replaces entries when force=true', async () => {
@@ -181,7 +182,9 @@ describe('Brackets Entry & Game Generation', () => {
         `${baseUrl}/brackets/${bracket.id}/entries/generate`,
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('No ranked teams');
+      expect((res.json as { error: string }).error).toContain(
+        'No ranked teams',
+      );
     });
   });
 
@@ -316,7 +319,9 @@ describe('Brackets Entry & Game Generation', () => {
         `${baseUrl}/brackets/${bracket.id}/games/generate`,
       );
       expect(res.status).toBe(409);
-      expect(getApiErrorMessage(res.json)).toContain('already has games');
+      expect((res.json as { error: string }).error).toContain(
+        'already has games',
+      );
     });
 
     it('replaces games when force=true', async () => {
@@ -399,7 +404,9 @@ describe('Brackets Entry & Game Generation', () => {
         team_ids: [1, 2],
       });
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain(
+        'event_id and name',
+      );
     });
 
     it('returns 400 when name missing with team_ids', async () => {
@@ -418,7 +425,9 @@ describe('Brackets Entry & Game Generation', () => {
         team_ids: [1, 2],
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Event does not exist',
+      );
     });
 
     it('returns 400 when team_ids has duplicates', async () => {
@@ -433,7 +442,7 @@ describe('Brackets Entry & Game Generation', () => {
         team_ids: [team.id, team.id],
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('unique');
+      expect((res.json as { error: string }).error).toContain('unique');
     });
 
     it('returns 400 when team_ids contains non-existent team', async () => {
@@ -448,7 +457,7 @@ describe('Brackets Entry & Game Generation', () => {
         team_ids: [team.id, 99999],
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('not found');
+      expect((res.json as { error: string }).error).toContain('not found');
     });
   });
 

@@ -11,7 +11,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedTeam,
@@ -68,7 +67,9 @@ describe('API Score Submit Routes', () => {
         });
 
         expect(res.status).toBe(400);
-        expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+        expect((res.json as { error: string }).error).toContain(
+          'Template ID and score data are required',
+        );
       });
 
       it('returns 400 when scoreData is missing', async () => {
@@ -77,47 +78,18 @@ describe('API Score Submit Routes', () => {
         });
 
         expect(res.status).toBe(400);
-        expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+        expect((res.json as { error: string }).error).toContain(
+          'Template ID and score data are required',
+        );
       });
 
       it('returns 400 when both templateId and scoreData are missing', async () => {
         const res = await http.post(`${baseUrl}/api/scores/submit`, {});
 
         expect(res.status).toBe(400);
-        expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
-      });
-
-      it('returns structured Zod issues for unknown keys and incomplete DQs', async () => {
-        const unknown = await http.post(`${baseUrl}/api/scores/submit`, {
-          templateId: 1,
-          scoreData: {},
-          resultType: 'standard',
-          unexpected: true,
-        });
-        expect(unknown.status).toBe(400);
-        expect(getApiError(unknown.json)?.issues).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({
-              code: 'unrecognized_keys',
-              location: 'body',
-            }),
-          ]),
+        expect((res.json as { error: string }).error).toContain(
+          'Template ID and score data are required',
         );
-
-        const incompleteDq = await http.post(`${baseUrl}/api/scores/submit`, {
-          templateId: 1,
-          scoreData: {},
-          eventId: 1,
-          scoreType: 'bracket',
-          bracket_game_id: 1,
-          resultType: 'disqualification',
-        });
-        expect(incompleteDq.status).toBe(400);
-        const paths = (getApiError(incompleteDq.json)?.issues ?? []).map(
-          (issue) => issue.path.join('.'),
-        );
-        expect(paths).toContain('disqualifiedTeamId');
-        expect(paths).toContain('resultNote');
       });
     });
 
@@ -126,11 +98,12 @@ describe('API Score Submit Routes', () => {
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: 999,
           scoreData: { points: 100 },
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain('Template not found');
+        expect((res.json as { error: string }).error).toContain(
+          'Template not found',
+        );
       });
 
       it('returns 400 when non-event-scoped submission', async () => {
@@ -142,12 +115,11 @@ describe('API Score Submit Routes', () => {
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
           scoreData: { points: 50 },
-          resultType: 'standard',
           // No eventId, no scoreType - should reject
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain(
+        expect((res.json as { error: string }).error).toContain(
           'Event-scoped submission is required',
         );
       });
@@ -183,7 +155,6 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(200);
@@ -237,7 +208,6 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(200);
@@ -269,11 +239,12 @@ describe('API Score Submit Routes', () => {
           },
           eventId: 99999,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain('Invalid event');
+        expect((res.json as { error: string }).error).toContain(
+          'Invalid event',
+        );
       });
 
       it('returns 400 when team not found for event (team_number)', async () => {
@@ -292,11 +263,12 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain('Team not found');
+        expect((res.json as { error: string }).error).toContain(
+          'Team not found',
+        );
       });
 
       it('returns 400 when team_id missing and team_number missing', async () => {
@@ -314,11 +286,12 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain('Team not found');
+        expect((res.json as { error: string }).error).toContain(
+          'Team not found',
+        );
       });
 
       it('returns 400 when team_id belongs to different event (cross-event isolation)', async () => {
@@ -343,11 +316,10 @@ describe('API Score Submit Routes', () => {
           },
           eventId: eventA.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain(
+        expect((res.json as { error: string }).error).toContain(
           'does not belong to this event',
         );
       });
@@ -384,7 +356,6 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
           game_queue_id: queueItem.id,
         });
 
@@ -429,7 +400,6 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(200);
@@ -484,7 +454,6 @@ describe('API Score Submit Routes', () => {
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
-          resultType: 'standard',
           bracket_game_id: game.id,
         });
 
@@ -556,7 +525,6 @@ describe('API Score Submit Routes', () => {
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
-          resultType: 'standard',
           bracket_game_id: game.id,
         });
 
@@ -588,12 +556,11 @@ describe('API Score Submit Routes', () => {
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
-          resultType: 'standard',
           // bracket_game_id missing
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain(
+        expect((res.json as { error: string }).error).toContain(
           'bracket_game_id is required',
         );
       });
@@ -637,12 +604,11 @@ describe('API Score Submit Routes', () => {
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
-          resultType: 'standard',
           bracket_game_id: 99999, // Non-existent game
         });
 
         expect(res.status).toBe(400);
-        expect(getApiErrorMessage(res.json)).toContain(
+        expect((res.json as { error: string }).error).toContain(
           'Bracket game not found',
         );
       });
@@ -675,7 +641,6 @@ describe('API Score Submit Routes', () => {
             },
             eventId: event.id,
             scoreType: 'seeding',
-            resultType: 'standard',
           });
 
           expect(res.status).toBe(200);
@@ -729,7 +694,6 @@ describe('API Score Submit Routes', () => {
             },
             eventId: event.id,
             scoreType: 'seeding',
-            resultType: 'standard',
           });
 
           expect(submitRes.status).toBe(200);
@@ -802,7 +766,6 @@ describe('API Score Submit Routes', () => {
             },
             eventId: event.id,
             scoreType: 'bracket',
-            resultType: 'standard',
             bracket_game_id: game.id,
           });
 
@@ -834,7 +797,6 @@ describe('API Score Submit Routes', () => {
             },
             eventId: event.id,
             scoreType: 'seeding',
-            resultType: 'standard',
           });
 
           expect(res.status).toBe(200);
@@ -961,7 +923,6 @@ describe('API Score Submit Routes', () => {
             isHeadToHead: true,
             eventId: event.id,
             scoreType: 'bracket',
-            resultType: 'standard',
             bracket_game_id: alphaSemi.id,
           });
           expect(alphaSubmit.status).toBe(200);
@@ -978,7 +939,6 @@ describe('API Score Submit Routes', () => {
             isHeadToHead: true,
             eventId: event.id,
             scoreType: 'bracket',
-            resultType: 'standard',
             bracket_game_id: betaFinal.id,
           });
           expect(betaSubmit.status).toBe(200);
@@ -1154,7 +1114,6 @@ describe('API Score Submit Routes', () => {
             },
             eventId: event.id,
             scoreType: 'bracket',
-            resultType: 'standard',
             bracket_game_id: game.id,
           });
 
@@ -1217,7 +1176,6 @@ describe('API Score Submit Routes', () => {
             },
             eventId: event.id,
             scoreType: 'seeding',
-            resultType: 'standard',
           });
 
           expect(res.status).toBe(200);
@@ -1248,7 +1206,6 @@ describe('API Score Submit Routes', () => {
             },
             eventId: event.id,
             scoreType: 'seeding',
-            resultType: 'standard',
           });
 
           expect(res.status).toBe(200);
@@ -1281,14 +1238,12 @@ describe('API Score Submit Routes', () => {
           scoreData: { points: 100 },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(401);
-        expect(getApiErrorMessage(res.json)).toContain(
+        expect((res.json as { error: string }).error).toContain(
           'Judge session required',
         );
-        expect(getApiError(res.json)?.issues).toBeUndefined();
       } finally {
         await srv.close();
       }
@@ -1319,11 +1274,12 @@ describe('API Score Submit Routes', () => {
           scoreData: { points: 100 },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(401);
-        expect(getApiErrorMessage(res.json)).toContain('session expired');
+        expect((res.json as { error: string }).error).toContain(
+          'session expired',
+        );
       } finally {
         await srv.close();
       }
@@ -1354,11 +1310,10 @@ describe('API Score Submit Routes', () => {
           scoreData: { points: 100 },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(403);
-        expect(getApiErrorMessage(res.json)).toContain(
+        expect((res.json as { error: string }).error).toContain(
           'does not match the requested template',
         );
       } finally {
@@ -1392,11 +1347,10 @@ describe('API Score Submit Routes', () => {
           scoreData: { points: 100 },
           eventId: eventA.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(403);
-        expect(getApiErrorMessage(res.json)).toContain(
+        expect((res.json as { error: string }).error).toContain(
           'does not match the requested event',
         );
       } finally {
@@ -1440,7 +1394,6 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(200);
@@ -1480,7 +1433,6 @@ describe('API Score Submit Routes', () => {
           },
           eventId: event.id,
           scoreType: 'seeding',
-          resultType: 'standard',
         });
 
         expect(res.status).toBe(200);

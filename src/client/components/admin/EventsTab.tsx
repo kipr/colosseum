@@ -20,7 +20,6 @@ import {
   formatEventDate,
   isEventActive,
 } from '../../utils/eventStatus';
-import { getApiErrorMessage } from '../../../shared/apiError';
 import '../Modal.css';
 
 interface EventFormData {
@@ -133,7 +132,7 @@ export default function EventsTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(getApiErrorMessage(errorData, 'Failed to save event'));
+        throw new Error(errorData.error || 'Failed to save event');
       }
 
       const savedEvent = await response.json();
@@ -177,9 +176,7 @@ export default function EventsTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(
-          getApiErrorMessage(errorData, 'Failed to update event status'),
-        );
+        throw new Error(errorData.error || 'Failed to update event status');
       }
 
       toast.success(`Event ${getEventStatusLabel(newStatus).toLowerCase()}!`);
@@ -206,9 +203,7 @@ export default function EventsTab() {
       });
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(
-          getApiErrorMessage(errorData, 'Failed to update release state'),
-        );
+        throw new Error(errorData.error || 'Failed to update release state');
       }
       toast.success(
         releasing
@@ -262,7 +257,7 @@ export default function EventsTab() {
         let errorMessage = 'Failed to delete event';
         try {
           const errorData = await response.json();
-          errorMessage = getApiErrorMessage(errorData, errorMessage);
+          errorMessage = errorData.error || errorMessage;
         } catch {
           // 204/empty and non-json responses are fine; keep default message.
         }

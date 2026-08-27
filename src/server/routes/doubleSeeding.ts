@@ -12,17 +12,6 @@ import { isEventArchived } from '../utils/eventVisibility';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { markQueueDirty } from '../services/queueVersion';
-import {
-  sendConflict,
-  sendInvalidState,
-  sendNotFound,
-} from '../validation/errors';
-import { validatedHandler } from '../validation/middleware';
-import {
-  deleteDoubleSeedingMatchesRequest,
-  deleteDoubleSeedingRoundRequest,
-  generateDoubleSeedingRequest,
-} from '../validation/doubleSeeding';
 
 const router = express.Router();
 
@@ -62,17 +51,27 @@ router.get('/matches/event/:eventId', async (req: Request, res: Response) => {
 router.post(
   '/matches/generate/:eventId',
   requireAdmin,
-  ...validatedHandler(generateDoubleSeedingRequest, async (req, res) => {
+  async (req: AuthRequest, res: Response) => {
     try {
-      const { eventId: eventIdNum } = req.validated.params;
-      const { rounds: roundsNum } = req.validated.body;
+      const { eventId } = req.params;
+      const { rounds } = req.body as {
+        rounds?: number;
+      };
+      const eventIdNum = parseInt(eventId, 10);
       const db = await getDatabase();
 
       const event = await db.get('SELECT id FROM events WHERE id = ?', [
         eventIdNum,
       ]);
       if (!event) {
-        return sendNotFound(res, 'Event not found');
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const roundsNum = Number(rounds ?? 5);
+      if (!Number.isInteger(roundsNum) || roundsNum < 0) {
+        return res
+          .status(400)
+          .json({ error: 'rounds must be a non-negative integer' });
       }
 
       const roundState = await db.get<{
@@ -94,18 +93,17 @@ router.post(
       const hasResults = await hasDoubleSeedingResults(db, eventIdNum);
 
       if (roundsNum > teamCount) {
-        return sendInvalidState(
-          res,
-          `Number of rounds (${roundsNum}) cannot exceed the number of teams (${teamCount})`,
-        );
+        return res.status(400).json({
+          error: `Number of rounds (${roundsNum}) cannot exceed the number of teams (${teamCount})`,
+        });
       }
 
       if (roundsNum === 0) {
         if (hasResults) {
-          return sendConflict(
-            res,
-            'Double-seeding submissions or scores already exist for this event. Double seeding cannot be disabled.',
-          );
+          return res.status(409).json({
+            error:
+              'Double-seeding submissions or scores already exist for this event. Double seeding cannot be disabled.',
+          });
         }
 
         const result = await db.transaction(async (tx) => {
@@ -143,14 +141,16 @@ router.post(
       }
 
       if (teamCount === 0) {
-        return sendInvalidState(res, 'No teams available for double seeding');
+        return res
+          .status(400)
+          .json({ error: 'No teams available for double seeding' });
       }
 
       if (matchCount > 0 && roundsNum < currentRounds) {
-        return sendConflict(
-          res,
-          'Double-seeding rounds can only be reduced by deleting the highest-numbered unsubmitted round.',
-        );
+        return res.status(409).json({
+          error:
+            'Double-seeding rounds can only be reduced by deleting the highest-numbered unsubmitted round.',
+        });
       }
 
       if (matchCount > 0 && roundsNum === currentRounds) {
@@ -176,7 +176,7 @@ router.post(
             ? await appendDoubleSeedingRounds(db, eventIdNum, roundsNum)
             : await generateDoubleSeedingMatches(db, eventIdNum, roundsNum);
       } catch (genError) {
-        return sendInvalidState(res, (genError as Error).message);
+        return res.status(400).json({ error: (genError as Error).message });
       }
 
       await createAuditEntry(db, {
@@ -217,30 +217,31 @@ router.post(
         .status(500)
         .json({ error: 'Failed to generate double-seeding matches' });
     }
-  }),
+  },
 );
 
 // DELETE /double-seeding/matches/event/:eventId - Delete all matches for event (admin only)
 router.delete(
   '/matches/event/:eventId',
   requireAdmin,
-  ...validatedHandler(deleteDoubleSeedingMatchesRequest, async (req, res) => {
+  async (req: AuthRequest, res: Response) => {
     try {
-      const { eventId: eventIdNum } = req.validated.params;
+      const { eventId } = req.params;
+      const eventIdNum = parseInt(eventId, 10);
       const db = await getDatabase();
 
       const event = await db.get('SELECT id FROM events WHERE id = ?', [
         eventIdNum,
       ]);
       if (!event) {
-        return sendNotFound(res, 'Event not found');
+        return res.status(404).json({ error: 'Event not found' });
       }
 
       if (await hasDoubleSeedingResults(db, eventIdNum)) {
-        return sendConflict(
-          res,
-          'Double-seeding submissions or scores already exist for this event. Matches cannot be deleted.',
-        );
+        return res.status(409).json({
+          error:
+            'Double-seeding submissions or scores already exist for this event. Matches cannot be deleted.',
+        });
       }
 
       // game_queue rows cascade via double_seeding_match_id FK.
@@ -277,24 +278,29 @@ router.delete(
         .status(500)
         .json({ error: 'Failed to delete double-seeding matches' });
     }
-  }),
+  },
 );
 
 // DELETE /double-seeding/matches/event/:eventId/round/:roundNumber - Delete the trailing unsubmitted round (admin only)
 router.delete(
   '/matches/event/:eventId/round/:roundNumber',
   requireAdmin,
-  ...validatedHandler(deleteDoubleSeedingRoundRequest, async (req, res) => {
+  async (req: AuthRequest, res: Response) => {
     try {
-      const { eventId: eventIdNum, roundNumber: roundNum } =
-        req.validated.params;
+      const { eventId, roundNumber } = req.params;
+      const eventIdNum = parseInt(eventId, 10);
+      const roundNum = parseInt(roundNumber, 10);
+
+      if (isNaN(eventIdNum) || isNaN(roundNum) || roundNum < 1) {
+        return res.status(400).json({ error: 'Invalid event ID or round' });
+      }
 
       const db = await getDatabase();
       const event = await db.get('SELECT id FROM events WHERE id = ?', [
         eventIdNum,
       ]);
       if (!event) {
-        return sendNotFound(res, 'Event not found');
+        return res.status(404).json({ error: 'Event not found' });
       }
 
       let result;
@@ -302,10 +308,8 @@ router.delete(
         result = await deleteLastDoubleSeedingRound(db, eventIdNum, roundNum);
       } catch (deleteError) {
         const message = (deleteError as Error).message;
-        if (message.includes('No double-seeding rounds')) {
-          return sendNotFound(res, message);
-        }
-        return sendConflict(res, message);
+        const status = message.includes('No double-seeding rounds') ? 404 : 409;
+        return res.status(status).json({ error: message });
       }
 
       await createAuditEntry(db, {
@@ -329,7 +333,7 @@ router.delete(
       console.error('Error deleting double-seeding round:', error);
       res.status(500).json({ error: 'Failed to delete double-seeding round' });
     }
-  }),
+  },
 );
 
 // GET /double-seeding/scores/event/:eventId - Accepted scores for event (public; blocked for archived events)
