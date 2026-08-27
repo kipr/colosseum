@@ -138,12 +138,17 @@ type ScoresheetSchema = ScoresheetSchemaBase &
   (
     | { kind: 'seeding' }
     | {
-        kind: 'head-to-head';
+        kind: 'bracket';
         bracketSource: DbBracketSource;
       }
-    | { kind: 'double-seeding' }
+    | { kind: 'double_seeding' }
   );
 ```
+
+The `kind` values are the existing `ScoreType` values: `seeding`, `bracket`,
+and `double_seeding`. Reusing that vocabulary avoids a translation layer and
+keeps schema branching, event-template linkage, submission DTOs, and persisted
+score categories aligned.
 
 `ScoresheetSchemaBase` requires `teamsDataSource: DbTeamsDataSource`, because
 all three archetypes ultimately select teams from the event's DB-backed team
