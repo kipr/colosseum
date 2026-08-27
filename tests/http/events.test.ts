@@ -11,7 +11,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -404,7 +403,9 @@ describe('Events Routes', () => {
       const res = await http.get(`${server.baseUrl}/events/999`);
 
       expect(res.status).toBe(404);
-      expect(getApiErrorMessage(res.json)).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('returns the event when found', async () => {
@@ -456,11 +457,8 @@ describe('Events Routes', () => {
       const res = await http.post(`${server.baseUrl}/events`, {});
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
-      expect(getApiError(res.json)?.issues).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ path: ['name'] }),
-        ]),
+      expect((res.json as { error: string }).error).toContain(
+        'name is required',
       );
     });
 
@@ -536,7 +534,9 @@ describe('Events Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain(
+        'non-negative integer',
+      );
     });
   });
 
@@ -564,7 +564,9 @@ describe('Events Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain(
+        'No valid fields',
+      );
     });
 
     it('returns 404 when event not found', async () => {
@@ -573,7 +575,9 @@ describe('Events Routes', () => {
       });
 
       expect(res.status).toBe(404);
-      expect(getApiErrorMessage(res.json)).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('updates name successfully', async () => {
@@ -619,7 +623,9 @@ describe('Events Routes', () => {
           min_rest_minutes: value,
         });
         expect(res.status).toBe(400);
-        expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+        expect((res.json as { error: string }).error).toContain(
+          'non-negative integer',
+        );
       }
     });
 
@@ -649,19 +655,21 @@ describe('Events Routes', () => {
       });
 
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain('Invalid status');
     });
 
-    it('rejects unknown fields', async () => {
+    it('ignores non-allowed fields', async () => {
       const event = await seedEvent(testDb.db, { name: 'Original' });
       const res = await http.patch(`${server.baseUrl}/events/${event.id}`, {
         name: 'Updated',
-        id: 999,
-        created_at: '2020-01-01',
+        id: 999, // Should be ignored
+        created_at: '2020-01-01', // Should be ignored
       });
 
-      expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect(res.status).toBe(200);
+      const result = res.json as { id: number; name: string };
+      expect(result.name).toBe('Updated');
+      expect(result.id).toBe(event.id); // ID should not change
     });
   });
 

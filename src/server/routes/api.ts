@@ -14,9 +14,6 @@ import {
   updateSeedingQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
-import { sendInvalidState } from '../validation/errors';
-import { validatedHandler } from '../validation/middleware';
-import { scoreSubmitRequest } from '../validation/scores';
 
 const router = express.Router();
 
@@ -25,13 +22,13 @@ router.post(
   '/scores/submit',
   scoreSubmitLimiter,
   requireJudgeSession,
-  ...validatedHandler(scoreSubmitRequest, async (req, res) => {
+  async (req: express.Request, res: express.Response) => {
     try {
       const {
         templateId,
         participantName,
         matchId,
-        scoreData: parsedScoreData,
+        scoreData,
         isHeadToHead,
         bracketSource,
         eventId,
@@ -39,13 +36,16 @@ router.post(
         game_queue_id,
         bracket_game_id,
         double_seeding_match_id,
-        resultType,
+        resultType = 'standard',
         disqualifiedTeamId,
         resultNote,
-      } = req.validated.body;
-      // Scoresheet fields are template-defined and intentionally dynamic.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const scoreData = parsedScoreData as Record<string, any>;
+      } = req.body;
+
+      if (!templateId || !scoreData) {
+        return res
+          .status(400)
+          .json({ error: 'Template ID and score data are required' });
+      }
 
       const db = await getDatabase();
 
@@ -56,7 +56,7 @@ router.post(
       );
 
       if (!template) {
-        return sendInvalidState(res, 'Template not found');
+        return res.status(400).json({ error: 'Template not found' });
       }
 
       // DB-backed (event-scoped) submission: resolve team_id if needed (seeding)
@@ -91,10 +91,10 @@ router.post(
           [bracket_game_id, eventId],
         );
         if (!bracketGame) {
-          return sendInvalidState(
-            res,
-            'Bracket game not found or does not belong to this event. Invalid event.',
-          );
+          return res.status(400).json({
+            error:
+              'Bracket game not found or does not belong to this event. Invalid event.',
+          });
         }
 
         const participants = [
@@ -102,20 +102,18 @@ router.post(
           bracketGame.team2_id,
         ].filter((teamId): teamId is number => teamId != null);
         if (resultType === 'disqualification') {
-          if (!participants.includes(disqualifiedTeamId)) {
-            return sendInvalidState(
-              res,
-              'Disqualified team must be a participant in the game',
-            );
+          if (!participants.includes(disqualifiedTeamId!)) {
+            return res.status(400).json({
+              error: 'Disqualified team must be a participant in the game',
+            });
           }
           const winnerTeamId = participants.find(
             (teamId) => teamId !== disqualifiedTeamId,
           );
           if (winnerTeamId == null) {
-            return sendInvalidState(
-              res,
-              'A disqualification requires two participating teams',
-            );
+            return res.status(400).json({
+              error: 'A disqualification requires two participating teams',
+            });
           }
           scoreData.winner_team_id = {
             label: 'Winner Team ID',
@@ -131,20 +129,18 @@ router.post(
               ? Number(winnerEntry.value)
               : null;
           if (winnerTeamId == null || !participants.includes(winnerTeamId)) {
-            return sendInvalidState(
-              res,
-              'Winner must be a participant in the game',
-            );
+            return res
+              .status(400)
+              .json({ error: 'Winner must be a participant in the game' });
           }
         }
         isDbBackedBracket = true;
       }
 
       if (eventId && scoreType === 'bracket' && bracket_game_id == null) {
-        return sendInvalidState(
-          res,
-          'bracket_game_id is required for DB-backed bracket submission',
-        );
+        return res.status(400).json({
+          error: 'bracket_game_id is required for DB-backed bracket submission',
+        });
       }
 
       // DB-backed double-seeding submission: validate the match belongs to the event
@@ -159,10 +155,10 @@ router.post(
           [double_seeding_match_id, eventId],
         );
         if (!match) {
-          return sendInvalidState(
-            res,
-            'Double-seeding match not found or does not belong to this event. Invalid event.',
-          );
+          return res.status(400).json({
+            error:
+              'Double-seeding match not found or does not belong to this event. Invalid event.',
+          });
         }
         isDbBackedDoubleSeeding = true;
       }
@@ -172,10 +168,10 @@ router.post(
         scoreType === 'double_seeding' &&
         double_seeding_match_id == null
       ) {
-        return sendInvalidState(
-          res,
-          'double_seeding_match_id is required for DB-backed double-seeding submission',
-        );
+        return res.status(400).json({
+          error:
+            'double_seeding_match_id is required for DB-backed double-seeding submission',
+        });
       }
 
       const isDbBacked =
@@ -187,13 +183,12 @@ router.post(
           eventId,
         ]);
         if (!event) {
-          return sendInvalidState(res, 'Invalid event');
+          return res.status(400).json({ error: 'Invalid event' });
         }
         if (!resolvedTeamId) {
-          return sendInvalidState(
-            res,
-            'Team not found for event. Check team number.',
-          );
+          return res
+            .status(400)
+            .json({ error: 'Team not found for event. Check team number.' });
         }
         // Enforce team belongs to event (prevents cross-event submission via team_id)
         const team = await db.get(
@@ -201,18 +196,17 @@ router.post(
           [resolvedTeamId, eventId],
         );
         if (!team) {
-          return sendInvalidState(
-            res,
-            'Team not found or does not belong to this event.',
-          );
+          return res.status(400).json({
+            error: 'Team not found or does not belong to this event.',
+          });
         }
       }
 
       if (!isDbBacked) {
-        return sendInvalidState(
-          res,
-          'Event-scoped submission is required. Provide eventId and scoreType (seeding, bracket, or double_seeding) with bracket_game_id for bracket scores and double_seeding_match_id for double-seeding scores.',
-        );
+        return res.status(400).json({
+          error:
+            'Event-scoped submission is required. Provide eventId and scoreType (seeding, bracket, or double_seeding) with bracket_game_id for bracket scores and double_seeding_match_id for double-seeding scores.',
+        });
       }
 
       // Add metadata to score data for head-to-head
@@ -347,7 +341,7 @@ router.post(
       console.error('Error submitting score:', error);
       res.status(500).json({ error: 'Failed to submit score' });
     }
-  }),
+  },
 );
 
 // Get user's score history

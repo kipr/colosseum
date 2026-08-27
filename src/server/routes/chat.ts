@@ -7,13 +7,6 @@ import {
 } from '../middleware/auth';
 import { chatWriteLimiter, chatReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
-import { sendInvalidState } from '../validation/errors';
-import { validatedHandler } from '../validation/middleware';
-import {
-  deleteChatConversationRequest,
-  JUDGE_CHAT_SENDER_NAME_MAX,
-  postChatMessageRequest,
-} from '../validation/chat';
 
 const router = express.Router();
 
@@ -56,6 +49,7 @@ const JUDGE_CHAT_SELECT = `
 `;
 
 const JUDGE_CHAT_MESSAGE_LIMIT_MAX = 100;
+const JUDGE_CHAT_SENDER_NAME_MAX = 30;
 
 function parsePositiveInt(
   value: unknown,
@@ -246,50 +240,62 @@ router.post(
   '/events/:eventId/messages',
   chatWriteLimiter,
   requireEventChatAccess,
-  ...validatedHandler(postChatMessageRequest, async (req, res) => {
+  async (req: Request, res: Response) => {
     try {
-      const eventId = req.validated.params.eventId;
-      const {
-        message,
-        conversationKey: bodyKey,
-        senderName,
-      } = req.validated.body;
+      const eventId = Number(req.params.eventId);
+      if (!Number.isInteger(eventId)) {
+        return res.status(400).json({ error: 'Invalid event id' });
+      }
+
+      const { message } = req.body ?? {};
+      if (
+        !message ||
+        typeof message !== 'string' ||
+        message.trim().length === 0
+      ) {
+        return res.status(400).json({ error: 'Message is required' });
+      }
+      if (message.length > 1000) {
+        return res
+          .status(400)
+          .json({ error: 'Message too long (max 1000 characters)' });
+      }
 
       const db = await getDatabase();
 
       let conversationKey: string;
       let senderRole: 'judge' | 'admin';
-      let senderNameResolved: string;
+      let senderName: string;
       let userId: number | null;
       let templateId: number | null;
 
+      const bodyKey = req.body?.conversationKey;
       const hasBodyKey = typeof bodyKey === 'string' && bodyKey.length > 0;
 
       if (isJudgeSessionValidForEvent(req, eventId) && !hasBodyKey) {
         const judgeAuth = req.session!.judgeAuth!;
         conversationKey = judgeAuth.conversationKey;
         senderRole = 'judge';
-        senderNameResolved = normalizeJudgeSenderName(senderName);
+        senderName = normalizeJudgeSenderName(req.body?.senderName);
         userId = null;
         templateId = judgeAuth.templateId ?? null;
       } else if (isAdminRequest(req)) {
         const authReq = req as AuthRequest;
         if (!hasBodyKey) {
-          return sendInvalidState(
-            res,
-            'conversationKey is required for admin replies',
-          );
+          return res
+            .status(400)
+            .json({ error: 'conversationKey is required for admin replies' });
         }
         conversationKey = bodyKey;
         senderRole = 'admin';
-        senderNameResolved = authReq.user.name || authReq.user.email || 'Admin';
+        senderName = authReq.user.name || authReq.user.email || 'Admin';
         userId = authReq.user.id;
         templateId = null;
       } else if (isJudgeSessionValidForEvent(req, eventId)) {
         const judgeAuth = req.session!.judgeAuth!;
         conversationKey = judgeAuth.conversationKey;
         senderRole = 'judge';
-        senderNameResolved = normalizeJudgeSenderName(senderName);
+        senderName = normalizeJudgeSenderName(req.body?.senderName);
         userId = null;
         templateId = judgeAuth.templateId ?? null;
       } else {
@@ -306,8 +312,8 @@ router.post(
           eventId,
           conversationKey,
           senderRole,
-          senderNameResolved,
-          message,
+          senderName,
+          message.trim(),
           templateId,
           userId,
         ],
@@ -323,20 +329,24 @@ router.post(
       console.error('Error posting judge chat message:', error);
       res.status(500).json({ error: 'Failed to post message' });
     }
-  }),
+  },
 );
 
 // Delete a single conversation thread (admin only).
 router.delete(
   '/events/:eventId/conversations/:conversationKey',
   requireAuth,
-  ...validatedHandler(deleteChatConversationRequest, async (req, res) => {
+  async (req: Request, res: Response) => {
     try {
       if (!isAdminRequest(req)) {
         return res.status(403).json({ error: 'Admin access required' });
       }
 
-      const { eventId, conversationKey } = req.validated.params;
+      const eventId = Number(req.params.eventId);
+      if (!Number.isInteger(eventId)) {
+        return res.status(400).json({ error: 'Invalid event id' });
+      }
+      const { conversationKey } = req.params;
 
       const db = await getDatabase();
       const result = await db.run(
@@ -352,7 +362,7 @@ router.delete(
       console.error('Error deleting judge chat conversation:', error);
       res.status(500).json({ error: 'Failed to delete conversation' });
     }
-  }),
+  },
 );
 
 export default router;

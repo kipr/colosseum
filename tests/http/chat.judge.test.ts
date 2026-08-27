@@ -16,7 +16,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import { seedUser, seedEvent, seedScoresheetTemplate } from './helpers/seed';
 import chatRoutes from '../../src/server/routes/chat';
 
@@ -262,7 +261,7 @@ describe('Judge Chat Routes', () => {
           { message: 'x'.repeat(1001) },
         );
         expect(res.status).toBe(400);
-        expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+        expect((res.json as { error: string }).error).toContain('too long');
       } finally {
         await server.close();
       }

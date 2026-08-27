@@ -4,7 +4,6 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
-import { getApiErrorMessage } from '../../../shared/apiError';
 import '../Modal.css';
 import './TeamsTab.css';
 
@@ -364,7 +363,7 @@ export default function TeamsTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(getApiErrorMessage(errorData, 'Failed to save team'));
+        throw new Error(errorData.error || 'Failed to save team');
       }
 
       toast.success(editingTeam ? 'Team updated!' : 'Team created!');
@@ -389,9 +388,7 @@ export default function TeamsTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(
-          getApiErrorMessage(errorData, 'Failed to check in team'),
-        );
+        throw new Error(errorData.error || 'Failed to check in team');
       }
 
       toast.success(`Team ${team.team_number} checked in!`);
@@ -422,7 +419,7 @@ export default function TeamsTab() {
 
       if (!response.ok && response.status !== 204) {
         const errorData = await response.json();
-        throw new Error(getApiErrorMessage(errorData, 'Failed to delete team'));
+        throw new Error(errorData.error || 'Failed to delete team');
       }
 
       toast.success('Team deleted');
@@ -566,9 +563,7 @@ export default function TeamsTab() {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(
-          getApiErrorMessage(errorData, 'Failed to check in teams'),
-        );
+        throw new Error(errorData.error || 'Failed to check in teams');
       }
 
       const data = await response.json();

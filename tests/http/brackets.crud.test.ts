@@ -11,7 +11,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -533,7 +532,7 @@ describe('Brackets CRUD & Game Management', () => {
         seed_position: 1,
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('same event');
+      expect((res.json as { error: string }).error).toContain('same event');
     });
 
     it('returns 409 on duplicate seed position', async () => {
@@ -809,7 +808,7 @@ describe('Brackets CRUD & Game Management', () => {
         team1_id: team.id,
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('same event');
+      expect((res.json as { error: string }).error).toContain('same event');
     });
 
     it('returns 409 on duplicate game_number', async () => {
@@ -907,7 +906,7 @@ describe('Brackets CRUD & Game Management', () => {
         winner_id: foreignTeam.id,
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('same event');
+      expect((res.json as { error: string }).error).toContain('same event');
     });
   });
 
@@ -977,7 +976,7 @@ describe('Brackets CRUD & Game Management', () => {
         `${baseUrl}/brackets/games/${game.id}/advance`,
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('no winner');
+      expect((res.json as { error: string }).error).toContain('no winner');
     });
   });
 
@@ -1087,7 +1086,9 @@ describe('Brackets CRUD & Game Management', () => {
         { game_id: game.id, winner_id: t1.id },
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('already completed');
+      expect((res.json as { error: string }).error).toContain(
+        'already completed',
+      );
     });
 
     it('returns 400 when winner is not a participant', async () => {
@@ -1119,7 +1120,9 @@ describe('Brackets CRUD & Game Management', () => {
         { game_id: game.id, winner_id: t3.id },
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('one of the teams');
+      expect((res.json as { error: string }).error).toContain(
+        'one of the teams',
+      );
     });
   });
 
@@ -1196,7 +1199,7 @@ describe('Brackets CRUD & Game Management', () => {
         templateData,
       );
       expect(res.status).toBe(409);
-      expect(getApiErrorMessage(res.json)).toContain(
+      expect((res.json as { error: string }).error).toContain(
         'Game number already exists',
       );
     });
@@ -1213,7 +1216,7 @@ describe('Brackets CRUD & Game Management', () => {
         winner_slot: 'invalid_slot',
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain(
+      expect((res.json as { error: string }).error).toContain(
         'Invalid winner_slot value',
       );
     });
