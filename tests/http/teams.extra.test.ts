@@ -10,7 +10,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import { seedEvent, seedTeam, seedUser } from './helpers/seed';
 import teamsRoutes from '../../src/server/routes/teams';
 
@@ -106,7 +105,9 @@ describe('Teams Routes – extra coverage', () => {
         { team_numbers: [1, 2] },
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Event does not exist',
+      );
     });
 
     it('bulk checks in teams and reports not_found', async () => {
@@ -162,7 +163,7 @@ describe('Teams Routes – extra coverage', () => {
         team_name: 'Duplicate',
       });
       expect(res.status).toBe(409);
-      expect(getApiErrorMessage(res.json)).toContain('already exists');
+      expect((res.json as { error: string }).error).toContain('already exists');
     });
 
     it('returns 400 for nonexistent event FK', async () => {
@@ -172,7 +173,9 @@ describe('Teams Routes – extra coverage', () => {
         team_name: 'No Event',
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Event does not exist',
+      );
     });
   });
 
@@ -192,7 +195,7 @@ describe('Teams Routes – extra coverage', () => {
         team_number: 1,
       });
       expect(res.status).toBe(409);
-      expect(getApiErrorMessage(res.json)).toContain('already exists');
+      expect((res.json as { error: string }).error).toContain('already exists');
     });
   });
 
@@ -263,7 +266,9 @@ describe('Teams Routes – extra coverage', () => {
         teams: [{ team_number: 1, team_name: 'A' }],
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Event does not exist',
+      );
     });
   });
 });

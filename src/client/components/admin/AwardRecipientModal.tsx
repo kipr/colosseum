@@ -16,7 +16,6 @@ import {
   compareByAwardLoad,
   type TeamAwardCounts,
 } from '@shared/awards';
-import { getApiErrorMessage } from '../../../shared/apiError';
 import '../Modal.css';
 import './AwardsTab.css';
 interface AwardRecipientModalProps {
@@ -259,7 +258,7 @@ export default function AwardRecipientModal({
       });
       if (!res.ok) {
         const data = (await res.json()) as { error?: string };
-        throw new Error(getApiErrorMessage(data, 'Failed to add recipients'));
+        throw new Error(data.error ?? 'Failed to add recipients');
       }
       onSuccess(
         selectedTeamIds.size === 1

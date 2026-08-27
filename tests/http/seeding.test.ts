@@ -11,7 +11,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedTeam,
@@ -179,7 +178,9 @@ describe('Seeding Routes', () => {
         score: 100,
       });
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toContain(
+        'team_id and round_number are required',
+      );
     });
 
     it('returns 400 when round_number is missing', async () => {
@@ -245,7 +246,9 @@ describe('Seeding Routes', () => {
         score: 100,
       });
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('Team does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Team does not exist',
+      );
     });
   });
 
@@ -294,7 +297,9 @@ describe('Seeding Routes', () => {
           invalid_field: 'value',
         });
         expect(res.status).toBe(400);
-        expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+        expect((res.json as { error: string }).error).toContain(
+          'No valid fields',
+        );
       } finally {
         await server.close();
       }
@@ -446,7 +451,9 @@ describe('Seeding Routes', () => {
           `${server.baseUrl}/seeding/rankings/recalculate/${event.id}`,
         );
         expect(res.status).toBe(404);
-        expect(getApiErrorMessage(res.json)).toContain('No teams found');
+        expect((res.json as { error: string }).error).toContain(
+          'No teams found',
+        );
       } finally {
         await server.close();
       }

@@ -11,7 +11,6 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import { getApiError, getApiErrorMessage } from './helpers/apiError';
 import {
   seedEvent,
   seedUser,
@@ -51,7 +50,7 @@ describe('Event-Scoped Scores Routes', () => {
         try {
           const res = await http.get(`${server.baseUrl}/scores/by-event/1`);
           expect(res.status).toBe(403);
-          expect(getApiErrorMessage(res.json)).toContain(
+          expect((res.json as { error: string }).error).toContain(
             'Admin access required',
           );
         } finally {
@@ -67,7 +66,7 @@ describe('Event-Scoped Scores Routes', () => {
         try {
           const res = await http.get(`${server.baseUrl}/scores/by-event/1`);
           expect(res.status).toBe(403);
-          expect(getApiErrorMessage(res.json)).toContain(
+          expect((res.json as { error: string }).error).toContain(
             'Admin access required',
           );
         } finally {
@@ -165,7 +164,9 @@ describe('Event-Scoped Scores Routes', () => {
     it('returns 404 when event not found', async () => {
       const res = await http.get(`${server.baseUrl}/scores/by-event/999`);
       expect(res.status).toBe(404);
-      expect(getApiErrorMessage(res.json)).toContain('Event not found');
+      expect((res.json as { error: string }).error).toContain(
+        'Event not found',
+      );
     });
 
     it('returns empty array when no scores exist', async () => {
@@ -360,7 +361,7 @@ describe('Event-Scoped Scores Routes', () => {
     it('returns 404 when score not found', async () => {
       const res = await http.post(`${server.baseUrl}/scores/999/accept-event`);
       expect(res.status).toBe(404);
-      expect(getApiErrorMessage(res.json)).toContain('not found');
+      expect((res.json as { error: string }).error).toContain('not found');
     });
 
     it('returns 400 when score is not event-scoped', async () => {
@@ -375,7 +376,9 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/${score.id}/accept-event`,
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('not event-scoped');
+      expect((res.json as { error: string }).error).toContain(
+        'not event-scoped',
+      );
     });
 
     it('returns 400 when score is already accepted', async () => {
@@ -393,7 +396,9 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/${score.id}/accept-event`,
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('already accepted');
+      expect((res.json as { error: string }).error).toContain(
+        'already accepted',
+      );
     });
 
     it('accepts seeding score and creates seeding_score record', async () => {
@@ -746,7 +751,7 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/${score.id}/accept-event`,
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('team_id');
+      expect((res.json as { error: string }).error).toContain('team_id');
     });
 
     it('returns 400 when seeding score missing round_number', async () => {
@@ -771,7 +776,7 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/${score.id}/accept-event`,
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('round_number');
+      expect((res.json as { error: string }).error).toContain('round_number');
     });
   });
 
@@ -801,7 +806,9 @@ describe('Event-Scoped Scores Routes', () => {
         { score_ids: [] },
       );
       expect(res.status).toBe(400);
-      expect(getApiError(res.json)?.code).toBe('VALIDATION_FAILED');
+      expect((res.json as { error: string }).error).toBe(
+        'score_ids array is required',
+      );
     });
 
     it('returns 400 when event does not exist', async () => {
@@ -810,7 +817,9 @@ describe('Event-Scoped Scores Routes', () => {
         { score_ids: [1] },
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('Event does not exist');
+      expect((res.json as { error: string }).error).toContain(
+        'Event does not exist',
+      );
     });
 
     it('bulk accepts multiple seeding scores in single transaction', async () => {
@@ -1282,7 +1291,9 @@ describe('Event-Scoped Scores Routes', () => {
         `${server.baseUrl}/scores/${score.id}/revert-event`,
       );
       expect(res.status).toBe(400);
-      expect(getApiErrorMessage(res.json)).toContain('Only accepted scores');
+      expect((res.json as { error: string }).error).toContain(
+        'Only accepted scores',
+      );
     });
 
     it('reverts seeding score and clears seeding_score record', async () => {

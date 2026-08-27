@@ -14,41 +14,6 @@ along with SQLite verification queries.
 export COOKIE="connect.sid=COOKIE_VALUE"
 ```
 
-## Request validation
-
-Converted mutation endpoints parse `params`, `query`, and `body` with Zod **after**
-auth and **before** any database work. Expected client errors use a nested
-object (not a top-level string):
-
-```json
-{
-  "error": {
-    "code": "VALIDATION_FAILED",
-    "message": "The request contains invalid values.",
-    "issues": [
-      {
-        "location": "body",
-        "path": ["resultNote"],
-        "code": "too_small",
-        "message": "Too small: expected string to have >=1 characters"
-      }
-    ]
-  }
-}
-```
-
-- `PUT` is a full replacement of the editable resource. Score updates must send
-  `scoreData` and a complete `resultType` variant (`standard`, `no_contest`, or
-  `disqualification` with `disqualifiedTeamId` and `resultNote`).
-- `PATCH` is a partial update: supplied fields are merged into the stored
-  record, then the merged candidate is re-validated.
-- JSON bodies use strict numbers/booleans (no string coercion). Route params
-  are coerced from strings. Unknown keys are rejected.
-- Application codes include `VALIDATION_FAILED`, `NOT_FOUND`, `FORBIDDEN`,
-  `CONFLICT`, and `INVALID_STATE`. Status `400` is used for schema and semantic
-  request failures, `404` for missing resources, `403` for authorization, and
-  `409` for current-state conflicts.
-
 ## Events API
 
 ### List all events (auth required)
