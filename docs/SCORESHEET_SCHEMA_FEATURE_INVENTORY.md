@@ -174,9 +174,19 @@ been rewritten onto that subset:
 - boolean `||` in the GCER pom-baskets formulas (`a > 0 || b > 0 ? … : 1`)
   became numeric zero-coalesce (`(inner) || 1`)
 
-Numeric `|| 1` (default-to-1 combined multiplier) remains legal. The 2026
-pom-baskets formula was not rewritten into the GCER form: when both multipliers
-are 0 it currently yields `2`, not `1`.
+Numeric `|| 1` (default-to-1 combined multiplier) remains legal.
+
+The 2026 and GCER Packaging Bin formulas are different scoring rules, not two
+spellings of the same one. When both basket multipliers are 0:
+
+- 2026 uses `(sorted + 1) + (returned > 0 ? returned : 1)`, so the multiplier
+  is `2`
+- GCER uses `((sorted > 0 ? sorted + 1 : 0) + (returned > 0 ? returned : 0)) || 1`,
+  so the multiplier is `1`
+
+The grammar rewrite therefore only dropped the 2026 truthy wrapper
+(`sorted ? sorted : 0` became `sorted`). It did not replace the 2026 formula
+with the GCER `|| 1` pattern, which would have changed official 2026 scores.
 
 ## Surface differences and non-features
 
