@@ -39,7 +39,7 @@ describe('section multipliers', () => {
       expect(pomBaskets).toContain(
         name === 'GCER'
           ? `side_${side}_pb_sorted_baskets_mult + 1 : 0) + (side_${side}_pb_returned_baskets_mult`
-          : `side_${side}_pb_sorted_baskets_mult : 0) + 1) + (side_${side}_pb_returned_baskets_mult`,
+          : `side_${side}_pb_sorted_baskets_mult + 1) + (side_${side}_pb_returned_baskets_mult`,
       );
     }
   });
