@@ -106,6 +106,27 @@ describe('API Score Submit Routes', () => {
         );
       });
 
+      it('returns 400 when template is archived', async () => {
+        const template = await seedScoresheetTemplate(testDb.db, {
+          name: 'Archived Template',
+          created_by: null,
+        });
+        await testDb.db.run(
+          'UPDATE scoresheet_templates SET is_active = FALSE WHERE id = ?',
+          [template.id],
+        );
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: { points: 100 },
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'archived and no longer accepts submissions',
+        );
+      });
+
       it('returns 400 when non-event-scoped submission', async () => {
         const template = await seedScoresheetTemplate(testDb.db, {
           name: 'Legacy Template',
@@ -1279,6 +1300,46 @@ describe('API Score Submit Routes', () => {
         expect(res.status).toBe(401);
         expect((res.json as { error: string }).error).toContain(
           'session expired',
+        );
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it('returns 400 when a valid judge session targets an archived template', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Archived Judge Template',
+        created_by: null,
+      });
+      const event = await seedEvent(testDb.db);
+      await testDb.db.run(
+        'UPDATE scoresheet_templates SET is_active = FALSE WHERE id = ?',
+        [template.id],
+      );
+
+      const app = createTestApp({
+        judgeSession: {
+          templateId: template.id,
+          eventIds: [event.id],
+          conversationKey: 'test-conversation-key',
+          issuedAt: Date.now(),
+          expiresAt: Date.now() + JUDGE_SESSION_TTL_MS,
+        },
+      });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: { points: 100 },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'archived and no longer accepts submissions',
         );
       } finally {
         await srv.close();

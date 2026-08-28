@@ -83,15 +83,24 @@ function validateSchema(template) {
     return errors;
   }
 
-  if (schema.kind === 'bracket') {
+  if (Object.prototype.hasOwnProperty.call(schema, 'mode')) {
     errors.push(
-      'Unsupported schema.kind "bracket". Portable V1 is seeding-only.',
+      `Unsupported schema.mode ${JSON.stringify(schema.mode)}. Portable V1 uses kind "seeding" (or omit kind for the documented shorthand).`,
     );
   }
 
-  if (schema.kind === 'double_seeding') {
+  if (Object.prototype.hasOwnProperty.call(schema, 'scoreKind')) {
     errors.push(
-      'Unsupported schema.kind "double_seeding". Portable V1 is seeding-only.',
+      `Unsupported schema.scoreKind ${JSON.stringify(schema.scoreKind)}. Portable V1 uses kind "seeding" (or omit kind for the documented shorthand).`,
+    );
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(schema, 'kind') &&
+    schema.kind !== 'seeding'
+  ) {
+    errors.push(
+      `Unsupported schema.kind ${JSON.stringify(schema.kind)}. Portable V1 is seeding-only.`,
     );
   }
 

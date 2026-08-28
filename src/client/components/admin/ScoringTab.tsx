@@ -14,6 +14,7 @@ import type { BracketResultType } from '../../../shared/bracketResult';
 
 interface ScoreSubmission {
   id: number;
+  template_id: number;
   template_name: string;
   participant_name: string;
   match_id: string;
@@ -26,6 +27,7 @@ interface ScoreSubmission {
   result_type: BracketResultType;
   disqualified_team_id: number | null;
   result_note: string | null;
+  template_schema?: any;
   // Event-scoped fields
   event_id?: number;
   score_type?: 'seeding' | 'bracket' | 'double_seeding';
@@ -70,6 +72,7 @@ interface ScoreSubmission {
 
 interface EventScoresResponse {
   rows: ScoreSubmission[];
+  templates?: Record<string, any>;
   page: number;
   limit: number;
   totalCount: number;
@@ -89,6 +92,9 @@ export default function ScoringTab() {
 
   // Shared state
   const [scores, setScores] = useState<ScoreSubmission[]>([]);
+  const [templateSchemas, setTemplateSchemas] = useState<Record<string, any>>(
+    {},
+  );
   const [editingScore, setEditingScore] = useState<ScoreSubmission | null>(
     null,
   );
@@ -172,6 +178,7 @@ export default function ScoringTab() {
 
       const data: EventScoresResponse = await response.json();
       setScores(data.rows);
+      setTemplateSchemas(data.templates ?? {});
       setEventTotalPages(data.totalPages);
       setEventTotalCount(data.totalCount);
     } catch (error) {
@@ -329,7 +336,13 @@ export default function ScoringTab() {
   };
 
   const handleEdit = (score: ScoreSubmission) => {
-    setEditingScore(score);
+    setEditingScore({
+      ...score,
+      template_schema:
+        templateSchemas[String(score.template_id)] ??
+        score.template_schema ??
+        null,
+    });
   };
 
   // Bulk accept handlers

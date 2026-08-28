@@ -49,14 +49,22 @@ router.post(
 
       const db = await getDatabase();
 
-      // Get the template
+      // Get the template. Archived templates stay in the database so historical
+      // scores can still render, but they must not accept new submissions —
+      // a judge session minted before archive remains valid for up to 12 hours.
       const template = await db.get(
-        'SELECT id, name, created_by FROM scoresheet_templates WHERE id = ?',
+        'SELECT id, name, created_by, is_active FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
 
       if (!template) {
         return res.status(400).json({ error: 'Template not found' });
+      }
+
+      if (template.is_active !== true && template.is_active !== 1) {
+        return res.status(400).json({
+          error: 'Template is archived and no longer accepts submissions',
+        });
       }
 
       // DB-backed (event-scoped) submission: resolve team_id if needed (seeding)

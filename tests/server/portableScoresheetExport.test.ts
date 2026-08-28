@@ -144,4 +144,78 @@ describe('portable scoresheet exporter', () => {
       /Unsupported schema.kind "double_seeding"/,
     );
   });
+
+  it('rejects unknown kinds and legacy discriminator markers', async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-scoresheet-'));
+    const outputPath = path.join(tempDir, 'rejected.html');
+
+    const typoPath = path.join(tempDir, 'braket.json');
+    writeFileSync(
+      typoPath,
+      JSON.stringify({
+        schema: {
+          kind: 'braket',
+          title: 'Typo',
+          layout: 'two-column',
+          fields: [{ id: 'score', label: 'Score', type: 'number' }],
+        },
+      }),
+    );
+    expect(() => runExporter(typoPath, outputPath)).toThrow(
+      /Unsupported schema.kind "braket"/,
+    );
+
+    const modePath = path.join(tempDir, 'legacy-mode.json');
+    writeFileSync(
+      modePath,
+      JSON.stringify({
+        schema: {
+          mode: 'head-to-head',
+          title: 'Legacy Mode',
+          layout: 'two-column',
+          fields: [{ id: 'score', label: 'Score', type: 'number' }],
+        },
+      }),
+    );
+    expect(() => runExporter(modePath, outputPath)).toThrow(
+      /Unsupported schema.mode "head-to-head"/,
+    );
+
+    const scoreKindPath = path.join(tempDir, 'legacy-scorekind.json');
+    writeFileSync(
+      scoreKindPath,
+      JSON.stringify({
+        schema: {
+          scoreKind: 'double_seeding',
+          title: 'Legacy ScoreKind',
+          layout: 'two-column',
+          fields: [{ id: 'score', label: 'Score', type: 'number' }],
+        },
+      }),
+    );
+    expect(() => runExporter(scoreKindPath, outputPath)).toThrow(
+      /Unsupported schema.scoreKind "double_seeding"/,
+    );
+  });
+
+  it('accepts omitted kind as the documented portable shorthand', async () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-scoresheet-'));
+    const inputPath = path.join(tempDir, 'shorthand.json');
+    const outputPath = path.join(tempDir, 'shorthand.html');
+
+    writeFileSync(
+      inputPath,
+      JSON.stringify({
+        schema: {
+          title: 'Shorthand',
+          layout: 'two-column',
+          fields: [{ id: 'score', label: 'Score', type: 'number' }],
+        },
+      }),
+    );
+
+    runExporter(inputPath, outputPath);
+    const html = readFileSync(outputPath, 'utf8');
+    expect(html).toContain('Shorthand');
+  });
 });

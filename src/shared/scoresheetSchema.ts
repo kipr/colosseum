@@ -601,8 +601,10 @@ export interface ScoreSubmissionRecord {
   updated_at: string;
   /**
    * Canonical schema of the referenced template, including inactive and
-   * old-event templates. Absent or null when the stored JSON is missing
-   * or fails the shallow discriminator check.
+   * old-event templates. The paginated `/scores/by-event/:eventId` list
+   * returns schemas once in {@link EventScoresListResponse.templates}
+   * instead of copying them onto every row; the admin score modal attaches
+   * this field from that map when a row is opened.
    */
   template_schema?: ScoresheetSchema | null;
   template_name?: string;
@@ -637,6 +639,19 @@ export interface ScoreSubmissionRecord {
   double_seeding_team2_number?: number | null;
   double_seeding_team2_name?: string | null;
   double_seeding_team2_display?: string | null;
+}
+
+/**
+ * Paginated admin score-history payload. Schemas are keyed by template id
+ * and omit `gameAreasImage`, which the score-view modal does not render.
+ */
+export interface EventScoresListResponse {
+  rows: ScoreSubmissionRecord[];
+  templates: Record<string, ScoresheetSchema | null>;
+  page: number;
+  limit: number;
+  totalCount: number;
+  totalPages: number;
 }
 
 /** Database-row form used before the JSON `score_data` column is parsed. */

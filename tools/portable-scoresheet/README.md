@@ -48,8 +48,9 @@ The input JSON can be one of:
 ```
 
 Canonical online schemas use `kind: "seeding" | "bracket" | "double_seeding"`.
-Portable V1 accepts seeding-compatible input, including schemas with
-`kind: "seeding"` and shorthand input that omits `kind`.
+Portable V1 accepts seeding-compatible input: `kind: "seeding"`, or shorthand
+input that omits `kind` entirely. Any other supplied `kind` is rejected, as
+are legacy `mode` and `scoreKind` discriminator markers.
 
 ## V1 Supported Features
 
@@ -74,7 +75,8 @@ Portable scoresheets honor the same `defaultValue` rules as the main app:
 
 ## V1 Rejected Features (fail-fast)
 
-- `kind === "bracket"` or `kind === "double_seeding"`
+- any supplied `kind` other than `"seeding"` (including typos such as `"braket"`)
+- legacy `mode` and `scoreKind` discriminator markers
 - `winner-select` fields
 - `dataSource.type === "db"`
 - `dataSource.type === "bracket"`

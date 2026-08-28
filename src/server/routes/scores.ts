@@ -14,6 +14,27 @@ import {
 
 const router = express.Router();
 
+/**
+ * Shape a stored template schema for the admin score-history payload:
+ * parse the canonical discriminator and drop `gameAreasImage`, which the
+ * score-view modal never renders. Callers attach the result once per
+ * distinct template id instead of copying it onto every row.
+ */
+function scoreHistorySchemaFromStored(
+  rawSchema: unknown,
+): Record<string, unknown> | null {
+  if (rawSchema == null) {
+    return null;
+  }
+  const parsed = parseCanonicalScoresheetSchema(rawSchema);
+  if (!parsed.ok) {
+    return null;
+  }
+  const schema = { ...parsed.schema };
+  delete schema.gameAreasImage;
+  return schema;
+}
+
 // Get scores filtered by event (admin-only, paginated)
 router.get(
   '/by-event/:eventId',
@@ -115,8 +136,7 @@ router.get(
           dst1.display_name as double_seeding_team1_display,
           dst2.team_number as double_seeding_team2_number,
           dst2.team_name as double_seeding_team2_name,
-          dst2.display_name as double_seeding_team2_display,
-          t.schema as template_schema
+          dst2.display_name as double_seeding_team2_display
         FROM score_submissions s
         LEFT JOIN scoresheet_templates t ON s.template_id = t.id
         LEFT JOIN users submitter ON s.user_id = submitter.id
@@ -147,19 +167,30 @@ router.get(
             // Keep as string if invalid JSON
           }
         }
-
-        if (score.template_schema == null) {
-          score.template_schema = null;
-          return;
-        }
-        const parsedSchema = parseCanonicalScoresheetSchema(
-          score.template_schema,
-        );
-        score.template_schema = parsedSchema.ok ? parsedSchema.schema : null;
       });
+
+      const templateIds = [
+        ...new Set(
+          scores
+            .map((score) => score.template_id)
+            .filter((id): id is number => id != null),
+        ),
+      ];
+      const templates: Record<string, Record<string, unknown> | null> = {};
+      if (templateIds.length > 0) {
+        const placeholders = templateIds.map(() => '?').join(',');
+        const templateRows = await db.all<{ id: number; schema: unknown }>(
+          `SELECT id, schema FROM scoresheet_templates WHERE id IN (${placeholders})`,
+          templateIds,
+        );
+        for (const row of templateRows) {
+          templates[String(row.id)] = scoreHistorySchemaFromStored(row.schema);
+        }
+      }
 
       res.json({
         rows: scores,
+        templates,
         page: pageNum,
         limit: limitNum,
         totalCount,

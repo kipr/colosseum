@@ -112,21 +112,25 @@ describe('Historical scoresheet viewing after kind cutover', () => {
 
     const history = await http.get(`${baseUrl}/scores/by-event/${event.id}`);
     expect(history.status).toBe(200);
-    const rows = (
-      history.json as {
-        rows: Array<{
-          id: number;
-          template_id: number;
-          template_schema: { kind: string; title: string; fields: unknown[] };
-        }>;
-      }
-    ).rows;
-    const viewed = rows.find((row) => row.id === score.id);
+    const historyBody = history.json as {
+      rows: Array<{
+        id: number;
+        template_id: number;
+        template_schema?: unknown;
+      }>;
+      templates: Record<
+        string,
+        { kind: string; title: string; fields: unknown[] }
+      >;
+    };
+    const viewed = historyBody.rows.find((row) => row.id === score.id);
     expect(viewed).toBeDefined();
     expect(viewed!.template_id).toBe(template.id);
-    expect(viewed!.template_schema.kind).toBe('seeding');
-    expect(viewed!.template_schema.title).toBe('Old Seeding Sheet');
-    expect(viewed!.template_schema.fields).toHaveLength(2);
+    expect(viewed!.template_schema).toBeUndefined();
+    const viewedSchema = historyBody.templates[String(template.id)];
+    expect(viewedSchema.kind).toBe('seeding');
+    expect(viewedSchema.title).toBe('Old Seeding Sheet');
+    expect(viewedSchema.fields).toHaveLength(2);
 
     const archived = await http.delete(
       `${baseUrl}/scoresheet/templates/${template.id}`,
@@ -149,11 +153,78 @@ describe('Historical scoresheet viewing after kind cutover', () => {
     const historyAfterArchive = await http.get(
       `${baseUrl}/scores/by-event/${event.id}`,
     );
-    const archivedView = (
-      historyAfterArchive.json as {
-        rows: Array<{ id: number; template_schema: { fields: unknown[] } }>;
-      }
-    ).rows.find((row) => row.id === score.id);
-    expect(archivedView?.template_schema.fields).toHaveLength(2);
+    const archivedBody = historyAfterArchive.json as {
+      rows: Array<{ id: number }>;
+      templates: Record<string, { fields: unknown[] }>;
+    };
+    const archivedView = archivedBody.rows.find((row) => row.id === score.id);
+    expect(archivedView).toBeDefined();
+    expect(archivedBody.templates[String(template.id)].fields).toHaveLength(2);
+  });
+
+  it('returns each template schema once and omits gameAreasImage', async () => {
+    const admin = await seedUser(testDb.db, {
+      email: 'images@example.com',
+      google_id: 'history-image-admin',
+      is_admin: true,
+    });
+    const event = await seedEvent(testDb.db, { name: 'Image Event' });
+    const imageData =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const template = await seedScoresheetTemplate(testDb.db, {
+      name: 'Image Sheet',
+      schema: JSON.stringify({
+        kind: 'seeding',
+        title: 'Image Sheet',
+        gameAreasImage: imageData,
+        fields: [{ id: 'score', type: 'number', label: 'Score' }],
+      }),
+      created_by: admin.id,
+    });
+    await seedEventScoresheetTemplate(testDb.db, {
+      event_id: event.id,
+      template_id: template.id,
+      template_type: 'seeding',
+    });
+    await seedScoreSubmission(testDb.db, {
+      user_id: admin.id,
+      template_id: template.id,
+      event_id: event.id,
+      score_type: 'seeding',
+      status: 'accepted',
+      score_data: JSON.stringify({
+        score: { type: 'number', value: 1, label: 'Score' },
+      }),
+    });
+    await seedScoreSubmission(testDb.db, {
+      user_id: admin.id,
+      template_id: template.id,
+      event_id: event.id,
+      score_type: 'seeding',
+      status: 'accepted',
+      score_data: JSON.stringify({
+        score: { type: 'number', value: 2, label: 'Score' },
+      }),
+    });
+
+    const history = await http.get(`${baseUrl}/scores/by-event/${event.id}`);
+    expect(history.status).toBe(200);
+    const body = history.json as {
+      rows: Array<{ id: number; template_schema?: unknown }>;
+      templates: Record<
+        string,
+        { kind: string; title: string; gameAreasImage?: string }
+      >;
+    };
+
+    expect(body.rows).toHaveLength(2);
+    expect(body.rows.every((row) => row.template_schema === undefined)).toBe(
+      true,
+    );
+    expect(Object.keys(body.templates)).toEqual([String(template.id)]);
+    expect(body.templates[String(template.id)].kind).toBe('seeding');
+    expect(body.templates[String(template.id)].gameAreasImage).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain(imageData);
+    expect(JSON.stringify(body)).not.toContain('gameAreasImage');
   });
 });
