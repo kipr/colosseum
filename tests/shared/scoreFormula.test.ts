@@ -106,6 +106,7 @@ describe('parseFormula accepted examples', () => {
         right: { type: 'number', value: 5 },
       },
     });
+    expect(collectIdentifiers(ast)).toEqual(['poms', 'cubes'])
   });
 
   it('parses a 2x on-off multiplier', () => {
@@ -147,6 +148,7 @@ describe('parseFormula accepted examples', () => {
         alternate: { type: 'number', value: 1 },
       },
     });
+    expect(collectIdentifiers(ast)).toEqual(['subtotal', 'count', 'count']);
   });
 
   it('parses a default-to-1 combined multiplier', () => {
@@ -184,6 +186,7 @@ describe('parseFormula accepted examples', () => {
       },
       right: { type: 'number', value: 1 },
     });
+    expect(collectIdentifiers(ast)).toEqual(['drum', 'botguy']);
   });
 
   it('accepts a comparison grouped as a numeric coalesce operand', () => {
@@ -191,7 +194,14 @@ describe('parseFormula accepted examples', () => {
   });
 
   it('treats whitespace as insignificant', () => {
-    expectOk('a\n+\tb');
+    const ast = expectOk('a\n+\tb');
+    expect(stripIndex(ast)).toEqual({
+      type: 'binary',
+      op: '+',
+      left: { type: 'identifier', name: 'a' },
+      right: { type: 'identifier', name: 'b' },
+    });
+    expect(collectIdentifiers(ast)).toEqual(['a', 'b']);
   });
 
   it('accepts decimal numbers without a sign or exponent', () => {
@@ -287,6 +297,7 @@ describe('parseFormula rejected structure', () => {
   it('rejects an empty formula', () => {
     expectFail('', 'parse');
     expectFail('   ', 'parse');
+    expectFail('\t\n', 'parse');
   });
 
   it('rejects a missing ternary colon', () => {
