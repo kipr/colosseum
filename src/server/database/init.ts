@@ -3,6 +3,7 @@ import path from 'path';
 import { getDatabase, type Database } from './connection';
 import { runSchema, schemaModules } from './schema';
 import { backfillBracketGamePlayOrders } from '../services/bracketTemplates';
+import { migrateScoresheetKindOnStartup } from './migrations/scoresheetKind';
 
 const isProduction = process.env.NODE_ENV === 'production';
 const usePostgres = isProduction || !!process.env.DATABASE_URL;
@@ -29,6 +30,7 @@ export async function initializeDatabase(): Promise<void> {
 export async function initializePostgres(db: Database): Promise<void> {
   await runSchema(db, 'postgres', schemaModules);
   await backfillBracketGamePlayOrders(db);
+  await migrateScoresheetKindOnStartup(db);
 }
 
 /**
@@ -37,4 +39,5 @@ export async function initializePostgres(db: Database): Promise<void> {
 export async function initializeSQLite(db: Database): Promise<void> {
   await runSchema(db, 'sqlite', schemaModules);
   await backfillBracketGamePlayOrders(db);
+  await migrateScoresheetKindOnStartup(db);
 }

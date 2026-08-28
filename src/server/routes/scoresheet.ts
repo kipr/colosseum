@@ -9,28 +9,39 @@ import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import {
   formatSchemaValidationError,
+  isScoreType,
+  parseCanonicalScoresheetSchema,
   validateScoresheetSchema,
+  type ScoreType,
 } from '../../shared/scoresheetSchema';
 
 const router = express.Router();
 
-function inferTemplateType(
-  schema: unknown,
-): 'seeding' | 'bracket' | 'double_seeding' {
-  // Explicit schema marker takes precedence; do not infer double seeding from
-  // mode (head-to-head means bracket scoring with a winner).
-  if (schema && typeof schema === 'object' && 'scoreKind' in schema) {
-    if ((schema as { scoreKind?: string }).scoreKind === 'double_seeding') {
-      return 'double_seeding';
-    }
+function persistableTemplateKind(schema: unknown): ScoreType | null {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return null;
   }
-  if (schema && typeof schema === 'object' && 'mode' in schema) {
-    if ((schema as { mode?: string }).mode === 'head-to-head') return 'bracket';
+  const kind = (schema as { kind?: unknown }).kind;
+  return isScoreType(kind) ? kind : null;
+}
+
+function assignParsedTemplateSchema(template: {
+  schema?: unknown;
+}): void {
+  if (template.schema == null) {
+    template.schema = null;
+    return;
   }
-  if (schema && typeof schema === 'object' && 'bracketSource' in schema) {
-    return 'bracket';
+  const parsed = parseCanonicalScoresheetSchema(template.schema);
+  if (!parsed.ok) {
+    console.error(
+      'Corrupt scoresheet template schema:',
+      parsed.errors.join('; '),
+    );
+    template.schema = null;
+    return;
   }
-  return 'seeding';
+  template.schema = parsed.schema;
 }
 
 // Get all scoresheet templates (public - for judges, without access codes)
@@ -65,16 +76,8 @@ router.get(
       ORDER BY e.event_date DESC, e.name, t.name
     `);
 
-      // Parse schema JSON for each template
       templates.forEach((template) => {
-        if (template.schema) {
-          try {
-            template.schema = JSON.parse(template.schema);
-          } catch (e) {
-            console.error('Error parsing template schema:', e);
-            template.schema = null;
-          }
-        }
+        assignParsedTemplateSchema(template);
       });
 
       res.json(templates);
@@ -189,8 +192,10 @@ router.post(
         };
       }
 
-      // Parse JSON schema and remove sensitive data
-      template.schema = JSON.parse(template.schema);
+      assignParsedTemplateSchema(template);
+      if (template.schema == null) {
+        return res.status(500).json({ error: 'Template schema is invalid' });
+      }
       delete template.access_code;
       delete template.created_by;
 
@@ -219,8 +224,10 @@ router.get(
         return res.status(404).json({ error: 'Template not found' });
       }
 
-      // Parse JSON schema
-      template.schema = JSON.parse(template.schema);
+      assignParsedTemplateSchema(template);
+      if (template.schema == null) {
+        return res.status(500).json({ error: 'Template schema is invalid' });
+      }
       res.json(template);
     } catch (error) {
       console.error('Error fetching template:', error);
@@ -261,7 +268,10 @@ router.post(
       const templateId = result.lastID!;
 
       if (eventId != null && Number.isInteger(Number(eventId))) {
-        const templateType = inferTemplateType(schema);
+        const templateType = persistableTemplateKind(schema);
+        if (templateType == null) {
+          return res.status(400).json({ error: 'schema.kind is required.' });
+        }
         await db.run(
           `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
           [Number(eventId), templateId, templateType],
@@ -272,7 +282,7 @@ router.post(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
-      template.schema = JSON.parse(template.schema);
+      assignParsedTemplateSchema(template);
 
       res.json(template);
     } catch (error) {
@@ -301,6 +311,13 @@ router.put(
         }
       }
 
+      if (eventId != null && Number.isInteger(Number(eventId))) {
+        const templateType = persistableTemplateKind(schema);
+        if (templateType == null) {
+          return res.status(400).json({ error: 'schema.kind is required.' });
+        }
+      }
+
       const db = await getDatabase();
       await db.transaction(async (tx) => {
         await tx.run(
@@ -316,7 +333,10 @@ router.put(
         );
 
         if (eventId != null && Number.isInteger(Number(eventId))) {
-          const templateType = inferTemplateType(schema);
+          const templateType = persistableTemplateKind(schema);
+          if (templateType == null) {
+            throw new Error('schema.kind is required.');
+          }
           await tx.run(
             `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
             [Number(eventId), id, templateType],
@@ -328,7 +348,7 @@ router.put(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [id],
       );
-      template.schema = JSON.parse(template.schema);
+      assignParsedTemplateSchema(template);
 
       res.json(template);
     } catch (error) {
@@ -347,7 +367,21 @@ router.delete(
       const { id } = req.params;
       const db = await getDatabase();
 
-      await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [id]);
+      const referenced = await db.get(
+        'SELECT id FROM score_submissions WHERE template_id = ? LIMIT 1',
+        [id],
+      );
+
+      if (referenced) {
+        await db.run(
+          `UPDATE scoresheet_templates
+           SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`,
+          [id],
+        );
+      } else {
+        await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [id]);
+      }
 
       res.json({ success: true });
     } catch (error) {

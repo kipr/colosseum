@@ -33,16 +33,17 @@ const BRACKET_POLL_INTERVAL_MS = 10_000;
 
 export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const schema = template.schema;
-  const isHeadToHead = schema.mode === 'head-to-head';
-  // Explicit marker only: head-to-head means bracket scoring with a winner.
-  const isDoubleSeeding = schema.scoreKind === 'double_seeding';
+  const kind = schema?.kind;
+  const isHeadToHead = kind === 'bracket';
+  const isDoubleSeeding = kind === 'double_seeding';
   const gameAreasImage = schema.gameAreasImage;
+  const bracketSource = isHeadToHead ? schema.bracketSource : undefined;
   const isEventScopedBracket = isEventScopedBracketSource(
-    schema.bracketSource,
+    bracketSource,
     schema.eventId,
   );
   const bracketSourceEventId = getBracketSourceEventId(
-    schema.bracketSource,
+    bracketSource,
     schema.eventId,
   );
 
@@ -198,7 +199,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     // Load bracket games if head-to-head mode
-    if (isHeadToHead && schema.bracketSource) {
+    if (isHeadToHead && bracketSource) {
       loadBracketGames();
       loadTeamsData();
 
@@ -247,7 +248,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const loadBracketGames = async () => {
     try {
-      const bracketSource = schema.bracketSource;
       if (!bracketSource) return;
 
       if (
@@ -921,7 +921,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       isHeadToHead &&
       schema.scoreDestination === 'db' &&
       schema.eventId &&
-      schema.bracketSource?.type === 'db' &&
+      bracketSource?.type === 'db' &&
       formData.bracket_game_id == null
     ) {
       alert('Please select a game before submitting.');
@@ -1077,7 +1077,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       isHeadToHead &&
       scoreDestination === 'db' &&
       eventId &&
-      schema.bracketSource?.type === 'db' &&
+      bracketSource?.type === 'db' &&
       formData.bracket_game_id != null;
 
     if (isDbBackedSeeding && scoreData.team_number?.value) {
@@ -1197,7 +1197,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           matchId,
           scoreData,
           isHeadToHead,
-          bracketSource: isHeadToHead ? schema.bracketSource : null,
+          bracketSource: isHeadToHead ? bracketSource : null,
           eventId:
             isDbBackedSeeding || isDbBackedBracket || isDbBackedDoubleSeeding
               ? eventId

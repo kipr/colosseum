@@ -3,6 +3,7 @@ import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
+import { parseCanonicalScoresheetSchema } from '../../shared/scoresheetSchema';
 import { recalculateDoubleSeedingRankings } from '../services/doubleSeedingRankings';
 import {
   acceptEventScore,
@@ -114,7 +115,8 @@ router.get(
           dst1.display_name as double_seeding_team1_display,
           dst2.team_number as double_seeding_team2_number,
           dst2.team_name as double_seeding_team2_name,
-          dst2.display_name as double_seeding_team2_display
+          dst2.display_name as double_seeding_team2_display,
+          t.schema as template_schema
         FROM score_submissions s
         LEFT JOIN scoresheet_templates t ON s.template_id = t.id
         LEFT JOIN users submitter ON s.user_id = submitter.id
@@ -145,6 +147,15 @@ router.get(
             // Keep as string if invalid JSON
           }
         }
+
+        if (score.template_schema == null) {
+          score.template_schema = null;
+          return;
+        }
+        const parsedSchema = parseCanonicalScoresheetSchema(
+          score.template_schema,
+        );
+        score.template_schema = parsedSchema.ok ? parsedSchema.schema : null;
       });
 
       res.json({

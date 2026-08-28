@@ -101,7 +101,7 @@ export default function ScoreSheetsTab() {
     const confirmed = await confirm({
       title: 'Delete Score Sheet',
       message:
-        'Are you sure you want to delete this score sheet? This cannot be undone.',
+        'If this score sheet has submitted scores, it will be archived so historical scores remain viewable. Unused score sheets are deleted.',
       confirmText: 'Delete',
       confirmStyle: 'danger',
     });

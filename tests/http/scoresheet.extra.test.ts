@@ -1,6 +1,6 @@
 /**
  * Additional HTTP route tests for /scoresheet endpoints.
- * Covers template CRUD, verify access code, inferTemplateType branches, and admin listing.
+ * Covers template CRUD, verify access code, kind persistence, and admin listing.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
@@ -49,7 +49,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const event = await seedEvent(testDb.db, { status: 'active' });
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Active Template',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
         created_by: userId,
       });
       await seedEventScoresheetTemplate(testDb.db, {
@@ -72,7 +72,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       });
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Archived Template',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
         created_by: userId,
       });
       await seedEventScoresheetTemplate(testDb.db, {
@@ -164,7 +164,7 @@ describe('Scoresheet Routes – extra coverage', () => {
     it('returns 403 for wrong access code', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         access_code: 'correct-code',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
         created_by: userId,
       });
 
@@ -180,7 +180,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Verified Template',
         access_code: 'secret',
-        schema: JSON.stringify({ fields: ['a', 'b'] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: ['a', 'b'] }),
         created_by: userId,
       });
 
@@ -195,7 +195,7 @@ describe('Scoresheet Routes – extra coverage', () => {
         access_code?: string;
       };
       expect(body.name).toBe('Verified Template');
-      expect(body.schema).toEqual({ fields: ['a', 'b'] });
+      expect(body.schema).toEqual({ kind: 'seeding', fields: ['a', 'b'] });
       expect(body.access_code).toBeUndefined();
     });
   });
@@ -209,7 +209,7 @@ describe('Scoresheet Routes – extra coverage', () => {
     it('returns template with parsed schema', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'My Template',
-        schema: JSON.stringify({ mode: 'seeding' }),
+        schema: JSON.stringify({ kind: 'seeding' }),
         created_by: userId,
       });
 
@@ -217,9 +217,9 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
       );
       expect(res.status).toBe(200);
-      const body = res.json as { name: string; schema: { mode: string } };
+      const body = res.json as { name: string; schema: { kind: string } };
       expect(body.name).toBe('My Template');
-      expect(body.schema).toEqual({ mode: 'seeding' });
+      expect(body.schema).toEqual({ kind: 'seeding' });
     });
   });
 
@@ -235,20 +235,20 @@ describe('Scoresheet Routes – extra coverage', () => {
     it('creates template without eventId', async () => {
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'New Template',
-        schema: { fields: [] },
+        schema: { kind: 'seeding', fields: [] },
         accessCode: 'abc123',
       });
       expect(res.status).toBe(200);
       const body = res.json as { name: string; schema: { fields: unknown[] } };
       expect(body.name).toBe('New Template');
-      expect(body.schema).toEqual({ fields: [] });
+      expect(body.schema).toEqual({ kind: 'seeding', fields: [] });
     });
 
     it('creates template with eventId and links to event', async () => {
       const event = await seedEvent(testDb.db);
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Linked Template',
-        schema: { fields: [] },
+        schema: { kind: 'seeding', fields: [] },
         accessCode: 'link123',
         eventId: event.id,
       });
@@ -265,11 +265,14 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(link.template_type).toBe('seeding');
     });
 
-    it('infers bracket type when schema has mode=head-to-head', async () => {
+    it('persists bracket linkage from kind rather than legacy markers', async () => {
       const event = await seedEvent(testDb.db);
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bracket Template',
-        schema: { mode: 'head-to-head' },
+        schema: {
+          kind: 'bracket',
+          bracketSource: { type: 'db', eventId: event.id },
+        },
         accessCode: 'bracket123',
         eventId: event.id,
       });
@@ -283,22 +286,34 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(link.template_type).toBe('bracket');
     });
 
-    it('infers bracket type when schema has bracketSource', async () => {
+    it('rejects missing kind, legacy markers, and bracketSource inference', async () => {
       const event = await seedEvent(testDb.db);
-      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
-        name: 'Bracket Source Template',
-        schema: { bracketSource: true },
-        accessCode: 'bs123',
+      const missingKind = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'No Kind',
+        schema: { fields: [] },
+        accessCode: 'nokind',
         eventId: event.id,
       });
-      expect(res.status).toBe(200);
+      expect(missingKind.status).toBe(400);
 
-      const body = res.json as { id: number };
-      const link = await testDb.db.get(
-        'SELECT template_type FROM event_scoresheet_templates WHERE template_id = ?',
-        [body.id],
+      const legacyMode = await http.post(`${baseUrl}/scoresheet/templates`, {
+        name: 'Legacy Mode',
+        schema: { mode: 'head-to-head' },
+        accessCode: 'legacy-mode',
+        eventId: event.id,
+      });
+      expect(legacyMode.status).toBe(400);
+
+      const inferredBracket = await http.post(
+        `${baseUrl}/scoresheet/templates`,
+        {
+          name: 'Inferred Bracket',
+          schema: { bracketSource: { type: 'db' } },
+          accessCode: 'inferred',
+          eventId: event.id,
+        },
       );
-      expect(link.template_type).toBe('bracket');
+      expect(inferredBracket.status).toBe(400);
     });
 
     it('rejects invalid defaultValue types', async () => {
@@ -331,6 +346,7 @@ describe('Scoresheet Routes – extra coverage', () => {
 
     it('persists templates with valid typed defaults', async () => {
       const schema = {
+        kind: 'seeding',
         fields: [
           { id: 'name', type: 'text', defaultValue: 'Ada' },
           { id: 'score', type: 'number', min: 0, max: 10, defaultValue: 7 },
@@ -362,7 +378,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const event = await seedEvent(testDb.db);
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Original',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
         access_code: 'old',
         created_by: userId,
       });
@@ -371,7 +387,7 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Updated',
-          schema: { fields: ['x'] },
+          schema: { kind: 'seeding', fields: ['x'] },
           accessCode: 'new',
           eventId: event.id,
         },
@@ -379,7 +395,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(res.status).toBe(200);
       const body = res.json as { name: string; schema: { fields: string[] } };
       expect(body.name).toBe('Updated');
-      expect(body.schema).toEqual({ fields: ['x'] });
+      expect(body.schema).toEqual({ kind: 'seeding', fields: ['x'] });
 
       const link = await testDb.db.get(
         'SELECT * FROM event_scoresheet_templates WHERE template_id = ?',
@@ -393,7 +409,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const event = await seedEvent(testDb.db);
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Linked',
-        schema: JSON.stringify({}),
+        schema: JSON.stringify({ kind: 'seeding' }),
         access_code: 'x',
         created_by: userId,
       });
@@ -407,7 +423,7 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Unlinked',
-          schema: {},
+          schema: { kind: 'seeding' },
           accessCode: 'y',
         },
       );
@@ -423,7 +439,7 @@ describe('Scoresheet Routes – extra coverage', () => {
     it('rejects invalid defaultValue on update', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Original',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
         access_code: 'old',
         created_by: userId,
       });

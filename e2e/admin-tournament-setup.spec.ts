@@ -367,6 +367,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     // Schema JSON (second textarea)
     const schema = {
+      kind: 'seeding',
       title: SCORESHEET_NAME,
       eventId: createdEventId,
       scoreDestination: 'db',

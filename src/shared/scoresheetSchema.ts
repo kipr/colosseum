@@ -345,6 +345,13 @@ export interface ScoresheetSchemaBase {
 /** Event-scoring category shared by schemas and persisted submissions. */
 export type ScoreType = 'seeding' | 'bracket' | 'double_seeding';
 
+/** Exact `kind` / `ScoreType` literals accepted after the runtime cutover. */
+export const SCORESHEET_KINDS = [
+  'seeding',
+  'bracket',
+  'double_seeding',
+] as const satisfies readonly ScoreType[];
+
 /** Schema for one-team seeding runs. */
 export interface SeedingScoresheetSchema extends ScoresheetSchemaBase {
   kind: 'seeding';
@@ -592,6 +599,12 @@ export interface ScoreSubmissionRecord {
   result_note: string | null;
   created_at: string;
   updated_at: string;
+  /**
+   * Canonical schema of the referenced template, including inactive and
+   * old-event templates. Absent or null when the stored JSON is missing
+   * or fails the shallow discriminator check.
+   */
+  template_schema?: ScoresheetSchema | null;
   template_name?: string;
   reviewer_name?: string | null;
   submitted_by?: string;
@@ -916,10 +929,119 @@ export function validateScoresheetFields(
   return { ok: errors.length === 0, errors };
 }
 
+function hasOwnKey(object: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+/** True when `value` is one of the three canonical scoresheet kinds. */
+export function isScoreType(value: unknown): value is ScoreType {
+  return (SCORESHEET_KINDS as readonly unknown[]).includes(value);
+}
+
 /**
- * Validate a scoresheet schema object with a focus on official defaultValue rules.
- * Schemas without a fields array remain accepted for backward-compatible markers
- * (e.g. mode / bracketSource inference payloads).
+ * Structural check for the DB-backed bracket lookup used by `kind: 'bracket'`.
+ * Spreadsheet-shaped sources and non-objects are rejected.
+ */
+export function isValidDbBracketSource(
+  value: unknown,
+): value is DbBracketSource {
+  if (!isPlainObject(value)) return false;
+  if (value.type !== 'db') return false;
+  if (
+    hasOwnKey(value, 'scope') &&
+    value.scope !== undefined &&
+    value.scope !== 'event'
+  ) {
+    return false;
+  }
+  if (
+    hasOwnKey(value, 'eventId') &&
+    value.eventId !== undefined &&
+    value.eventId !== null &&
+    typeof value.eventId !== 'number'
+  ) {
+    return false;
+  }
+  if (
+    hasOwnKey(value, 'bracketId') &&
+    value.bracketId !== undefined &&
+    value.bracketId !== null &&
+    typeof value.bracketId !== 'number'
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Shallow discriminator check used at template write and read boundaries.
+ * Does not infer a kind from missing properties or legacy markers.
+ */
+export function validateScoresheetKind(
+  schema: Record<string, unknown>,
+): SchemaValidationResult {
+  const errors: string[] = [];
+
+  if (hasOwnKey(schema, 'mode')) {
+    errors.push('schema.mode is not supported; use kind.');
+  }
+  if (hasOwnKey(schema, 'scoreKind')) {
+    errors.push('schema.scoreKind is not supported; use kind.');
+  }
+
+  if (!hasOwnKey(schema, 'kind')) {
+    errors.push('schema.kind is required.');
+  } else if (!isScoreType(schema.kind)) {
+    errors.push(`Unsupported schema.kind ${JSON.stringify(schema.kind)}.`);
+  } else if (schema.kind === 'bracket') {
+    if (!isValidDbBracketSource(schema.bracketSource)) {
+      errors.push(
+        'schema.bracketSource must be a DB source for kind "bracket".',
+      );
+    }
+  } else if (hasOwnKey(schema, 'bracketSource')) {
+    errors.push(
+      `schema.bracketSource is not allowed for kind "${schema.kind}".`,
+    );
+  }
+
+  return { ok: errors.length === 0, errors };
+}
+
+/**
+ * Parse stored or request JSON and require a canonical discriminator.
+ * Callers must not cast the result to {@link ScoresheetSchema}.
+ */
+export function parseCanonicalScoresheetSchema(
+  raw: unknown,
+):
+  | { ok: true; schema: Record<string, unknown> }
+  | { ok: false; errors: string[] } {
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { ok: false, errors: ['schema must be valid JSON.'] };
+    }
+  }
+
+  if (!isPlainObject(parsed)) {
+    return { ok: false, errors: ['schema must be an object.'] };
+  }
+
+  const kindResult = validateScoresheetKind(parsed);
+  if (!kindResult.ok) {
+    return { ok: false, errors: kindResult.errors };
+  }
+
+  return { ok: true, schema: parsed };
+}
+
+/**
+ * Validate a scoresheet schema object at the template write boundary.
+ * Requires a supported `kind`, rejects legacy markers, and retains the
+ * existing defaultValue field checks.
  *
  * @remarks Call from scoresheet-template create/update routes. This deliberately
  * remains a focused write-boundary validator rather than a general read decoder.
@@ -931,15 +1053,22 @@ export function validateScoresheetSchema(
     return { ok: false, errors: ['schema must be an object.'] };
   }
 
+  const kindResult = validateScoresheetKind(schema);
+
   if (!('fields' in schema) || schema.fields === undefined) {
-    return { ok: true, errors: [] };
+    return kindResult;
   }
 
   if (!Array.isArray(schema.fields)) {
-    return { ok: false, errors: ['schema.fields must be an array.'] };
+    return {
+      ok: false,
+      errors: [...kindResult.errors, 'schema.fields must be an array.'],
+    };
   }
 
-  return validateScoresheetFields(schema.fields);
+  const fieldResult = validateScoresheetFields(schema.fields);
+  const errors = [...kindResult.errors, ...fieldResult.errors];
+  return { ok: errors.length === 0, errors };
 }
 
 /** Formats validator errors for a single HTTP/API error response. */

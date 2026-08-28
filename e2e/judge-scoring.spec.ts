@@ -30,6 +30,7 @@ let templateId: number;
 
 function buildSchema(evtId: number) {
   return {
+    kind: 'seeding',
     title: TEMPLATE_NAME,
     eventId: evtId,
     scoreDestination: 'db',

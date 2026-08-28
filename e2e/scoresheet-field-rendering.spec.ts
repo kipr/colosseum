@@ -26,6 +26,7 @@ let templateId: number;
 
 function buildAllFieldTypesSchema() {
   return {
+    kind: 'seeding',
     title: TEMPLATE_NAME,
     layout: 'two-column',
     fields: [
@@ -457,6 +458,7 @@ const DEFAULTS_TEMPLATE_NAME = 'E2E Default Values';
 
 function buildDefaultValuesSchema() {
   return {
+    kind: 'seeding',
     title: DEFAULTS_TEMPLATE_NAME,
     layout: 'two-column',
     fields: [

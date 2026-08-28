@@ -493,7 +493,7 @@ export function buildDoubleEliminationSchema(options: {
   const { title, eventId, templateFields } = options;
   const schema: any = {
     layout: 'two-column',
-    mode: 'head-to-head',
+    kind: 'bracket',
     title: title || 'Double Elimination Score Sheet',
     eventId,
     scoreDestination: 'db',
@@ -634,7 +634,7 @@ export function buildDoubleEliminationSchema(options: {
  * Build a double-seeding scoresheet schema. Two teams share one match and
  * scoresheet, but each team only receives its own side total — so there is no
  * winner selection and no combined grand total. The match is selected from the
- * double-seeding queue (handled by ScoresheetForm via `scoreKind`).
+ * double-seeding queue (handled by ScoresheetForm via `kind`).
  */
 export function buildDoubleSeedingSchema(options: {
   title: string;
@@ -644,7 +644,7 @@ export function buildDoubleSeedingSchema(options: {
   const { title, eventId, templateFields } = options;
   const schema: any = {
     layout: 'two-column',
-    scoreKind: 'double_seeding',
+    kind: 'double_seeding',
     title: title || 'Double Seeding Score Sheet',
     eventId,
     scoreDestination: 'db',

@@ -107,4 +107,41 @@ describe('portable scoresheet exporter', () => {
 
     expect(() => runExporter(inputPath, outputPath)).toThrow(/startValue/);
   });
+
+  it('rejects canonical bracket and double-seeding kinds', () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-scoresheet-'));
+    const outputPath = path.join(tempDir, 'rejected.html');
+
+    const bracketPath = path.join(tempDir, 'bracket.json');
+    writeFileSync(
+      bracketPath,
+      JSON.stringify({
+        schema: {
+          kind: 'bracket',
+          title: 'DE',
+          layout: 'two-column',
+          fields: [{ id: 'score', label: 'Score', type: 'number' }],
+        },
+      }),
+    );
+    expect(() => runExporter(bracketPath, outputPath)).toThrow(
+      /Unsupported schema.kind "bracket"/,
+    );
+
+    const doublePath = path.join(tempDir, 'double.json');
+    writeFileSync(
+      doublePath,
+      JSON.stringify({
+        schema: {
+          kind: 'double_seeding',
+          title: 'DS',
+          layout: 'two-column',
+          fields: [{ id: 'score', label: 'Score', type: 'number' }],
+        },
+      }),
+    );
+    expect(() => runExporter(doublePath, outputPath)).toThrow(
+      /Unsupported schema.kind "double_seeding"/,
+    );
+  });
 });

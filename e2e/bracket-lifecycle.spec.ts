@@ -51,7 +51,7 @@ function signSessionId(sid: string, secret: string): string {
 function buildH2hSchema(evtId: number, bktId: number) {
   return {
     title: H2H_TEMPLATE_NAME,
-    mode: 'head-to-head',
+    kind: 'bracket',
     eventId: evtId,
     scoreDestination: 'db',
     layout: 'two-column',

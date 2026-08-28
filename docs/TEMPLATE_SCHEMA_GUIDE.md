@@ -4,15 +4,20 @@ This guide explains how to create custom score sheet templates for the Colosseum
 
 ## Schema Structure
 
-A template schema is a JSON object with a `fields` array containing field definitions:
+A template schema is a JSON object with a required `kind` discriminator and a
+`fields` array containing field definitions:
 
 ```json
 {
+  "kind": "seeding",
   "fields": [
     // Field definitions here
   ]
 }
 ```
+
+`kind` must be `"seeding"`, `"bracket"`, or `"double_seeding"`. Bracket schemas
+also require a DB-backed `bracketSource`. Do not use `mode` or `scoreKind`.
 
 ## Field Types
 

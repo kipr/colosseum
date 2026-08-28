@@ -225,6 +225,7 @@ function createRecordingDatabase(columnAlreadyExists: boolean): {
     transaction: async <T>(fn: (tx: Transaction) => Promise<T>) => {
       const tx: Transaction = {
         get: recordGet,
+        all: async () => [],
         run: async () => noop,
         exec: recordExec,
       };

@@ -329,7 +329,7 @@ a fallback for schemas without `kind`.
 
 # Item 3 implementation plan: runtime cutover and stored-template migration
 
-Status: proposed.
+Status: completed.
 
 This section extends the item 2 plan with the implementation-sequence item 3
 needed to make the compile-time contract the only runtime representation. The

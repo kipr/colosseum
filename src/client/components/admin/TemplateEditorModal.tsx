@@ -46,9 +46,7 @@ export default function TemplateEditorModal({
     useState(false);
 
   const updateBracketStateFromSchema = (schemaData: any) => {
-    const isBracket =
-      schemaData?.bracketSource?.type === 'db' ||
-      schemaData?.mode === 'head-to-head';
+    const isBracket = schemaData?.kind === 'bracket';
     setIsBracketScoreSheet(isBracket);
     setLegacyBracketId(
       typeof schemaData?.bracketSource?.bracketId === 'number'
@@ -100,6 +98,15 @@ export default function TemplateEditorModal({
       setSchema(
         JSON.stringify(
           {
+            kind: 'seeding',
+            eventId,
+            scoreDestination: 'db',
+            teamsDataSource: {
+              type: 'db',
+              eventId,
+              teamNumberField: 'team_number',
+              teamNameField: 'team_name',
+            },
             fields: [
               {
                 id: 'example_field',

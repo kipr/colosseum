@@ -53,7 +53,7 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Seeding Sheet',
         description: 'Test',
         accessCode: 'code123',
-        schema: { fields: [], eventId: event.id },
+        schema: { kind: 'seeding', fields: [], eventId: event.id },
         eventId: event.id,
       });
 
@@ -75,7 +75,7 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Unlinked Sheet',
         description: 'Test',
         accessCode: 'code456',
-        schema: { fields: [] },
+        schema: { kind: 'seeding', fields: [] },
       });
 
       expect(res.status).toBe(200);
@@ -88,44 +88,25 @@ describe('Scoresheet Templates Event Scope', () => {
       expect(links.length).toBe(0);
     });
 
-    it('infers bracket type from schema with mode head-to-head', async () => {
+    it('rejects legacy head-to-head mode and bracketSource inference', async () => {
       const event = await seedEvent(testDb.db);
-      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+      const modeRes = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'DE Sheet',
         description: 'Bracket',
         accessCode: 'code789',
         schema: { mode: 'head-to-head', fields: [] },
         eventId: event.id,
       });
+      expect(modeRes.status).toBe(400);
 
-      expect(res.status).toBe(200);
-      const template = res.json as { id: number };
-      const links = await testDb.db.all(
-        'SELECT * FROM event_scoresheet_templates WHERE template_id = ?',
-        [template.id],
-      );
-      expect(links.length).toBe(1);
-      expect(links[0].template_type).toBe('bracket');
-    });
-
-    it('infers bracket type from schema with bracketSource', async () => {
-      const event = await seedEvent(testDb.db);
-      const res = await http.post(`${baseUrl}/scoresheet/templates`, {
+      const sourceRes = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'Bracket Sheet',
         description: 'Bracket via bracketSource',
         accessCode: 'code999',
         schema: { bracketSource: 'winners', fields: [] },
         eventId: event.id,
       });
-
-      expect(res.status).toBe(200);
-      const template = res.json as { id: number };
-      const links = await testDb.db.all(
-        'SELECT * FROM event_scoresheet_templates WHERE template_id = ?',
-        [template.id],
-      );
-      expect(links.length).toBe(1);
-      expect(links[0].template_type).toBe('bracket');
+      expect(sourceRes.status).toBe(400);
     });
 
     it('returns 400 when name, schema, or accessCode is missing', async () => {
@@ -142,7 +123,7 @@ describe('Scoresheet Templates Event Scope', () => {
     it('returns template with schema when access code is valid', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Judge Sheet',
-        schema: JSON.stringify({ fields: [{ id: 'score' }] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [{ id: 'score' }] }),
         access_code: 'judge-secret',
       });
 
@@ -158,7 +139,10 @@ describe('Scoresheet Templates Event Scope', () => {
         access_code?: string;
       };
       expect(body.id).toBe(template.id);
-      expect(body.schema).toEqual({ fields: [{ id: 'score' }] });
+      expect(body.schema).toEqual({
+        kind: 'seeding',
+        fields: [{ id: 'score' }],
+      });
       expect(body.access_code).toBeUndefined();
     });
 
@@ -187,7 +171,7 @@ describe('Scoresheet Templates Event Scope', () => {
       const event = await seedEvent(testDb.db, { name: 'Chat Event' });
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Judge Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
         access_code: 'judge-secret',
       });
       await seedEventScoresheetTemplate(testDb.db, {
@@ -243,7 +227,7 @@ describe('Scoresheet Templates Event Scope', () => {
       const event = await seedEvent(testDb.db, { name: 'Expired Chat Event' });
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Expired Judge Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
         access_code: 'judge-secret',
       });
       await seedEventScoresheetTemplate(testDb.db, {
@@ -301,7 +285,7 @@ describe('Scoresheet Templates Event Scope', () => {
     it('returns full template for authenticated admin', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Admin Preview',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
 
       const res = await http.get(
@@ -312,7 +296,7 @@ describe('Scoresheet Templates Event Scope', () => {
       const body = res.json as { id: number; name: string; schema: unknown };
       expect(body.id).toBe(template.id);
       expect(body.name).toBe('Admin Preview');
-      expect(body.schema).toEqual({ fields: [] });
+      expect(body.schema).toEqual({ kind: 'seeding', fields: [] });
     });
 
     it('returns 404 when template does not exist', async () => {
@@ -347,7 +331,7 @@ describe('Scoresheet Templates Event Scope', () => {
       const event2 = await seedEvent(testDb.db, { name: 'Event B' });
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Shared Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       await seedEventScoresheetTemplate(testDb.db, {
         event_id: event1.id,
@@ -361,7 +345,7 @@ describe('Scoresheet Templates Event Scope', () => {
           name: 'Shared Sheet',
           description: '',
           accessCode: 'code',
-          schema: { fields: [] },
+          schema: { kind: 'seeding', fields: [] },
           eventId: event2.id,
         },
       );
@@ -380,7 +364,7 @@ describe('Scoresheet Templates Event Scope', () => {
       const event = await seedEvent(testDb.db);
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       await seedEventScoresheetTemplate(testDb.db, {
         event_id: event.id,
@@ -392,7 +376,7 @@ describe('Scoresheet Templates Event Scope', () => {
         name: 'Sheet',
         description: '',
         accessCode: 'code',
-        schema: { fields: [] },
+        schema: { kind: 'seeding', fields: [] },
       });
 
       const links = await testDb.db.all(
@@ -480,15 +464,15 @@ describe('Scoresheet Templates Event Scope', () => {
       });
       const tActive = await seedScoresheetTemplate(testDb.db, {
         name: 'Active Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       const tComplete = await seedScoresheetTemplate(testDb.db, {
         name: 'Complete Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       const tArchived = await seedScoresheetTemplate(testDb.db, {
         name: 'Archived Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       await seedEventScoresheetTemplate(testDb.db, {
         event_id: eventActive.id,
@@ -518,11 +502,11 @@ describe('Scoresheet Templates Event Scope', () => {
       const event = await seedEvent(testDb.db, { status: 'active' });
       const tLinked = await seedScoresheetTemplate(testDb.db, {
         name: 'Linked Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       await seedScoresheetTemplate(testDb.db, {
         name: 'Unscoped Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       await seedEventScoresheetTemplate(testDb.db, {
         event_id: event.id,
@@ -546,7 +530,7 @@ describe('Scoresheet Templates Event Scope', () => {
       });
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Event Sheet',
-        schema: JSON.stringify({ fields: [] }),
+        schema: JSON.stringify({ kind: 'seeding', fields: [] }),
       });
       await seedEventScoresheetTemplate(testDb.db, {
         event_id: event.id,

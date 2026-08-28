@@ -83,8 +83,14 @@ function validateSchema(template) {
     return errors;
   }
 
-  if (schema.mode === 'head-to-head') {
-    errors.push('Unsupported schema.mode "head-to-head".');
+  if (schema.kind === 'bracket') {
+    errors.push('Unsupported schema.kind "bracket". Portable V1 is seeding-only.');
+  }
+
+  if (schema.kind === 'double_seeding') {
+    errors.push(
+      'Unsupported schema.kind "double_seeding". Portable V1 is seeding-only.',
+    );
   }
 
   if (schema.layout && schema.layout !== 'two-column') {

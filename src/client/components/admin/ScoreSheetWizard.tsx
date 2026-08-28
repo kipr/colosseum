@@ -85,6 +85,7 @@ export default function ScoreSheetWizard({
 
   const generateSeedingSchema = () => {
     const schema: any = {
+      kind: 'seeding',
       layout: 'two-column',
       title: name || 'Seeding Score Sheet',
       eventId: selectedEvent?.id ?? null,

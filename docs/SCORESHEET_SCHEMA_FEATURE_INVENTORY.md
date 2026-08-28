@@ -32,8 +32,8 @@ The checked-in production-oriented sources provide representative fixtures:
 | `templates/botball-gcer-2026-scoring-fields.json`                             | Current reusable two-sided scoring fields, including both repeatable-group derivations. |
 | `templates/botball-2026-scoring-fields.json`                                  | Earlier two-sided scoring fields with scalar inputs and formulas.                       |
 | `templates/botball-2026-fall-scoring-fields.json`                             | Alternate rule set using the same scalar, multiplier, total, and layout features.       |
-| `templates/botball-seeding-template.json`                                     | Complete seeding schema and the legacy spreadsheet-source shape.                        |
-| `templates/botball-de-template.json`                                          | Complete head-to-head schema with bracket selection and winner selection.               |
+| `templates/legacy/botball-seeding-template.json`                              | Legacy complete seeding example with spreadsheet sources; not importable online.        |
+| `templates/legacy/botball-de-template.json`                                   | Legacy complete head-to-head example with spreadsheet sources; not importable online.   |
 | `templates/demo-default-values.json` and `templates/test-default-values.json` | Non-production coverage for typed defaults and portable export.                         |
 
 The wizard wraps reusable field arrays with current DB-backed event metadata.
@@ -49,23 +49,21 @@ It also adapts `side_a`/`side_b` IDs, formulas, and derived-output references to
 | `layout: "two-column"`        | Renders fields with `column: "left"` and `"right"` side by side. Any other or absent value falls back to the limited single-column path.                                                                                                                                                                                      |                                                                     9/9 |
 | `eventId`                     | Scopes team, queue, bracket, chat, and submission operations to an event.                                                                                                                                                                                                                                                     |                                                                     9/9 |
 | `scoreDestination: "db"`      | Enables the event-backed submission paths. The current server rejects submissions that are not event scoped, so this is effectively required for usable online scoring.                                                                                                                                                       |                                                                     9/9 |
-| `mode: "head-to-head"`        | Selects bracket scoring: bracket-game selection, two teams, winner/result controls, and bracket submission metadata.                                                                                                                                                                                                          |                                                     3/9; 30 submissions |
-| `scoreKind: "double_seeding"` | Selects double-seeding queue behavior, separate side totals, solo-run handling, and no winner control.                                                                                                                                                                                                                        |                                                     3/9; 14 submissions |
+| `kind: "seeding"`             | Selects one-team seeding: queue-backed team/round selection and seeding submission metadata.                                                                                                                                                                  |                                                     3/9; 10 submissions |
+| `kind: "bracket"`             | Selects bracket scoring: bracket-game selection, two teams, winner/result controls, and bracket submission metadata.                                                                                                                                          |                                                     3/9; 30 submissions |
+| `kind: "double_seeding"`      | Selects double-seeding queue behavior, separate side totals, solo-run handling, and no winner control.                                                                                                                                                        |                                                     3/9; 14 submissions |
 | `bracketSource`               | Configures DB bracket-game lookup. Current generated schemas use `{type:"db", scope:"event", eventId}`; the client also retains a bracket-specific `{type:"db", bracketId}` compatibility path.                                                                                                                               |                                                     3/9; 30 submissions |
 | `teamsDataSource`             | Canonical event-team collection and team-number/name property mapping. Head-to-head consumes it for display lookup; seeding and double-seeding selectors are populated through their DB-backed queues (with legacy seeding dropdowns also declaring the endpoint at field level). New schemas require it for every archetype. | Present in 6/9 legacy samples; actively consumed by 3 bracket templates |
 | `gameAreasImage`              | Data URL or URL shown in an optional full-screen game-area reference overlay; the template editor manages it separately from the JSON textarea. Portable export also supports it. It is confirmed in production use even though it is absent from this local sample.                                                          |                0/9 locally; confirmed production use outside the sample |
 
 ### Scoring archetype selection
 
-The effective discriminator order is:
-
-1. `scoreKind === "double_seeding"`;
-2. otherwise `mode === "head-to-head"` (or, for server-side template-type
-   inference only, the presence of `bracketSource`);
-3. otherwise seeding.
-
-These markers are behavior-bearing discriminants and should be modeled as such,
-instead of leaving `mode` and `scoreKind` as unrestricted strings.
+The schema discriminator is the required `kind` property. Its values are the
+existing `ScoreType` literals: `seeding`, `bracket`, and `double_seeding`.
+Runtime builders, template writes, event-template linkage, judge forms, and
+portable export all branch on `kind` only. Stored templates were migrated in
+place to this representation; `mode` and `scoreKind` are rejected at the
+template write boundary.
 
 ## Field types
 

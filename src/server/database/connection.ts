@@ -47,6 +47,8 @@ export interface Transaction {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  all<T = any>(sql: string, params?: any[]): Promise<T[]>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   run(sql: string, params?: any[]): Promise<DatabaseResult>;
   exec(sql: string): Promise<void>;
 }
@@ -154,6 +156,13 @@ class SqliteAdapter implements Database {
         params: any[] = [], // eslint-disable-line @typescript-eslint/no-explicit-any
       ): Promise<R | undefined> => {
         return this.stmt(sql).get(normalizeParams(params)) as R | undefined;
+      },
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      all: async <R = any>(
+        sql: string,
+        params: any[] = [], // eslint-disable-line @typescript-eslint/no-explicit-any
+      ): Promise<R[]> => {
+        return this.stmt(sql).all(normalizeParams(params)) as R[];
       },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       run: async (sql: string, params: any[] = []): Promise<DatabaseResult> => {
@@ -270,6 +279,16 @@ class PostgresAdapter implements Database {
             params ? normalizePgParams(params) : params,
           );
           return result.rows[0];
+        },
+        all: async <R = any>( // eslint-disable-line @typescript-eslint/no-explicit-any
+          sql: string,
+          params?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+        ): Promise<R[]> => {
+          const result = await client.query(
+            this.convertSql(sql),
+            params ? normalizePgParams(params) : params,
+          );
+          return result.rows;
         },
         run: async (
           sql: string,

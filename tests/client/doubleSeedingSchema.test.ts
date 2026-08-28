@@ -18,7 +18,7 @@ describe('buildDoubleSeedingSchema', () => {
       templateFields: null,
     });
 
-    expect(schema.scoreKind).toBe('double_seeding');
+    expect(schema.kind).toBe('double_seeding');
     expect(schema.scoreDestination).toBe('db');
     expect(schema.eventId).toBe(42);
     // Never head-to-head: that means bracket scoring with a winner

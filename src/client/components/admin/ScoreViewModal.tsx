@@ -20,18 +20,30 @@ interface ScoreViewModalProps {
   onSave: () => void;
 }
 
+function templateFromScore(score: any): any | null {
+  const schema = score.template_schema;
+  if (schema && typeof schema === 'object' && Array.isArray(schema.fields)) {
+    return {
+      id: score.template_id,
+      name: score.template_name,
+      schema,
+    };
+  }
+  return null;
+}
+
 export default function ScoreViewModal({
   score,
   onClose,
   onSave,
 }: ScoreViewModalProps) {
-  const [template, setTemplate] = useState<any>(null);
+  const [template, setTemplate] = useState<any>(() => templateFromScore(score));
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [calculatedValues, setCalculatedValues] = useState<
     Record<string, number>
   >({});
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [resultType, setResultType] = useState<BracketResultType>(
     score.result_type ?? 'standard',
   );
@@ -42,8 +54,9 @@ export default function ScoreViewModal({
   const isReadOnly = score.status !== 'pending';
 
   useEffect(() => {
-    loadTemplate();
+    setTemplate(templateFromScore(score));
     initializeFormData();
+    setLoading(false);
   }, []);
 
   useEffect(() => {
@@ -51,43 +64,6 @@ export default function ScoreViewModal({
       calculateAllFormulas();
     }
   }, [formData, template]);
-
-  const loadTemplate = async () => {
-    try {
-      const response = await fetch('/scoresheet/templates');
-      if (!response.ok) throw new Error('Failed to load templates');
-      const templates = await response.json();
-
-      // Find template by ID first (more reliable), then fall back to name
-      let foundTemplate = templates.find(
-        (t: any) => t.id === score.template_id,
-      );
-      if (!foundTemplate) {
-        foundTemplate = templates.find(
-          (t: any) => t.name === score.template_name,
-        );
-      }
-
-      if (foundTemplate) {
-        setTemplate(foundTemplate);
-      } else {
-        console.error(
-          'Template not found. Score template_id:',
-          score.template_id,
-          'template_name:',
-          score.template_name,
-        );
-        console.error(
-          'Available templates:',
-          templates.map((t: any) => ({ id: t.id, name: t.name })),
-        );
-      }
-    } catch (error) {
-      console.error('Error loading template:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const initializeFormData = () => {
     const data: Record<string, any> = {};
@@ -853,7 +829,7 @@ export default function ScoreViewModal({
     return (
       <div className="scoresheet-form">
         <div className="scoresheet-title">
-          Score Details (Template Not Found)
+          Score Details (Template schema unavailable)
         </div>
         <div className="scoresheet-header-fields">
           {Object.entries(score.score_data)

@@ -434,8 +434,10 @@ Advance template testing remains necessary for those concerns.
 2. **Completed:** replace the transitional `mode`/`scoreKind` schema union with
    the required `kind` discriminated union (see
    [`SCORESHEET_KIND_DISCRIMINATOR_IMPLEMENTATION_PLAN.md`](SCORESHEET_KIND_DISCRIMINATOR_IMPLEMENTATION_PLAN.md)).
-3. Add and run the direct stored-template migration; update schema builders,
-   supported checked-in templates, fixtures, exports, and validators atomically.
+3. **Completed:** add and run the direct stored-template migration; update
+   schema builders, supported checked-in templates, fixtures, exports, and
+   validators atomically (see
+   [`SCORESHEET_KIND_DISCRIMINATOR_IMPLEMENTATION_PLAN.md`](SCORESHEET_KIND_DISCRIMINATOR_IMPLEMENTATION_PLAN.md)).
 4. Complete the remaining shared compile-time types.
 5. Type `scoresheetUtils.ts` and its pure scoring helpers.
 6. Type `ScoresheetForm.tsx`, `ScoreViewModal.tsx`, and

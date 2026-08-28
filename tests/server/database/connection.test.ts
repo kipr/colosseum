@@ -130,8 +130,10 @@ describe('createSqliteDatabase', () => {
         'SELECT val FROM t WHERE val = ?',
         ['pending'],
       );
+      const rows = await tx.all<{ val: string }>('SELECT val FROM t');
 
       expect(row?.val).toBe('pending');
+      expect(rows).toEqual([{ val: 'pending' }]);
     });
 
     db.close();

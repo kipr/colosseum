@@ -3,13 +3,26 @@ import {
   formatSchemaValidationError,
   getBlankFieldValue,
   getFieldDefaultValue,
+  parseCanonicalScoresheetSchema,
   validateScoresheetFields,
   validateScoresheetSchema,
 } from '../../src/shared/scoresheetSchema';
 
 describe('scoresheetSchema defaultValue validation', () => {
-  it('accepts schemas without a fields array', () => {
-    expect(validateScoresheetSchema({ mode: 'head-to-head' })).toEqual({
+  it('requires a supported kind and rejects legacy markers', () => {
+    expect(validateScoresheetSchema({ mode: 'head-to-head' }).ok).toBe(false);
+    expect(validateScoresheetSchema({ fields: [] }).ok).toBe(false);
+    expect(
+      validateScoresheetSchema({ kind: 'seeding', scoreKind: 'double_seeding' })
+        .ok,
+    ).toBe(false);
+    expect(
+      validateScoresheetSchema({
+        kind: 'bracket',
+        bracketSource: { type: 'db' },
+      }),
+    ).toEqual({ ok: true, errors: [] });
+    expect(validateScoresheetSchema({ kind: 'seeding' })).toEqual({
       ok: true,
       errors: [],
     });
@@ -25,6 +38,7 @@ describe('scoresheetSchema defaultValue validation', () => {
 
   it('accepts valid typed defaults for interactive fields', () => {
     const result = validateScoresheetSchema({
+      kind: 'seeding',
       fields: [
         { id: 'name', type: 'text', defaultValue: 'Ada' },
         { id: 'score', type: 'number', min: 0, max: 10, defaultValue: 7 },
@@ -173,5 +187,27 @@ describe('scoresheetSchema defaultValue validation', () => {
     expect(
       getBlankFieldValue({ type: 'number', defaultValue: 3 }),
     ).toBe(3);
+  });
+
+  it('parses canonical schemas and rejects legacy or missing kind', () => {
+    expect(
+      parseCanonicalScoresheetSchema({
+        kind: 'seeding',
+        fields: [],
+      }),
+    ).toEqual({
+      ok: true,
+      schema: { kind: 'seeding', fields: [] },
+    });
+    expect(parseCanonicalScoresheetSchema('{"kind":"seeding"}').ok).toBe(true);
+    expect(parseCanonicalScoresheetSchema('{').ok).toBe(false);
+    expect(parseCanonicalScoresheetSchema({ fields: [] }).ok).toBe(false);
+    expect(
+      parseCanonicalScoresheetSchema({
+        kind: 'bracket',
+        mode: 'head-to-head',
+        bracketSource: { type: 'db' },
+      }).ok,
+    ).toBe(false);
   });
 });

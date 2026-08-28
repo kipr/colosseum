@@ -1,7 +1,6 @@
 /**
- * Template type inference for double-seeding scoresheets.
- * The explicit schema marker scoreKind: 'double_seeding' takes precedence;
- * head-to-head still means bracket.
+ * Template type persistence from canonical schema.kind.
+ * Legacy mode/scoreKind markers and missing kind are rejected at the write boundary.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
@@ -15,7 +14,7 @@ import {
 import { seedUser, seedEvent } from './helpers/seed';
 import scoresheetRoutes from '../../src/server/routes/scoresheet';
 
-describe('Scoresheet template inference - double seeding', () => {
+describe('Scoresheet template kind persistence', () => {
   let testDb: TestDb;
   let server: TestServerHandle;
   let baseUrl: string;
@@ -38,14 +37,14 @@ describe('Scoresheet template inference - double seeding', () => {
     testDb.close();
   });
 
-  it('infers double_seeding from schema.scoreKind', async () => {
+  it('persists double_seeding from schema.kind', async () => {
     const event = await seedEvent(testDb.db);
     const res = await http.post(`${baseUrl}/scoresheet/templates`, {
       name: 'Double Seeding Sheet',
       description: 'Test',
       accessCode: 'code-ds',
       schema: {
-        scoreKind: 'double_seeding',
+        kind: 'double_seeding',
         scoreDestination: 'db',
         eventId: event.id,
         fields: [],
@@ -64,13 +63,17 @@ describe('Scoresheet template inference - double seeding', () => {
     expect(links[0].template_type).toBe('double_seeding');
   });
 
-  it('keeps inferring bracket from mode head-to-head when no scoreKind exists', async () => {
+  it('persists bracket from schema.kind and a DB bracketSource', async () => {
     const event = await seedEvent(testDb.db);
     const res = await http.post(`${baseUrl}/scoresheet/templates`, {
       name: 'DE Sheet',
       description: 'Test',
       accessCode: 'code-de',
-      schema: { mode: 'head-to-head', fields: [] },
+      schema: {
+        kind: 'bracket',
+        bracketSource: { type: 'db', eventId: event.id },
+        fields: [],
+      },
       eventId: event.id,
     });
 
@@ -82,5 +85,33 @@ describe('Scoresheet template inference - double seeding', () => {
       [template.id],
     );
     expect(links[0].template_type).toBe('bracket');
+  });
+
+  it('rejects legacy scoreKind, mode, and missing kind', async () => {
+    const event = await seedEvent(testDb.db);
+
+    const scoreKind = await http.post(`${baseUrl}/scoresheet/templates`, {
+      name: 'Legacy Double Seeding',
+      accessCode: 'legacy-ds',
+      schema: { scoreKind: 'double_seeding', fields: [] },
+      eventId: event.id,
+    });
+    expect(scoreKind.status).toBe(400);
+
+    const mode = await http.post(`${baseUrl}/scoresheet/templates`, {
+      name: 'Legacy Bracket',
+      accessCode: 'legacy-de',
+      schema: { mode: 'head-to-head', fields: [] },
+      eventId: event.id,
+    });
+    expect(mode.status).toBe(400);
+
+    const missing = await http.post(`${baseUrl}/scoresheet/templates`, {
+      name: 'Missing Kind',
+      accessCode: 'missing',
+      schema: { fields: [] },
+      eventId: event.id,
+    });
+    expect(missing.status).toBe(400);
   });
 });

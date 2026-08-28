@@ -22,7 +22,8 @@
     "test:e2e": "playwright test",
     "lint": "npx eslint src",
     "pretty": "npx prettier src/ --check",
-    "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs"
+    "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs",
+    "migrate:scoresheet-kind": "ts-node src/server/scripts/migrateScoresheetKind.ts"
   },
   "keywords": [],
   "author": "",

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fallFields from '../../templates/botball-2026-fall-scoring-fields.json';
 import standardFields from '../../templates/botball-2026-scoring-fields.json';
 import gcerFields from '../../templates/botball-gcer-2026-scoring-fields.json';
-import seedingTemplate from '../../templates/botball-seeding-template.json';
+import seedingTemplate from '../../templates/legacy/botball-seeding-template.json';
 
 describe('section multipliers', () => {
   it.each([

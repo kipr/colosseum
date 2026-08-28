@@ -51,6 +51,7 @@ async function setAdminCookie(context: BrowserContext) {
 
 function buildSchema(evtId: number) {
   return {
+    kind: 'seeding',
     title: TEMPLATE_NAME,
     eventId: evtId,
     scoreDestination: 'db',

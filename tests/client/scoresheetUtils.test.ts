@@ -65,7 +65,7 @@ describe('scoresheetUtils', () => {
       templateFields: null,
     });
 
-    expect(schema.mode).toBe('head-to-head');
+    expect(schema.kind).toBe('bracket');
     expect(schema.eventId).toBe(42);
     expect(schema.bracketSource).toEqual(buildEventScopedBracketSource(42));
     expect(schema.teamsDataSource.eventId).toBe(42);

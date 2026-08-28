@@ -6,8 +6,8 @@ This tool generates a **single self-contained HTML file** for offline score entr
 
 ```bash
 npm run export:scoresheet -- \
-  --input templates/botball-seeding-template.json \
-  --output dist/portable/botball-seeding.html
+  --input templates/demo-default-values.json \
+  --output dist/portable/demo-default-values.html
 ```
 
 For a small demo that pre-fills controls with `defaultValue` (a bare fields array, also pasteable into Admin → Field Templates):
@@ -36,7 +36,16 @@ The input JSON can be one of:
 { "title": "...", "layout": "two-column", "fields": [] }
 ```
 
-(For compatibility, field-array-only JSON is also accepted.)
+3. Field-array-only JSON, accepted as a portable input shorthand rather than a
+   canonical online scoresheet schema:
+
+```json
+[{ "id": "score", "label": "Score", "type": "number" }]
+```
+
+Canonical online schemas use `kind: "seeding" | "bracket" | "double_seeding"`.
+Portable V1 accepts seeding-compatible input, including schemas with
+`kind: "seeding"` and shorthand input that omits `kind`.
 
 ## V1 Supported Features
 
@@ -61,7 +70,7 @@ Portable scoresheets honor the same `defaultValue` rules as the main app:
 
 ## V1 Rejected Features (fail-fast)
 
-- `mode === "head-to-head"`
+- `kind === "bracket"` or `kind === "double_seeding"`
 - `winner-select` fields
 - `dataSource.type === "db"`
 - `dataSource.type === "bracket"`
