@@ -187,7 +187,7 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_us_poms * 2) + (side_a_us_cubes * 5) + (side_a_us_cubes_pallets * 10) + (side_a_us_drums * 25) + (side_a_us_traffic_cone * 100) + (side_a_us_botguy * 200)) * (side_a_us_robots_mult > 0 ? ((side_a_us_robots_mult ? side_a_us_robots_mult : 0) + 2) : 1)"
+    "formula": "((side_a_us_poms * 2) + (side_a_us_cubes * 5) + (side_a_us_cubes_pallets * 10) + (side_a_us_drums * 25) + (side_a_us_traffic_cone * 100) + (side_a_us_botguy * 200)) * (side_a_us_robots_mult > 0 ? (side_a_us_robots_mult + 2) : 1)"
   },
   {
     "id": "side_a_wf_header",
@@ -427,7 +427,7 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_pb_non_matched_poms * 10) + (side_a_pb_matched_poms * 20) + (side_a_pb_botguy * 150)) * (((side_a_pb_sorted_baskets_mult ? side_a_pb_sorted_baskets_mult : 0) + 1) + (side_a_pb_returned_baskets_mult > 0 ? side_a_pb_returned_baskets_mult : 1))"
+    "formula": "((side_a_pb_non_matched_poms * 10) + (side_a_pb_matched_poms * 20) + (side_a_pb_botguy * 150)) * ((side_a_pb_sorted_baskets_mult + 1) + (side_a_pb_returned_baskets_mult > 0 ? side_a_pb_returned_baskets_mult : 1))"
   },
   {
     "id": "side_a_uw_header",
@@ -528,7 +528,7 @@
     "label": "Subtotal",
     "column": "left",
     "type": "calculated",
-    "formula": "((side_a_eld_unsorted_cubes * 15) + (side_a_eld_sorted_cubes * 45)) * ((side_a_eld_pallets_mult ? side_a_eld_pallets_mult : 0) + 1)"
+    "formula": "((side_a_eld_unsorted_cubes * 15) + (side_a_eld_sorted_cubes * 45)) * (side_a_eld_pallets_mult + 1)"
   },
   {
     "id": "side_a_total",
@@ -734,7 +734,7 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_us_poms * 2) + (side_b_us_cubes * 5) + (side_b_us_cubes_pallets * 10) + (side_b_us_drums * 25) + (side_b_us_traffic_cone * 100) + (side_b_us_botguy * 200)) * (side_b_us_robots_mult > 0 ? ((side_b_us_robots_mult ? side_b_us_robots_mult : 0) + 2) : 1)"
+    "formula": "((side_b_us_poms * 2) + (side_b_us_cubes * 5) + (side_b_us_cubes_pallets * 10) + (side_b_us_drums * 25) + (side_b_us_traffic_cone * 100) + (side_b_us_botguy * 200)) * (side_b_us_robots_mult > 0 ? (side_b_us_robots_mult + 2) : 1)"
   },
   {
     "id": "side_b_wf_header",
@@ -974,7 +974,7 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_pb_non_matched_poms * 10) + (side_b_pb_matched_poms * 20) + (side_b_pb_botguy * 150)) * (((side_b_pb_sorted_baskets_mult ? side_b_pb_sorted_baskets_mult : 0) + 1) + (side_b_pb_returned_baskets_mult > 0 ? side_b_pb_returned_baskets_mult : 1))"
+    "formula": "((side_b_pb_non_matched_poms * 10) + (side_b_pb_matched_poms * 20) + (side_b_pb_botguy * 150)) * ((side_b_pb_sorted_baskets_mult + 1) + (side_b_pb_returned_baskets_mult > 0 ? side_b_pb_returned_baskets_mult : 1))"
   },
   {
     "id": "side_b_uw_header",
@@ -1075,7 +1075,7 @@
     "label": "Subtotal",
     "column": "right",
     "type": "calculated",
-    "formula": "((side_b_eld_unsorted_cubes * 15) + (side_b_eld_sorted_cubes * 45)) * ((side_b_eld_pallets_mult ? side_b_eld_pallets_mult : 0) + 1)"
+    "formula": "((side_b_eld_unsorted_cubes * 15) + (side_b_eld_sorted_cubes * 45)) * (side_b_eld_pallets_mult + 1)"
   },
   {
     "id": "side_b_total",
