@@ -27,7 +27,11 @@ The input JSON can be one of:
 1. Full template object:
 
 ```json
-{ "name": "...", "description": "...", "schema": { "title": "...", "layout": "two-column", "fields": [] } }
+{
+  "name": "...",
+  "description": "...",
+  "schema": { "title": "...", "layout": "two-column", "fields": [] }
+}
 ```
 
 2. Bare schema object:

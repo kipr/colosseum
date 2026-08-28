@@ -105,7 +105,9 @@ describe('Historical scoresheet viewing after kind cutover', () => {
     const publicList = await http.get(`${baseUrl}/scoresheet/templates`);
     expect(publicList.status).toBe(200);
     expect(
-      (publicList.json as { id: number }[]).some((row) => row.id === template.id),
+      (publicList.json as { id: number }[]).some(
+        (row) => row.id === template.id,
+      ),
     ).toBe(false);
 
     const history = await http.get(`${baseUrl}/scores/by-event/${event.id}`);

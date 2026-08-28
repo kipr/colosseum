@@ -81,10 +81,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function describeLegacyValue(
-  label: string,
-  value: unknown,
-): string {
+function describeLegacyValue(label: string, value: unknown): string {
   if (typeof value === 'string') {
     return `legacy:${label}=${value}`;
   }
@@ -138,9 +135,7 @@ function collectSignals(schema: Record<string, unknown>): {
   const hasScoreKind = hasOwnKey(schema, 'scoreKind');
 
   if (hasMode && hasScoreKind) {
-    errors.push(
-      'schema has both legacy properties "mode" and "scoreKind"',
-    );
+    errors.push('schema has both legacy properties "mode" and "scoreKind"');
   }
 
   if (hasOwnKey(schema, 'kind')) {

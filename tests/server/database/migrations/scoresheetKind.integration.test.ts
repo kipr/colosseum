@@ -89,7 +89,9 @@ describe('scoresheet kind migration orchestration', () => {
     );
     expect(JSON.parse(byId.get(unlinked.id).schema).kind).toBe('seeding');
     expect(JSON.parse(byId.get(bracket.id).schema).mode).toBeUndefined();
-    expect(JSON.parse(byId.get(doubleSeeding.id).schema).scoreKind).toBeUndefined();
+    expect(
+      JSON.parse(byId.get(doubleSeeding.id).schema).scoreKind,
+    ).toBeUndefined();
     expect(Number(byId.get(seeding.id).is_active)).toBe(0);
 
     const second = await applyScoresheetKindMigration(testDb.db);
@@ -107,9 +109,9 @@ describe('scoresheet kind migration orchestration', () => {
       schema: '{',
     });
 
-    await expect(applyScoresheetKindMigration(testDb.db)).rejects.toBeInstanceOf(
-      ScoresheetKindMigrationError,
-    );
+    await expect(
+      applyScoresheetKindMigration(testDb.db),
+    ).rejects.toBeInstanceOf(ScoresheetKindMigrationError);
 
     const rows = await testDb.db.all(
       'SELECT name, schema FROM scoresheet_templates ORDER BY id',

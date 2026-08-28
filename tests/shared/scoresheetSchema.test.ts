@@ -30,9 +30,9 @@ describe('scoresheetSchema defaultValue validation', () => {
 
   it('rejects non-object schemas and non-array fields', () => {
     expect(validateScoresheetSchema(null).ok).toBe(false);
-    expect(validateScoresheetSchema({ fields: 'x' }).errors[0]).toContain(
-      'schema.fields must be an array',
-    );
+    expect(
+      validateScoresheetSchema({ kind: 'seeding', fields: 'x' }).errors[0],
+    ).toContain('schema.fields must be an array');
     expect(validateScoresheetFields('nope').ok).toBe(false);
   });
 
@@ -116,7 +116,9 @@ describe('scoresheetSchema defaultValue validation', () => {
     expect(result.errors.some((e) => e.includes('above max'))).toBe(true);
     expect(result.errors.some((e) => e.includes('boolean'))).toBe(true);
     expect(
-      result.errors.some((e) => e.includes('match one of the declared options')),
+      result.errors.some((e) =>
+        e.includes('match one of the declared options'),
+      ),
     ).toBe(true);
     expect(result.errors.some((e) => e.includes('must include a "type"'))).toBe(
       true,
@@ -158,12 +160,12 @@ describe('scoresheetSchema defaultValue validation', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.includes('above max'))).toBe(true);
-    expect(result.errors.some((e) => e.includes('each row must be an object'))).toBe(
-      true,
-    );
-    expect(result.errors.some((e) => e.includes('unknown child field id'))).toBe(
-      true,
-    );
+    expect(
+      result.errors.some((e) => e.includes('each row must be an object')),
+    ).toBe(true);
+    expect(
+      result.errors.some((e) => e.includes('unknown child field id')),
+    ).toBe(true);
     expect(result.errors.some((e) => e.includes('must be a boolean'))).toBe(
       true,
     );
@@ -171,7 +173,9 @@ describe('scoresheetSchema defaultValue validation', () => {
 
   it('formats multi-error messages', () => {
     expect(formatSchemaValidationError(['only one'])).toBe('only one');
-    expect(formatSchemaValidationError(['a', 'b'])).toContain('Invalid scoresheet schema');
+    expect(formatSchemaValidationError(['a', 'b'])).toContain(
+      'Invalid scoresheet schema',
+    );
     expect(formatSchemaValidationError(['a', 'b'])).toContain('- a');
   });
 
@@ -184,9 +188,7 @@ describe('scoresheetSchema defaultValue validation', () => {
     ).toBeUndefined();
     expect(getBlankFieldValue({ type: 'checkbox' })).toBe(false);
     expect(getBlankFieldValue({ type: 'text' })).toBe('');
-    expect(
-      getBlankFieldValue({ type: 'number', defaultValue: 3 }),
-    ).toBe(3);
+    expect(getBlankFieldValue({ type: 'number', defaultValue: 3 })).toBe(3);
   });
 
   it('parses canonical schemas and rejects legacy or missing kind', () => {

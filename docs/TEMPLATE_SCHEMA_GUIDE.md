@@ -349,14 +349,14 @@ Interactive fields may include an optional `defaultValue` that pre-fills the con
 
 Accepted shapes:
 
-| Field type | `defaultValue` type | Extra rules |
-| --- | --- | --- |
-| `text` | `string` | — |
-| `number` | finite `number` | Must respect `min` / `max` when set |
-| `dropdown` | `string` \| `number` \| `boolean` | Must match an `options[].value` when options are static |
-| `buttons` | `string` \| `number` \| `boolean` | Must match an `options[].value` |
-| `checkbox` | `boolean` | — |
-| `repeatableGroup` | array of row objects | Each cell is validated against the child field type |
+| Field type        | `defaultValue` type               | Extra rules                                             |
+| ----------------- | --------------------------------- | ------------------------------------------------------- |
+| `text`            | `string`                          | —                                                       |
+| `number`          | finite `number`                   | Must respect `min` / `max` when set                     |
+| `dropdown`        | `string` \| `number` \| `boolean` | Must match an `options[].value` when options are static |
+| `buttons`         | `string` \| `number` \| `boolean` | Must match an `options[].value`                         |
+| `checkbox`        | `boolean`                         | —                                                       |
+| `repeatableGroup` | array of row objects              | Each cell is validated against the child field type     |
 
 `defaultValue` is **not** allowed on `calculated`, `section_header`, `group_header`, or `winner-select` fields.
 
@@ -373,9 +373,7 @@ The legacy `startValue` property is no longer supported and will be rejected.
     { "id": "count", "label": "Count", "type": "number", "min": 0, "max": 5 },
     { "id": "notes", "label": "Notes", "type": "text" }
   ],
-  "defaultValue": [
-    { "count": 1, "notes": "Starter row" }
-  ]
+  "defaultValue": [{ "count": 1, "notes": "Starter row" }]
 }
 ```
 

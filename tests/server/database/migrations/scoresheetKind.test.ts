@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import {
   transformScoresheetKind,
   type TransformScoresheetKindInput,
-} from '../../src/server/database/migrations/scoresheetKind';
+} from '../../../../src/server/database/migrations/scoresheetKind';
 
 function transform(
   schema: unknown,
@@ -16,7 +16,8 @@ function transform(
     id: extras.id ?? 7,
     name: extras.name ?? 'Example Template',
     schemaText:
-      typeof schema === 'string' ? schema : JSON.stringify(schema),
+      extras.schemaText ??
+      (typeof schema === 'string' ? schema : JSON.stringify(schema)),
     linkedTemplateTypes,
   });
 }
@@ -108,14 +109,14 @@ describe('transformScoresheetKind', () => {
   });
 
   it('rejects malformed JSON and non-object JSON', () => {
-    const malformed = transform('{');
+    const malformed = transform(null, [], { schemaText: '{' });
     expect(malformed.ok).toBe(false);
     if (malformed.ok) return;
     expect(malformed.diagnostic).toContain('id=7');
     expect(malformed.diagnostic).toContain('Example Template');
     expect(malformed.diagnostic).toContain('malformed JSON');
 
-    for (const value of [[], null, 'x', 12]) {
+    for (const value of ['[]', 'null', '"x"', '12']) {
       const result = transform(value);
       expect(result.ok).toBe(false);
       if (result.ok) continue;
@@ -126,7 +127,9 @@ describe('transformScoresheetKind', () => {
   it('rejects unsupported spellings and unsupported old marker values', () => {
     expect(transform({ kind: 'head-to-head', fields: [] }).ok).toBe(false);
     expect(transform({ kind: 'double-seeding', fields: [] }).ok).toBe(false);
-    expect(transform({ mode: 'double-elimination', fields: [] }).ok).toBe(false);
+    expect(transform({ mode: 'double-elimination', fields: [] }).ok).toBe(
+      false,
+    );
     expect(transform({ scoreKind: 'seeding', fields: [] }).ok).toBe(false);
     expect(transform({ kind: 'bracket', fields: [] }).ok).toBe(false);
   });

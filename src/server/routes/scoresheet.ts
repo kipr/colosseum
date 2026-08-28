@@ -25,9 +25,7 @@ function persistableTemplateKind(schema: unknown): ScoreType | null {
   return isScoreType(kind) ? kind : null;
 }
 
-function assignParsedTemplateSchema(template: {
-  schema?: unknown;
-}): void {
+function assignParsedTemplateSchema(template: { schema?: unknown }): void {
   if (template.schema == null) {
     template.schema = null;
     return;
