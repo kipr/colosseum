@@ -236,16 +236,16 @@ form and the administrative score viewer. This has two problems:
 - a malicious or corrupted template formula can execute JavaScript in the
   browser of a judge or administrator.
 
-Replace `eval()` with a constrained formula evaluator supporting only the
-operators and comparisons required by official templates. The evaluator should
-parse or tokenize the permitted expression language and reject every unsupported
-token. Do not attempt to sanitize arbitrary JavaScript.
+Replace `eval()` with a constrained formula evaluator that implements the
+permitted language in [Permitted Formula Grammar](#permitted-formula-grammar).
+The evaluator should parse or tokenize that language and reject every
+unsupported token. Do not attempt to sanitize arbitrary JavaScript.
 
 Place the evaluator in `src/shared` and use the same implementation for client
-display and server calculation. Pure derived scoring helpers, including
-repeatable-group/Botball calculations currently needed only by the client,
-should likewise move to a shared location or be exposed through a shared
-registry so the server can recompute them.
+display, server calculation, and the portable scoresheet runtime. Pure derived
+scoring helpers, including repeatable-group/Botball calculations currently
+needed only by the client, should likewise move to a shared location or be
+exposed through a shared registry so the server can recompute them.
 
 ### 5. Address template changes during an event
 
@@ -262,6 +262,145 @@ Before implementation, choose and test one explicit policy:
 Template versioning is the most compatible long-term option. Preventing active
 event edits is simpler if operational practice already treats templates as
 frozen.
+
+## Permitted Formula Grammar
+
+The safety goal is not to sanitize JavaScript. It is to stop parsing JavaScript.
+A formula is a closed expression over field values that always yields a finite
+number. Anything outside the token alphabet is a template-save error; anything
+that does not type-check is also rejected. There is no `eval`, `new Function`,
+member access, or call syntax.
+
+This language is specified now so the shared parser and evaluator in sequence
+step 9 are an implementation of a closed design rather than a second design
+debate. Checked-in official formulas have been rewritten onto this subset.
+
+Official scoring idioms that the language must cover:
+
+- a weighted sum: `(poms * 2) + (cubes * 5)`
+- a 2x / on-off multiplier: `subtotal * (botguy === '1' ? 2 : 1)`
+- an identity-if-zero multiplier: `subtotal * (count > 0 ? count : 1)`
+- a default-to-1 combined multiplier: `(a + b) || 1`
+- a pass-through or sum of earlier calculated or derived IDs
+
+JavaScript constructs observed in historical templates that are **not** part of
+the language:
+
+- bare truthiness (`field ? field : 0`), which is equivalent to `field` once
+  blanks coerce to `0`
+- boolean `||` (`a > 0 || b > 0`); the GCER pom-baskets formula uses numeric
+  `|| 1` instead
+
+### Tokens
+
+- Identifier: `[a-z][a-z0-9_]*` — field IDs, earlier calculated IDs, and
+  derived output IDs
+- Number: `[0-9]+(\.[0-9]+)?` — no sign and no exponent (`1e3` is illegal)
+- String: `'[a-zA-Z0-9_]*'` — single quotes, no escapes, no interior quotes
+- Operators: `+` `*` `||` `>` `===` `?` `:`
+- Grouping: `(` `)`
+- Whitespace: space, tab, newline (insignificant)
+
+No other characters. In particular the lexer rejects `.`, `[`, `]`, `,`, `;`,
+backticks, double quotes, `/`, `%`, `&`, a single `|`, `=` except as part of
+`===`, `-`, `!`, `{`, `}`, comments, and keywords.
+
+### Grammar
+
+```
+formula         = numeric ;
+
+numeric         = coalesce [ "?" numeric ":" numeric ] ;
+coalesce        = additive { "||" additive } ;
+additive        = multiplicative { "+" multiplicative } ;
+multiplicative  = primary { "*" primary } ;
+primary         = NUMBER | IDENTIFIER | "(" numeric ")" ;
+```
+
+Comparisons are not numeric. They are only legal as a ternary condition. The
+parser still accepts them in the `numeric` slot with JavaScript-like precedence
+(`?:` lowest, then `||`, then `===` / `>`, then `+`, then `*`) so existing
+formulas keep the same grouping. The type checker then rejects any comparison
+that is not the condition of `?:`.
+
+Type rules:
+
+- The top-level result must be a number.
+- `+`, `*`, and `||` operands must be numbers. `||` means "if left is `0`, use
+  right" (numeric zero-coalesce, not boolean OR).
+- `>` operands must be numbers; the result is boolean.
+- `===` is `number === number` or `identifier === string`. The identifier on
+  the string form uses the raw stored value with no numeric coerce. The result
+  is boolean.
+- A ternary condition must be boolean; both branches must be numbers.
+- String tokens are only legal as the right-hand side of `===`.
+- `a || b ? c : d` is `(a || b) ? c : d`, which is a type error (a number used
+  as a condition). Write a comparison.
+
+This is the actual narrowing: the same symbols as a tiny JavaScript subset, but
+truthy numbers and boolean `||` are illegal.
+
+### Evaluation environment
+
+Each identifier is looked up in a map of already-computed values. Never as a
+JavaScript name.
+
+Coercion when an identifier is used as a number:
+
+- missing, `''`, `null`, `undefined` → `0`
+- `false` → `0`, `true` → `1`
+- finite number → itself
+- numeric string → that number
+- any other value → evaluation error (do not use `Number("small") || 0`)
+
+`===` with a string uses the raw stored value, so button and dropdown strings
+stay `'1'` rather than `1`. That replaces the current
+`formula.includes(`${fieldId} ===`)` quoting hack in the judge form, admin
+score viewer, and portable scoresheet runtime.
+
+Missing or blank values coercing to `0` makes `field ? field : 0` redundant,
+which is why those wrappers were deleted from checked-in templates.
+
+The result must be a finite number. `NaN` and `Infinity` are evaluation errors.
+At template save, unknown identifiers and forward references to calculated
+fields are errors. At score time, a parse, type, or evaluation failure must not
+become a silent `0` on the server (reject the submission). Client preview may
+still show `0`.
+
+Limits: formula length 1024 characters; AST depth 32. Current official formulas
+are well under both (longest about 300 characters).
+
+### Explicitly out of v1
+
+- `-`, `/`, `%`, `**`, unary minus, `&&`, `==`, `!==`, `<`, `<=`, `>=`
+- Function calls (`min`, `max`, or anything else) — there is no call
+  production, so `ident(` is always a parse error
+- Property or index access, assignment, comma, `new`, `typeof`, and the
+  literals `true` / `false` / `null`
+- Forward references, and identifiers that are not in-scope field or output IDs
+
+Binary `-` can be added later without changing the safety model. `/` and calls
+should stay out unless a real template needs them.
+
+When sequence step 9 lands, `tools/portable-scoresheet/runtime.js` must use the
+same shared evaluator rather than keeping a second `eval()` implementation.
+
+### Accepted examples
+
+- `side_a_score + side_b_score`
+- `(poms * 2) + (cubes * 5)`
+- `subtotal * (botguy === '1' ? 2 : 1)`
+- `subtotal * (count > 0 ? count : 1)`
+- `((drum === '1' ? 2 : 0) + (botguy === '1' ? 2 : 0)) || 1`
+
+### Rejected examples
+
+- `constructor.constructor("alert(1)")()` — call, member access, and illegal
+  string escaping
+- `field ? field : 0` — number used as a condition
+- `a > 0 || b > 0` — boolean `||`
+- `sum / 2`, `base - penalty`, `max(a, 1)`, `field == '1'`, `"1"`, `1e3`,
+  comments, `true`
 
 ## What This Protects Against
 
@@ -297,7 +436,9 @@ Advance template testing remains necessary for those concerns.
    `TemplatePreviewModal.tsx`, followed by the smaller files.
 7. Remove all 13 file-wide lint suppressions.
 8. Expand server-side template and field-template write validation.
-9. Define the permitted formula grammar and implement the shared safe evaluator.
+9. **Grammar specified:** implement the shared safe evaluator for the
+   [permitted formula language](#permitted-formula-grammar). Swap it into the
+   judge form, admin score viewer, and portable scoresheet runtime.
 10. Move or expose derived scoring helpers so they can run on the server.
 11. Implement the canonical server score-validation/calculation service.
 12. Route judge submission and admin score edits through that service.

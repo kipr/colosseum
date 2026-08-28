@@ -160,10 +160,23 @@ and 4 use logical OR. Current expressions also rely on parentheses and reference
 to calculated fields defined earlier in `fields`.
 
 The runtime currently substitutes field identifiers and calls JavaScript
-`eval()`. Therefore arbitrary JavaScript is technically accepted rather than a
-well-defined formula language. These observed constructs, not all of JavaScript,
-are the compatibility baseline for the constrained evaluator proposed in the
-plan.
+`eval()`, so arbitrary JavaScript is still technically accepted at evaluation
+time. That observed `eval()` surface is **not** the permitted language. The
+closed grammar, type rules, and accepted/rejected examples are specified in
+[`TYPES_AND_SCORE_VALIDATION_PLAN.md`](TYPES_AND_SCORE_VALIDATION_PLAN.md)
+under Permitted Formula Grammar.
+
+Two historical JavaScript idioms were present in checked-in templates and have
+been rewritten onto that subset:
+
+- bare truthiness (`field ? field : 0`) became the field itself, because blanks
+  coerce to `0`
+- boolean `||` in the GCER pom-baskets formulas (`a > 0 || b > 0 ? … : 1`)
+  became numeric zero-coalesce (`(inner) || 1`)
+
+Numeric `|| 1` (default-to-1 combined multiplier) remains legal. The 2026
+pom-baskets formula was not rewritten into the GCER form: when both multipliers
+are 0 it currently yields `2`, not `1`.
 
 ## Surface differences and non-features
 
