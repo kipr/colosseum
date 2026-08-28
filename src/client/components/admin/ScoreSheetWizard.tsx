@@ -4,6 +4,7 @@ import { useEvent } from '../../contexts/EventContext';
 import {
   buildDoubleEliminationSchema,
   buildDoubleSeedingSchema,
+  buildSeedingSchema,
 } from '../scoresheetUtils';
 import '../Modal.css';
 
@@ -84,121 +85,11 @@ export default function ScoreSheetWizard({
   };
 
   const generateSeedingSchema = () => {
-    const schema: any = {
-      kind: 'seeding',
-      layout: 'two-column',
+    return buildSeedingSchema({
       title: name || 'Seeding Score Sheet',
       eventId: selectedEvent?.id ?? null,
-      scoreDestination: 'db',
-      teamsDataSource: {
-        type: 'db',
-        eventId: selectedEvent?.id,
-        teamNumberField: 'team_number',
-        teamNameField: 'team_name',
-      },
-      fields: [],
-    };
-
-    // Add team selection fields (always included) - teams from DB
-    schema.fields.push({
-      id: 'team_number',
-      label: 'Team Number',
-      type: 'dropdown',
-      required: true,
-      dataSource: {
-        type: 'db',
-        labelField: 'team_number',
-        valueField: 'team_number',
-      },
-      cascades: {
-        targetField: 'team_name',
-        sourceField: 'team_name',
-      },
+      templateFields: selectedTemplate?.fields ?? null,
     });
-
-    schema.fields.push({
-      id: 'team_name',
-      label: 'Team Name',
-      type: 'text',
-      required: true,
-      autoPopulated: true,
-      placeholder: 'Select team number first',
-    });
-
-    schema.fields.push({
-      id: 'round',
-      label: 'Round',
-      type: 'number',
-      required: true,
-      min: 1,
-      step: 1,
-      placeholder: 'Enter round number',
-    });
-
-    // Add scoring fields from template if selected
-    if (selectedTemplate && selectedTemplate.fields) {
-      // Shared side A/B templates can carry one certification field per side for
-      // DE. Seeding only needs a single team certification, so keep the side A
-      // field and omit the side B counterpart when generating the seeding schema.
-      const seedingFields = selectedTemplate.fields.filter(
-        (field: any) => field.id !== 'side_b_team_initials',
-      );
-      schema.fields.push(...seedingFields);
-
-      // Add grand total for seeding sheets (templates don't include this so it can be conditional)
-      schema.fields.push({
-        id: 'grand_total',
-        label: 'Total Score (A + B)',
-        type: 'calculated',
-        formula: 'side_a_total + side_b_total',
-        isGrandTotal: true,
-      });
-    } else {
-      // Default basic scoring fields
-      schema.fields.push({
-        id: 'section_header_side_a',
-        label: 'SIDE A',
-        type: 'section_header',
-        column: 'left',
-      });
-
-      schema.fields.push({
-        id: 'side_a_score',
-        label: 'Side A Score',
-        type: 'number',
-        column: 'left',
-        required: false,
-        min: 0,
-        step: 1,
-      });
-
-      schema.fields.push({
-        id: 'section_header_side_b',
-        label: 'SIDE B',
-        type: 'section_header',
-        column: 'right',
-      });
-
-      schema.fields.push({
-        id: 'side_b_score',
-        label: 'Side B Score',
-        type: 'number',
-        column: 'right',
-        required: false,
-        min: 0,
-        step: 1,
-      });
-
-      schema.fields.push({
-        id: 'grand_total',
-        label: 'Total Score (A + B)',
-        type: 'calculated',
-        formula: 'side_a_score + side_b_score',
-        isGrandTotal: true,
-      });
-    }
-
-    return schema;
   };
 
   const generateDESchema = () => {

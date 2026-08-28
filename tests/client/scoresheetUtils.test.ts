@@ -4,6 +4,7 @@ import {
   buildEventScopedBracketSource,
   buildRepeatableGroupDerivedScoreEntries,
   buildRepeatableGroupScoreEntry,
+  buildSeedingSchema,
   calculateRepeatableGroupDerivedRows,
   calculateRepeatableGroupDerivedValues,
   createBlankRepeatableGroupRow,
@@ -57,6 +58,61 @@ describe('scoresheetUtils', () => {
       },
     },
   };
+
+  it('builds new seeding schemas with kind seeding and team/round fields', () => {
+    const schema = buildSeedingSchema({
+      title: 'Seeding Sheet',
+      eventId: 42,
+      templateFields: null,
+    });
+
+    expect(schema.kind).toBe('seeding');
+    expect(schema.eventId).toBe(42);
+    expect(schema.scoreDestination).toBe('db');
+    expect(schema.teamsDataSource.eventId).toBe(42);
+    expect(schema.bracketSource).toBeUndefined();
+    expect(schema.mode).toBeUndefined();
+    expect(schema.scoreKind).toBeUndefined();
+
+    const fields = schema.fields as Array<{ id: string; type: string }>;
+    expect(fields.some((f) => f.id === 'team_number')).toBe(true);
+    expect(fields.some((f) => f.id === 'team_name')).toBe(true);
+    expect(fields.some((f) => f.id === 'round')).toBe(true);
+    expect(fields.some((f) => f.id === 'grand_total')).toBe(true);
+    expect(fields.some((f) => f.type === 'winner-select')).toBe(false);
+  });
+
+  it('keeps side A/B template fields and omits side B team initials', () => {
+    const schema = buildSeedingSchema({
+      title: 'Adapted Seeding Sheet',
+      eventId: 7,
+      templateFields: [
+        { id: 'side_a_score', label: 'Side A Score', type: 'number' },
+        { id: 'side_a_team_initials', label: 'A Initials', type: 'text' },
+        { id: 'side_b_team_initials', label: 'B Initials', type: 'text' },
+        {
+          id: 'side_a_total',
+          label: 'Side A Total',
+          type: 'calculated',
+          formula: 'side_a_score',
+        },
+        {
+          id: 'side_b_total',
+          label: 'Side B Total',
+          type: 'calculated',
+          formula: 'side_b_score',
+        },
+      ],
+    });
+
+    const fields = schema.fields as Array<{ id: string; formula?: string }>;
+    expect(fields.some((f) => f.id === 'side_a_score')).toBe(true);
+    expect(fields.some((f) => f.id === 'side_a_team_initials')).toBe(true);
+    expect(fields.some((f) => f.id === 'side_b_team_initials')).toBe(false);
+    expect(fields.find((f) => f.id === 'grand_total')?.formula).toBe(
+      'side_a_total + side_b_total',
+    );
+  });
 
   it('builds new DE schemas with an event-scoped bracket source', () => {
     const schema = buildDoubleEliminationSchema({
