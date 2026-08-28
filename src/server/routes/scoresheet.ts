@@ -25,6 +25,7 @@ function persistableTemplateKind(schema: unknown): ScoreType | null {
   return isScoreType(kind) ? kind : null;
 }
 
+/** A very big, complicated type assertion that the schema is valid. */
 function assignParsedTemplateSchema(template: { schema?: unknown }): void {
   if (template.schema == null) {
     template.schema = null;
