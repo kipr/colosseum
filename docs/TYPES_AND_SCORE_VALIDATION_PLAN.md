@@ -292,8 +292,9 @@ Advance template testing remains necessary for those concerns.
 1. **Completed:** inventory the currently supported schema features and
    representative production templates (see
    [`SCORESHEET_SCHEMA_FEATURE_INVENTORY.md`](SCORESHEET_SCHEMA_FEATURE_INVENTORY.md)).
-2. Replace the transitional `mode`/`scoreKind` schema union with the required
-   `kind` discriminated union.
+2. **Completed:** replace the transitional `mode`/`scoreKind` schema union with
+   the required `kind` discriminated union (see
+   [`SCORESHEET_KIND_DISCRIMINATOR_IMPLEMENTATION_PLAN.md`](SCORESHEET_KIND_DISCRIMINATOR_IMPLEMENTATION_PLAN.md)).
 3. Add and run the direct stored-template migration; update schema builders,
    supported checked-in templates, fixtures, exports, and validators atomically.
 4. Complete the remaining shared compile-time types.

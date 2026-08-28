@@ -326,3 +326,332 @@ so this intermediate state is never treated as a completed runtime migration.
 Item 3 must use the exact `kind` literals fixed here, migrate stored templates,
 and update all runtime readers and writers in one release. It must not introduce
 a fallback for schemas without `kind`.
+
+# Item 3 implementation plan: runtime cutover and stored-template migration
+
+Status: proposed.
+
+This section extends the item 2 plan with the implementation-sequence item 3
+needed to make the compile-time contract the only runtime representation. The
+cutover includes production data, runtime readers and writers, checked-in
+templates, and historical-score viewing. It deliberately does not include the
+expanded field-by-field validation planned for item 8.
+
+## Migration mechanism decision
+
+Implement the conversion as source-controlled TypeScript application migration
+code, not as a hand-written production-only SQL update. Expose the same code
+through a dry-run command and invoke its apply mode during database
+initialization before the HTTP server starts accepting traffic.
+
+The JSON is stored in a `TEXT` column and the conversion is conditional. A safe
+migration needs to parse JSON, distinguish three archetypes, validate
+conflicting signals, report template IDs and names, compare event linkage, and
+behave identically in PostgreSQL and SQLite tests. Encoding all of that in a
+one-off PostgreSQL expression would be harder to review and would leave no
+executable regression test for the production transformation.
+
+SQL and database commands still have a useful operational role: take a backup,
+inspect the affected rows, and verify the result. They should not be a second
+implementation of the transformation.
+
+## Historical-template safety requirements
+
+The migration must process every row in `scoresheet_templates`, not only active
+templates or templates linked to current events. Historical score submissions
+refer to those rows through `score_submissions.template_id` and the admin score
+view needs their field definitions and labels.
+
+The following are non-negotiable invariants:
+
+- update each template row in place and preserve its `id`, access code, active
+  state, event links, fields, field order, formulas, labels, images, and other
+  schema properties;
+- do not delete and recreate templates, and do not rewrite
+  `score_submissions.score_data`;
+- limit the automatic JSON change to adding the canonical `kind` and removing
+  `mode` and `scoreKind`;
+- include inactive, unlinked, and old-event templates in preflight, migration,
+  and verification;
+- roll back every template update if any one row is malformed, ambiguous, or
+  inconsistent with its event-template linkage; and
+- never retire or delete a production database template merely because a
+  checked-in example with a similar shape is being retired.
+
+Updating rows in place keeps every existing `score_submissions.template_id`
+valid. This preserves viewing against the template version currently stored in
+the database. It cannot reconstruct an older schema version that an admin may
+have overwritten before this migration; exact per-submission schema snapshots
+would be a separate template-versioning feature.
+
+The current score modal has an additional historical-viewing gap unrelated to
+JSON conversion: it looks up a score's template through the public template
+list, which excludes inactive templates and templates belonging only to old
+events. Item 3 must close that gap as part of the cutover rather than treating a
+successful database update as sufficient.
+
+## 1. Implement one deterministic transformer
+
+Add a dependency-free function in a server database-migration module that
+accepts a template identifier, name, raw schema text, and linked
+`template_type` values. It should return either the canonical serialized schema
+plus a changed/unchanged result, or a diagnostic containing the template ID and
+name.
+
+Use own-property checks rather than truthiness for discriminator keys. Apply
+these rules:
+
+1. Reject non-object JSON, malformed JSON, unsupported `kind`, `mode`, or
+   `scoreKind` values, and the simultaneous presence of both legacy property
+   names.
+2. Treat supported existing `kind` as a canonical signal. This makes the
+   migration idempotent.
+3. Map `scoreKind: 'double_seeding'` to `kind: 'double_seeding'`.
+4. Map `mode: 'head-to-head'` to `kind: 'bracket'`.
+5. Preserve the current route's last legacy case by mapping a schema with no
+   explicit discriminator but with `bracketSource` to `kind: 'bracket'`.
+6. Map a schema with no discriminator and no `bracketSource` to
+   `kind: 'seeding'`, matching current runtime behavior.
+7. If canonical and legacy signals coexist, accept them only when every signal
+   agrees; otherwise fail. Remove the agreeing legacy property from the output.
+8. Require a bracket schema to have a structurally valid DB
+   `bracketSource`. Reject `bracketSource` on seeding and double-seeding schemas
+   rather than silently changing archetype semantics.
+9. Compare the resulting `kind` with every associated
+   `event_scoresheet_templates.template_type`. Fail if any linkage disagrees.
+10. Delete `mode` and `scoreKind`, write `kind`, and leave all unrelated values
+    semantically unchanged.
+
+The migration should report all invalid templates in dry-run mode so they can
+be fixed in one maintenance pass. Apply mode must make no changes if preflight
+finds any error.
+
+Do not put this transformer on a request read path. It is migration code, not a
+compatibility decoder, and legacy schemas must not remain accepted after the
+cutover.
+
+## 2. Add transactional database orchestration
+
+Add a migration function that loads all template rows and their distinct event
+link types, transforms all rows, and updates changed rows in one transaction.
+If enumeration must happen inside the transaction, extend the shared
+`Transaction` interface and both database adapters with `all`; do not read rows
+before the transaction and then assume they are unchanged.
+
+Wire apply mode into database initialization after schema creation and before
+the server begins listening. Repeated startup must produce zero changes after a
+successful first run. Also add a command such as:
+
+```bash
+npm run migrate:scoresheet-kind -- --check
+```
+
+The check mode must connect to the configured database, run the identical
+classification and linkage checks without writing, print one line per template
+with its current and target archetype, include the number of referencing score
+submissions, and exit nonzero on any blocker.
+
+Because the old application cannot consume canonical-only templates and the new
+application must not consume legacy templates, production deployment requires
+a maintenance window or equivalent deployment barrier. Stop old writers before
+apply mode begins and do not start them again after the transaction commits.
+Idempotency protects retries and normal restarts; it is not a substitute for
+this cutover ordering.
+
+## 3. Preserve historical score rendering
+
+Change the authenticated score-history response in
+`src/server/routes/scores.ts` to select the referenced template schema directly
+with each score row, regardless of template `is_active` state or event status.
+Parse it at the server boundary and return it as the score's template schema.
+Do not make the client search the public judge template list.
+
+Update `ScoreViewModal.tsx` to use the schema supplied with the selected score.
+Keep the raw score-data fallback for a genuinely missing or unparsable schema,
+but do not silently substitute a different template by matching its name.
+Template names are not stable identifiers.
+
+Also replace hard deletion of scoresheet templates with archival
+(`is_active = false`), at least whenever a template has score submissions. The
+current foreign key uses `ON DELETE CASCADE`, so a physical delete can erase the
+old scores whose display this plan is intended to preserve. The admin list and
+judge list may continue to hide archived templates, while authenticated score
+history must still be able to join them.
+
+Add an integration test with an inactive template linked only to a completed
+event and an existing score submission. It must prove that:
+
+- migration preserves the template ID and submission foreign key;
+- the score-history API returns the migrated schema;
+- the modal does not request or depend on the public template list; and
+- archiving the template leaves the score and its rendered field structure
+  available.
+
+## 4. Cut over server writes and inference
+
+Strengthen `validateScoresheetSchema` only as far as this item requires:
+
+- require `kind` to be `seeding`, `bracket`, or `double_seeding`;
+- reject own properties named `mode` or `scoreKind`;
+- require `bracketSource` for `kind: 'bracket'` and reject it for the other two
+  kinds; and
+- retain the existing default-value validation until the broader item 8 work.
+
+Remove `inferTemplateType` from `src/server/routes/scoresheet.ts`. After schema
+validation succeeds, use `schema.kind` directly when inserting
+`event_scoresheet_templates.template_type`. Create and update requests with a
+missing or unsupported kind or any legacy marker must return a 400 response.
+
+Read paths should parse database JSON from `unknown` and perform a shallow
+canonical discriminator check. They must report corrupt post-migration data;
+they must not infer a kind from missing properties or cast legacy JSON to
+`ScoresheetSchema`.
+
+## 5. Cut over client builders and consumers
+
+Update every schema builder in the same release:
+
+- `ScoreSheetWizard.tsx` emits `kind: 'seeding'`;
+- `buildDoubleEliminationSchema` emits `kind: 'bracket'` and no `mode`;
+- `buildDoubleSeedingSchema` emits `kind: 'double_seeding'` and no
+  `scoreKind`; and
+- the manual editor's new-schema example includes a valid `kind` and the
+  event-backed base properties it can derive from its `eventId` prop.
+
+Update `ScoresheetForm.tsx` to derive head-to-head, double-seeding, and seeding
+behavior solely from `schema.kind`. Narrow before accessing `bracketSource`.
+Update `TemplateEditorModal.tsx` to identify bracket schemas only from
+`kind: 'bracket'`; remove UI text and branches that promise support for legacy
+bracket markers.
+
+Where these files remain broadly untyped as part of the staged typing plan, add
+small boundary predicates or local discriminated types instead of creating a
+second inference helper.
+
+## 6. Update checked-in templates and portable export
+
+Audit files by shape rather than adding `kind` mechanically to every JSON file.
+Reusable field arrays are not complete `ScoresheetSchema` objects and do not
+need a discriminator. Complete online schemas must use canonical `kind` and DB
+sources.
+
+For `botball-de-template.json` and `botball-seeding-template.json`, either
+convert unsupported spreadsheet sources to real DB-backed sources with an
+explicit event-scoping strategy or move/rename them as documented legacy
+examples that cannot be imported. Do not make a spreadsheet-backed schema look
+canonical by changing only its discriminator.
+
+Update the portable exporter and README to branch on `kind`. Portable V1 should
+accept only the seeding-compatible archetype and reject `bracket` and
+`double_seeding` with explicit messages. If bare field-array input remains
+supported, document it as a portable input shorthand rather than a canonical
+online scoresheet schema.
+
+## 7. Test the migration and atomic cutover
+
+Add focused unit tests for the pure transformer covering:
+
+- all three legacy archetypes;
+- bracket presence inference with no old explicit marker;
+- already-canonical input and a second idempotent pass;
+- removal of legacy keys while preserving every unrelated nested value;
+- malformed JSON and non-object JSON;
+- unsupported spellings and unsupported old marker values;
+- simultaneous old markers, conflicting canonical/legacy signals, missing or
+  invalid bracket source, and variant-incompatible bracket source; and
+- matching, missing, multiple matching, and conflicting event-template links.
+
+Add database integration tests proving all-row conversion, inactive and
+unlinked template conversion, rollback when one of several rows is invalid,
+preservation of template and score IDs, and zero writes on a second run. Run
+these against SQLite through the normal database abstraction and add adapter or
+PostgreSQL coverage for any dialect-specific orchestration.
+
+Replace existing HTTP and client assertions about `mode`, `scoreKind`, missing
+markers, and `bracketSource` inference with assertions about required `kind`.
+Add negative HTTP tests showing that legacy or missing discriminators can no
+longer enter the database.
+
+## 8. Production runbook
+
+Before the release:
+
+1. Build the release artifact and run the migration check command against a
+   recent production snapshot or read-only clone.
+2. Resolve every reported malformed, ambiguous, source-invalid, or
+   linkage-mismatched template by ID. Do not delete it to make preflight pass.
+3. Exercise at least one old score from each archetype against the candidate
+   build.
+4. Take a provider-level database snapshot immediately before the maintenance
+   window. Also keep a narrow logical backup if operationally convenient:
+
+   ```bash
+   pg_dump "$DATABASE_URL" --data-only --column-inserts \
+     --table=public.scoresheet_templates \
+     --table=public.event_scoresheet_templates \
+     --table=public.score_submissions \
+     > scoresheet-kind-backup.sql
+   ```
+
+During the release, stop the old application, run check mode again, run the
+application migration/apply path, and then start only the new build. If the
+transaction fails, it leaves all templates in the legacy form and the old build
+can be restarted while the reported rows are repaired.
+
+After apply mode, use read-only PostgreSQL checks such as:
+
+```sql
+SELECT id, name
+FROM scoresheet_templates
+WHERE schema::jsonb->>'kind' IS NULL
+   OR schema::jsonb->>'kind' NOT IN ('seeding', 'bracket', 'double_seeding')
+   OR schema::jsonb ? 'mode'
+   OR schema::jsonb ? 'scoreKind';
+
+SELECT st.id, st.name, est.template_type, st.schema::jsonb->>'kind' AS kind
+FROM scoresheet_templates st
+JOIN event_scoresheet_templates est ON est.template_id = st.id
+WHERE est.template_type IS DISTINCT FROM st.schema::jsonb->>'kind';
+```
+
+Both queries must return zero rows. Then smoke-test active judge forms for all
+three archetypes and authenticated viewing of old accepted scores, including an
+inactive template and an event no longer in setup/active status.
+
+Rollback after a successful commit requires rolling back the application and
+restoring the pre-migration database snapshot or logical backup together. Do
+not run the old application against canonical-only templates or reverse only
+some rows by hand.
+
+## Item 3 file impact
+
+| Area                                                   | Planned change                                                                                                                           |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Server database migration module and tests             | Add the pure transformer, dry-run reporting, transactional apply, idempotency, and rollback coverage.                                    |
+| `src/server/database/connection.ts` and initialization | Support transactional enumeration if needed and run migration before serving.                                                            |
+| `src/shared/scoresheetSchema.ts`                       | Add the shallow runtime discriminator/legacy-key validation required at template boundaries.                                             |
+| `src/server/routes/scoresheet.ts`                      | Remove inference, persist linkage from `kind`, reject legacy writes, and archive instead of destructively deleting referenced templates. |
+| `src/server/routes/scores.ts` and `ScoreViewModal.tsx` | Carry the referenced schema with historical scores, including inactive and old-event templates.                                          |
+| Client builders, form, and editor                      | Emit and consume `kind` only.                                                                                                            |
+| Complete checked-in schemas and portable export        | Convert or explicitly retire legacy online schemas and reject unsupported portable kinds.                                                |
+| HTTP, client, migration, and export tests              | Replace legacy expectations and add cutover and historical-viewing coverage.                                                             |
+
+## Item 3 acceptance criteria
+
+Item 3 is complete when:
+
+- every production template row has exactly one supported `kind`, no `mode`,
+  and no `scoreKind`;
+- template IDs and score-submission references are unchanged;
+- old scores remain viewable even when their template is inactive or their
+  event is no longer public;
+- deleting from the admin UI cannot cascade-delete historical scores;
+- builders, readers, form behavior, linkage persistence, and export checks use
+  `kind` only;
+- request paths contain no compatibility inference for missing `kind`;
+- the migration is diagnostic, transactional, idempotent, and tested for
+  rollback;
+- production preflight and post-migration verification report no invalid or
+  mismatched templates; and
+- formatting, lint, all typechecks, the full test suite, and the production
+  build pass.

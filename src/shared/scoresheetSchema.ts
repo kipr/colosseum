@@ -342,27 +342,23 @@ export interface ScoresheetSchemaBase {
   fields: ScoresheetField[];
 }
 
-// TODO Unify under `kind` as sole discriminator.
+/** Event-scoring category shared by schemas and persisted submissions. */
+export type ScoreType = 'seeding' | 'bracket' | 'double_seeding';
 
-/** Schema for one-team seeding runs under the transitional discriminator model. */
+/** Schema for one-team seeding runs. */
 export interface SeedingScoresheetSchema extends ScoresheetSchemaBase {
-  mode?: never;
-  scoreKind?: never;
-  bracketSource?: never;
+  kind: 'seeding';
 }
 
 /** Schema for two-team bracket games that produce a winner. */
 export interface HeadToHeadScoresheetSchema extends ScoresheetSchemaBase {
-  mode: 'head-to-head';
-  scoreKind?: never;
+  kind: 'bracket';
   bracketSource: DbBracketSource;
 }
 
 /** Schema for shared two-team seeding runs with independent side totals. */
 export interface DoubleSeedingScoresheetSchema extends ScoresheetSchemaBase {
-  mode?: never;
-  scoreKind: 'double_seeding';
-  bracketSource?: never;
+  kind: 'double_seeding';
 }
 
 /**
@@ -373,9 +369,6 @@ export type ScoresheetSchema =
   | SeedingScoresheetSchema
   | HeadToHeadScoresheetSchema
   | DoubleSeedingScoresheetSchema;
-
-/** Event-scoring category stored with a submission and used by acceptance. */
-export type ScoreType = 'seeding' | 'bracket' | 'double_seeding';
 
 /** Review lifecycle states for a persisted score submission. */
 export type ScoreSubmissionStatus = 'pending' | 'accepted' | 'rejected';

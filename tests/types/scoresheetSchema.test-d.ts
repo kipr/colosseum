@@ -9,6 +9,7 @@ import type {
   RepeatableGroupDerivedResult,
   RepeatableGroupRowFor,
   ScoreData,
+  ScoreType,
   ScoreSubmissionRecord,
   ScoreSubmissionRequest,
   ScoresheetField,
@@ -18,6 +19,15 @@ import type {
   StoredScoreSubmissionRecord,
   StoredScoresheetTemplate,
 } from '../../src/shared/scoresheetSchema';
+
+type Equal<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
+    ? true
+    : false;
+type Assert<T extends true> = T;
+type SchemaKindMatchesScoreType = Assert<
+  Equal<ScoresheetSchema['kind'], ScoreType>
+>;
 
 const fields = [
   {
@@ -150,6 +160,7 @@ const derivedResult = {
 } satisfies RepeatableGroupDerivedResult;
 
 const seedingSchema = {
+  kind: 'seeding',
   schemaVersion: 1,
   title: 'Seeding',
   layout: 'two-column',
@@ -161,9 +172,9 @@ const seedingSchema = {
 } satisfies ScoresheetSchema;
 
 const bracketSchema = {
+  kind: 'bracket',
   title: 'Bracket',
   layout: 'two-column',
-  mode: 'head-to-head',
   eventId: 42,
   scoreDestination: 'db',
   bracketSource: { type: 'db', scope: 'event', eventId: 42 },
@@ -172,8 +183,8 @@ const bracketSchema = {
 } satisfies HeadToHeadScoresheetSchema;
 
 const doubleSeedingSchema = {
+  kind: 'double_seeding',
   title: 'Double seeding',
-  scoreKind: 'double_seeding',
   eventId: 42,
   scoreDestination: 'db',
   teamsDataSource: { type: 'db', eventId: 42 },
@@ -296,6 +307,25 @@ declare function acceptDerivation(
   config: RepeatableGroupDerivationConfig,
 ): void;
 
+function inspectSchema(schema: ScoresheetSchema): void {
+  // @ts-expect-error Bracket-specific data requires discriminator narrowing.
+  void schema.bracketSource;
+
+  switch (schema.kind) {
+    case 'seeding':
+      break;
+    case 'bracket':
+      void schema.bracketSource;
+      break;
+    case 'double_seeding':
+      break;
+    default: {
+      const exhaustive: never = schema;
+      void exhaustive;
+    }
+  }
+}
+
 acceptField({
   id: 'team',
   label: 'Team',
@@ -306,19 +336,68 @@ acceptField({
 // @ts-expect-error Numeric score entries must contain actual numbers.
 acceptNumberEntry({ label: 'Points', type: 'number', value: '12' });
 acceptSchema({
+  kind: 'seeding',
   // @ts-expect-error Arbitrary layouts are not part of the schema vocabulary.
   layout: 'grid',
   teamsDataSource: { type: 'db', eventId: 42 },
   fields: [],
 });
 acceptSchema({
-  // @ts-expect-error Arbitrary scoring modes are not supported.
-  mode: 'versus',
+  // @ts-expect-error Unsupported discriminator values are rejected.
+  kind: 'versus',
   teamsDataSource: { type: 'db', eventId: 42 },
   fields: [],
 });
+// @ts-expect-error Every schema must declare its archetype.
+acceptSchema({ teamsDataSource: { type: 'db', eventId: 42 }, fields: [] });
 // @ts-expect-error Every scoring archetype must declare its event-team source.
-acceptSchema({ fields: [] });
+acceptSchema({ kind: 'seeding', fields: [] });
+acceptSchema({
+  // @ts-expect-error The head-to-head spelling is not canonical.
+  kind: 'head-to-head',
+  teamsDataSource: { type: 'db', eventId: 42 },
+  fields: [],
+});
+acceptSchema({
+  // @ts-expect-error The double-seeding spelling is not canonical.
+  kind: 'double-seeding',
+  teamsDataSource: { type: 'db', eventId: 42 },
+  fields: [],
+});
+// @ts-expect-error Bracket schemas require a bracket source.
+acceptSchema({
+  kind: 'bracket',
+  teamsDataSource: { type: 'db', eventId: 42 },
+  fields: [],
+});
+acceptSchema({
+  kind: 'seeding',
+  // @ts-expect-error Legacy mode is not part of a canonical schema.
+  mode: 'head-to-head',
+  teamsDataSource: { type: 'db', eventId: 42 },
+  fields: [],
+});
+acceptSchema({
+  kind: 'double_seeding',
+  // @ts-expect-error Legacy scoreKind is not part of a canonical schema.
+  scoreKind: 'double_seeding',
+  teamsDataSource: { type: 'db', eventId: 42 },
+  fields: [],
+});
+acceptSchema({
+  kind: 'seeding',
+  // @ts-expect-error Seeding schemas cannot declare bracket-specific data.
+  bracketSource: { type: 'db' },
+  teamsDataSource: { type: 'db', eventId: 42 },
+  fields: [],
+});
+acceptSchema({
+  kind: 'double_seeding',
+  // @ts-expect-error Double-seeding schemas cannot declare bracket-specific data.
+  bracketSource: { type: 'db' },
+  teamsDataSource: { type: 'db', eventId: 42 },
+  fields: [],
+});
 acceptField({
   id: 'outer',
   label: 'Outer',
@@ -336,6 +415,8 @@ acceptField({ type: 'number' });
 acceptField({ id: 'legacy', label: 'Legacy', type: 'text', startValue: 'old' });
 
 void derivation;
+void (null as unknown as SchemaKindMatchesScoreType);
+void inspectSchema;
 void typedRow;
 void invalidTypedRow;
 void bracketSchema;
