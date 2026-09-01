@@ -74,8 +74,8 @@ export function splitRec (strExp: string): Expr {
   }
   if (isTern) {
     const cond = strExp.slice(0, tern_start).trim();
-    const pri = strExp.slice(tern_start + opLen, split);
-    const aux = strExp.slice(split + opLen);
+    const pri = strExp.slice(tern_start + opLen, split).trim();
+    const aux = strExp.slice(split + opLen).trim();
     return {
       type: 'conditional',
       condition: splitRec(cond),
@@ -83,9 +83,9 @@ export function splitRec (strExp: string): Expr {
       otherwise: splitRec(aux)
     }
   }
-  const left = strExp.slice(0, split).trim();
-  const right = strExp.slice(split + opLen).trim();
-  const op = strExp.slice(split, split + opLen);
+  const left = strExp.slice(0, split - opLen).trim();
+  const right = strExp.slice(split+1).trim();
+  const op = strExp.slice(split - opLen, split+1).trim();
 
   return {
     type: 'binary',
@@ -95,7 +95,10 @@ export function splitRec (strExp: string): Expr {
   }
 }
 
+
+
 //console.dir(splitRec('(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * ((side_a_starting_botguy === \'1\' ? 2 : 1) + 1)'), { depth: null });
 //console.dir(splitRec('((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15) * (side_a_starting_botguy * 2 + 1)'), { depth: null });
-console.dir(splitRec('1 * 2 * 3 + 4'), { depth: null });
-console.dir(splitRec('((1 * 2 * (3 + 4)))'), { depth: null });
+//console.dir(splitRec('1 * 2 * 3 + 4'), { depth: null });
+//console.dir(splitRec('((1 * 2 * (3 + 4)))'), { depth: null });
+//console.dir(splitRec('1 === 1 ? 1 : 2'), { depth: null });
