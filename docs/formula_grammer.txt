@@ -1,0 +1,28 @@
+expression      := conditional ;
+
+conditional     := logical_or
+                   [ "?" expression ":" conditional ] ;
+
+logical_or      := comparison
+                   { "||" comparison } ;
+
+comparison      := additive
+                   [ (">" | "<" | "===") additive ] ;
+
+additive        := multiplicative
+                   { "+" multiplicative } ;
+
+multiplicative  := primary
+                   { "*" primary } ;
+
+primary         := integer
+                 | string
+                 | identifier
+                 | "(" expression ")" ;
+
+integer         := digit { digit } ;
+
+identifier      := letter
+                   { letter | digit | "_" } ;
+
+string          := "'0'" | "'1'" | "'100'" ;   // or numeric strings generally

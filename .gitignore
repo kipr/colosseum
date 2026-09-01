@@ -23,7 +23,8 @@ npm-debug.log*
 Thumbs.db
 
 # IDE files
-.vscode/
+.vscode/*
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
