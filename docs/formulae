@@ -1,5 +1,5 @@
 "((side_a_starting_cubes * 2) + (side_a_starting_baskets * 15)) * (side_a_starting_botguy === '1' ? 2 : 1)"
-"(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * (side_a_starting_botguy === '1' ? 2 : 1)"
+"(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * ((side_a_starting_botguy === '1' ? 2 : 1) + 1)"
 "(side_a_workstation_poms * 2) * (side_a_workstation_both_colors > 0 ? side_a_workstation_both_colors : 1)"
 "((side_a_lower_cubes_pallets * 5) + (side_a_lower_botguy * 20) + (side_a_lower_traffic_cones * 25)) * (side_a_lower_pallets > 0 ? side_a_lower_pallets : 1)"
 "(side_a_storage_posts * 30) * (side_a_storage_posts_count > 0 ? side_a_storage_posts_count : 1)"
@@ -59,3 +59,4 @@
 "cube_stacks_subtotal"
 "cube_stacks_subtotal + bonus_points"
 "side_a_score + side_b_score"
+"((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15) * (side_a_starting_botguy * 2 + 1)'"

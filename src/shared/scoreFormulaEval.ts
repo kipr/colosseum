@@ -1,4 +1,5 @@
 const OPS = new Set(['+', '*', '<', '>', '===', '||'] as const);
+const OPS_SINGLE = '*+<>=|?:';
 type Op = typeof OPS extends Set<infer T> ? T : never;
 function isOp(value: string): value is Op {
   return OPS.has(value as Op);
@@ -23,66 +24,8 @@ export type Compound =
 
 export type Expr = Single | Compound;
 
-export function evaluate(strExp: string): Expr {
-  split(strExp);
-  return { type: 'string', value: strExp };
-}
-
-const GENERAL_CHARS = /[\w\s+*:?<>=]/;
-const OP = /([+*<>?:]|===|\|\|)/;
-const NOT_OP = /[^+*:?<>=\s]/;
-
-function split (strExp: string): string | Expr {
-  // Look for matching closer, then find op
-  let left = '';
-  let op = '';
-  let right = '';
-  if (strExp[0] === '(') {
-    let depth = 1;
-    let i = 1;
-    while (depth !== 0) {
-      if (strExp[i] === '(') {
-        depth += 1;
-      } else if (strExp[i] === ')') {
-        depth -= 1;
-      } else if (!GENERAL_CHARS.test(strExp[i])) {
-        return '';
-      }
-      i += 1;
-    }
-    left = strExp.slice(1, i-1).trim();
-
-    right = strExp.slice(i).trim();
-    i = 0;
-    // Is the next non-whitespace *not* an operator?
-    const next_op_idx = right.search(OP);
-    const next_not_op_idx = right.search(NOT_OP);
-    if (next_not_op_idx < next_op_idx) {
-      return '';
-    }
-    op = right[next_op_idx];
-    right = right.slice(next_not_op_idx);
-    console.log(left);    
-    console.log(op);    
-    console.log(right);    
-  }
-
-  return {
-    type: 'binary',
-    left: {
-      type: 'string',
-      value: left,
-    },
-    op: op,
-    right: {
-      type: 'string',
-      value: right
-    }
-  } as Expr;
-}
 
 export function splitRec (strExp: string): Expr {
-  //console.log(strExp);
   // Base case: strExp is a single
   if (/^'\w*'$/.test(strExp)) {
     return {type: "string", value: strExp};
@@ -92,70 +35,67 @@ export function splitRec (strExp: string): Expr {
     return {type: "number", value: parseInt(strExp, 10)}
   }
 
-  // If starting with a parenthesis, get sub-expressions
-  let left: Expr;
-  let op: Op;
-  let right: Expr;
-  if (strExp[0] === '(') {
-    left = splitRec(strExp.slice(1));
-    // Need to parse right somehow
-  } else {
-    const closeParenIdx = strExp.search(/\)/);
-    if (closeParenIdx !== -1) {
-      left = splitRec(strExp.slice(0, closeParenIdx).trim());
-      const remain = strExp.slice(closeParenIdx + 1).trim();
-      // TODO Handle incorrect stuff
-      switch (remain[0]) {
-        case '+':
-        case '*':
-        case '<':
-        case '>':
-          op = remain[0];
-          break;
-        case '=':
-          op = '===';
-          break;
-        default:
-          op = '||';
+  // Find the position of the next operator
+  let depth = 0;
+  let minDepth = Number.MAX_SAFE_INTEGER;
+  let split = 0;
+  let prec = 0;
+  let tern_start = -1;
+  for (const [i, c] of Array.from(strExp).entries()) {
+    const curPrec = OPS_SINGLE.indexOf(c);
+    if (curPrec >= prec && depth <= minDepth) {
+      if (c === '?') {
+        tern_start = i;
       }
-      const rightIdx = remain.search(NOT_OP);
-      right = splitRec(remain.slice(rightIdx).trim());
-      return {
-        type: "binary",
-        op: op,
-        left: left,
-        right: right
-      };
-    } else {
-      const op_idx = strExp.search(OP);
-      left = splitRec(strExp.slice(0, op_idx).trim());
-      const remain = strExp.slice(op_idx).trim();
-      // TODO Handle incorrect stuff
-      switch (remain[0]) {
-        case '+':
-        case '*':
-        case '<':
-        case '>':
-          op = remain[0];
-          break;
-        case '=':
-          op = '===';
-          break;
-        default:
-          op = '||';
-      }
-      const rightIdx = remain.search(NOT_OP);
-      right = splitRec(remain.slice(rightIdx).trim());
-      return {
-        type: "binary",
-        op: op,
-        left: left,
-        right: right
-      };
+      prec = curPrec;
+      split = i;
+      minDepth = depth;
+    }
+    if (c === '(') {
+      depth += 1;
+    } else if (c === ')') {
+      depth -= 1;
     }
   }
-  return left;
+  // Clean up extraneous parenthesis
+  strExp = strExp.slice(minDepth, strExp.length - minDepth);
+  split = split - minDepth;
+  let opLen = 1;
+  let isTern = false;
+  switch (strExp[split]) {
+    case '=':
+      opLen = 3;
+      break;
+    case '|':
+      opLen = 2;
+      break;
+    case ':':
+      isTern = true;
+  }
+  if (isTern) {
+    const cond = strExp.slice(0, tern_start).trim();
+    const pri = strExp.slice(tern_start + opLen, split);
+    const aux = strExp.slice(split + opLen);
+    return {
+      type: 'conditional',
+      condition: splitRec(cond),
+      then: splitRec(pri),
+      otherwise: splitRec(aux)
+    }
+  }
+  const left = strExp.slice(0, split).trim();
+  const right = strExp.slice(split + opLen).trim();
+  const op = strExp.slice(split, split + opLen);
+
+  return {
+    type: 'binary',
+    op: op as Op,
+    left: splitRec(left),
+    right: splitRec(right)
+  }
 }
 
-//console.dir(splitRec('(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * (side_a_starting_botguy === \'1\' ? 2 : 1)'), { depth: null });
-//console.dir(splitRec('1 * 2 * 3 * 4'), { depth: null });
+//console.dir(splitRec('(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * ((side_a_starting_botguy === \'1\' ? 2 : 1) + 1)'), { depth: null });
+//console.dir(splitRec('((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15) * (side_a_starting_botguy * 2 + 1)'), { depth: null });
+console.dir(splitRec('1 * 2 * 3 + 4'), { depth: null });
+console.dir(splitRec('((1 * 2 * (3 + 4)))'), { depth: null });
