@@ -43,7 +43,7 @@ export function splitRec (strExp: string): Expr {
   let tern_start = -1;
   for (const [i, c] of Array.from(strExp).entries()) {
     const curPrec = OPS_SINGLE.indexOf(c);
-    if (curPrec >= prec && depth <= minDepth) {
+    if (depth <= minDepth && curPrec >= prec) {
       if (c === '?') {
         tern_start = i;
       }
@@ -53,8 +53,10 @@ export function splitRec (strExp: string): Expr {
     }
     if (c === '(') {
       depth += 1;
+      prec = 0;
     } else if (c === ')') {
       depth -= 1;
+      prec = 0;
     }
   }
   // Clean up extraneous parenthesis
@@ -101,4 +103,6 @@ export function splitRec (strExp: string): Expr {
 //console.dir(splitRec('((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15) * (side_a_starting_botguy * 2 + 1)'), { depth: null });
 //console.dir(splitRec('1 * 2 * 3 + 4'), { depth: null });
 //console.dir(splitRec('((1 * 2 * (3 + 4)))'), { depth: null });
+//console.dir(splitRec('(3 + 4) * 1 * 2'), { depth: null });
 //console.dir(splitRec('1 === 1 ? 1 : 2'), { depth: null });
+//console.dir(splitRec('(1 === 1 ? 1 : 2) * 2'), { depth: null });
