@@ -28,7 +28,7 @@ export type Expr = Single | Compound;
 export function splitRec (strExp: string): Expr {
   // Base case: strExp is a single
   if (/^'\w*'$/.test(strExp)) {
-    return {type: "string", value: strExp};
+    return {type: "string", value: strExp.slice(1, -1)};
   } else if (/^[a-z]\w*$/.test(strExp)) {
     return {type: "variable", name: strExp};
   } else if (/^[0-9.]*$/.test(strExp)) {
@@ -75,7 +75,7 @@ export function splitRec (strExp: string): Expr {
       isTern = true;
   }
   if (isTern) {
-    const cond = strExp.slice(0, tern_start).trim();
+    const cond = strExp.slice(0, tern_start-1).trim();
     const pri = strExp.slice(tern_start + opLen, split).trim();
     const aux = strExp.slice(split + opLen).trim();
     return {
@@ -99,7 +99,7 @@ export function splitRec (strExp: string): Expr {
 
 
 
-//console.dir(splitRec('(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * ((side_a_starting_botguy === \'1\' ? 2 : 1) + 1)'), { depth: null });
+console.dir(splitRec('(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * ((side_a_starting_botguy === \'1\' ? 2 : 1) + 1)'), { depth: null });
 //console.dir(splitRec('((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15) * (side_a_starting_botguy * 2 + 1)'), { depth: null });
 //console.dir(splitRec('1 * 2 * 3 + 4'), { depth: null });
 //console.dir(splitRec('((1 * 2 * (3 + 4)))'), { depth: null });
