@@ -1,3 +1,5 @@
+import { usesLegacyRawScoreFormula } from "../server/services/rawScoreFormula";
+
 const OPS = new Set(['+', '*', '<', '>', '===', '||'] as const);
 const OPS_SINGLE = '*+<>=|?:';
 type Op = typeof OPS extends Set<infer T> ? T : never;
@@ -23,9 +25,11 @@ export type Compound =
     };
 
 export type Expr = Single | Compound;
+export type ScoreFormulaEvalErr = string;
+export const DEPTH_EXCEEDED: ScoreFormulaEvalErr = 'Recursive depth exceeded';
+export const INVALID_OP: ScoreFormulaEvalErr = 'Invalid operation in formula';
 
-
-export function splitRec (strExp: string): Expr {
+export function splitRec (strExp: string, recDepth: number): Expr | ScoreFormulaEvalErr {
   // Base case: strExp is a single
   if (/^'\w*'$/.test(strExp)) {
     return {type: "string", value: strExp.slice(1, -1)};
@@ -33,6 +37,10 @@ export function splitRec (strExp: string): Expr {
     return {type: "variable", name: strExp};
   } else if (/^[0-9.]*$/.test(strExp)) {
     return {type: "number", value: parseInt(strExp, 10)}
+  }
+
+  if (recDepth > 256) {
+    return DEPTH_EXCEEDED;
   }
 
   // Find the position of the next operator
@@ -80,21 +88,36 @@ export function splitRec (strExp: string): Expr {
     const con = strExp.slice(0, tern_start-1).trim();
     const the = strExp.slice(tern_start + opLen, split).trim();
     const oth = strExp.slice(split + opLen).trim();
+    const cons = splitRec(con, recDepth + 1);
+    const thes = splitRec(the, recDepth + 1);
+    const oths = splitRec(oth, recDepth + 1);
+    if (typeof cons === 'string' || typeof thes === 'string' || typeof oths === 'string') {
+      return cons;
+    }
+
     return {
       type: 'conditional',
-      condition: splitRec(con),
-      then: splitRec(the),
-      otherwise: splitRec(oth)
+      condition: cons,
+      then: thes,
+      otherwise: oths
     }
   }
   const left = strExp.slice(0, split - opLen).trim();
   const right = strExp.slice(split+1).trim();
   const op = strExp.slice(split - opLen, split+1).trim();
+  if (!isOp(op)) {
+    return INVALID_OP;
+  }
+  const leftSplit = splitRec(left, recDepth + 1);
+  const rightSplit = splitRec(right, recDepth + 1);
+  if (typeof leftSplit === 'string' || typeof rightSplit === 'string') {
+    return leftSplit;
+  }
 
   return {
     type: 'binary',
     op: op as Op,
-    left: splitRec(left),
-    right: splitRec(right)
+    left: leftSplit,
+    right: rightSplit
   }
 }

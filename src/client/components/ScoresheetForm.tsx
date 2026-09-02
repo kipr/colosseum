@@ -21,6 +21,7 @@ import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
 import JudgeChatDrawer from './judgeChat/JudgeChatDrawer';
+import { splitRec } from '../../shared/scoreFormulaEval';
 
 interface ScoresheetFormProps {
   template: any;
@@ -854,6 +855,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
     const uniqueFieldIds = Array.from(new Set(fieldIds));
 
+    console.dir(splitRec(formula, 0), { depth: null });
     uniqueFieldIds.forEach((fieldId) => {
       let value: any = 0;
 
