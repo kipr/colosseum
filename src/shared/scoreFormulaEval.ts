@@ -96,13 +96,3 @@ export function splitRec (strExp: string): Expr {
     right: splitRec(right)
   }
 }
-
-
-
-console.dir(splitRec('(((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15)) * ((side_a_starting_botguy === \'1\' ? 2 : 1) + 1)'), { depth: null });
-//console.dir(splitRec('((side_a_starting_cubes * 2) + 1) + (side_a_starting_baskets * 15) * (side_a_starting_botguy * 2 + 1)'), { depth: null });
-//console.dir(splitRec('1 * 2 * 3 + 4'), { depth: null });
-//console.dir(splitRec('((1 * 2 * (3 + 4)))'), { depth: null });
-//console.dir(splitRec('(3 + 4) * 1 * 2'), { depth: null });
-//console.dir(splitRec('1 === 1 ? 1 : 2'), { depth: null });
-//console.dir(splitRec('(1 === 1 ? 1 : 2) * 2'), { depth: null });
