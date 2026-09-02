@@ -62,6 +62,8 @@ export function splitRec (strExp: string): Expr {
   // Clean up extraneous parenthesis
   strExp = strExp.slice(minDepth, strExp.length - minDepth);
   split = split - minDepth;
+
+  // Handle unique operators
   let opLen = 1;
   let isTern = false;
   switch (strExp[split]) {
@@ -75,14 +77,14 @@ export function splitRec (strExp: string): Expr {
       isTern = true;
   }
   if (isTern) {
-    const cond = strExp.slice(0, tern_start-1).trim();
-    const pri = strExp.slice(tern_start + opLen, split).trim();
-    const aux = strExp.slice(split + opLen).trim();
+    const con = strExp.slice(0, tern_start-1).trim();
+    const the = strExp.slice(tern_start + opLen, split).trim();
+    const oth = strExp.slice(split + opLen).trim();
     return {
       type: 'conditional',
-      condition: splitRec(cond),
-      then: splitRec(pri),
-      otherwise: splitRec(aux)
+      condition: splitRec(con),
+      then: splitRec(the),
+      otherwise: splitRec(oth)
     }
   }
   const left = strExp.slice(0, split - opLen).trim();
