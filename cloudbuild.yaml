@@ -7,6 +7,10 @@ substitutions:
   _REPOSITORY: cloud-run-source-deploy   # Artifact Registry repository name
   _IMAGE: colosseum        # Image name within the repo
   _SERVICE: colosseum      # Cloud Run service name
+  _DB_HOST: 10.30.0.3      # Cloud SQL private IP address
+  _VPC_NETWORK: colosseum-prod
+  _VPC_SUBNET: colosseum-run-us-central1
+  _VPC_EGRESS: private-ranges-only
 
 steps:
   # Guardrails: enforce "tag-trigger only" and required substitutions.
@@ -21,7 +25,6 @@ steps:
       fi
 
       : "${_RUN_SA:?Missing _RUN_SA substitution (Cloud Run runtime service account email)}"
-      : "${_INSTANCE_CONNECTION_NAME:?Missing _INSTANCE_CONNECTION_NAME (PROJECT:REGION:INSTANCE)}"
       : "${_DB_USER:?Missing _DB_USER}"
       : "${_DB_NAME:?Missing _DB_NAME}"
       : "${_ALLOWED_EMAIL_DOMAINS:?Missing _ALLOWED_EMAIL_DOMAINS}"
@@ -63,16 +66,21 @@ steps:
       - managed
       - --allow-unauthenticated
 
-      # Runtime identity + Cloud SQL attachment
+      # Runtime identity + Direct VPC egress to Cloud SQL's private IP
       - --service-account
       - ${_RUN_SA}
-      - --add-cloudsql-instances
-      - ${_INSTANCE_CONNECTION_NAME}
+      - --network
+      - ${_VPC_NETWORK}
+      - --subnet
+      - ${_VPC_SUBNET}
+      - --vpc-egress
+      - ${_VPC_EGRESS}
+      - --clear-cloudsql-instances
 
       # Non-secret runtime config (use ^@^ delimiter so commas inside
       # ALLOWED_EMAIL_DOMAINS are not misinterpreted as pair separators)
       - --set-env-vars
-      - ^@^NODE_ENV=production@DB_USER=${_DB_USER}@DB_NAME=${_DB_NAME}@CLOUD_SQL_CONNECTION_NAME=${_INSTANCE_CONNECTION_NAME}@ALLOWED_EMAIL_DOMAINS=${_ALLOWED_EMAIL_DOMAINS}@APP_URL=${_APP_URL}@SESSION_DISABLE_TOUCH=true@SESSION_PRUNE_INTERVAL_SECONDS=3600
+      - ^@^NODE_ENV=production@DB_USER=${_DB_USER}@DB_NAME=${_DB_NAME}@DB_HOST=${_DB_HOST}@ALLOWED_EMAIL_DOMAINS=${_ALLOWED_EMAIL_DOMAINS}@APP_URL=${_APP_URL}@SESSION_DISABLE_TOUCH=true@SESSION_PRUNE_INTERVAL_SECONDS=3600
 
       # Secret Manager bindings (names are constants; versions can be :latest)
       - --set-secrets
