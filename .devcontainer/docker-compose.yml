@@ -1,10 +1,12 @@
 services:
   app:
+    # Paths are relative to the primary compose file (repo-root docker-compose.yml),
+    # which is first in devcontainer.json dockerComposeFile.
     build:
-      context: ..
+      context: .
       dockerfile: .devcontainer/Dockerfile
     volumes:
-      - ..:/workspaces/colosseum:cached
+      - .:/workspaces/colosseum:cached
     command: sleep infinity
     depends_on:
       postgres:
