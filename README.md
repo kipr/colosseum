@@ -35,6 +35,7 @@ See [Template Schema Guide](docs/TEMPLATE_SCHEMA_GUIDE.md) for detailed schema d
 
 - Node.js 16+ and npm
 - Google Cloud Platform account with OAuth 2.0 credentials (for admin authentication)
+- Docker Engine + Compose (optional; only needed to run local PostgreSQL instead of SQLite)
 
 ## Setup Instructions
 
@@ -94,6 +95,85 @@ npm start
 In production, Express serves the built React app at `http://localhost:3000`.
 
 **Important**: During development, always use `http://localhost:5173` (Vite) for the frontend, NOT port 3000.
+
+### 5. Local PostgreSQL (optional)
+
+SQLite remains the default for `npm run dev`, Vitest, and Playwright when `DATABASE_URL` is unset. To opt into the same PostgreSQL 18 dialect as production:
+
+1. Start Postgres (do not auto-start it from `npm run dev`):
+
+```bash
+npm run db:up && npm run db:wait
+```
+
+2. Uncomment these lines in `.env` (host Node uses `localhost`; a devcontainer already sets hostname `postgres`):
+
+```env
+DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum
+TEST_DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum_test
+```
+
+`TEST_DATABASE_URL` is unused until later migration phases; it is created now so the Compose `colosseum_test` database is ready.
+
+3. Start the app:
+
+```bash
+npm run dev
+```
+
+Expect these logs (not `Using SQLite session store`):
+
+```
+Using PostgreSQL session store
+Database initialized successfully
+```
+
+4. Confirm the API is up:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Should return `{ "status": "ok", ... }`.
+
+5. Inspect databases and schema:
+
+```bash
+npm run db:psql
+```
+
+Then in `psql`:
+
+```
+\l
+\c colosseum
+\dt
+```
+
+`\l` should list both `colosseum` and `colosseum_test`. `\dt` should show application tables plus `"session"` after the first server start (the session table is created by `connect-pg-simple`).
+
+6. Leave `DATABASE_URL` unset to keep using SQLite files under `database/`. Compose is not required for that path.
+
+**Port 5432 already in use.** Create `docker-compose.override.yml` (gitignored if you prefer; do not commit local port choices):
+
+```yaml
+services:
+  postgres:
+    ports:
+      - '5433:5432'
+```
+
+Point `DATABASE_URL` at `localhost:5433`.
+
+**Wipe local Postgres data** (does not delete SQLite files):
+
+```bash
+npm run db:reset
+```
+
+Helper scripts: `db:up`, `db:wait`, `db:down`, `db:reset`, `db:psql`.
+
+**Devcontainer / Codespaces.** Reopening the folder in a container starts Compose siblings (`app` + `postgres`) with `DATABASE_URL` already pointing at hostname `postgres`. Wait for `postStartCommand` (`pg_isready`) before `npm run dev`.
 
 ## Usage Guide
 
@@ -175,6 +255,8 @@ colosseum/
 ├── tests/                         # Unit & integration tests (Vitest)
 ├── e2e/                           # End-to-end tests (Playwright)
 ├── database/                      # SQLite databases (auto-created)
+├── docker/                        # Local Postgres init scripts
+├── docker-compose.yml             # Optional local PostgreSQL 18
 ├── dist/                          # Build output
 ├── playwright.config.ts           # Playwright E2E config
 ├── vite.config.ts                 # Vite configuration
@@ -302,7 +384,7 @@ The application uses SQLite (development) or PostgreSQL (production) with the fo
 
 - **Frontend**: React 19, TypeScript, React Router, Vite
 - **Backend**: Node.js, Express 5, TypeScript
-- **Database**: SQLite (dev) / PostgreSQL (production)
+- **Database**: SQLite (dev default) / PostgreSQL (production; optional local via Docker Compose)
 - **Authentication**: Passport.js with Google OAuth 2.0
 - **Testing**: Vitest (unit/integration), Playwright (E2E)
 - **Build Tools**: Vite (frontend), TypeScript Compiler (backend)

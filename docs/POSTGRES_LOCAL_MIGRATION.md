@@ -1,6 +1,6 @@
 # Local PostgreSQL Migration — Design and Implementation Plan
 
-Status: approved, not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
+Status: Phase 0 implemented; later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
 
 Replace local SQLite with a Docker Compose PostgreSQL 18 server so development, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.
 
@@ -232,7 +232,7 @@ Cursor Cloud agents need Docker Compose. Do not reintroduce SQLite as a Cloud-ag
 
 Each phase should be mergeable on its own.
 
-### Phase 0 — Postgres available, SQLite still default
+### Phase 0 — Postgres available, SQLite still default (done)
 
 - Add `docker-compose.yml`, init SQL for `colosseum_test`, `db:*` scripts, `.env.example` comments
 - Wire the **devcontainer** to Compose + `DATABASE_URL` so Codespaces/devcontainers can opt in immediately
