@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspaces/colosseum:cached
+    command: sleep infinity
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://colosseum:colosseum@postgres:5432/colosseum
+      TEST_DATABASE_URL: postgres://colosseum:colosseum@postgres:5432/colosseum_test
+    security_opt:
+      - label=disable
