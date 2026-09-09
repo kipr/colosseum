@@ -57,6 +57,11 @@ function rateLimitHandler(
 // Limiter instances
 // ---------------------------------------------------------------------------
 
+/** Playwright sets this so e2e traffic does not trip production limits. */
+function skipWhenDisabled(): boolean {
+  return process.env.COLOSSEUM_DISABLE_RATE_LIMIT === '1';
+}
+
 /** Coarse OAuth entry-point protection: 20 req / 15 min per IP. */
 export const oauthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -64,6 +69,7 @@ export const oauthLimiter = rateLimit({
   standardHeaders: 'draft-6',
   legacyHeaders: false,
   store: oauthStore,
+  skip: skipWhenDisabled,
   handler: rateLimitHandler('oauth'),
 });
 
@@ -74,6 +80,7 @@ export const scoreSubmitLimiter = rateLimit({
   standardHeaders: 'draft-6',
   legacyHeaders: false,
   store: scoreSubmitStore,
+  skip: skipWhenDisabled,
   handler: rateLimitHandler('scoreSubmit'),
 });
 
@@ -89,6 +96,7 @@ export const accessCodeLimiter = rateLimit({
   store: accessCodeStore,
   keyGenerator: (req: Request) => `${req.ip}:${req.params.id}`,
   validate: { keyGeneratorIpFallback: false },
+  skip: skipWhenDisabled,
   handler: rateLimitHandler('accessCode'),
 });
 
@@ -99,6 +107,7 @@ export const chatWriteLimiter = rateLimit({
   standardHeaders: 'draft-6',
   legacyHeaders: false,
   store: chatWriteStore,
+  skip: skipWhenDisabled,
   handler: rateLimitHandler('chatWrite'),
 });
 
@@ -109,6 +118,7 @@ export const chatReadLimiter = rateLimit({
   standardHeaders: 'draft-6',
   legacyHeaders: false,
   store: chatReadStore,
+  skip: skipWhenDisabled,
   handler: rateLimitHandler('chatRead'),
 });
 
@@ -130,6 +140,7 @@ export const queueSyncLimiter = rateLimit({
   },
   validate: { keyGeneratorIpFallback: false },
   skip: (req: Request) => {
+    if (skipWhenDisabled()) return true;
     const sync = req.query.sync;
     return sync !== '1' && sync !== 'true';
   },
@@ -143,5 +154,6 @@ export const publicExpensiveReadLimiter = rateLimit({
   standardHeaders: 'draft-6',
   legacyHeaders: false,
   store: publicExpensiveReadStore,
+  skip: skipWhenDisabled,
   handler: rateLimitHandler('publicExpensiveRead'),
 });
