@@ -1,6 +1,6 @@
 # Local PostgreSQL Migration — Design and Implementation Plan
 
-Status: Phase 0 implemented. Phase 1 split into 1a (Vitest + CI, implemented) and 1b (local Playwright, not yet implemented); later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
+Status: Phases 0 and 1 implemented (1a Vitest + CI, 1b local Playwright); later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
 
 Replace local SQLite with a Docker Compose PostgreSQL 18 server so development, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.
 
@@ -265,11 +265,26 @@ Type/constraint mismatches this surfaced, all fixed as production bugs:
 
 Known follow-up: `events.event_date` is a `DATE`, and `pg` parses it at **local** midnight, so the serialized value can land on the previous day when the server is not UTC. This is pre-existing production behaviour that the client tolerates via `toDateOnlyString`, so it was left alone; the test suite pins `TZ=UTC`.
 
-#### Phase 1b — Local Playwright on Postgres (not yet implemented)
+#### Phase 1b — Local Playwright on Postgres (done)
 
-- Playwright: `pg` helper, `TEST_DATABASE_URL`, ports 3001/5174, env-driven Vite proxy, `reuseExistingServer: false`; delete SQLite file access
+- Playwright starts its own Express (3001) and Vite (5174) with `DATABASE_URL=$TEST_DATABASE_URL` and `reuseExistingServer: false`, so `npm run test:e2e` runs alongside `npm run dev` without touching the dev database
+- `e2e/helpers/db.ts` wraps `createPostgresDatabase` over a `pg` pool rather than adding a second SQL translation layer. The `Database` interface already keeps `?` placeholders and reports `lastID`, so the spec SQL needed no rewriting and `runInsert`'s `RETURNING id` handling is exercised by the e2e path too.
+- `e2e/helpers/session.ts` replaced four copies of the cookie-signing helper and five copies of the admin-session seeding block, and moved sessions from SQLite `sessions` (`expires` INTEGER ms) to the `connect-pg-simple` `"session"` table (`sess` JSON, `expire` TIMESTAMP, upserted with `ON CONFLICT`). A substring match on `sess` now needs an explicit `sess::text` cast.
+- `SESSION_SECRET` for the e2e server is pinned to one constant shared by `playwright.config.ts` and the helper. The specs previously fell back to the `.env.example` default, so a developer with a real secret in `.env` got cookies the server rejected.
+- `e2e/globalSetup.ts` truncates `public` once per run, so a crashed run cannot poison the next one. It refuses to run unless the resolved database name looks like a test database, since it truncates everything it finds. Playwright starts `webServer` before `globalSetup`, so the schema is already applied by then.
+- `config/testDatabaseUrl.ts` shares `TEST_DATABASE_URL` resolution with `vitest.config.ts` so the two suites cannot drift onto different servers.
+- `vite.config.ts` takes its proxy target from `COLOSSEUM_API_URL` instead of hardcoding `http://localhost:3000` in all 16 entries, and sets `strictPort`. Letting Vite drift to the next free port is what would allow the dev stack to land on 5174 and e2e to attach to it.
+- The e2e server is pinned to `TZ=UTC` for the same reason as the Vitest suite: `pg` parses `events.event_date` at local midnight.
 
-Until 1b lands, local `DATABASE_URL` on the default ports and e2e cannot both be the documented default.
+Dialect mismatches the conversion surfaced, all in test code:
+
+- `is_admin`, `is_active`, and `is_bye` were written as `1`/`0` into boolean columns. `events.spectator_results_released` is genuinely `INTEGER` and still takes `0`/`1`.
+- `spectator-public.spec.ts` carried a `try { ALTER TABLE ... }` loop plus a `CREATE TABLE IF NOT EXISTS ... AUTOINCREMENT` to patch up older dev SQLite files. Every column it added is in the Postgres schema, so the whole block went away.
+- `datetime('now')` in `bracket-lifecycle.spec.ts` became `CURRENT_TIMESTAMP`.
+
+`admin-tournament-setup.spec.ts` signed cookies with `cookie-signature`, an undeclared transitive dependency of `express-session`; it now uses the shared HMAC helper, which produces the same output.
+
+Playwright is still **not** added to GitHub Actions.
 
 ### Phase 2 — Postgres is the only local default
 
@@ -336,10 +351,10 @@ Until 1b lands, local `DATABASE_URL` on the default ports and e2e cannot both be
 | Schema runner | `src/server/database/schema/runner.ts` |
 | Session (SQLite) | `src/server/session/SqliteSessionStore.ts` |
 | Session (server wiring) | `src/server/server.ts` |
-| Test DB helper | `tests/sql/helpers/testDb.ts` |
-| Postgres “parity” (string match) | `tests/server/database/postgresParity.test.ts` |
-| E2E (SQLite file access) | `e2e/*.spec.ts`, `playwright.config.ts` |
-| Vite proxy (hardcoded :3000) | `vite.config.ts` |
+| Vitest DB helper | `tests/sql/helpers/testDb.ts` |
+| Shared test DB URL | `config/testDatabaseUrl.ts` |
+| E2E harness | `e2e/globalSetup.ts`, `e2e/helpers/`, `playwright.config.ts` |
+| Vite proxy (env-driven) | `vite.config.ts` |
 | CI | `.github/workflows/ci.yml` |
 | Devcontainer | `.devcontainer/devcontainer.json`, `.devcontainer/Dockerfile` |
 | Prod image | `Dockerfile`, `cloudbuild.yaml` |
