@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDb, TestDb } from './helpers/testDb';
-import { initializeSQLite } from '../../src/server/database/init';
+import { initializePostgres } from '../../src/server/database/init';
 import {
   ensureBracketTemplatesSeeded,
   generateDEBracketTemplates,
@@ -99,7 +99,8 @@ describe('Bracket Template Seeding', () => {
       );
 
       expect(firstCount?.count).toBe(secondCount?.count);
-      expect(secondCount?.count).toBe(15);
+      // COUNT(*) is BIGINT, which pg returns as a string.
+      expect(Number(secondCount?.count)).toBe(15);
     });
 
     it('should seed different bracket sizes independently', async () => {
@@ -197,7 +198,7 @@ describe('Bracket Template Seeding', () => {
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       try {
-        await initializeSQLite(testDb.db);
+        await initializePostgres(testDb.db);
       } finally {
         warning.mockRestore();
       }

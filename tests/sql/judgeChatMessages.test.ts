@@ -31,7 +31,7 @@ describe('judge_chat_messages table', () => {
            VALUES (?, ?, ?, ?, ?)`,
           [eventId, 'conv-1', 'spectator', 'Mallory', 'hello'],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
 
     it('accepts judge and admin roles', async () => {
@@ -60,7 +60,7 @@ describe('judge_chat_messages table', () => {
            VALUES (?, ?, ?, ?, ?)`,
           [null, 'conv-1', 'judge', 'Judge', 'hi'],
         ),
-      ).rejects.toThrow(/NOT NULL constraint failed/);
+      ).rejects.toThrow(/violates not-null constraint/);
     });
 
     it('rejects NULL conversation_key', async () => {
@@ -70,7 +70,7 @@ describe('judge_chat_messages table', () => {
            VALUES (?, ?, ?, ?, ?)`,
           [eventId, null, 'judge', 'Judge', 'hi'],
         ),
-      ).rejects.toThrow(/NOT NULL constraint failed/);
+      ).rejects.toThrow(/violates not-null constraint/);
     });
 
     it('rejects NULL sender_name', async () => {
@@ -80,7 +80,7 @@ describe('judge_chat_messages table', () => {
            VALUES (?, ?, ?, ?, ?)`,
           [eventId, 'conv-1', 'judge', null, 'hi'],
         ),
-      ).rejects.toThrow(/NOT NULL constraint failed/);
+      ).rejects.toThrow(/violates not-null constraint/);
     });
 
     it('rejects NULL message', async () => {
@@ -90,7 +90,7 @@ describe('judge_chat_messages table', () => {
            VALUES (?, ?, ?, ?, ?)`,
           [eventId, 'conv-1', 'judge', 'Judge', null],
         ),
-      ).rejects.toThrow(/NOT NULL constraint failed/);
+      ).rejects.toThrow(/violates not-null constraint/);
     });
   });
 
@@ -102,7 +102,7 @@ describe('judge_chat_messages table', () => {
            VALUES (?, ?, ?, ?, ?)`,
           [99999, 'conv-1', 'judge', 'Judge', 'hi'],
         ),
-      ).rejects.toThrow(/FOREIGN KEY constraint failed/);
+      ).rejects.toThrow(/violates foreign key constraint/);
     });
 
     it('cascade deletes messages when the event is deleted', async () => {
@@ -188,10 +188,12 @@ describe('judge_chat_messages table', () => {
 
   describe('indexes', () => {
     it('creates idx_judge_chat_thread and idx_judge_chat_event_created', async () => {
-      const indexes = await testDb.db.all<{ name: string }>(
-        `SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='judge_chat_messages'`,
+      const indexes = await testDb.db.all<{ indexname: string }>(
+        `SELECT indexname FROM pg_indexes
+         WHERE schemaname = current_schema()
+           AND tablename = 'judge_chat_messages'`,
       );
-      const names = indexes.map((i) => i.name);
+      const names = indexes.map((i) => i.indexname);
       expect(names).toContain('idx_judge_chat_thread');
       expect(names).toContain('idx_judge_chat_event_created');
     });

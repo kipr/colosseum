@@ -108,7 +108,7 @@ describe('Transaction Behavior', () => {
           [eventId, 100, 'Team B'],
         );
       }),
-    ).rejects.toThrow(/UNIQUE constraint failed/);
+    ).rejects.toThrow(/violates unique constraint/);
 
     // Neither team should exist
     const teams = await testDb.db.all(`SELECT * FROM teams`);

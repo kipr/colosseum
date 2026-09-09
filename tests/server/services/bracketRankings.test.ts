@@ -46,14 +46,14 @@ describe('calculateBracketRankings', () => {
     seedPosition: number,
   ): Promise<void> {
     await testDb.db.run(
-      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, 0)`,
+      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, FALSE)`,
       [bId, teamId, seedPosition],
     );
   }
 
   async function addByeEntry(bId: number, seedPosition: number): Promise<void> {
     await testDb.db.run(
-      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, NULL, ?, 1)`,
+      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, NULL, ?, TRUE)`,
       [bId, seedPosition],
     );
   }

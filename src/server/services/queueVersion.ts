@@ -1,4 +1,5 @@
 import type { Database } from '../database/connection';
+import { isForeignKeyConstraintError } from '../database/constraintErrors';
 
 /**
  * Per-event queue version tracking, backed by the `queue_versions` table.
@@ -17,14 +18,6 @@ import type { Database } from '../database/connection';
 export interface QueueVersionState {
   version: number;
   dirty: boolean;
-}
-
-function isForeignKeyError(error: unknown): boolean {
-  const message = (error as Error)?.message ?? '';
-  return (
-    message.includes('FOREIGN KEY constraint failed') ||
-    message.includes('violates foreign key constraint')
-  );
 }
 
 export async function getQueueVersionState(
@@ -56,7 +49,7 @@ export async function bumpQueueVersion(
     );
   } catch (error) {
     // Event may have been deleted concurrently; nothing to version then.
-    if (!isForeignKeyError(error)) throw error;
+    if (!isForeignKeyConstraintError(error)) throw error;
   }
 }
 
@@ -76,7 +69,7 @@ export async function markQueueDirty(
       [eventId],
     );
   } catch (error) {
-    if (!isForeignKeyError(error)) throw error;
+    if (!isForeignKeyConstraintError(error)) throw error;
   }
 }
 
@@ -98,7 +91,7 @@ export async function clearQueueDirty(
       [eventId, expectedVersion],
     );
   } catch (error) {
-    if (!isForeignKeyError(error)) throw error;
+    if (!isForeignKeyConstraintError(error)) throw error;
   }
 }
 

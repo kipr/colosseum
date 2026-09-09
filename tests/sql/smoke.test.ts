@@ -13,15 +13,17 @@ describe('Test DB Harness', () => {
     }
   });
 
-  it('should create an in-memory database with schema', async () => {
+  it('should create a database with schema', async () => {
     testDb = await createTestDb();
 
     // Verify some key tables exist
-    const tables = await testDb.db.all<{ name: string }>(
-      `SELECT name FROM sqlite_master WHERE type='table' ORDER BY name`,
+    const tables = await testDb.db.all<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'
+       ORDER BY table_name`,
     );
 
-    const tableNames = tables.map((t) => t.name);
+    const tableNames = tables.map((t) => t.table_name);
 
     expect(tableNames).toContain('events');
     expect(tableNames).toContain('teams');

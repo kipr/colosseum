@@ -2,6 +2,10 @@ import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase, type Database } from '../database/connection';
+import {
+  isCheckConstraintError,
+  isForeignKeyConstraintError,
+} from '../database/constraintErrors';
 import { isValidQueueStatus } from '../constants/queueStatus';
 import {
   ensureQueueFresh,
@@ -364,13 +368,12 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     res.status(201).json(queueItem);
   } catch (error) {
     console.error('Error adding to queue:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
+    if (isForeignKeyConstraintError(error)) {
       return res
         .status(400)
         .json({ error: 'Event, game, or team does not exist' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid queue_type or status' });
     }
     res.status(500).json({ error: 'Failed to add to queue' });
@@ -857,11 +860,7 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     res.json(queueItem);
   } catch (error) {
     console.error('Error updating queue item:', error);
-    const errMsg = (error as Error).message || '';
-    if (
-      errMsg.includes('CHECK constraint failed') ||
-      errMsg.includes('violates check constraint')
-    ) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid status value' });
     }
     res.status(500).json({ error: 'Failed to update queue item' });
