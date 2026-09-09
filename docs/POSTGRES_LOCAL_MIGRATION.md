@@ -1,8 +1,8 @@
 # Local PostgreSQL Migration — Design and Implementation Plan
 
-Status: Phases 0 and 1 implemented (1a Vitest + CI, 1b local Playwright); later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
+Status: Phases 0–2 implemented (1a Vitest + CI, 1b local Playwright, 2 Postgres-only local default); later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
 
-Replace local SQLite with a Docker Compose PostgreSQL 18 server so development, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.
+Replace local SQLite with a Docker Compose PostgreSQL 18 server so local Node, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.
 
 GitHub Actions Playwright remains **out of scope**. Local Playwright is **in scope** and must use the test database, not the developer’s `colosseum` database.
 
@@ -14,14 +14,14 @@ GitHub Actions Playwright remains **out of scope**. Local Playwright is **in sco
 
 | Environment | Engine | How it is chosen |
 | --- | --- | --- |
-| Local `npm run dev` | SQLite files under `database/` (`colosseum.db`, `sessions.db`) | Default when `DATABASE_URL` is unset and `NODE_ENV !== 'production'` |
-| Vitest | In-memory SQLite via `better-sqlite3` | `tests/sql/helpers/testDb.ts` |
-| Local Playwright | SQLite files, written with `better-sqlite3` while the server runs | `e2e/*.spec.ts` open `database/colosseum.db` |
-| Production | Cloud SQL PostgreSQL 18 | `NODE_ENV=production` or `DATABASE_URL`; Cloud Run uses `DB_USER` / `DB_PASSWORD` / `DB_NAME` / `CLOUD_SQL_CONNECTION_NAME` |
+| Local `npm run dev` | PostgreSQL 18 via Docker Compose (`colosseum`) | `DATABASE_URL` (required). Unset + no Cloud SQL vars → fail with a `db:up` hint. `NODE_ENV` is not a dialect signal |
+| Vitest | PostgreSQL 18, schema per worker on `colosseum_test` | `TEST_DATABASE_URL` (`tests/sql/helpers/testDb.ts`) |
+| Local Playwright | PostgreSQL 18, `public` schema on `colosseum_test` | Playwright injects `DATABASE_URL=$TEST_DATABASE_URL`; ports 3001/5174 |
+| Production | Cloud SQL PostgreSQL 18 | `CLOUD_SQL_CONNECTION_NAME` + `DB_USER` / `DB_PASSWORD` / `DB_NAME` (Cloud Run does **not** set `DATABASE_URL`) |
 
-Schema is duplicated in 13 modules under `src/server/database/schema/` (`postgres` and `sqlite` blocks). `PostgresAdapter.convertSql()` rewrites `?` placeholders, `INSERT OR IGNORE`, and appends `RETURNING id` on inserts. `tests/server/database/postgresParity.test.ts` only regex-matches emitted SQL; it never talks to Postgres.
+Schema is still duplicated in 13 modules under `src/server/database/schema/` (`postgres` and `sqlite` blocks) until Phase 3. `PostgresAdapter.convertSql()` rewrites `?` placeholders, `INSERT OR IGNORE`, and appends `RETURNING id` on inserts.
 
-Sessions are a second store: custom `SqliteSessionStore` in development, `connect-pg-simple` on table `"session"` in production.
+The running app always uses `connect-pg-simple` on table `"session"`. `SqliteSessionStore` remains in the tree until Phase 3.
 
 ### 1.2 Why the adapter is not enough
 
@@ -51,7 +51,8 @@ Keeping SQLite “just for tests” would preserve that class of bug. Vitest and
 | Postgres image | `postgres:18`, matching Cloud SQL |
 | Result types | Whatever `pg` already returns in production (`Date` for timestamps, real booleans, BIGINT as string when `pg` does that). Tests follow prod, not old SQLite shapes. |
 | Vitest isolation | Unique schema per `createTestDb()` on database `colosseum_test` |
-| SQLite during Phases 0–1 | Keep today’s fallback (`no DATABASE_URL` → SQLite) until Phase 2 |
+| SQLite during Phases 0–1 | Fallback (`no DATABASE_URL` → SQLite) until Phase 2. Phase 2 removed that fallback |
+| SQLite after Phase 2 | App path is Postgres-only. `SqliteAdapter` / `SqliteSessionStore` / schema `sqlite:` blocks stay until Phase 3 |
 | Devcontainer | Compose siblings: Node `app` + `postgres` |
 | GitHub Playwright | Out of scope |
 | Local Playwright | Own API/Vite process, `DATABASE_URL=$TEST_DATABASE_URL`, dedicated ports, never the `colosseum` dev database |
@@ -286,12 +287,14 @@ Dialect mismatches the conversion surfaced, all in test code:
 
 Playwright is still **not** added to GitHub Actions.
 
-### Phase 2 — Postgres is the only local default
+### Phase 2 — Postgres is the only local default (done)
 
 - `getDatabase()` / `initializeDatabase()` / `server.ts` session store: Postgres only
-- Fail fast with a Compose hint if the server is unreachable
-- Remove SQLite session branch
-- Update README / AGENTS.md / `.env.example` as required
+- Connection selection is lazy `resolvePostgresConfig()`: `DATABASE_URL` → TCP; else `CLOUD_SQL_CONNECTION_NAME` → unix socket; otherwise throw. `NODE_ENV === 'production'` is not a dialect proxy
+- `src/server/loadEnv.ts` is the first import in `server.ts` so `.env` is applied before connection code runs
+- Fail fast with a Compose hint if the server is unreachable via `DATABASE_URL` (`ECONNREFUSED` / empty-message `AggregateError`)
+- Remove SQLite session branch from the running app (`SqliteSessionStore` file stays until Phase 3)
+- README / `AGENTS.md` / `.env.example` / Serena memories no longer document a SQLite local default
 - Keep schema `sqlite:` blocks temporarily so a revert is still possible if needed
 
 ### Phase 3 — Delete the second dialect

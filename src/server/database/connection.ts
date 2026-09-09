@@ -1,31 +1,117 @@
-import SQLite from 'better-sqlite3';
 import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { Pool } from 'pg';
-import path from 'path';
-import fs from 'fs';
-
-// Database abstraction to support both SQLite (dev) and PostgreSQL (prod)
-const isProduction = process.env.NODE_ENV === 'production';
-const usePostgres = isProduction || !!process.env.DATABASE_URL;
 
 let sqliteDb: SQLiteDatabase | null = null;
 let pgPool: Pool | null = null;
+let pgUnreachableHint: 'db-up' | null = null;
 
-// PostgreSQL connection pool
+export type PostgresConfig =
+  | { source: 'url'; connectionString: string }
+  | {
+      source: 'cloudsql';
+      user: string;
+      password: string | undefined;
+      database: string;
+      host: string;
+    };
+
+const POSTGRES_REQUIRED_MESSAGE =
+  'PostgreSQL is required. Copy `.env.example` to `.env`, ' +
+  'set `DATABASE_URL`, then run `npm run db:up && npm run db:wait`. ' +
+  'Production uses `CLOUD_SQL_CONNECTION_NAME` with `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.';
+
+function envValue(
+  env: NodeJS.Dict<string | undefined>,
+  key: string,
+): string | undefined {
+  const trimmed = env[key]?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+/**
+ * Choose Postgres connection settings from the current environment.
+ * `DATABASE_URL` wins; otherwise Cloud SQL unix-socket vars. `NODE_ENV`
+ * is not a dialect signal. Reads env at call time so `.env` can load first.
+ */
+export function resolvePostgresConfig(
+  env: NodeJS.Dict<string | undefined> = process.env,
+): PostgresConfig {
+  const databaseUrl = envValue(env, 'DATABASE_URL');
+  if (databaseUrl) {
+    return { source: 'url', connectionString: databaseUrl };
+  }
+
+  const connectionName = envValue(env, 'CLOUD_SQL_CONNECTION_NAME');
+  if (connectionName) {
+    return {
+      source: 'cloudsql',
+      user: envValue(env, 'DB_USER') || 'postgres',
+      password: envValue(env, 'DB_PASSWORD'),
+      database: envValue(env, 'DB_NAME') || 'colosseum',
+      host: envValue(env, 'DB_HOST') || `/cloudsql/${connectionName}`,
+    };
+  }
+
+  throw new Error(POSTGRES_REQUIRED_MESSAGE);
+}
+
+function isAggregateError(
+  error: unknown,
+): error is Error & { errors: unknown[] } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'errors' in error &&
+    Array.isArray((error as { errors: unknown }).errors)
+  );
+}
+
+function describePostgresError(error: unknown): string {
+  if (isAggregateError(error)) {
+    return error.errors.map(describePostgresError).join('; ');
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  const code = (error as { code?: string })?.code;
+  return code ? `${code} ${message}`.trim() : message;
+}
+
+function isUnreachablePostgresError(error: unknown): boolean {
+  if (isAggregateError(error)) {
+    const message = error.message?.trim() ?? '';
+    return (
+      !message ||
+      error.errors.some((inner) => isUnreachablePostgresError(inner))
+    );
+  }
+  return (error as { code?: string })?.code === 'ECONNREFUSED';
+}
+
+function rethrowPostgresError(
+  error: unknown,
+  unreachableHint: 'db-up' | null,
+): never {
+  if (unreachableHint === 'db-up' && isUnreachablePostgresError(error)) {
+    throw new Error(
+      'Could not connect to PostgreSQL. Is it running? Try `npm run db:up && npm run db:wait`.\n' +
+        `Underlying error: ${describePostgresError(error)}`,
+    );
+  }
+  throw error;
+}
+
 function getPgPool(): Pool {
   if (!pgPool) {
-    // Cloud SQL connection via Unix socket or TCP
-    const connectionConfig = process.env.DATABASE_URL
-      ? { connectionString: process.env.DATABASE_URL }
-      : {
-          user: process.env.DB_USER || 'postgres',
-          password: process.env.DB_PASSWORD,
-          database: process.env.DB_NAME || 'colosseum',
-          // Cloud SQL Unix socket path
-          host:
-            process.env.DB_HOST ||
-            `/cloudsql/${process.env.CLOUD_SQL_CONNECTION_NAME}`,
-        };
+    const config = resolvePostgresConfig();
+    pgUnreachableHint = config.source === 'url' ? 'db-up' : null;
+    const connectionConfig =
+      config.source === 'url'
+        ? { connectionString: config.connectionString }
+        : {
+            user: config.user,
+            password: config.password,
+            database: config.database,
+            host: config.host,
+          };
 
     pgPool = new Pool(connectionConfig);
   }
@@ -201,7 +287,18 @@ class PostgresAdapter implements Database {
    */
   private tablesWithoutId = new Set<string>();
 
-  constructor(private pool: Pool) {}
+  constructor(
+    private pool: Pool,
+    private unreachableHint: 'db-up' | null = null,
+  ) {}
+
+  private async withUnreachableHint<T>(op: () => Promise<T>): Promise<T> {
+    try {
+      return await op();
+    } catch (error) {
+      rethrowPostgresError(error, this.unreachableHint);
+    }
+  }
 
   private convertSql(sql: string): string {
     // Convert ? placeholders to $1, $2, etc.
@@ -276,45 +373,53 @@ class PostgresAdapter implements Database {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async get<T = any>(sql: string, params?: any[]): Promise<T | undefined> {
-    const result = await this.pool.query(
-      this.convertSql(sql),
-      params ? normalizePgParams(params) : params,
-    );
-    return result.rows[0];
+    return this.withUnreachableHint(async () => {
+      const result = await this.pool.query(
+        this.convertSql(sql),
+        params ? normalizePgParams(params) : params,
+      );
+      return result.rows[0];
+    });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async all<T = any>(sql: string, params?: any[]): Promise<T[]> {
-    const result = await this.pool.query(
-      this.convertSql(sql),
-      params ? normalizePgParams(params) : params,
-    );
-    return result.rows;
+    return this.withUnreachableHint(async () => {
+      const result = await this.pool.query(
+        this.convertSql(sql),
+        params ? normalizePgParams(params) : params,
+      );
+      return result.rows;
+    });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async run(sql: string, params?: any[]): Promise<DatabaseResult> {
-    const convertedSql = this.convertSql(sql);
-    const normalizedParams = params ? normalizePgParams(params) : params;
+    return this.withUnreachableHint(async () => {
+      const convertedSql = this.convertSql(sql);
+      const normalizedParams = params ? normalizePgParams(params) : params;
 
-    if (sql.trim().toUpperCase().startsWith('INSERT')) {
-      return this.runInsert(
-        (s, p) => this.pool.query(s, p),
-        convertedSql,
-        normalizedParams,
-      );
-    }
+      if (sql.trim().toUpperCase().startsWith('INSERT')) {
+        return this.runInsert(
+          (s, p) => this.pool.query(s, p),
+          convertedSql,
+          normalizedParams,
+        );
+      }
 
-    const result = await this.pool.query(convertedSql, normalizedParams);
-    return { changes: result.rowCount || 0 };
+      const result = await this.pool.query(convertedSql, normalizedParams);
+      return { changes: result.rowCount || 0 };
+    });
   }
 
   async exec(sql: string): Promise<void> {
-    await this.pool.query(sql);
+    await this.withUnreachableHint(async () => {
+      await this.pool.query(sql);
+    });
   }
 
   async transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
-    const client = await this.pool.connect();
+    const client = await this.withUnreachableHint(() => this.pool.connect());
     try {
       await client.query('BEGIN');
 
@@ -372,40 +477,22 @@ export async function getDatabase(): Promise<Database> {
     return dbAdapter;
   }
 
-  if (usePostgres) {
-    console.log('Using PostgreSQL database');
-    const pool = getPgPool();
-    dbAdapter = new PostgresAdapter(pool);
-  } else {
-    console.log('Using SQLite database');
-    // Ensure database directory exists
-    const dbDir = path.join(__dirname, '../../../database');
-    if (!fs.existsSync(dbDir)) {
-      fs.mkdirSync(dbDir, { recursive: true });
-    }
-
-    // sqliteDb = await open({
-    //   filename: path.join(__dirname, '../../../database/colosseum.db'),
-    //   driver: sqlite3.Database,
-    // });
-    sqliteDb = new SQLite(
-      path.join(__dirname, '../../../database/colosseum.db'),
-    );
-    sqliteDb.pragma('foreign_keys = ON;');
-    sqliteDb.pragma('journal_mode = WAL');
-    sqliteDb.pragma('busy_timeout = 5000');
-    dbAdapter = new SqliteAdapter(sqliteDb);
+  console.log('Using PostgreSQL database');
+  const pool = getPgPool();
+  const adapter = new PostgresAdapter(pool, pgUnreachableHint);
+  try {
+    await adapter.get('SELECT 1');
+  } catch (error) {
+    await closeDatabase();
+    throw error;
   }
-
+  dbAdapter = adapter;
   return dbAdapter;
 }
 
 // Export the PostgreSQL pool for session store
-export function getPostgresPool(): Pool | null {
-  if (usePostgres) {
-    return getPgPool();
-  }
-  return null;
+export function getPostgresPool(): Pool {
+  return getPgPool();
 }
 
 /**
@@ -440,6 +527,7 @@ export async function closeDatabase(): Promise<void> {
     await pgPool.end();
     pgPool = null;
   }
+  pgUnreachableHint = null;
   dbAdapter = null;
 }
 

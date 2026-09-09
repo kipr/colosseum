@@ -1,13 +1,11 @@
-// Load environment variables FIRST, before any other imports
-// This ensures all modules have access to env vars when they initialize
-import dotenv from 'dotenv';
-dotenv.config();
+// Load environment variables FIRST, before any other imports.
+// ESM/TS import hoisting would otherwise evaluate connection code before
+// dotenv.config() if it lived in this file's body.
+import './loadEnv';
 
 import express, { Request, Response, NextFunction } from 'express';
 import { Server } from 'http';
 import session from 'express-session';
-import BetterSqlite3 from 'better-sqlite3';
-import { SqliteSessionStore } from './session/SqliteSessionStore';
 import connectPgSimple from 'connect-pg-simple';
 import passport from 'passport';
 import cors from 'cors';
@@ -36,7 +34,6 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const isProduction = process.env.NODE_ENV === 'production';
-const usePostgres = isProduction || !!process.env.DATABASE_URL;
 
 // Keep health checks DB-free by handling them before session/auth middleware.
 app.get('/health', (req: Request, res: Response) => {
@@ -74,47 +71,25 @@ const sessionConfig: session.SessionOptions = {
   },
 };
 
-// Configure session store based on environment
-if (usePostgres) {
-  // Use PostgreSQL session store in production
-  const PgSession = connectPgSimple(session);
-  const pgPool = getPostgresPool();
-  const disableTouch = process.env.SESSION_DISABLE_TOUCH !== 'false';
-  const pruneIntervalRaw = Number.parseInt(
-    process.env.SESSION_PRUNE_INTERVAL_SECONDS || '3600',
-    10,
-  );
-  const pruneSessionInterval =
-    Number.isFinite(pruneIntervalRaw) && pruneIntervalRaw > 0
-      ? pruneIntervalRaw
-      : false;
-  if (pgPool) {
-    sessionConfig.store = new PgSession({
-      pool: pgPool,
-      tableName: 'session',
-      createTableIfMissing: true,
-      disableTouch,
-      pruneSessionInterval,
-    });
-    console.log('Using PostgreSQL session store');
-  }
-} else {
-  // Use SQLite session store in development (custom better-sqlite3 store)
-  const dbPath = path.join(__dirname, '../../database', 'sessions.db');
-
-  const sqlite = new BetterSqlite3(dbPath);
-  sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('foreign_keys = ON');
-  sqlite.pragma('busy_timeout = 5000');
-
-  sessionConfig.store = new SqliteSessionStore({
-    db: sqlite,
-    tableName: 'sessions',
-    ttlMs: 7 * 24 * 60 * 60 * 1000, // keep in sync with cookie maxAge if you want
-  }) as session.Store;
-
-  console.log('Using SQLite session store (custom better-sqlite3)');
-}
+const PgSession = connectPgSimple(session);
+const pgPool = getPostgresPool();
+const disableTouch = process.env.SESSION_DISABLE_TOUCH !== 'false';
+const pruneIntervalRaw = Number.parseInt(
+  process.env.SESSION_PRUNE_INTERVAL_SECONDS || '3600',
+  10,
+);
+const pruneSessionInterval =
+  Number.isFinite(pruneIntervalRaw) && pruneIntervalRaw > 0
+    ? pruneIntervalRaw
+    : false;
+sessionConfig.store = new PgSession({
+  pool: pgPool,
+  tableName: 'session',
+  createTableIfMissing: true,
+  disableTouch,
+  pruneSessionInterval,
+});
+console.log('Using PostgreSQL session store');
 app.use(session(sessionConfig));
 
 // Passport initialization
@@ -155,7 +130,7 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, '../client')));
 } else {
-  // In development, Vite serves the React app
+  // Outside production, Vite serves the React app
   // Keep legacy HTML files for gradual migration
   app.use(express.static(path.join(__dirname, '../../public')));
 }
