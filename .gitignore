@@ -37,4 +37,7 @@ Thumbs.db
 /blob-report/
 /playwright/.cache/
 
+# Local Docker Compose port/data overrides
+docker-compose.override.yml
+
 .codex

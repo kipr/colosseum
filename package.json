@@ -21,7 +21,12 @@
     "test:e2e": "playwright test",
     "lint": "npx eslint src",
     "pretty": "npx prettier src/ --check",
-    "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs"
+    "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs",
+    "db:up": "docker compose up -d postgres",
+    "db:wait": "sh -c 'i=0; until docker compose exec -T postgres pg_isready -U colosseum -d colosseum; do i=$((i+1)); if [ \"$i\" -ge 30 ]; then echo \"Postgres did not become ready. Is it running? Try: npm run db:up\" >&2; exit 1; fi; sleep 1; done'",
+    "db:down": "docker compose down",
+    "db:reset": "docker compose down -v && docker compose up -d postgres",
+    "db:psql": "docker compose exec postgres psql -U colosseum -d colosseum"
   },
   "keywords": [],
   "author": "",
