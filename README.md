@@ -35,7 +35,7 @@ See [Template Schema Guide](docs/TEMPLATE_SCHEMA_GUIDE.md) for detailed schema d
 
 - Node.js 16+ and npm
 - Google Cloud Platform account with OAuth 2.0 credentials (for admin authentication)
-- Docker Engine + Compose (optional; only needed to run local PostgreSQL instead of SQLite)
+- Docker Engine + Compose (required; local PostgreSQL 18)
 
 ## Setup Instructions
 
@@ -68,11 +68,44 @@ Edit `.env` and add your Google OAuth credentials:
 GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
 SESSION_SECRET=your-random-session-secret
+DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum
+TEST_DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum_test
 ```
 
-### 4. Run the Application
+`.env.example` already includes those database URLs. Inside a devcontainer the hostname is `postgres` rather than `localhost`.
 
-**Development mode (runs both React + Express):**
+### 4. Start PostgreSQL
+
+Do not auto-start Compose from `npm run dev`. Start it first:
+
+```bash
+npm run db:up && npm run db:wait
+```
+
+**Port 5432 already in use.** Create `docker-compose.override.yml` (gitignored if you prefer; do not commit local port choices):
+
+```yaml
+services:
+  postgres:
+    ports:
+      - '5433:5432'
+```
+
+Point `DATABASE_URL` and `TEST_DATABASE_URL` at `localhost:5433`.
+
+**Wipe local Postgres data:**
+
+```bash
+npm run db:reset
+```
+
+Helper scripts: `db:up`, `db:wait`, `db:down`, `db:reset`, `db:psql`.
+
+**Devcontainer / Codespaces.** Reopening the folder in a container starts Compose siblings (`app` + `postgres`) with `DATABASE_URL` already pointing at hostname `postgres`. Wait for `postStartCommand` (`pg_isready`) before `npm run dev`.
+
+### 5. Run the Application
+
+**Dev servers (React + Express):**
 
 ```bash
 npm run dev
@@ -85,54 +118,15 @@ This starts two servers:
 
 The Vite server proxies API calls to Express automatically.
 
-**Production mode:**
-
-```bash
-npm run build
-npm start
-```
-
-In production, Express serves the built React app at `http://localhost:3000`.
-
-**Important**: During development, always use `http://localhost:5173` (Vite) for the frontend, NOT port 3000.
-
-### 5. Local PostgreSQL
-
-The Vitest and Playwright suites always require PostgreSQL. SQLite remains the
-default for `npm run dev` when `DATABASE_URL` is unset, but you can opt the dev
-server into the same PostgreSQL 18 dialect as production:
-
-1. Start Postgres (do not auto-start it from `npm run dev`):
-
-```bash
-npm run db:up && npm run db:wait
-```
-
-2. Uncomment these lines in `.env` (host Node uses `localhost`; a devcontainer already sets hostname `postgres`):
-
-```env
-DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum
-TEST_DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum_test
-```
-
-`DATABASE_URL` is what the dev server uses. `TEST_DATABASE_URL` points at the
-separate `colosseum_test` database that both test suites use, so a test run can
-never touch your dev data.
-
-3. Start the app:
-
-```bash
-npm run dev
-```
-
-Expect these logs (not `Using SQLite session store`):
+Expect these logs:
 
 ```
 Using PostgreSQL session store
+Using PostgreSQL database
 Database initialized successfully
 ```
 
-4. Confirm the API is up:
+Confirm the API is up:
 
 ```bash
 curl http://localhost:3000/health
@@ -140,7 +134,7 @@ curl http://localhost:3000/health
 
 Should return `{ "status": "ok", ... }`.
 
-5. Inspect databases and schema:
+Inspect databases and schema:
 
 ```bash
 npm run db:psql
@@ -156,28 +150,16 @@ Then in `psql`:
 
 `\l` should list both `colosseum` and `colosseum_test`. `\dt` should show application tables plus `"session"` after the first server start (the session table is created by `connect-pg-simple`).
 
-6. Leave `DATABASE_URL` unset to keep using SQLite files under `database/`. Compose is not required for that path.
-
-**Port 5432 already in use.** Create `docker-compose.override.yml` (gitignored if you prefer; do not commit local port choices):
-
-```yaml
-services:
-  postgres:
-    ports:
-      - '5433:5432'
-```
-
-Point `DATABASE_URL` at `localhost:5433`.
-
-**Wipe local Postgres data** (does not delete SQLite files):
+**Production mode:**
 
 ```bash
-npm run db:reset
+npm run build
+npm start
 ```
 
-Helper scripts: `db:up`, `db:wait`, `db:down`, `db:reset`, `db:psql`.
+In production, Express serves the built React app at `http://localhost:3000`.
 
-**Devcontainer / Codespaces.** Reopening the folder in a container starts Compose siblings (`app` + `postgres`) with `DATABASE_URL` already pointing at hostname `postgres`. Wait for `postStartCommand` (`pg_isready`) before `npm run dev`.
+**Important**: When running the Vite + Express pair, always use `http://localhost:5173` (Vite) for the frontend, NOT port 3000.
 
 ## Usage Guide
 
@@ -259,9 +241,8 @@ colosseum/
 ├── tests/                         # Unit & integration tests (Vitest)
 ├── e2e/                           # End-to-end tests (Playwright)
 ├── config/                        # Shared test-runner configuration
-├── database/                      # SQLite databases (auto-created)
 ├── docker/                        # Local Postgres init scripts
-├── docker-compose.yml             # Local PostgreSQL 18 (required for tests)
+├── docker-compose.yml             # Local PostgreSQL 18 (required for app and tests)
 ├── dist/                          # Build output
 ├── playwright.config.ts           # Playwright E2E config
 ├── vite.config.ts                 # Vite configuration
@@ -273,7 +254,7 @@ colosseum/
 
 ## Database Schema
 
-The application uses SQLite (development) or PostgreSQL (production) with the following tables:
+The application uses PostgreSQL with the following tables:
 
 ### Core Tables
 
@@ -383,13 +364,13 @@ The application uses SQLite (development) or PostgreSQL (production) with the fo
 - `GET /audit/event/:eventId` - Get audit log for event
 - `GET /audit/entity/:type/:id` - Get audit log for entity
 
-## Development
+## Working on the app
 
 ### Tech Stack
 
 - **Frontend**: React 19, TypeScript, React Router, Vite
 - **Backend**: Node.js, Express 5, TypeScript
-- **Database**: SQLite (dev default) / PostgreSQL (production; optional local via Docker Compose)
+- **Database**: PostgreSQL 18 (Docker Compose locally; Cloud SQL in production)
 - **Authentication**: Passport.js with Google OAuth 2.0
 - **Testing**: Vitest (unit/integration), Playwright (E2E)
 - **Build Tools**: Vite (frontend), TypeScript Compiler (backend)
@@ -405,7 +386,7 @@ Builds both React frontend and Express backend:
 - React app -> `dist/client/`
 - Express server -> `dist/server/`
 
-### Development Servers
+### Dev Servers
 
 ```bash
 npm run dev
@@ -413,7 +394,7 @@ npm run dev
 
 Runs both servers concurrently:
 
-- **Vite** (React with HMR): http://localhost:5173 - **Use this for development**
+- **Vite** (React with HMR): http://localhost:5173 - **Open this URL in your browser**
 - **Express** (API): http://localhost:3000
 
 Changes to React components update instantly (Hot Module Replacement).
