@@ -1,7 +1,5 @@
 import type { Database } from '../connection';
 
-export type SchemaDialect = 'postgres' | 'sqlite';
-
 /** A source-controlled, additive migration for one database column. */
 export interface ColumnAddition {
   /** Unqualified table name in the dialect's current schema. */
@@ -20,11 +18,9 @@ export interface DialectSchema {
   indexes?: readonly string[];
 }
 
-export interface SchemaModule {
+export interface SchemaModule extends DialectSchema {
   name: string;
   updatedAtTables?: readonly string[];
-  postgres: DialectSchema;
-  sqlite: DialectSchema;
 }
 
 export type SchemaPhase = keyof DialectSchema;

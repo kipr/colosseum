@@ -1,13 +1,11 @@
 /**
  * Unit tests for database connection utilities.
- * Tests normalizeParam and SqliteAdapter behavior.
+ * Tests normalizeParam and Postgres config / unreachable-server behavior.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import net from 'net';
-import SQLite from 'better-sqlite3';
 import {
   normalizeParam,
-  createSqliteDatabase,
   closeDatabase,
   getDatabase,
   resolvePostgresConfig,
@@ -24,12 +22,12 @@ describe('normalizeParam', () => {
     expect(normalizeParam(d)).toBe('2025-03-15T12:00:00.000Z');
   });
 
-  it('converts boolean true to 1 (boolAsInt)', () => {
-    expect(normalizeParam(true)).toBe(1);
+  it('passes through boolean true', () => {
+    expect(normalizeParam(true)).toBe(true);
   });
 
-  it('converts boolean false to 0 (boolAsInt)', () => {
-    expect(normalizeParam(false)).toBe(0);
+  it('passes through boolean false', () => {
+    expect(normalizeParam(false)).toBe(false);
   });
 
   it('passes through null', () => {
@@ -55,89 +53,6 @@ describe('normalizeParam', () => {
 
   it('stringifies objects to JSON', () => {
     expect(normalizeParam({ a: 1 })).toBe('{"a":1}');
-  });
-});
-
-describe('createSqliteDatabase', () => {
-  it('creates adapter from SQLite instance with foreign keys enabled', async () => {
-    const db = new SQLite(':memory:');
-    const adapter = createSqliteDatabase(db);
-
-    await adapter.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)');
-
-    const insert = await adapter.run('INSERT INTO t (val) VALUES (?)', [
-      'test',
-    ]);
-    expect(insert.lastID).toBe(1);
-
-    const row = await adapter.get<{ val: string }>(
-      'SELECT val FROM t WHERE id = ?',
-      [1],
-    );
-    expect(row?.val).toBe('test');
-
-    db.close();
-  });
-
-  it('supports transaction with rollback on error', async () => {
-    const db = new SQLite(':memory:');
-    const adapter = createSqliteDatabase(db);
-
-    await adapter.exec(
-      'CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT UNIQUE)',
-    );
-    await adapter.run('INSERT INTO t (val) VALUES (?)', ['a']);
-
-    await expect(
-      adapter.transaction(async (tx) => {
-        await tx.run('INSERT INTO t (val) VALUES (?)', ['b']);
-        throw new Error('rollback');
-      }),
-    ).rejects.toThrow('rollback');
-
-    const rows = await adapter.all<{ val: string }>('SELECT val FROM t');
-    expect(rows.length).toBe(1);
-    expect(rows[0].val).toBe('a');
-
-    db.close();
-  });
-
-  it('supports transaction with commit on success', async () => {
-    const db = new SQLite(':memory:');
-    const adapter = createSqliteDatabase(db);
-
-    await adapter.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)');
-
-    const result = await adapter.transaction(async (tx) => {
-      await tx.run('INSERT INTO t (val) VALUES (?)', ['x']);
-      return 42;
-    });
-
-    expect(result).toBe(42);
-    const rows = await adapter.all<{ val: string }>('SELECT val FROM t');
-    expect(rows.length).toBe(1);
-    expect(rows[0].val).toBe('x');
-
-    db.close();
-  });
-
-  it('supports reads of uncommitted writes inside a transaction', async () => {
-    const db = new SQLite(':memory:');
-    const adapter = createSqliteDatabase(db);
-
-    await adapter.exec('CREATE TABLE t (id INTEGER PRIMARY KEY, val TEXT)');
-
-    await adapter.transaction(async (tx) => {
-      await tx.run('INSERT INTO t (val) VALUES (?)', ['pending']);
-      const row = await tx.get<{ val: string }>(
-        'SELECT val FROM t WHERE val = ?',
-        ['pending'],
-      );
-
-      expect(row?.val).toBe('pending');
-    });
-
-    db.close();
   });
 });
 

@@ -15,8 +15,8 @@ export default defineConfig({
   },
   test: {
     // Tests share one PostgreSQL database (colosseum_test) with a schema per
-    // worker process. Sequential for now; enabling fileParallelism is safe
-    // with respect to isolation but has not been measured yet.
+    // worker process. fileParallelism is isolation-safe but unmeasured:
+    // extra workers each pay ~211 DDL statements on first acquire.
     sequence: {
       concurrent: false,
     },

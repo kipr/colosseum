@@ -8,6 +8,7 @@ test.describe('Homepage', () => {
 
   test('shows welcome heading and role cards', async ({ page }) => {
     await page.goto('/');
+    await expect(page.locator('.app-loading')).toHaveCount(0);
 
     await expect(page.getByRole('heading', { name: 'Welcome to Colosseum' })).toBeVisible();
 
