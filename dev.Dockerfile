@@ -9,9 +9,6 @@ RUN npm install
 # Copy source
 COPY . .
 
-# Create database directory for SQLite dev usage
-RUN mkdir -p /app/database
-
 ENV NODE_ENV=development
 ENV PORT=3000
 # Improve file watching reliability in containers

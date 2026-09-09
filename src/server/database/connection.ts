@@ -1,7 +1,5 @@
-import type { Database as SQLiteDatabase } from 'better-sqlite3';
 import { Pool } from 'pg';
 
-let sqliteDb: SQLiteDatabase | null = null;
 let pgPool: Pool | null = null;
 let pgUnreachableHint: 'db-up' | null = null;
 
@@ -126,8 +124,7 @@ export interface DatabaseResult {
 
 /**
  * Transaction interface for use inside Database.transaction() callbacks.
- * Methods are async to support both better-sqlite3 (sync under the hood)
- * and pg (truly async) with a unified API.
+ * Methods are async to match the PostgreSQL client.
  */
 export interface Transaction {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -155,12 +152,12 @@ export interface Database {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeParamBase(v: any, boolAsInt: boolean): any {
+function normalizeParam(v: any): any {
   if (v === undefined) return null;
 
   if (v instanceof Date) return v.toISOString();
 
-  if (typeof v === 'boolean') return boolAsInt ? (v ? 1 : 0) : v;
+  if (typeof v === 'boolean') return v;
 
   if (
     v === null ||
@@ -176,94 +173,8 @@ function normalizeParamBase(v: any, boolAsInt: boolean): any {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizeParam(v: any): any {
-  return normalizeParamBase(v, true);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizePgParam(v: any): any {
-  return normalizeParamBase(v, false);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function normalizeParams(params: any[]): any[] {
   return params.map(normalizeParam);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function normalizePgParams(params: any[]): any[] {
-  return params.map(normalizePgParam);
-}
-// SQLite implementation (better-sqlite3)
-class SqliteAdapter implements Database {
-  private stmtCache = new Map<string, ReturnType<SQLiteDatabase['prepare']>>();
-
-  constructor(private db: SQLiteDatabase) {}
-
-  private stmt(sql: string) {
-    let s = this.stmtCache.get(sql);
-    if (!s) {
-      s = this.db.prepare(sql);
-      this.stmtCache.set(sql, s);
-    }
-    return s;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async get<T = any>(sql: string, params: any[] = []): Promise<T | undefined> {
-    return this.stmt(sql).get(normalizeParams(params)) as T | undefined;
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async all<T = any>(sql: string, params: any[] = []): Promise<T[]> {
-    return this.stmt(sql).all(normalizeParams(params)) as T[];
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  async run(sql: string, params: any[] = []): Promise<DatabaseResult> {
-    const info = this.stmt(sql).run(normalizeParams(params));
-    return {
-      lastID: Number(info.lastInsertRowid),
-      changes: info.changes,
-    };
-  }
-
-  async exec(sql: string): Promise<void> {
-    this.db.exec(sql);
-  }
-
-  async transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
-    const tx: Transaction = {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      get: async <R = any>(
-        sql: string,
-        params: any[] = [], // eslint-disable-line @typescript-eslint/no-explicit-any
-      ): Promise<R | undefined> => {
-        return this.stmt(sql).get(normalizeParams(params)) as R | undefined;
-      },
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      run: async (sql: string, params: any[] = []): Promise<DatabaseResult> => {
-        const info = this.stmt(sql).run(normalizeParams(params));
-        return {
-          lastID: Number(info.lastInsertRowid),
-          changes: info.changes,
-        };
-      },
-      exec: async (sql: string): Promise<void> => {
-        this.db.exec(sql);
-      },
-    };
-
-    this.db.exec('BEGIN');
-    try {
-      const result = await fn(tx);
-      this.db.exec('COMMIT');
-      return result;
-    } catch (error) {
-      this.db.exec('ROLLBACK');
-      throw error;
-    }
-  }
 }
 
 /** Postgres SQLSTATE for a reference to a column that does not exist. */
@@ -316,7 +227,7 @@ class PostgresAdapter implements Database {
   }
 
   /**
-   * Run an INSERT, reporting `lastID` the way better-sqlite3 does.
+   * Run an INSERT, reporting `lastID` when the table has an `id` column.
    *
    * `RETURNING id` is appended so the generated key comes back, but a few
    * tables key on something else (`queue_versions` on `event_id`, `session` on
@@ -376,7 +287,7 @@ class PostgresAdapter implements Database {
     return this.withUnreachableHint(async () => {
       const result = await this.pool.query(
         this.convertSql(sql),
-        params ? normalizePgParams(params) : params,
+        params ? normalizeParams(params) : params,
       );
       return result.rows[0];
     });
@@ -387,7 +298,7 @@ class PostgresAdapter implements Database {
     return this.withUnreachableHint(async () => {
       const result = await this.pool.query(
         this.convertSql(sql),
-        params ? normalizePgParams(params) : params,
+        params ? normalizeParams(params) : params,
       );
       return result.rows;
     });
@@ -397,7 +308,7 @@ class PostgresAdapter implements Database {
   async run(sql: string, params?: any[]): Promise<DatabaseResult> {
     return this.withUnreachableHint(async () => {
       const convertedSql = this.convertSql(sql);
-      const normalizedParams = params ? normalizePgParams(params) : params;
+      const normalizedParams = params ? normalizeParams(params) : params;
 
       if (sql.trim().toUpperCase().startsWith('INSERT')) {
         return this.runInsert(
@@ -430,7 +341,7 @@ class PostgresAdapter implements Database {
         ): Promise<R | undefined> => {
           const result = await client.query(
             this.convertSql(sql),
-            params ? normalizePgParams(params) : params,
+            params ? normalizeParams(params) : params,
           );
           return result.rows[0];
         },
@@ -439,7 +350,7 @@ class PostgresAdapter implements Database {
           params?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
         ): Promise<DatabaseResult> => {
           const convertedSql = this.convertSql(sql);
-          const normalizedParams = params ? normalizePgParams(params) : params;
+          const normalizedParams = params ? normalizeParams(params) : params;
 
           if (sql.trim().toUpperCase().startsWith('INSERT')) {
             return this.runInsert(
@@ -496,15 +407,6 @@ export function getPostgresPool(): Pool {
 }
 
 /**
- * Create a SQLite Database adapter from a better-sqlite3 Database instance.
- * Useful for tests that want to use an in-memory database.
- */
-export function createSqliteDatabase(db: SQLiteDatabase): Database {
-  db.pragma('foreign_keys = ON;');
-  return new SqliteAdapter(db);
-}
-
-/**
  * Create a PostgreSQL Database adapter from a pg Pool.
  * Useful for tests that own their own pool (for example one scoped to a
  * per-worker schema via the connection's `options` parameter).
@@ -519,10 +421,6 @@ export function createPostgresDatabase(pool: Pool): Database {
 export { normalizeParam };
 
 export async function closeDatabase(): Promise<void> {
-  if (sqliteDb) {
-    sqliteDb.close();
-    sqliteDb = null;
-  }
   if (pgPool) {
     await pgPool.end();
     pgPool = null;

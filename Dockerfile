@@ -30,9 +30,6 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/static ./static
 
-# Create database directory
-RUN mkdir -p /app/database
-
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=8080

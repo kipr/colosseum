@@ -1,7 +1,6 @@
 # Tournament API Testing Guide
 
-This document provides curl commands to test all new tournament management endpoints,
-along with SQLite verification queries.
+This document provides curl commands to test all new tournament management endpoints.
 
 ## Prerequisites
 

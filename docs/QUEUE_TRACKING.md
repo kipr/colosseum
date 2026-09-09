@@ -39,9 +39,9 @@ normalized `team1_present` and `team2_present` booleans.
 
 This comparison prevents a confirmation from carrying over when a bracket
 rollback or another source update replaces a participant. The schema is
-defined for both SQLite and PostgreSQL in
+defined in a single schema module,
 `src/server/database/schema/queue.ts`; existing databases receive the columns
-through the schema runner's additive column phase.
+through the schema runner's additive column phase (`information_schema.columns`).
 
 ## Presence API
 
@@ -146,8 +146,7 @@ The feature is covered by:
   synchronization and rollback resets;
 - `tests/http/queue.versioning.test.ts` for queue-version and ETag invalidation;
 - `tests/sql/schema.test.ts`, `tests/server/database/schemaRunner.test.ts`, and
-  `tests/server/database/postgresParity.test.ts` for schema behavior and
-  database parity;
+  `tests/server/database/postgresSchema.test.ts` for schema behavior;
 - `tests/sql/teamRest.test.ts` and `tests/http/queue.rest.test.ts` for busy-team
   derivation; and
 - `e2e/admin-queue-management.spec.ts` for queue-manager workflows and

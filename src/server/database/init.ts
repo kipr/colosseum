@@ -9,14 +9,6 @@ export async function initializeDatabase(): Promise<void> {
 }
 
 export async function initializePostgres(db: Database): Promise<void> {
-  await runSchema(db, 'postgres', schemaModules);
-  await backfillBracketGamePlayOrders(db);
-}
-
-/**
- * Initialize SQLite schema. Exported for use by tests with in-memory databases.
- */
-export async function initializeSQLite(db: Database): Promise<void> {
-  await runSchema(db, 'sqlite', schemaModules);
+  await runSchema(db, schemaModules);
   await backfillBracketGamePlayOrders(db);
 }

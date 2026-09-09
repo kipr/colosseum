@@ -1,6 +1,6 @@
 # Local PostgreSQL Migration — Design and Implementation Plan
 
-Status: Phases 0–2 implemented (1a Vitest + CI, 1b local Playwright, 2 Postgres-only local default); later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
+Status: Phases 0–3 implemented (1a Vitest + CI, 1b local Playwright, 2 Postgres-only local default, 3 SQLite dialect deleted); Phase 4 not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
 
 Replace local SQLite with a Docker Compose PostgreSQL 18 server so local Node, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.
 
@@ -19,9 +19,9 @@ GitHub Actions Playwright remains **out of scope**. Local Playwright is **in sco
 | Local Playwright | PostgreSQL 18, `public` schema on `colosseum_test` | Playwright injects `DATABASE_URL=$TEST_DATABASE_URL`; ports 3001/5174 |
 | Production | Cloud SQL PostgreSQL 18 | `CLOUD_SQL_CONNECTION_NAME` + `DB_USER` / `DB_PASSWORD` / `DB_NAME` (Cloud Run does **not** set `DATABASE_URL`) |
 
-Schema is still duplicated in 13 modules under `src/server/database/schema/` (`postgres` and `sqlite` blocks) until Phase 3. `PostgresAdapter.convertSql()` rewrites `?` placeholders, `INSERT OR IGNORE`, and appends `RETURNING id` on inserts.
+Schema is defined once in 13 modules under `src/server/database/schema/` (`SchemaModule` is a name plus one `DialectSchema`). `PostgresAdapter.convertSql()` still rewrites `?` placeholders, `INSERT OR IGNORE`, and appends `RETURNING id` on inserts until Phase 4.
 
-The running app always uses `connect-pg-simple` on table `"session"`. `SqliteSessionStore` remains in the tree until Phase 3.
+The running app uses `connect-pg-simple` on table `"session"`.
 
 ### 1.2 Why the adapter is not enough
 
@@ -52,7 +52,7 @@ Keeping SQLite “just for tests” would preserve that class of bug. Vitest and
 | Result types | Whatever `pg` already returns in production (`Date` for timestamps, real booleans, BIGINT as string when `pg` does that). Tests follow prod, not old SQLite shapes. |
 | Vitest isolation | Unique schema per `createTestDb()` on database `colosseum_test` |
 | SQLite during Phases 0–1 | Fallback (`no DATABASE_URL` → SQLite) until Phase 2. Phase 2 removed that fallback |
-| SQLite after Phase 2 | App path is Postgres-only. `SqliteAdapter` / `SqliteSessionStore` / schema `sqlite:` blocks stay until Phase 3 |
+| SQLite after Phase 3 | Removed. One schema module, `pg` only, `connect-pg-simple`. |
 | Devcontainer | Compose siblings: Node `app` + `postgres` |
 | GitHub Playwright | Out of scope |
 | Local Playwright | Own API/Vite process, `DATABASE_URL=$TEST_DATABASE_URL`, dedicated ports, never the `colosseum` dev database |
@@ -120,7 +120,7 @@ Today `.devcontainer/devcontainer.json` builds a single Node image. Switch to Co
 - Keep port forwards `3000` / `5173`; add `5432` if host tools should hit the same DB
 - `postCreateCommand`: `npm ci` (and Playwright deps as today)
 - `postStartCommand`: wait until Postgres is healthy
-- Later (Phase 3), drop `python3` / `make` / `g++` from the image once `better-sqlite3` is gone (Playwright deps stay)
+- Phase 3 dropped `python3` / `make` / `g++` from the image once `better-sqlite3` was gone (Playwright deps stay)
 
 Local-without-devcontainer remains: `docker compose up -d` + `npm run dev` on the host.
 
@@ -144,7 +144,7 @@ Each Vitest helper uses its own pooled connection with `search_path` set to that
 
 GitHub Actions (`.github/workflows/ci.yml`): add a `postgres:18` service with a healthcheck, set `TEST_DATABASE_URL`, keep `npm run test:run`. No Playwright job.
 
-Vitest currently forces sequential runs for `better-sqlite3`. After the switch, start sequential to reduce flakes; enable `fileParallelism` later (one schema per file).
+Vitest currently runs sequentially (`fileParallelism: false`). Isolation is one schema per worker; enabling file parallelism would spawn more workers each paying ~211 DDL statements. Reconsider after measuring.
 
 **Expect failures that are actually prod bugs.** Fix application code to match production Postgres:
 
@@ -222,7 +222,7 @@ Update together so the next agent does not recreate SQLite:
 - `README.md` prerequisites: Docker + Compose; setup becomes `docker compose up -d` then `npm run dev`
 - `AGENTS.md`: replace “mkdir database” / “SQLite locally” with Compose + `DATABASE_URL` / `TEST_DATABASE_URL`
 - `.env.example`, `docs/API_TESTING.md` (`sqlite3 database/colosseum.db` → `psql`)
-- `.gitignore`: keep ignoring `database/*.db` during transition, then drop
+- `.gitignore`: local SQLite files are gone; do not reintroduce `database/*.db*`
 - Serena memories: `server/core.md`, `conventions.md`, `task_completion.md`
 
 Cursor Cloud agents need Docker Compose. Do not reintroduce SQLite as a Cloud-agent escape hatch; if Compose is unavailable, document that the environment cannot run DB-backed commands.
@@ -297,13 +297,13 @@ Playwright is still **not** added to GitHub Actions.
 - README / `AGENTS.md` / `.env.example` / Serena memories no longer document a SQLite local default
 - Keep schema `sqlite:` blocks temporarily so a revert is still possible if needed
 
-### Phase 3 — Delete the second dialect
+### Phase 3 — Delete the second dialect (done)
 
-- Collapse schema modules
+- Collapse schema modules: `SchemaModule` extends `DialectSchema` with `name`; `runSchema(db, schemaModules)` with no dialect argument
 - Delete `SqliteAdapter`, `SqliteSessionStore`, `better-sqlite3`
-- Slim the devcontainer image
-- Replace `postgresParity.test.ts` with real schema tests if not already done
-- `vitest.config.ts`: drop sequential-SQLite comments; reconsider `fileParallelism`
+- Slim the devcontainer image (`python3` / `make` / `g++`)
+- `postgresParity.test.ts` was already replaced by `postgresSchema.test.ts` in Phase 1a
+- `vitest.config.ts`: keep `fileParallelism: false` (isolation-safe but unmeasured; extra workers each pay ~211 DDL statements)
 
 ### Phase 4 — Reduce adapter magic
 
@@ -352,7 +352,6 @@ Playwright is still **not** added to GitHub Actions.
 | Init | `src/server/database/init.ts` |
 | Schema modules | `src/server/database/schema/*.ts` |
 | Schema runner | `src/server/database/schema/runner.ts` |
-| Session (SQLite) | `src/server/session/SqliteSessionStore.ts` |
 | Session (server wiring) | `src/server/server.ts` |
 | Vitest DB helper | `tests/sql/helpers/testDb.ts` |
 | Shared test DB URL | `config/testDatabaseUrl.ts` |

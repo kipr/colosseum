@@ -201,12 +201,12 @@ describe('normalizeParam', () => {
     expect(normalizeParam(date)).toBe('2024-01-15T10:30:00.000Z');
   });
 
-  it('should convert boolean true to 1', () => {
-    expect(normalizeParam(true)).toBe(1);
+  it('should pass through boolean true', () => {
+    expect(normalizeParam(true)).toBe(true);
   });
 
-  it('should convert boolean false to 0', () => {
-    expect(normalizeParam(false)).toBe(0);
+  it('should pass through boolean false', () => {
+    expect(normalizeParam(false)).toBe(false);
   });
 
   it('should preserve numbers', () => {
