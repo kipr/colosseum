@@ -267,7 +267,10 @@ process.on('uncaughtException', (err) => {
 async function startServer() {
   try {
     await initializeDatabase();
-    server = app.listen(PORT, () => {
+    server = app.listen(PORT);
+    // Express invokes an app.listen() callback even when the bind fails, so the
+    // banner has to hang off the socket's own event to stay truthful.
+    server.on('listening', () => {
       const timestamp = new Date().toLocaleString('en-US', {
         year: 'numeric',
         month: '2-digit',
@@ -279,6 +282,17 @@ async function startServer() {
       });
       console.log(`\n🏛️  Colosseum server running on http://localhost:${PORT}`);
       console.log(`⏰  Server started at: ${timestamp}\n`);
+    });
+    server.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(
+          `Port ${PORT} is already in use. Another Colosseum server is ` +
+            'probably running; stop it or set PORT to a free port.',
+        );
+      } else {
+        console.error('Server error:', error);
+      }
+      process.exit(1);
     });
   } catch (error) {
     console.error('Failed to start server:', error);

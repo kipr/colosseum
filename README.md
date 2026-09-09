@@ -96,9 +96,11 @@ In production, Express serves the built React app at `http://localhost:3000`.
 
 **Important**: During development, always use `http://localhost:5173` (Vite) for the frontend, NOT port 3000.
 
-### 5. Local PostgreSQL (optional)
+### 5. Local PostgreSQL
 
-SQLite remains the default for `npm run dev`, Vitest, and Playwright when `DATABASE_URL` is unset. To opt into the same PostgreSQL 18 dialect as production:
+The Vitest and Playwright suites always require PostgreSQL. SQLite remains the
+default for `npm run dev` when `DATABASE_URL` is unset, but you can opt the dev
+server into the same PostgreSQL 18 dialect as production:
 
 1. Start Postgres (do not auto-start it from `npm run dev`):
 
@@ -113,7 +115,9 @@ DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum
 TEST_DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum_test
 ```
 
-`TEST_DATABASE_URL` is unused until later migration phases; it is created now so the Compose `colosseum_test` database is ready.
+`DATABASE_URL` is what the dev server uses. `TEST_DATABASE_URL` points at the
+separate `colosseum_test` database that both test suites use, so a test run can
+never touch your dev data.
 
 3. Start the app:
 
@@ -254,9 +258,10 @@ colosseum/
 ├── templates/                     # Example score sheet templates
 ├── tests/                         # Unit & integration tests (Vitest)
 ├── e2e/                           # End-to-end tests (Playwright)
+├── config/                        # Shared test-runner configuration
 ├── database/                      # SQLite databases (auto-created)
 ├── docker/                        # Local Postgres init scripts
-├── docker-compose.yml             # Optional local PostgreSQL 18
+├── docker-compose.yml             # Local PostgreSQL 18 (required for tests)
 ├── dist/                          # Build output
 ├── playwright.config.ts           # Playwright E2E config
 ├── vite.config.ts                 # Vite configuration
@@ -446,7 +451,17 @@ truncates it between tests, so runs never touch your `colosseum` dev data.
 
 **End-to-end tests** (Playwright):
 
-Playwright tests live in the `e2e/` directory and run against the full application (Express API + Vite dev server). The Playwright config (`playwright.config.ts`) starts both servers automatically via `webServer` entries, so no manual server setup is needed.
+Playwright tests live in the `e2e/` directory and run against the full
+application. `npm run db:up` must have been run first.
+
+The Playwright config (`playwright.config.ts`) starts its **own** Express on
+port 3001 and Vite on port 5174, with `DATABASE_URL` set to
+`TEST_DATABASE_URL`. It never reuses a server already listening on 3000/5173,
+so you can leave `npm run dev` running while the suite executes and it will not
+touch your dev data. The suite uses the `public` schema of `colosseum_test` and
+truncates it once at the start of each run, which does not disturb the Vitest
+suite's per-worker schemas on the same database.
+
 Before your first run, you will need to download Playwright's headless browser builds and their required OS libraries.
 This is not handled by `npm install`.
 

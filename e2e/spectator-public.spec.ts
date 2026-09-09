@@ -1,12 +1,9 @@
 import { test, expect } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import path from 'path';
+import { closeE2eDb, e2eDb } from './helpers/db';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
-
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
 
 const ACTIVE_EVENT_NAME = 'E2E Spectator Active Event';
 const RELEASED_EVENT_NAME = 'E2E Spectator Released Event';
@@ -35,291 +32,271 @@ let individualOnlyAwardId: number;
 test.describe('Spectator Public Views & Release Gating', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
-
-    // Ensure columns exist that may be missing from older dev DBs
-    const migrations = [
-      `ALTER TABLE events ADD COLUMN spectator_results_released INTEGER NOT NULL DEFAULT 0`,
-      `ALTER TABLE brackets ADD COLUMN weight REAL NOT NULL DEFAULT 1.0`,
-      `ALTER TABLE bracket_entries ADD COLUMN final_rank INTEGER`,
-      `ALTER TABLE bracket_entries ADD COLUMN bracket_raw_score REAL`,
-      `ALTER TABLE bracket_entries ADD COLUMN weighted_bracket_raw_score REAL`,
-    ];
-    for (const sql of migrations) {
-      try {
-        db.exec(sql);
-      } catch {
-        // Column already exists
-      }
-    }
-
-    // Ensure individual-recipient table exists for older local DBs
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS event_award_individual_recipients (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_award_id INTEGER NOT NULL REFERENCES event_awards(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+  test.beforeAll(async () => {
+    const db = e2eDb();
 
     // ── Active event (results NOT released) ──
 
-    const activeEv = db
-      .prepare(
-        `INSERT INTO events (name, status, event_date, location, seeding_rounds, score_accept_mode, spectator_results_released)
-         VALUES (?, 'active', ?, ?, 3, 'manual', 0)`,
-      )
-      .run(ACTIVE_EVENT_NAME, EVENT_DATE, EVENT_LOCATION);
-    activeEventId = Number(activeEv.lastInsertRowid);
+    const activeEv = await db.run(
+      `INSERT INTO events (name, status, event_date, location, seeding_rounds, score_accept_mode, spectator_results_released)
+       VALUES (?, 'active', ?, ?, 3, 'manual', 0)`,
+      [ACTIVE_EVENT_NAME, EVENT_DATE, EVENT_LOCATION],
+    );
+    activeEventId = Number(activeEv.lastID);
 
-    const tA1 = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(activeEventId, TEAM_A.number, TEAM_A.name);
-    const activeTeamAId = Number(tA1.lastInsertRowid);
+    const tA1 = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
+       VALUES (?, ?, ?, 'checked_in')`,
+      [activeEventId, TEAM_A.number, TEAM_A.name],
+    );
+    const activeTeamAId = Number(tA1.lastID);
 
-    const tB1 = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(activeEventId, TEAM_B.number, TEAM_B.name);
-    const activeTeamBId = Number(tB1.lastInsertRowid);
+    const tB1 = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
+       VALUES (?, ?, ?, 'checked_in')`,
+      [activeEventId, TEAM_B.number, TEAM_B.name],
+    );
+    const activeTeamBId = Number(tB1.lastID);
 
     // Seeding scores for active event
-    db.prepare(
+    await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 50)`,
-    ).run(activeTeamAId);
-    db.prepare(
+      [activeTeamAId],
+    );
+    await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 45)`,
-    ).run(activeTeamBId);
+      [activeTeamBId],
+    );
 
     // Bracket for active event (no games yet is fine)
-    const activeBr = db
-      .prepare(
-        `INSERT INTO brackets (event_id, name, bracket_size, status)
-         VALUES (?, 'Active Bracket', 4, 'setup')`,
-      )
-      .run(activeEventId);
-    const activeBracketId = Number(activeBr.lastInsertRowid);
+    const activeBr = await db.run(
+      `INSERT INTO brackets (event_id, name, bracket_size, status)
+       VALUES (?, 'Active Bracket', 4, 'setup')`,
+      [activeEventId],
+    );
+    const activeBracketId = Number(activeBr.lastID);
 
     // Bracket entry so there is at least a bracket to pick
-    db.prepare(
+    await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-       VALUES (?, ?, 1, 0)`,
-    ).run(activeBracketId, activeTeamAId);
-    db.prepare(
+       VALUES (?, ?, 1, FALSE)`,
+      [activeBracketId, activeTeamAId],
+    );
+    await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-       VALUES (?, ?, 2, 0)`,
-    ).run(activeBracketId, activeTeamBId);
+       VALUES (?, ?, 2, FALSE)`,
+      [activeBracketId, activeTeamBId],
+    );
 
     // ── Released event (complete + results released) ──
 
-    const releasedEv = db
-      .prepare(
-        `INSERT INTO events (name, status, event_date, location, seeding_rounds, score_accept_mode, spectator_results_released)
-         VALUES (?, 'complete', ?, ?, 3, 'manual', 1)`,
-      )
-      .run(RELEASED_EVENT_NAME, EVENT_DATE, EVENT_LOCATION);
-    releasedEventId = Number(releasedEv.lastInsertRowid);
+    const releasedEv = await db.run(
+      `INSERT INTO events (name, status, event_date, location, seeding_rounds, score_accept_mode, spectator_results_released)
+       VALUES (?, 'complete', ?, ?, 3, 'manual', 1)`,
+      [RELEASED_EVENT_NAME, EVENT_DATE, EVENT_LOCATION],
+    );
+    releasedEventId = Number(releasedEv.lastID);
 
-    const tA2 = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(releasedEventId, TEAM_A.number, TEAM_A.name);
-    teamAId = Number(tA2.lastInsertRowid);
+    const tA2 = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
+       VALUES (?, ?, ?, 'checked_in')`,
+      [releasedEventId, TEAM_A.number, TEAM_A.name],
+    );
+    teamAId = Number(tA2.lastID);
 
-    const tB2 = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(releasedEventId, TEAM_B.number, TEAM_B.name);
-    teamBId = Number(tB2.lastInsertRowid);
+    const tB2 = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
+       VALUES (?, ?, ?, 'checked_in')`,
+      [releasedEventId, TEAM_B.number, TEAM_B.name],
+    );
+    teamBId = Number(tB2.lastID);
 
     // Seeding scores
-    db.prepare(
+    await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 80)`,
-    ).run(teamAId);
-    db.prepare(
+      [teamAId],
+    );
+    await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 75)`,
-    ).run(teamBId);
-    db.prepare(
+      [teamBId],
+    );
+    await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 2, 85)`,
-    ).run(teamAId);
-    db.prepare(
+      [teamAId],
+    );
+    await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 2, 70)`,
-    ).run(teamBId);
+      [teamBId],
+    );
 
     // Seeding rankings
-    db.prepare(
+    await db.run(
       `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score)
        VALUES (?, 82.5, 1, 165)`,
-    ).run(teamAId);
-    db.prepare(
+      [teamAId],
+    );
+    await db.run(
       `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score)
        VALUES (?, 72.5, 2, 145)`,
-    ).run(teamBId);
+      [teamBId],
+    );
 
     // Bracket
-    const br = db
-      .prepare(
-        `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight)
-         VALUES (?, 'Main Bracket', 4, 2, 'completed', 1.0)`,
-      )
-      .run(releasedEventId);
-    bracketId = Number(br.lastInsertRowid);
+    const br = await db.run(
+      `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight)
+       VALUES (?, 'Main Bracket', 4, 2, 'completed', 1.0)`,
+      [releasedEventId],
+    );
+    bracketId = Number(br.lastID);
 
     // Bracket entries with rankings
-    db.prepare(
+    await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, 0, 1, 100, 100)`,
-    ).run(bracketId, teamAId);
-    db.prepare(
+       VALUES (?, ?, 1, FALSE, 1, 100, 100)`,
+      [bracketId, teamAId],
+    );
+    await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score)
-       VALUES (?, ?, 2, 0, 2, 50, 50)`,
-    ).run(bracketId, teamBId);
+       VALUES (?, ?, 2, FALSE, 2, 50, 50)`,
+      [bracketId, teamBId],
+    );
 
     // Bracket game (completed)
-    db.prepare(
+    await db.run(
       `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, team1_id, team2_id, status, winner_id, loser_id, team1_score, team2_score)
        VALUES (?, 1, 'Finals', 1, 'winners', ?, ?, 'completed', ?, ?, 100, 50)`,
-    ).run(bracketId, teamAId, teamBId, teamAId, teamBId);
+      [bracketId, teamAId, teamBId, teamAId, teamBId],
+    );
 
     // Documentation categories and scores
-    const cat = db
-      .prepare(
-        `INSERT INTO documentation_categories (name, weight, max_score) VALUES ('E2E Doc Cat', 1.0, 100)`,
-      )
-      .run();
-    const catId = Number(cat.lastInsertRowid);
+    const cat = await db.run(
+      `INSERT INTO documentation_categories (name, weight, max_score) VALUES ('E2E Doc Cat', 1.0, 100)`,
+    );
+    const catId = Number(cat.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, 1)`,
-    ).run(releasedEventId, catId);
+      [releasedEventId, catId],
+    );
 
-    const docScoreA = db
-      .prepare(
-        `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_at)
-         VALUES (?, ?, 90, CURRENT_TIMESTAMP)`,
-      )
-      .run(releasedEventId, teamAId);
-    db.prepare(
+    const docScoreA = await db.run(
+      `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_at)
+       VALUES (?, ?, 90, CURRENT_TIMESTAMP)`,
+      [releasedEventId, teamAId],
+    );
+    await db.run(
       `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
        VALUES (?, ?, 90)`,
-    ).run(Number(docScoreA.lastInsertRowid), catId);
+      [Number(docScoreA.lastID), catId],
+    );
 
-    const docScoreB = db
-      .prepare(
-        `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_at)
-         VALUES (?, ?, 80, CURRENT_TIMESTAMP)`,
-      )
-      .run(releasedEventId, teamBId);
-    db.prepare(
+    const docScoreB = await db.run(
+      `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_at)
+       VALUES (?, ?, 80, CURRENT_TIMESTAMP)`,
+      [releasedEventId, teamBId],
+    );
+    await db.run(
       `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
        VALUES (?, ?, 80)`,
-    ).run(Number(docScoreB.lastInsertRowid), catId);
+      [Number(docScoreB.lastID), catId],
+    );
 
     // Awards
-    const aw = db
-      .prepare(
-        `INSERT INTO event_awards (event_id, name, description, sort_order)
-         VALUES (?, 'Champion Award', 'Best overall team', 0)`,
-      )
-      .run(releasedEventId);
-    awardId = Number(aw.lastInsertRowid);
+    const aw = await db.run(
+      `INSERT INTO event_awards (event_id, name, description, sort_order)
+       VALUES (?, 'Champion Award', 'Best overall team', 0)`,
+      [releasedEventId],
+    );
+    awardId = Number(aw.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_award_recipients (event_award_id, team_id)
        VALUES (?, ?)`,
-    ).run(awardId, teamAId);
-    db.prepare(
+      [awardId, teamAId],
+    );
+    await db.run(
       `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
        VALUES (?, 'Ada Lovelace', ?)`,
-    ).run(awardId, teamAId);
+      [awardId, teamAId],
+    );
 
-    const individualAward = db
-      .prepare(
-        `INSERT INTO event_awards (event_id, name, description, sort_order)
-         VALUES (?, 'Volunteer Award', 'Outstanding volunteer', 1)`,
-      )
-      .run(releasedEventId);
-    individualOnlyAwardId = Number(individualAward.lastInsertRowid);
-    db.prepare(
+    const individualAward = await db.run(
+      `INSERT INTO event_awards (event_id, name, description, sort_order)
+       VALUES (?, 'Volunteer Award', 'Outstanding volunteer', 1)`,
+      [releasedEventId],
+    );
+    individualOnlyAwardId = Number(individualAward.lastID);
+    await db.run(
       `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
        VALUES (?, 'Grace Hopper', NULL)`,
-    ).run(individualOnlyAwardId);
-
-    db.close();
+      [individualOnlyAwardId],
+    );
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
     // Clean up in reverse dependency order
-    db.prepare(
+    await db.run(
       'DELETE FROM event_award_individual_recipients WHERE event_award_id IN (?, ?)',
-    ).run(awardId, individualOnlyAwardId);
-    db.prepare(
+      [awardId, individualOnlyAwardId],
+    );
+    await db.run(
       'DELETE FROM event_award_recipients WHERE event_award_id = ?',
-    ).run(awardId);
-    db.prepare('DELETE FROM event_awards WHERE event_id IN (?, ?)').run(
+      [awardId],
+    );
+    await db.run('DELETE FROM event_awards WHERE event_id IN (?, ?)', [
       activeEventId,
       releasedEventId,
-    );
+    ]);
 
-    db.prepare(
+    await db.run(
       'DELETE FROM documentation_sub_scores WHERE documentation_score_id IN (SELECT id FROM documentation_scores WHERE event_id IN (?, ?))',
-    ).run(activeEventId, releasedEventId);
-    db.prepare('DELETE FROM documentation_scores WHERE event_id IN (?, ?)').run(
+      [activeEventId, releasedEventId],
+    );
+    await db.run('DELETE FROM documentation_scores WHERE event_id IN (?, ?)', [
       activeEventId,
       releasedEventId,
-    );
-    db.prepare(
+    ]);
+    await db.run(
       'DELETE FROM event_documentation_categories WHERE event_id IN (?, ?)',
-    ).run(activeEventId, releasedEventId);
-    db.prepare(
+      [activeEventId, releasedEventId],
+    );
+    await db.run(
       "DELETE FROM documentation_categories WHERE name = 'E2E Doc Cat'",
-    ).run();
+    );
 
-    db.prepare(
+    await db.run(
       'DELETE FROM bracket_games WHERE bracket_id IN (SELECT id FROM brackets WHERE event_id IN (?, ?))',
-    ).run(activeEventId, releasedEventId);
-    db.prepare(
+      [activeEventId, releasedEventId],
+    );
+    await db.run(
       'DELETE FROM bracket_entries WHERE bracket_id IN (SELECT id FROM brackets WHERE event_id IN (?, ?))',
-    ).run(activeEventId, releasedEventId);
-    db.prepare('DELETE FROM brackets WHERE event_id IN (?, ?)').run(
+      [activeEventId, releasedEventId],
+    );
+    await db.run('DELETE FROM brackets WHERE event_id IN (?, ?)', [
       activeEventId,
       releasedEventId,
-    );
+    ]);
 
-    db.prepare(
+    await db.run(
       'DELETE FROM seeding_rankings WHERE team_id IN (SELECT id FROM teams WHERE event_id IN (?, ?))',
-    ).run(activeEventId, releasedEventId);
-    db.prepare(
+      [activeEventId, releasedEventId],
+    );
+    await db.run(
       'DELETE FROM seeding_scores WHERE team_id IN (SELECT id FROM teams WHERE event_id IN (?, ?))',
-    ).run(activeEventId, releasedEventId);
-    db.prepare('DELETE FROM teams WHERE event_id IN (?, ?)').run(
+      [activeEventId, releasedEventId],
+    );
+    await db.run('DELETE FROM teams WHERE event_id IN (?, ?)', [
       activeEventId,
       releasedEventId,
-    );
-    db.prepare('DELETE FROM events WHERE id IN (?, ?)').run(
+    ]);
+    await db.run('DELETE FROM events WHERE id IN (?, ?)', [
       activeEventId,
       releasedEventId,
-    );
+    ]);
 
-    db.close();
+    await closeE2eDb();
   });
 
   /* ── 1. Public event listing ─────────────────────────────────────── */
@@ -711,15 +688,11 @@ test.describe('Spectator Public Views & Release Gating', () => {
   test('hiding results removes gated tabs, re-releasing restores them', async ({
     page,
   }) => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
-
     // Hide results
-    db.prepare(
+    await e2eDb().run(
       'UPDATE events SET spectator_results_released = 0 WHERE id = ?',
-    ).run(releasedEventId);
-    db.close();
+      [releasedEventId],
+    );
 
     try {
       await page.goto(`/spectator/events/${releasedEventId}?view=seeding`);
@@ -752,15 +725,10 @@ test.describe('Spectator Public Views & Release Gating', () => {
       ).not.toBeVisible();
     } finally {
       // Restore for subsequent tests
-      const db2 = new SQLite(DB_PATH);
-      db2.pragma('journal_mode = WAL');
-      db2.pragma('busy_timeout = 5000');
-      db2
-        .prepare(
-          'UPDATE events SET spectator_results_released = 1 WHERE id = ?',
-        )
-        .run(releasedEventId);
-      db2.close();
+      await e2eDb().run(
+        'UPDATE events SET spectator_results_released = 1 WHERE id = ?',
+        [releasedEventId],
+      );
     }
   });
 });
