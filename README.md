@@ -425,11 +425,24 @@ npm run dev:server  # Express only
 
 **Unit & integration tests** (Vitest):
 
+These run against PostgreSQL 18, the same major version as production, so the
+tests exercise the dialect the application actually ships on. Start the server
+first — `npm run db:up` also creates the `colosseum_test` database:
+
 ```bash
+npm run db:up && npm run db:wait
 npm test           # Run tests in watch mode
 npm run test:run   # Run tests once
 npm run coverage   # Run with coverage report
 ```
+
+The connection string comes from `TEST_DATABASE_URL` (in your environment or
+`.env`), and defaults to
+`postgres://colosseum:colosseum@localhost:5432/colosseum_test`. Inside a
+devcontainer the host is `postgres` rather than `localhost`.
+
+Each Vitest worker process creates its own schema in that database and
+truncates it between tests, so runs never touch your `colosseum` dev data.
 
 **End-to-end tests** (Playwright):
 

@@ -34,10 +34,7 @@ describe('computeAutomaticAwardDiagnostics', () => {
     return result.lastID!;
   }
 
-  async function createBracket(
-    name: string,
-    weight: number,
-  ): Promise<number> {
+  async function createBracket(name: string, weight: number): Promise<number> {
     const result = await testDb.db.run(
       `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
       [eventId, name, 4, 'in_progress', weight],

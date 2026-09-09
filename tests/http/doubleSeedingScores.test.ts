@@ -303,8 +303,7 @@ describe('Double Seeding Score Lifecycle', () => {
       );
       expect(dryRun.status).toBe(200);
       expect(
-        (dryRun.json as { requiresConfirmation: boolean })
-          .requiresConfirmation,
+        (dryRun.json as { requiresConfirmation: boolean }).requiresConfirmation,
       ).toBe(false);
 
       const res = await http.post(

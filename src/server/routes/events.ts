@@ -2,9 +2,7 @@ import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
-import {
-  isCheckConstraintError,
-} from '../database/constraintErrors';
+import { isCheckConstraintError } from '../database/constraintErrors';
 import {
   isEventArchived,
   areFinalScoresReleased,

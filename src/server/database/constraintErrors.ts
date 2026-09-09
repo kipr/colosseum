@@ -29,7 +29,9 @@ export function isUniqueConstraintError(error: unknown): boolean {
     code === 'SQLITE_CONSTRAINT_UNIQUE' ||
     code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
     errorMessage(error).includes('UNIQUE constraint failed') ||
-    errorMessage(error).includes('duplicate key value violates unique constraint')
+    errorMessage(error).includes(
+      'duplicate key value violates unique constraint',
+    )
   );
 }
 

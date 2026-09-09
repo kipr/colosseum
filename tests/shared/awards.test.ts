@@ -7,7 +7,8 @@ import {
 } from '../../src/shared/awards';
 
 function team(
-  partial: Partial<TeamAwardCounts> & Pick<TeamAwardCounts, 'team_id' | 'team_number'>,
+  partial: Partial<TeamAwardCounts> &
+    Pick<TeamAwardCounts, 'team_id' | 'team_number'>,
 ): TeamAwardCounts {
   return {
     team_name: `Team ${partial.team_number}`,
@@ -34,9 +35,7 @@ describe('shared awards helpers', () => {
 
   describe('awardWeight', () => {
     it('counts trophies as twice certificates', () => {
-      expect(
-        awardWeight({ certificate_count: 1, trophy_count: 0 }),
-      ).toBe(1);
+      expect(awardWeight({ certificate_count: 1, trophy_count: 0 })).toBe(1);
       expect(awardWeight({ certificate_count: 0, trophy_count: 1 })).toBe(2);
       expect(awardWeight({ certificate_count: 2, trophy_count: 1 })).toBe(4);
     });

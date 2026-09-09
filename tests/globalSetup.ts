@@ -27,10 +27,20 @@ async function connect(): Promise<Client> {
     throw new Error(
       `Could not connect to the test database at ${connectionString}. ` +
         'Is PostgreSQL running? Try `npm run db:up && npm run db:wait`.\n' +
-        `Underlying error: ${(error as Error).message}`,
+        `Underlying error: ${describeError(error)}`,
     );
   }
   return client;
+}
+
+/** pg reports a refused connection as an AggregateError with no message. */
+function describeError(error: unknown): string {
+  if (error instanceof AggregateError) {
+    return error.errors.map(describeError).join('; ');
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  const code = (error as { code?: string })?.code;
+  return code ? `${code} ${message}`.trim() : message;
 }
 
 async function dropTestSchemas(client: Client): Promise<void> {
@@ -53,7 +63,14 @@ export async function setup(): Promise<void> {
 }
 
 export async function teardown(): Promise<void> {
-  const client = await connect();
+  let client: Client;
+  try {
+    client = await connect();
+  } catch {
+    // setup() already reported the connection failure; re-reporting it here
+    // only buries the real error.
+    return;
+  }
   try {
     await dropTestSchemas(client);
   } finally {
