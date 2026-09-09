@@ -1,13 +1,10 @@
 import { test, expect } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import path from 'path';
+import { closeE2eDb, e2eDb } from './helpers/db';
+import { readSession, writeSession } from './helpers/session';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
-
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
-const SESSION_DB_PATH = path.join(__dirname, '..', 'database', 'sessions.db');
 
 const ACCESS_CODE = 'e2e-judge-test-code';
 const WRONG_CODE = 'wrong-code-xyz';
@@ -117,70 +114,64 @@ async function enterAsJudge(page: import('@playwright/test').Page) {
 test.describe('Judge Scoring E2E', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.beforeAll(async () => {
+    const db = e2eDb();
 
-    const ev = db
-      .prepare(
-        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+    const ev = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
        VALUES (?, 'active', 3, 'auto_accept_seeding')`,
-      )
-      .run(EVENT_NAME);
-    eventId = Number(ev.lastInsertRowid);
+      [EVENT_NAME],
+    );
+    eventId = Number(ev.lastID);
 
-    const tm = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
+    const tm = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
        VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(eventId, TEAM_NUMBER, TEAM_NAME);
-    teamId = Number(tm.lastInsertRowid);
+      [eventId, TEAM_NUMBER, TEAM_NAME],
+    );
+    teamId = Number(tm.lastID);
 
     const schema = buildSchema(eventId);
-    const tpl = db
-      .prepare(
-        `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E test template', ?, ?, 1)`,
-      )
-      .run(TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE);
-    templateId = Number(tpl.lastInsertRowid);
+    const tpl = await db.run(
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'E2E test template', ?, ?, TRUE)`,
+      [TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
+    );
+    templateId = Number(tpl.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
        VALUES (?, ?, 'seeding')`,
-    ).run(eventId, templateId);
+      [eventId, templateId],
+    );
 
     for (let round = 1; round <= 3; round++) {
-      db.prepare(
+      await db.run(
         `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
          VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
-      ).run(eventId, teamId, round, round);
+        [eventId, teamId, round, round],
+      );
     }
-
-    db.close();
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
-    db.prepare('DELETE FROM score_submissions WHERE template_id = ?').run(
+    await db.run('DELETE FROM score_submissions WHERE template_id = ?', [
       templateId,
-    );
-    db.prepare('DELETE FROM game_queue WHERE event_id = ?').run(eventId);
-    db.prepare(
+    ]);
+    await db.run('DELETE FROM game_queue WHERE event_id = ?', [eventId]);
+    await db.run(
       'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
-    ).run(templateId);
-    db.prepare('DELETE FROM scoresheet_templates WHERE id = ?').run(templateId);
-    db.prepare('DELETE FROM seeding_scores WHERE team_id = ?').run(teamId);
-    db.prepare('DELETE FROM audit_log WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM teams WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
+      [templateId],
+    );
+    await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [templateId]);
+    await db.run('DELETE FROM seeding_scores WHERE team_id = ?', [teamId]);
+    await db.run('DELETE FROM audit_log WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM teams WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM events WHERE id = ?', [eventId]);
 
-    db.close();
+    await closeE2eDb();
   });
 
   /* ── 1. Template selection ─────────────────────────────────────── */
@@ -217,9 +208,7 @@ test.describe('Judge Scoring E2E', () => {
     await expect(
       modal.getByRole('heading', { name: 'Enter Access Code' }),
     ).toBeVisible();
-    await expect(
-      modal.getByText(`Template: ${TEMPLATE_NAME}`),
-    ).toBeVisible();
+    await expect(modal.getByText(`Template: ${TEMPLATE_NAME}`)).toBeVisible();
 
     await page
       .getByPlaceholder('Enter code provided by administrator')
@@ -310,9 +299,9 @@ test.describe('Judge Scoring E2E', () => {
     await page.getByRole('button', { name: 'Submit Score' }).click();
 
     // Success notification appears
-    await expect(
-      page.getByText('Score submitted successfully!'),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Score submitted successfully!')).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   /* ── 5. Expired-session fallback ───────────────────────────────── */
@@ -333,22 +322,12 @@ test.describe('Judge Scoring E2E', () => {
     expect(sidMatch).toBeTruthy();
     const sid = sidMatch![1];
 
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-
-    const row = sessDb
-      .prepare('SELECT sess FROM sessions WHERE sid = ?')
-      .get(sid) as { sess: string } | undefined;
-    expect(row).toBeDefined();
-
-    const sessData = JSON.parse(row!.sess);
+    const sessData = await readSession(sid);
+    expect(sessData).toBeDefined();
     expect(sessData.judgeAuth).toBeDefined();
     sessData.judgeAuth.expiresAt = Date.now() - 60_000;
 
-    sessDb
-      .prepare('UPDATE sessions SET sess = ? WHERE sid = ?')
-      .run(JSON.stringify(sessData), sid);
-    sessDb.close();
+    await writeSession(sid, sessData);
 
     // ── Fill form and attempt submission ──
 

@@ -1,16 +1,14 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import crypto from 'crypto';
-import path from 'path';
+import { closeE2eDb, e2eDb } from './helpers/db';
+import {
+  deleteSession,
+  seedAdminSession,
+  setSessionCookie,
+} from './helpers/session';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
-
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
-const SESSION_DB_PATH = path.join(__dirname, '..', 'database', 'sessions.db');
-
-const SESSION_SECRET = 'colosseum-secret-key-change-in-production';
 
 const ACCESS_CODE = 'e2e-queue-test-code';
 const EVENT_NAME = 'E2E Seeding Queue Event';
@@ -32,20 +30,7 @@ let eventId: number;
 let teamAId: number;
 let teamBId: number;
 let templateId: number;
-let adminUserId: number;
-
-/* ------------------------------------------------------------------ */
-/*  Cookie signing (mirrors express-session / cookie-signature)       */
-/* ------------------------------------------------------------------ */
-
-function signSessionId(sid: string, secret: string): string {
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(sid)
-    .digest('base64')
-    .replace(/=+$/, '');
-  return `s:${sid}.${signature}`;
-}
+let admin: Awaited<ReturnType<typeof seedAdminSession>>;
 
 /* ------------------------------------------------------------------ */
 /*  Schema builder                                                    */
@@ -123,17 +108,7 @@ function buildSchema(evtId: number) {
 /* ------------------------------------------------------------------ */
 
 async function setAdminCookie(context: BrowserContext) {
-  const signedSid = signSessionId(ADMIN_SID, SESSION_SECRET);
-  await context.addCookies([
-    {
-      name: 'connect.sid',
-      value: signedSid,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-    },
-  ]);
+  await setSessionCookie(context, admin.signedCookie);
 }
 
 /**
@@ -212,130 +187,90 @@ async function submitSeedingScore(
 test.describe('Seeding Queue E2E', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeAll(() => {
+  test.beforeAll(async () => {
     // ── Seed application DB ──
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+    const db = e2eDb();
 
-    const ev = db
-      .prepare(
-        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+    const ev = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
        VALUES (?, 'active', 3, 'manual')`,
-      )
-      .run(EVENT_NAME);
-    eventId = Number(ev.lastInsertRowid);
+      [EVENT_NAME],
+    );
+    eventId = Number(ev.lastID);
 
-    const tmA = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
+    const tmA = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
        VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(eventId, TEAM_A_NUMBER, TEAM_A_NAME);
-    teamAId = Number(tmA.lastInsertRowid);
+      [eventId, TEAM_A_NUMBER, TEAM_A_NAME],
+    );
+    teamAId = Number(tmA.lastID);
 
-    const tmB = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
+    const tmB = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
        VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(eventId, TEAM_B_NUMBER, TEAM_B_NAME);
-    teamBId = Number(tmB.lastInsertRowid);
+      [eventId, TEAM_B_NUMBER, TEAM_B_NAME],
+    );
+    teamBId = Number(tmB.lastID);
 
     const schema = buildSchema(eventId);
-    const tpl = db
-      .prepare(
-        `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E queue test template', ?, ?, 1)`,
-      )
-      .run(TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE);
-    templateId = Number(tpl.lastInsertRowid);
+    const tpl = await db.run(
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'E2E queue test template', ?, ?, TRUE)`,
+      [TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
+    );
+    templateId = Number(tpl.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
        VALUES (?, ?, 'seeding')`,
-    ).run(eventId, templateId);
+      [eventId, templateId],
+    );
 
     // Seed queue items: 3 rounds × 2 teams = 6 items
     let pos = 1;
     for (let round = 1; round <= 3; round++) {
       for (const tid of [teamAId, teamBId]) {
-        db.prepare(
+        await db.run(
           `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
            VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
-        ).run(eventId, tid, round, pos++);
+          [eventId, tid, round, pos++],
+        );
       }
     }
 
-    // Create admin user
-    const usr = db
-      .prepare(
-        `INSERT INTO users (google_id, email, name, is_admin)
-       VALUES (?, ?, ?, 1)`,
-      )
-      .run(`e2e-queue-${Date.now()}`, ADMIN_EMAIL, ADMIN_NAME);
-    adminUserId = Number(usr.lastInsertRowid);
-
-    db.close();
-
-    // ── Seed admin session ──
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-
-    const sessData = JSON.stringify({
-      cookie: {
-        originalMaxAge: 604800000,
-        expires: new Date(Date.now() + 604800000).toISOString(),
-        secure: false,
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-      },
-      passport: {
-        user: adminUserId,
-      },
+    // ── Seed admin user and session ──
+    admin = await seedAdminSession({
+      email: ADMIN_EMAIL,
+      name: ADMIN_NAME,
+      sid: ADMIN_SID,
     });
-
-    sessDb
-      .prepare(
-        `INSERT OR REPLACE INTO sessions (sid, sess, expires)
-       VALUES (?, ?, ?)`,
-      )
-      .run(ADMIN_SID, sessData, Date.now() + 604800000);
-    sessDb.close();
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
-    db.prepare('DELETE FROM seeding_rankings WHERE team_id IN (?, ?)').run(
+    await db.run('DELETE FROM seeding_rankings WHERE team_id IN (?, ?)', [
       teamAId,
       teamBId,
-    );
-    db.prepare('DELETE FROM seeding_scores WHERE team_id IN (?, ?)').run(
+    ]);
+    await db.run('DELETE FROM seeding_scores WHERE team_id IN (?, ?)', [
       teamAId,
       teamBId,
-    );
-    db.prepare('DELETE FROM score_submissions WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM game_queue WHERE event_id = ?').run(eventId);
-    db.prepare(
+    ]);
+    await db.run('DELETE FROM score_submissions WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM game_queue WHERE event_id = ?', [eventId]);
+    await db.run(
       'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
-    ).run(templateId);
-    db.prepare('DELETE FROM scoresheet_templates WHERE id = ?').run(templateId);
-    db.prepare('DELETE FROM audit_log WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM teams WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
-    db.prepare('DELETE FROM users WHERE id = ?').run(adminUserId);
+      [templateId],
+    );
+    await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [templateId]);
+    await db.run('DELETE FROM audit_log WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM teams WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM events WHERE id = ?', [eventId]);
+    await deleteSession(admin.sid);
+    await db.run('DELETE FROM users WHERE id = ?', [admin.adminUserId]);
 
-    db.close();
-
-    // Clean admin session
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-    sessDb.prepare('DELETE FROM sessions WHERE sid = ?').run(ADMIN_SID);
-    sessDb.close();
+    await closeE2eDb();
   });
 
   /* ── 1. Admin Queue tab shows seeded queue items ─────────────── */
@@ -351,15 +286,12 @@ test.describe('Seeding Queue E2E', () => {
     await page.goto(`/admin/events/${eventId}?view=queue`);
 
     // Admin page should load and show Queue tab
-    await expect(page.locator('.admin-content-header h2')).toHaveText(
-      'Queue',
-      { timeout: 10_000 },
-    );
+    await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
+      timeout: 10_000,
+    });
 
     // Click "All" status filter to see all items including scored
-    await page
-      .getByRole('button', { name: 'All', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'All', exact: true }).click();
 
     // Should see queue items with team names
     await expect(page.getByText(TEAM_A_NAME).first()).toBeVisible({
@@ -443,25 +375,19 @@ test.describe('Seeding Queue E2E', () => {
     });
 
     // Verify the seeding_scores table was populated
-    const db = new SQLite(DB_PATH);
-    db.pragma('busy_timeout = 5000');
-    const seedingScore = db
-      .prepare(
-        'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = 1',
-      )
-      .get(teamAId) as { score: number } | undefined;
+    const seedingScore = await e2eDb().get<{ score: number }>(
+      'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = 1',
+      [teamAId],
+    );
     expect(seedingScore).toBeDefined();
     expect(seedingScore!.score).toBe(75);
-    db.close();
 
     await context.close();
   });
 
   /* ── 5. Queue item is removed after acceptance ────────────── */
 
-  test('queue item is removed after score is accepted', async ({
-    browser,
-  }) => {
+  test('queue item is removed after score is accepted', async ({ browser }) => {
     const context = await browser.newContext();
     await setAdminCookie(context);
     const page = await context.newPage();
@@ -469,15 +395,12 @@ test.describe('Seeding Queue E2E', () => {
 
     await page.goto(`/admin/events/${eventId}?view=queue`);
 
-    await expect(page.locator('.admin-content-header h2')).toHaveText(
-      'Queue',
-      { timeout: 10_000 },
-    );
+    await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
+      timeout: 10_000,
+    });
 
     // Show all statuses
-    await page
-      .getByRole('button', { name: 'All', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'All', exact: true }).click();
 
     // Accepted scores remove the match from the queue (no row for Team A Round 1)
     const round1Row = page
@@ -527,17 +450,13 @@ test.describe('Seeding Queue E2E', () => {
     ).toBeVisible({ timeout: 5_000 });
 
     // Verify queue item reverted to 'queued' in the DB
-    const db = new SQLite(DB_PATH);
-    db.pragma('busy_timeout = 5000');
-    const queueItem = db
-      .prepare(
-        `SELECT status FROM game_queue
-         WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = 1`,
-      )
-      .get(eventId, teamBId) as { status: string } | undefined;
+    const queueItem = await e2eDb().get<{ status: string }>(
+      `SELECT status FROM game_queue
+       WHERE event_id = ? AND seeding_team_id = ? AND seeding_round = 1`,
+      [eventId, teamBId],
+    );
     expect(queueItem).toBeDefined();
     expect(queueItem!.status).toBe('queued');
-    db.close();
 
     await context.close();
   });
@@ -562,17 +481,17 @@ test.describe('Seeding Queue E2E', () => {
     const adminPage = await context.newPage();
 
     await adminPage.goto(`/admin/events/${eventId}?view=scoring`);
-    await expect(
-      adminPage.locator('table tbody tr').first(),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(adminPage.locator('table tbody tr').first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Filter to pending
     const statusFilter = adminPage.locator('select.field-input').first();
     await statusFilter.selectOption('pending');
 
-    await expect(
-      adminPage.locator('table tbody tr').first(),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(adminPage.locator('table tbody tr').first()).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Use Bulk Accept
     await adminPage.getByRole('button', { name: 'Bulk Accept' }).click();
@@ -594,22 +513,16 @@ test.describe('Seeding Queue E2E', () => {
     });
 
     // Verify seeding rankings were generated in the DB
-    const db = new SQLite(DB_PATH);
-    db.pragma('busy_timeout = 5000');
-
-    const scores = db
-      .prepare(
-        'SELECT * FROM seeding_scores WHERE team_id = ? ORDER BY round_number',
-      )
-      .all(teamAId) as { round_number: number; score: number }[];
+    const scores = await e2eDb().all<{ round_number: number; score: number }>(
+      'SELECT * FROM seeding_scores WHERE team_id = ? ORDER BY round_number',
+      [teamAId],
+    );
 
     // Team A should have 3 scored rounds
     expect(scores.length).toBe(3);
     expect(scores[0].score).toBe(75); // R1: 40+35
     expect(scores[1].score).toBe(95); // R2: 50+45
     expect(scores[2].score).toBe(115); // R3: 60+55
-
-    db.close();
 
     await context.close();
   });

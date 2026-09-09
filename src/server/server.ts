@@ -280,6 +280,17 @@ async function startServer() {
       console.log(`\n🏛️  Colosseum server running on http://localhost:${PORT}`);
       console.log(`⏰  Server started at: ${timestamp}\n`);
     });
+    server.on('error', (error: NodeJS.ErrnoException) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(
+          `Port ${PORT} is already in use. Another Colosseum server is ` +
+            'probably running; stop it or set PORT to a free port.',
+        );
+      } else {
+        console.error('Server error:', error);
+      }
+      process.exit(1);
+    });
   } catch (error) {
     console.error('Failed to start server:', error);
     process.exit(1);

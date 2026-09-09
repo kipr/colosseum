@@ -1,12 +1,10 @@
-import { test, expect, type BrowserContext, type Page } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import crypto from 'crypto';
-import path from 'path';
-
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
-const SESSION_DB_PATH = path.join(__dirname, '..', 'database', 'sessions.db');
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || 'colosseum-secret-key-change-in-production';
+import { test, expect, type Page } from '@playwright/test';
+import { closeE2eDb, e2eDb } from './helpers/db';
+import {
+  deleteSession,
+  seedAdminSession,
+  setSessionCookie,
+} from './helpers/session';
 
 const ACCESS_CODE = 'e2e-judge-chat-code';
 const EVENT_NAME = 'E2E Judge Chat Event';
@@ -23,31 +21,7 @@ const ADMIN_NAME = 'E2E Judge Chat Admin';
 let eventId: number;
 let teamId: number;
 let templateId: number;
-let adminUserId: number;
-let sessionId: string;
-
-function signSessionId(sid: string, secret: string): string {
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(sid)
-    .digest('base64')
-    .replace(/=+$/, '');
-  return `s:${sid}.${signature}`;
-}
-
-async function setAdminCookie(context: BrowserContext) {
-  const signedSid = signSessionId(sessionId, SESSION_SECRET);
-  await context.addCookies([
-    {
-      name: 'connect.sid',
-      value: signedSid,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-    },
-  ]);
-}
+let admin: Awaited<ReturnType<typeof seedAdminSession>>;
 
 function buildSchema(evtId: number) {
   return {
@@ -115,107 +89,64 @@ async function openStaffDrawer(page: Page) {
 test.describe('Judge Chat E2E', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeAll(() => {
-    sessionId = `e2e-judge-chat-${Date.now()}`;
+  test.beforeAll(async () => {
+    const db = e2eDb();
 
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+    const ev = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+       VALUES (?, 'active', 1, 'auto_accept_seeding')`,
+      [EVENT_NAME],
+    );
+    eventId = Number(ev.lastID);
 
-    const ev = db
-      .prepare(
-        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-         VALUES (?, 'active', 1, 'auto_accept_seeding')`,
-      )
-      .run(EVENT_NAME);
-    eventId = Number(ev.lastInsertRowid);
-
-    const tm = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(eventId, TEAM_NUMBER, TEAM_NAME);
-    teamId = Number(tm.lastInsertRowid);
+    const tm = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
+       VALUES (?, ?, ?, 'checked_in')`,
+      [eventId, TEAM_NUMBER, TEAM_NAME],
+    );
+    teamId = Number(tm.lastID);
 
     const schema = buildSchema(eventId);
-    const tpl = db
-      .prepare(
-        `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-         VALUES (?, 'E2E judge chat template', ?, ?, 1)`,
-      )
-      .run(TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE);
-    templateId = Number(tpl.lastInsertRowid);
+    const tpl = await db.run(
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'E2E judge chat template', ?, ?, TRUE)`,
+      [TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
+    );
+    templateId = Number(tpl.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
        VALUES (?, ?, 'seeding')`,
-    ).run(eventId, templateId);
+      [eventId, templateId],
+    );
 
-    db.prepare(
+    await db.run(
       `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
        VALUES (?, ?, 1, 'seeding', 1, 'queued')`,
-    ).run(eventId, teamId);
+      [eventId, teamId],
+    );
 
-    const usr = db
-      .prepare(
-        `INSERT INTO users (google_id, email, name, is_admin)
-         VALUES (?, ?, ?, 1)`,
-      )
-      .run(`e2e-judge-chat-${Date.now()}`, ADMIN_EMAIL, ADMIN_NAME);
-    adminUserId = Number(usr.lastInsertRowid);
-
-    db.close();
-
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-
-    const sessData = JSON.stringify({
-      cookie: {
-        originalMaxAge: 604800000,
-        expires: new Date(Date.now() + 604800000).toISOString(),
-        secure: false,
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-      },
-      passport: {
-        user: adminUserId,
-      },
-    });
-
-    sessDb
-      .prepare(
-        `INSERT OR REPLACE INTO sessions (sid, sess, expires)
-         VALUES (?, ?, ?)`,
-      )
-      .run(sessionId, sessData, Date.now() + 604800000);
-    sessDb.close();
+    admin = await seedAdminSession({ email: ADMIN_EMAIL, name: ADMIN_NAME });
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
-    db.prepare('DELETE FROM judge_chat_messages WHERE event_id = ?').run(
+    await db.run('DELETE FROM judge_chat_messages WHERE event_id = ?', [
       eventId,
-    );
-    db.prepare('DELETE FROM game_queue WHERE event_id = ?').run(eventId);
-    db.prepare(
+    ]);
+    await db.run('DELETE FROM game_queue WHERE event_id = ?', [eventId]);
+    await db.run(
       'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
-    ).run(templateId);
-    db.prepare('DELETE FROM scoresheet_templates WHERE id = ?').run(templateId);
-    db.prepare('DELETE FROM teams WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
-    db.prepare('DELETE FROM users WHERE id = ?').run(adminUserId);
+      [templateId],
+    );
+    await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [templateId]);
+    await db.run('DELETE FROM teams WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM events WHERE id = ?', [eventId]);
+    await deleteSession(admin.sid);
+    await db.run('DELETE FROM users WHERE id = ?', [admin.adminUserId]);
 
-    db.close();
-
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-    sessDb.prepare('DELETE FROM sessions WHERE sid = ?').run(sessionId);
-    sessDb.close();
+    await closeE2eDb();
   });
 
   test('judge sends message, admin replies, judge sees reply and unread clears', async ({
@@ -234,20 +165,24 @@ test.describe('Judge Chat E2E', () => {
     await page.getByPlaceholder('Enter your name…').fill(JUDGE_NAME);
     await page.getByRole('button', { name: 'Continue' }).click();
 
-    const judgeInput = page.getByRole('dialog').locator('.chat-input-form input');
+    const judgeInput = page
+      .getByRole('dialog')
+      .locator('.chat-input-form input');
     await judgeInput.fill(JUDGE_MESSAGE);
     await page.getByRole('button', { name: 'Send message' }).click();
 
-    await expect(page.getByRole('dialog').getByText(JUDGE_MESSAGE)).toBeVisible({
-      timeout: 5_000,
-    });
+    await expect(page.getByRole('dialog').getByText(JUDGE_MESSAGE)).toBeVisible(
+      {
+        timeout: 5_000,
+      },
+    );
 
     await page.getByRole('button', { name: 'Close' }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
 
     // ── Admin sees conversation and replies ──
     const adminContext = await browser.newContext();
-    await setAdminCookie(adminContext);
+    await setSessionCookie(adminContext, admin.signedCookie);
     const adminPage = await adminContext.newPage();
 
     await adminPage.goto(`/admin/events/${eventId}?view=judge-chat`);
