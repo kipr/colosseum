@@ -1182,9 +1182,9 @@ describe('Awards API', () => {
           bracket_id, team_id, seed_position, is_bye,
           final_rank, bracket_raw_score, weighted_bracket_raw_score
         ) VALUES
-          (?, ?, 1, 0, 1, 1, 100),
-          (?, ?, 2, 0, 2, 0.5, 50),
-          (?, ?, 3, 0, 3, 0.33, 10)`,
+          (?, ?, 1, FALSE, 1, 1, 100),
+          (?, ?, 2, FALSE, 2, 0.5, 50),
+          (?, ?, 3, FALSE, 3, 0.33, 10)`,
         [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
       );
 
@@ -1262,7 +1262,7 @@ describe('Awards API', () => {
           `INSERT INTO bracket_entries (
             bracket_id, team_id, seed_position, is_bye,
             final_rank, bracket_raw_score, weighted_bracket_raw_score
-          ) VALUES (?, ?, ?, 0, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, FALSE, ?, ?, ?)`,
           [bracket.id, teams[i].id, i + 1, i + 1, 1 - i * 0.1, 100 - i * 10],
         );
       }
@@ -1422,9 +1422,9 @@ describe('Awards API', () => {
           bracket_id, team_id, seed_position, is_bye,
           final_rank, bracket_raw_score, weighted_bracket_raw_score
         ) VALUES
-          (?, ?, 1, 0, 1, 1, 100),
-          (?, ?, 2, 0, 2, 0.5, 50),
-          (?, ?, 3, 0, 3, 0.33, 10)`,
+          (?, ?, 1, FALSE, 1, 1, 100),
+          (?, ?, 2, FALSE, 2, 0.5, 50),
+          (?, ?, 3, FALSE, 3, 0.33, 10)`,
         [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
       );
 
@@ -1617,7 +1617,7 @@ describe('Awards API', () => {
           `INSERT INTO bracket_entries (
             bracket_id, team_id, seed_position, is_bye,
             final_rank, bracket_raw_score, weighted_bracket_raw_score
-          ) VALUES (?, ?, ?, 0, ?, 1, 10)`,
+          ) VALUES (?, ?, ?, FALSE, ?, 1, 10)`,
           [bracket.id, t.id, n, n],
         );
       }

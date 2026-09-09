@@ -61,7 +61,7 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, 0)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, FALSE)`,
         [bracket.id, team1.id],
       );
       await seedBracketGame(testDb.db, {
@@ -93,7 +93,7 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, 0, 3, 0.75, 0.75)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, FALSE, 3, 0.75, 0.75)`,
         [bracket.id, team.id],
       );
 
@@ -167,7 +167,7 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, 0, 2, 0.75, 0.75)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, FALSE, 2, 0.75, 0.75)`,
         [bracket.id, team.id],
       );
       await testDb.db.run(
@@ -300,7 +300,7 @@ describe('Brackets CRUD & Game Management', () => {
         team_name: 'Assigned',
       });
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, 0)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, FALSE)`,
         [bracket.id, team.id],
       );
 

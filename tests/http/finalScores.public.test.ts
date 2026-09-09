@@ -234,7 +234,7 @@ describe('Public Final Scores API', () => {
       await testDb.db.run(
         `INSERT INTO bracket_entries (
           bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score
-        ) VALUES (?, ?, 1, 0, 1, 1.0, 1.0)`,
+        ) VALUES (?, ?, 1, FALSE, 1, 1.0, 1.0)`,
         [bracket.id, team.id],
       );
 
