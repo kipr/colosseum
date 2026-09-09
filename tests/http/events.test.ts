@@ -352,7 +352,7 @@ describe('Events Routes', () => {
         score: 100,
       });
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, raw_seed_score) VALUES (?, ?)`,
+        `INSERT INTO seeding_rankings (team_id, raw_seed_score) VALUES (?, ?) RETURNING id`,
         [team.id, 0.8],
       );
 

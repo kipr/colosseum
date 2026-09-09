@@ -125,7 +125,7 @@ test.describe('Scoresheet Field Rendering', () => {
 
     const ev = await db.run(
       `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-       VALUES (?, 'active', 1, 'manual')`,
+       VALUES (?, 'active', 1, 'manual') RETURNING id`,
       [EVENT_NAME],
     );
     eventId = Number(ev.lastID);
@@ -133,14 +133,14 @@ test.describe('Scoresheet Field Rendering', () => {
     const schema = buildAllFieldTypesSchema();
     const tpl = await db.run(
       `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E field rendering test', ?, ?, TRUE)`,
+       VALUES (?, 'E2E field rendering test', ?, ?, TRUE) RETURNING id`,
       [TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
     );
     templateId = Number(tpl.lastID);
 
     await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
-       VALUES (?, ?, 'seeding')`,
+       VALUES (?, ?, 'seeding') RETURNING id`,
       [eventId, templateId],
     );
   });
@@ -514,7 +514,7 @@ test.describe('Scoresheet Field Default Values', () => {
 
     const ev = await db.run(
       `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-       VALUES (?, 'active', 1, 'manual')`,
+       VALUES (?, 'active', 1, 'manual') RETURNING id`,
       [DEFAULTS_EVENT_NAME],
     );
     defaultsEventId = Number(ev.lastID);
@@ -522,14 +522,14 @@ test.describe('Scoresheet Field Default Values', () => {
     const schema = buildDefaultValuesSchema();
     const tpl = await db.run(
       `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E default values test', ?, ?, TRUE)`,
+       VALUES (?, 'E2E default values test', ?, ?, TRUE) RETURNING id`,
       [DEFAULTS_TEMPLATE_NAME, JSON.stringify(schema), DEFAULTS_ACCESS_CODE],
     );
     defaultsTemplateId = Number(tpl.lastID);
 
     await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
-       VALUES (?, ?, 'seeding')`,
+       VALUES (?, ?, 'seeding') RETURNING id`,
       [defaultsEventId, defaultsTemplateId],
     );
   });

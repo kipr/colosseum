@@ -153,13 +153,13 @@ router.post(
         await db.transaction(async (tx) => {
           const result = await tx.run(
             `INSERT INTO documentation_categories (name, weight, max_score)
-             VALUES (?, ?, ?)`,
+             VALUES (?, ?, ?) RETURNING id`,
             [trimmedName, w, max],
           );
           categoryId = result.lastID!;
           await tx.run(
             `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
-             VALUES (?, ?, ?)`,
+             VALUES (?, ?, ?) RETURNING id`,
             [event_id, categoryId, ord],
           );
         });
@@ -175,7 +175,7 @@ router.post(
       if (!linkedInTransaction) {
         await db.run(
           `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
-           VALUES (?, ?, ?)`,
+           VALUES (?, ?, ?) RETURNING id`,
           [event_id, categoryId, ord],
         );
       }
@@ -592,7 +592,7 @@ router.put(
         try {
           await db.run(
             `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_by, scored_at)
-             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+             VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
             [eventIdNum, teamIdNum, overallScore, scoredBy],
           );
         } catch {
@@ -616,7 +616,7 @@ router.put(
         try {
           await db.run(
             `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
-             VALUES (?, ?, ?)`,
+             VALUES (?, ?, ?) RETURNING id`,
             [
               docScoreId,
               Number(item.category_id),

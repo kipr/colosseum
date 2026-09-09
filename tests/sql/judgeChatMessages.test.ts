@@ -13,7 +13,7 @@ describe('judge_chat_messages table', () => {
     testDb = await createTestDb();
 
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'setup'],
     );
     eventId = eventResult.lastID!;
@@ -28,7 +28,7 @@ describe('judge_chat_messages table', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [eventId, 'conv-1', 'spectator', 'Mallory', 'hello'],
         ),
       ).rejects.toThrow(/violates check constraint/);
@@ -38,7 +38,7 @@ describe('judge_chat_messages table', () => {
       for (const role of ['judge', 'admin']) {
         await testDb.db.run(
           `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [eventId, 'conv-1', role, `${role} name`, `msg from ${role}`],
         );
       }
@@ -57,7 +57,7 @@ describe('judge_chat_messages table', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [null, 'conv-1', 'judge', 'Judge', 'hi'],
         ),
       ).rejects.toThrow(/violates not-null constraint/);
@@ -67,7 +67,7 @@ describe('judge_chat_messages table', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [eventId, null, 'judge', 'Judge', 'hi'],
         ),
       ).rejects.toThrow(/violates not-null constraint/);
@@ -77,7 +77,7 @@ describe('judge_chat_messages table', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [eventId, 'conv-1', 'judge', null, 'hi'],
         ),
       ).rejects.toThrow(/violates not-null constraint/);
@@ -87,7 +87,7 @@ describe('judge_chat_messages table', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [eventId, 'conv-1', 'judge', 'Judge', null],
         ),
       ).rejects.toThrow(/violates not-null constraint/);
@@ -99,7 +99,7 @@ describe('judge_chat_messages table', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-           VALUES (?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?) RETURNING id`,
           [99999, 'conv-1', 'judge', 'Judge', 'hi'],
         ),
       ).rejects.toThrow(/violates foreign key constraint/);
@@ -108,7 +108,7 @@ describe('judge_chat_messages table', () => {
     it('cascade deletes messages when the event is deleted', async () => {
       await testDb.db.run(
         `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?) RETURNING id`,
         [eventId, 'conv-1', 'judge', 'Judge', 'hi'],
       );
 
@@ -128,13 +128,13 @@ describe('judge_chat_messages table', () => {
 
     beforeEach(async () => {
       const templateResult = await testDb.db.run(
-        `INSERT INTO scoresheet_templates (name, schema, access_code) VALUES (?, ?, ?)`,
+        `INSERT INTO scoresheet_templates (name, schema, access_code) VALUES (?, ?, ?) RETURNING id`,
         ['Seeding Sheet', '{}', 'ABC123'],
       );
       templateId = templateResult.lastID!;
 
       const userResult = await testDb.db.run(
-        `INSERT INTO users (google_id, email, name) VALUES (?, ?, ?)`,
+        `INSERT INTO users (google_id, email, name) VALUES (?, ?, ?) RETURNING id`,
         ['google-1', 'admin@example.com', 'Admin User'],
       );
       userId = userResult.lastID!;
@@ -143,7 +143,7 @@ describe('judge_chat_messages table', () => {
     it('nulls template_id but preserves history when the template is deleted', async () => {
       await testDb.db.run(
         `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message, template_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           eventId,
           'conv-1',
@@ -170,7 +170,7 @@ describe('judge_chat_messages table', () => {
     it('nulls user_id but preserves history when the user is deleted', async () => {
       await testDb.db.run(
         `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message, user_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
         [eventId, 'conv-1', 'admin', 'Admin User', 'reply from admin', userId],
       );
 

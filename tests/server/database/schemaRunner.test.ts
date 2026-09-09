@@ -55,7 +55,7 @@ describe('schema runner column additions', () => {
     `;
 
     await runSchema(db, [schemaModule({ tables: [createTable] }, 'baseline')]);
-    await db.run('INSERT INTO migration_test (name) VALUES (?)', ['existing']);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['existing']);
 
     const upgraded = schemaModule(
       {
@@ -82,7 +82,7 @@ describe('schema runner column additions', () => {
     );
     expect(existing?.priority).toBe(10);
 
-    await db.run('INSERT INTO migration_test (name) VALUES (?)', ['new']);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['new']);
     const inserted = await db.get<{ priority: number }>(
       'SELECT priority FROM migration_test WHERE name = ?',
       ['new'],

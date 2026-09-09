@@ -114,7 +114,7 @@ test.describe('Bracket Lifecycle E2E', () => {
     // 2. Event (manual score acceptance so bracket scores stay pending)
     const evResult = await db.run(
       `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-       VALUES (?, 'active', 3, 'manual')`,
+       VALUES (?, 'active', 3, 'manual') RETURNING id`,
       [EVENT_NAME],
     );
     eventId = Number(evResult.lastID);
@@ -124,7 +124,7 @@ test.describe('Bracket Lifecycle E2E', () => {
     for (const t of TEAMS) {
       const r = await db.run(
         `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
+         VALUES (?, ?, ?, 'checked_in') RETURNING id`,
         [eventId, t.number, t.name],
       );
       teamIds.push(Number(r.lastID));
@@ -136,7 +136,7 @@ test.describe('Bracket Lifecycle E2E', () => {
       for (let round = 1; round <= 3; round++) {
         await db.run(
           `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-           VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
           [teamIds[i], round, baseScores[i] + round],
         );
       }
@@ -147,7 +147,7 @@ test.describe('Bracket Lifecycle E2E', () => {
       const avg = baseScores[i] + 2; // average of rounds 1-3
       await db.run(
         `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score)
-         VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?) RETURNING id`,
         [teamIds[i], avg, i + 1, avg / 100],
       );
     }
@@ -324,14 +324,14 @@ test.describe('Bracket Lifecycle E2E', () => {
     const schema = buildH2hSchema(eventId, bracketId);
     const tpl = await db.run(
       `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E bracket head-to-head template', ?, ?, TRUE)`,
+       VALUES (?, 'E2E bracket head-to-head template', ?, ?, TRUE) RETURNING id`,
       [H2H_TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
     );
     templateId = Number(tpl.lastID);
 
     await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
-       VALUES (?, ?, 'bracket')`,
+       VALUES (?, ?, 'bracket') RETURNING id`,
       [eventId, templateId],
     );
 

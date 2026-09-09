@@ -240,7 +240,7 @@ describe('Brackets Team Selection', () => {
     });
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-       VALUES (?, ?, 1, FALSE)`,
+       VALUES (?, ?, 1, FALSE) RETURNING id`,
       [bracket.id, team.id],
     );
 

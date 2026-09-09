@@ -190,7 +190,7 @@ describe('acceptEventScore', () => {
 
       await testDb.db.run(
         `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-         VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+         VALUES (?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
         [team.id, 1, 99],
       );
 
@@ -483,7 +483,7 @@ describe('acceptEventScore', () => {
 
       await testDb.db.run(
         `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-         VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+         VALUES (?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
         [team.id, 1, 99],
       );
 

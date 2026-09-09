@@ -40,8 +40,7 @@ export async function bumpQueueVersion(
   eventId: number,
 ): Promise<void> {
   try {
-    // Table-qualified names in DO UPDATE refer to the existing row in both
-    // SQLite and PostgreSQL.
+    // Table-qualified names in DO UPDATE refer to the existing row.
     await db.run(
       `INSERT INTO queue_versions (event_id, version, dirty) VALUES (?, 1, 0)
        ON CONFLICT (event_id) DO UPDATE SET version = queue_versions.version + 1`,

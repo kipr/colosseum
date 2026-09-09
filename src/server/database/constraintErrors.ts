@@ -1,10 +1,9 @@
 /**
- * Dialect-aware classification of constraint violations.
+ * Classification of PostgreSQL integrity constraint violations.
  *
- * SQLite and PostgreSQL report the same violation with different SQLSTATE
- * codes and different messages, so routes cannot match on either alone.
- * Matching on the message text only, as the routes used to, meant every
- * constraint violation on PostgreSQL fell through to a 500.
+ * Matching on message text only used to miss Postgres errors (every
+ * constraint violation fell through to a 500), so these helpers key off
+ * SQLSTATE class 23 first and keep the Postgres message as a fallback.
  */
 
 /** PostgreSQL SQLSTATE class 23 - integrity constraint violation. */
@@ -23,12 +22,8 @@ function errorMessage(error: unknown): string {
 }
 
 export function isUniqueConstraintError(error: unknown): boolean {
-  const code = errorCode(error);
   return (
-    code === PG_UNIQUE_VIOLATION ||
-    code === 'SQLITE_CONSTRAINT_UNIQUE' ||
-    code === 'SQLITE_CONSTRAINT_PRIMARYKEY' ||
-    errorMessage(error).includes('UNIQUE constraint failed') ||
+    errorCode(error) === PG_UNIQUE_VIOLATION ||
     errorMessage(error).includes(
       'duplicate key value violates unique constraint',
     )
@@ -36,31 +31,22 @@ export function isUniqueConstraintError(error: unknown): boolean {
 }
 
 export function isForeignKeyConstraintError(error: unknown): boolean {
-  const code = errorCode(error);
   return (
-    code === PG_FOREIGN_KEY_VIOLATION ||
-    code === 'SQLITE_CONSTRAINT_FOREIGNKEY' ||
-    errorMessage(error).includes('FOREIGN KEY constraint failed') ||
+    errorCode(error) === PG_FOREIGN_KEY_VIOLATION ||
     errorMessage(error).includes('violates foreign key constraint')
   );
 }
 
 export function isCheckConstraintError(error: unknown): boolean {
-  const code = errorCode(error);
   return (
-    code === PG_CHECK_VIOLATION ||
-    code === 'SQLITE_CONSTRAINT_CHECK' ||
-    errorMessage(error).includes('CHECK constraint failed') ||
+    errorCode(error) === PG_CHECK_VIOLATION ||
     errorMessage(error).includes('violates check constraint')
   );
 }
 
 export function isNotNullConstraintError(error: unknown): boolean {
-  const code = errorCode(error);
   return (
-    code === PG_NOT_NULL_VIOLATION ||
-    code === 'SQLITE_CONSTRAINT_NOTNULL' ||
-    errorMessage(error).includes('NOT NULL constraint failed') ||
+    errorCode(error) === PG_NOT_NULL_VIOLATION ||
     errorMessage(error).includes('violates not-null constraint')
   );
 }

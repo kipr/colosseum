@@ -254,7 +254,7 @@ router.post(
       const db = await getDatabase();
       const result = await db.run(
         `INSERT INTO scoresheet_templates (name, description, schema, access_code, created_by)
-       VALUES (?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?) RETURNING id`,
         [name, description, JSON.stringify(schema), accessCode, req.user.id],
       );
 
@@ -263,7 +263,7 @@ router.post(
       if (eventId != null && Number.isInteger(Number(eventId))) {
         const templateType = inferTemplateType(schema);
         await db.run(
-          `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
+          `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?) RETURNING id`,
           [Number(eventId), templateId, templateType],
         );
       }
@@ -318,7 +318,7 @@ router.put(
         if (eventId != null && Number.isInteger(Number(eventId))) {
           const templateType = inferTemplateType(schema);
           await tx.run(
-            `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?)`,
+            `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?) RETURNING id`,
             [Number(eventId), id, templateType],
           );
         }

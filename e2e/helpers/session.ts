@@ -104,7 +104,7 @@ export async function seedAdminSession(options: {
 
   const inserted = await db.run(
     `INSERT INTO users (google_id, email, name, is_admin)
-     VALUES (?, ?, ?, TRUE)`,
+     VALUES (?, ?, ?, TRUE) RETURNING id`,
     [googleId, options.email, options.name],
   );
   const adminUserId = Number(inserted.lastID);

@@ -11,8 +11,8 @@ import { getDatabase } from '../database/connection';
 const router = express.Router();
 
 /**
- * Normalize a `created_at` value coming from either SQLite (string without a
- * `Z` suffix) or PostgreSQL (Date object) into an ISO string.
+ * Normalize a `created_at` value from Postgres (`Date`) or an ISO string
+ * into an ISO string.
  */
 function normalizeTimestamp(value: string | Date | null | undefined): string {
   if (!value) return '';
@@ -307,7 +307,7 @@ router.post(
       const result = await db.run(
         `INSERT INTO judge_chat_messages
            (event_id, conversation_key, sender_role, sender_name, message, template_id, user_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           eventId,
           conversationKey,

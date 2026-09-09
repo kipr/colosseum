@@ -1,10 +1,8 @@
 /**
  * PostgresAdapter behaviour against a real PostgreSQL server.
  *
- * The adapter used to be covered only indirectly, so dialect bugs reached
- * production. These tests pin the parts that differ from better-sqlite3:
- * placeholder conversion, lastID/changes, transaction semantics, and the
- * result types pg returns.
+ * These tests pin placeholder conversion, explicit RETURNING / lastID,
+ * transaction semantics, and the result types pg returns.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../../sql/helpers/testDb';
@@ -21,16 +19,17 @@ describe('PostgresAdapter', () => {
   });
 
   async function seedEventId(name = 'Adapter Event'): Promise<number> {
-    const result = await testDb.db.run('INSERT INTO events (name) VALUES (?)', [
-      name,
-    ]);
+    const result = await testDb.db.run(
+      'INSERT INTO events (name) VALUES (?) RETURNING id',
+      [name],
+    );
     return result.lastID!;
   }
 
   describe('placeholder conversion', () => {
     it('converts each ? to a positional parameter in order', async () => {
       await testDb.db.run(
-        `INSERT INTO events (name, location, seeding_rounds) VALUES (?, ?, ?)`,
+        `INSERT INTO events (name, location, seeding_rounds) VALUES (?, ?, ?) RETURNING id`,
         ['Ordered', 'Arena', 4],
       );
 
@@ -53,7 +52,7 @@ describe('PostgresAdapter', () => {
     it('normalizes undefined to null and objects to JSON', async () => {
       const template = await testDb.db.run(
         `INSERT INTO scoresheet_templates (name, description, schema, access_code)
-         VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?) RETURNING id`,
         ['Template', undefined, [{ id: 'a', type: 'number' }], 'CODE1'],
       );
 
@@ -72,11 +71,11 @@ describe('PostgresAdapter', () => {
   describe('lastID and changes', () => {
     it('reports lastID for tables with an id column', async () => {
       const first = await testDb.db.run(
-        'INSERT INTO events (name) VALUES (?)',
+        'INSERT INTO events (name) VALUES (?) RETURNING id',
         ['First'],
       );
       const second = await testDb.db.run(
-        'INSERT INTO events (name) VALUES (?)',
+        'INSERT INTO events (name) VALUES (?) RETURNING id',
         ['Second'],
       );
 
@@ -85,11 +84,27 @@ describe('PostgresAdapter', () => {
       expect(second.changes).toBe(1);
     });
 
+    it('does not set lastID when the INSERT omits RETURNING', async () => {
+      const result = await testDb.db.run(
+        'INSERT INTO events (name) VALUES (?)',
+        ['No Returning'],
+      );
+
+      expect(result.lastID).toBeUndefined();
+      expect(result.changes).toBe(1);
+
+      const row = await testDb.db.get<{ name: string }>(
+        'SELECT name FROM events WHERE name = ?',
+        ['No Returning'],
+      );
+      expect(row?.name).toBe('No Returning');
+    });
+
     it('reports changes without lastID for tables keyed on another column', async () => {
       const eventId = await seedEventId();
 
-      // queue_versions is keyed on event_id and has no id column, so the
-      // adapter cannot append RETURNING id.
+      // queue_versions is keyed on event_id, so callers must not ask for
+      // RETURNING id.
       const result = await testDb.db.run(
         `INSERT INTO queue_versions (event_id, version, dirty) VALUES (?, 1, 0)`,
         [eventId],
@@ -130,11 +145,12 @@ describe('PostgresAdapter', () => {
   describe('transactions', () => {
     it('commits when the callback resolves', async () => {
       await testDb.db.transaction(async (tx) => {
-        const event = await tx.run('INSERT INTO events (name) VALUES (?)', [
-          'Committed',
-        ]);
+        const event = await tx.run(
+          'INSERT INTO events (name) VALUES (?) RETURNING id',
+          ['Committed'],
+        );
         await tx.run(
-          'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)',
+          'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id',
           [event.lastID, 1, 'Team One'],
         );
       });
@@ -146,7 +162,9 @@ describe('PostgresAdapter', () => {
     it('rolls back every statement when the callback throws', async () => {
       await expect(
         testDb.db.transaction(async (tx) => {
-          await tx.run('INSERT INTO events (name) VALUES (?)', ['Rolled back']);
+          await tx.run('INSERT INTO events (name) VALUES (?) RETURNING id', [
+            'Rolled back',
+          ]);
           throw new Error('boom');
         }),
       ).rejects.toThrow('boom');
@@ -155,20 +173,25 @@ describe('PostgresAdapter', () => {
       expect(events).toEqual([]);
     });
 
+    it('does not rewrite INSERT OR IGNORE', async () => {
+      await expect(
+        testDb.db.run('INSERT OR IGNORE INTO events (name) VALUES (?)', [
+          'Ignored',
+        ]),
+      ).rejects.toThrow(/syntax error/);
+    });
+
     it('surfaces the original constraint error from an INSERT in a transaction', async () => {
-      // The adapter probes with RETURNING id. A failed statement aborts a
-      // PostgreSQL transaction, so without a savepoint the retry reports
-      // "current transaction is aborted" and hides the real violation.
       const eventId = await seedEventId();
       await testDb.db.run(
-        'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)',
+        'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id',
         [eventId, 7, 'Original'],
       );
 
       await expect(
         testDb.db.transaction(async (tx) => {
           await tx.run(
-            'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)',
+            'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id',
             [eventId, 7, 'Duplicate'],
           );
         }),
@@ -201,12 +224,12 @@ describe('PostgresAdapter', () => {
     it('returns booleans for boolean columns', async () => {
       const eventId = await seedEventId();
       const bracket = await testDb.db.run(
-        'INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?)',
+        'INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?) RETURNING id',
         [eventId, 'Main', 4],
       );
       await testDb.db.run(
         `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-         VALUES (?, NULL, ?, ?)`,
+         VALUES (?, NULL, ?, ?) RETURNING id`,
         [bracket.lastID, 1, true],
       );
 
@@ -229,7 +252,7 @@ describe('PostgresAdapter', () => {
     it('returns BIGINT columns and COUNT(*) as strings', async () => {
       await testDb.db.run(
         `INSERT INTO users (google_id, email, name, token_expires_at)
-         VALUES (?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?) RETURNING id`,
         ['g-1', 'a@example.com', 'A', 1893456000000],
       );
 

@@ -13,7 +13,7 @@ describe('Queue Population from Seeding', () => {
     testDb = await createTestDb();
 
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status, seeding_rounds) VALUES (?, ?, ?)`,
+      `INSERT INTO events (name, status, seeding_rounds) VALUES (?, ?, ?) RETURNING id`,
       ['Test Event', 'setup', 3],
     );
     eventId = eventResult.lastID!;
@@ -28,7 +28,7 @@ describe('Queue Population from Seeding', () => {
    */
   async function createTeam(teamNumber: number): Promise<number> {
     const result = await testDb.db.run(
-      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
       [eventId, teamNumber, `Team ${teamNumber}`],
     );
     return result.lastID!;
@@ -43,7 +43,7 @@ describe('Queue Population from Seeding', () => {
     score: number,
   ): Promise<void> {
     await testDb.db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id`,
       [teamId, roundNumber, score],
     );
   }
@@ -109,7 +109,7 @@ describe('Queue Population from Seeding', () => {
       await testDb.db.run(
         `INSERT INTO game_queue (
            event_id, seeding_team_id, seeding_round, queue_type, queue_position, status
-         ) VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+         ) VALUES (?, ?, ?, 'seeding', ?, 'queued') RETURNING id`,
         [eventId, item.team_id, item.round, i + 1],
       );
       created++;

@@ -71,7 +71,7 @@ describe('queue team-rest response', () => {
 
     await testDb.db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-       VALUES (?, 9, 10, ?)`,
+       VALUES (?, 9, 10, ?) RETURNING id`,
       [team1.id, '2026-08-25 10:00:00'],
     );
 

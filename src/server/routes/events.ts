@@ -199,7 +199,7 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
 
     const result = await db.run(
       `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, min_rest_minutes, score_accept_mode, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         name,
         description || null,

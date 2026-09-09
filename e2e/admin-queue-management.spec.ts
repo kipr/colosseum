@@ -48,21 +48,21 @@ test.describe('Admin queue management', () => {
 
     const ev = await db.run(
       `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-       VALUES (?, 'active', 3, 'manual')`,
+       VALUES (?, 'active', 3, 'manual') RETURNING id`,
       [EVENT_NAME],
     );
     eventId = Number(ev.lastID);
 
     const tmA = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, status)
-       VALUES (?, ?, ?, 'checked_in')`,
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
       [eventId, TEAM_A_NUMBER, TEAM_A_NAME],
     );
     teamAId = Number(tmA.lastID);
 
     const tmB = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, status)
-       VALUES (?, ?, ?, 'checked_in')`,
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
       [eventId, TEAM_B_NUMBER, TEAM_B_NAME],
     );
     teamBId = Number(tmB.lastID);
@@ -80,7 +80,7 @@ test.describe('Admin queue management', () => {
     for (const [index, [teamId, round]] of queueItems.entries()) {
       await db.run(
         `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-         VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+         VALUES (?, ?, ?, 'seeding', ?, 'queued') RETURNING id`,
         [eventId, teamId, round, index + 1],
       );
     }
@@ -89,7 +89,7 @@ test.describe('Admin queue management', () => {
     // history without being materialized as another queue row.
     await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-       VALUES (?, 99, 42, CURRENT_TIMESTAMP)`,
+       VALUES (?, 99, 42, CURRENT_TIMESTAMP) RETURNING id`,
       [teamAId],
     );
 
@@ -295,49 +295,49 @@ test.describe('Admin queue management', () => {
 
     const bracket = await db.run(
       `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status)
-       VALUES (?, 'E2E Presence Bracket', 2, 2, 'in_progress')`,
+       VALUES (?, 'E2E Presence Bracket', 2, 2, 'in_progress') RETURNING id`,
       [eventId],
     );
     const game = await db.run(
       `INSERT INTO bracket_games
          (bracket_id, game_number, play_order, round_name, round_number,
           bracket_side, team1_id, team2_id, status)
-       VALUES (?, 91, 91, 'Presence Final', 1, 'finals', ?, ?, 'ready')`,
+       VALUES (?, 91, 91, 'Presence Final', 1, 'finals', ?, ?, 'ready') RETURNING id`,
       [Number(bracket.lastID), teamAId, teamBId],
     );
     await db.run(
       `INSERT INTO game_queue
          (event_id, bracket_game_id, queue_type, queue_position, status,
           called_at)
-       VALUES (?, ?, 'bracket', 20, 'called', CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, 'bracket', 20, 'called', CURRENT_TIMESTAMP) RETURNING id`,
       [eventId, Number(game.lastID)],
     );
 
     const pairedDoubleSeeding = await db.run(
       `INSERT INTO double_seeding_matches
          (event_id, round_number, match_number, team1_id, team2_id, status)
-       VALUES (?, 90, 1, ?, ?, 'ready')`,
+       VALUES (?, 90, 1, ?, ?, 'ready') RETURNING id`,
       [eventId, teamAId, teamBId],
     );
     await db.run(
       `INSERT INTO game_queue
          (event_id, double_seeding_match_id, queue_type, queue_position,
           status, called_at)
-       VALUES (?, ?, 'double_seeding', 21, 'called', CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, 'double_seeding', 21, 'called', CURRENT_TIMESTAMP) RETURNING id`,
       [eventId, Number(pairedDoubleSeeding.lastID)],
     );
 
     const soloDoubleSeeding = await db.run(
       `INSERT INTO double_seeding_matches
          (event_id, round_number, match_number, team1_id, team2_id, status)
-       VALUES (?, 91, 1, ?, NULL, 'ready')`,
+       VALUES (?, 91, 1, ?, NULL, 'ready') RETURNING id`,
       [eventId, teamAId],
     );
     await db.run(
       `INSERT INTO game_queue
          (event_id, double_seeding_match_id, queue_type, queue_position,
           status, called_at)
-       VALUES (?, ?, 'double_seeding', 22, 'called', CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, 'double_seeding', 22, 'called', CURRENT_TIMESTAMP) RETURNING id`,
       [eventId, Number(soloDoubleSeeding.lastID)],
     );
 

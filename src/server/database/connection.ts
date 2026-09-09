@@ -118,6 +118,7 @@ function getPgPool(): Pool {
 
 // Unified database interface
 export interface DatabaseResult {
+  /** Set from `RETURNING id`. Omitted when the statement does not return `id`. */
   lastID?: number;
   changes?: number;
 }
@@ -177,27 +178,26 @@ function normalizeParams(params: any[]): any[] {
   return params.map(normalizeParam);
 }
 
-/** Postgres SQLSTATE for a reference to a column that does not exist. */
-const PG_UNDEFINED_COLUMN = '42703';
-
-function isUndefinedColumnError(error: unknown): boolean {
-  return (error as { code?: string })?.code === PG_UNDEFINED_COLUMN;
+/** Convert application `?` placeholders to Postgres `$1`, `$2`, … */
+function convertSql(sql: string): string {
+  let index = 0;
+  return sql.replace(/\?/g, () => `$${++index}`);
 }
 
-function insertTargetTable(sql: string): string | null {
-  const match = /^\s*INSERT\s+(?:OR\s+\w+\s+)?INTO\s+"?([\w.]+)"?/i.exec(sql);
-  return match ? match[1].toLowerCase() : null;
+/**
+ * `lastID` is populated only when the statement used `RETURNING id`.
+ * Callers that need the generated key must request it in the SQL; the
+ * adapter does not probe or append `RETURNING`.
+ */
+function resultFromQuery(result: {
+  rows: Array<{ id?: number }>;
+  rowCount: number | null;
+}): DatabaseResult {
+  return { lastID: result.rows[0]?.id, changes: result.rowCount || 0 };
 }
 
 // PostgreSQL implementation
 class PostgresAdapter implements Database {
-  /**
-   * Tables that have no `id` column, so appending `RETURNING id` to an INSERT
-   * would fail. Learned on first use to keep the fallback off the hot path,
-   * and so that a savepoint is only ever needed once per table.
-   */
-  private tablesWithoutId = new Set<string>();
-
   constructor(
     private pool: Pool,
     private unreachableHint: 'db-up' | null = null,
@@ -211,82 +211,11 @@ class PostgresAdapter implements Database {
     }
   }
 
-  private convertSql(sql: string): string {
-    // Convert ? placeholders to $1, $2, etc.
-    let index = 0;
-    let converted = sql.replace(/\?/g, () => `$${++index}`);
-    // Convert INSERT OR IGNORE to ON CONFLICT DO NOTHING
-    converted = converted.replace(
-      /INSERT\s+OR\s+IGNORE\s+INTO/gi,
-      'INSERT INTO',
-    );
-    if (/INSERT\s+OR\s+IGNORE/i.test(sql) && !/ON\s+CONFLICT/i.test(sql)) {
-      converted = converted.replace(/;?\s*$/, ' ON CONFLICT DO NOTHING');
-    }
-    return converted;
-  }
-
-  /**
-   * Run an INSERT, reporting `lastID` when the table has an `id` column.
-   *
-   * `RETURNING id` is appended so the generated key comes back, but a few
-   * tables key on something else (`queue_versions` on `event_id`, `session` on
-   * `sid`) and reject it. Those are detected by SQLSTATE 42703 and remembered.
-   *
-   * Inside a transaction the probe has to be wrapped in a savepoint: in
-   * PostgreSQL a failed statement aborts the whole transaction, so without one
-   * the retry fails with "current transaction is aborted" and the original
-   * error is lost. Any error other than 42703 is re-raised so callers still
-   * see real constraint violations.
-   */
-  private async runInsert(
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    queryFn: (sql: string, params?: any[]) => Promise<any>,
-    convertedSql: string,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    params?: any[],
-    inTransaction = false,
-  ): Promise<DatabaseResult> {
-    const table = insertTargetTable(convertedSql);
-
-    if (table && this.tablesWithoutId.has(table)) {
-      const result = await queryFn(convertedSql, params);
-      return { changes: result.rowCount || 0 };
-    }
-
-    const returningSQL = convertedSql.replace(/;?\s*$/, ' RETURNING id;');
-    const savepoint = inTransaction ? 'colosseum_insert_returning' : null;
-
-    if (savepoint) {
-      await queryFn(`SAVEPOINT ${savepoint}`);
-    }
-
-    try {
-      const result = await queryFn(returningSQL, params);
-      if (savepoint) {
-        await queryFn(`RELEASE SAVEPOINT ${savepoint}`);
-      }
-      return { lastID: result.rows[0]?.id, changes: result.rowCount || 0 };
-    } catch (error) {
-      if (savepoint) {
-        await queryFn(`ROLLBACK TO SAVEPOINT ${savepoint}`);
-      }
-      if (!isUndefinedColumnError(error)) {
-        throw error;
-      }
-      if (table) {
-        this.tablesWithoutId.add(table);
-      }
-      const result = await queryFn(convertedSql, params);
-      return { changes: result.rowCount || 0 };
-    }
-  }
-
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async get<T = any>(sql: string, params?: any[]): Promise<T | undefined> {
     return this.withUnreachableHint(async () => {
       const result = await this.pool.query(
-        this.convertSql(sql),
+        convertSql(sql),
         params ? normalizeParams(params) : params,
       );
       return result.rows[0];
@@ -297,7 +226,7 @@ class PostgresAdapter implements Database {
   async all<T = any>(sql: string, params?: any[]): Promise<T[]> {
     return this.withUnreachableHint(async () => {
       const result = await this.pool.query(
-        this.convertSql(sql),
+        convertSql(sql),
         params ? normalizeParams(params) : params,
       );
       return result.rows;
@@ -307,19 +236,11 @@ class PostgresAdapter implements Database {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async run(sql: string, params?: any[]): Promise<DatabaseResult> {
     return this.withUnreachableHint(async () => {
-      const convertedSql = this.convertSql(sql);
-      const normalizedParams = params ? normalizeParams(params) : params;
-
-      if (sql.trim().toUpperCase().startsWith('INSERT')) {
-        return this.runInsert(
-          (s, p) => this.pool.query(s, p),
-          convertedSql,
-          normalizedParams,
-        );
-      }
-
-      const result = await this.pool.query(convertedSql, normalizedParams);
-      return { changes: result.rowCount || 0 };
+      const result = await this.pool.query(
+        convertSql(sql),
+        params ? normalizeParams(params) : params,
+      );
+      return resultFromQuery(result);
     });
   }
 
@@ -340,7 +261,7 @@ class PostgresAdapter implements Database {
           params?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
         ): Promise<R | undefined> => {
           const result = await client.query(
-            this.convertSql(sql),
+            convertSql(sql),
             params ? normalizeParams(params) : params,
           );
           return result.rows[0];
@@ -349,20 +270,11 @@ class PostgresAdapter implements Database {
           sql: string,
           params?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
         ): Promise<DatabaseResult> => {
-          const convertedSql = this.convertSql(sql);
-          const normalizedParams = params ? normalizeParams(params) : params;
-
-          if (sql.trim().toUpperCase().startsWith('INSERT')) {
-            return this.runInsert(
-              (s, p) => client.query(s, p),
-              convertedSql,
-              normalizedParams,
-              true,
-            );
-          }
-
-          const result = await client.query(convertedSql, normalizedParams);
-          return { changes: result.rowCount || 0 };
+          const result = await client.query(
+            convertSql(sql),
+            params ? normalizeParams(params) : params,
+          );
+          return resultFromQuery(result);
         },
         exec: async (sql: string): Promise<void> => {
           await client.query(sql);

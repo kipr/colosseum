@@ -348,7 +348,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       `INSERT INTO game_queue (
          event_id, bracket_game_id, seeding_team_id, seeding_round, double_seeding_match_id,
          queue_type, queue_position, status, table_number
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?) RETURNING id`,
       [
         event_id,
         queue_type === 'bracket' ? bracket_game_id : null,
@@ -545,7 +545,7 @@ router.post(
             const result = await tx.run(
               `INSERT INTO game_queue (
                  event_id, bracket_game_id, queue_type, queue_position, status
-               ) VALUES (?, ?, 'bracket', ?, 'queued')`,
+               ) VALUES (?, ?, 'bracket', ?, 'queued') RETURNING id`,
               [eventId, row.newBracketGameId, queuePosition],
             );
             changes += result.changes ?? 0;
@@ -652,7 +652,7 @@ router.post(
         await db.run(
           `INSERT INTO game_queue (
              event_id, seeding_team_id, seeding_round, queue_type, queue_position, status
-           ) VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+           ) VALUES (?, ?, ?, 'seeding', ?, 'queued') RETURNING id`,
           [event_id, item.team_id, item.round, i + 1],
         );
         created++;

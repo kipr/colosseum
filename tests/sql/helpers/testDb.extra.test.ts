@@ -28,7 +28,7 @@ describe('createMinimalTestDb', () => {
       await testDb.db.exec(
         'CREATE TABLE test (id SERIAL PRIMARY KEY, val TEXT)',
       );
-      const result = await testDb.db.run('INSERT INTO test (val) VALUES (?)', [
+      const result = await testDb.db.run('INSERT INTO test (val) VALUES (?) RETURNING id', [
         'hello',
       ]);
       expect(result.lastID).toBe(1);

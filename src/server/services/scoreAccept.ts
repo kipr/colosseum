@@ -40,7 +40,7 @@ export async function updateSeedingQueueItem(
     const pos = (maxPos?.max_pos ?? 0) + 1;
     await db.run(
       `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-       VALUES (?, ?, ?, 'seeding', ?, ?)`,
+       VALUES (?, ?, ?, 'seeding', ?, ?) RETURNING id`,
       [
         eventId,
         teamId,
@@ -98,7 +98,7 @@ export async function updateBracketQueueItem(
       const pos = (maxPos?.max_pos ?? 0) + 1;
       await db.run(
         `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-         VALUES (?, ?, 'bracket', ?, 'scored')`,
+         VALUES (?, ?, 'bracket', ?, 'scored') RETURNING id`,
         [eventId, bracketGameId, pos],
       );
     }
@@ -135,7 +135,7 @@ export async function updateBracketQueueItem(
     const pos = (maxPos?.max_pos ?? 0) + 1;
     await db.run(
       `INSERT INTO game_queue (event_id, bracket_game_id, queue_type, queue_position, status)
-       VALUES (?, ?, 'bracket', ?, 'queued')`,
+       VALUES (?, ?, 'bracket', ?, 'queued') RETURNING id`,
       [eventId, bracketGameId, pos],
     );
   }
@@ -186,7 +186,7 @@ export async function updateDoubleSeedingQueueItem(
       const pos = (maxPos?.max_pos ?? 0) + 1;
       await db.run(
         `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
-         VALUES (?, ?, 'double_seeding', ?, 'scored')`,
+         VALUES (?, ?, 'double_seeding', ?, 'scored') RETURNING id`,
         [eventId, matchId, pos],
       );
     }
@@ -223,7 +223,7 @@ export async function updateDoubleSeedingQueueItem(
     const pos = (maxPos?.max_pos ?? 0) + 1;
     await db.run(
       `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
-       VALUES (?, ?, 'double_seeding', ?, 'queued')`,
+       VALUES (?, ?, 'double_seeding', ?, 'queued') RETURNING id`,
       [eventId, matchId, pos],
     );
   }
@@ -359,7 +359,8 @@ export async function acceptEventScore(
          ON CONFLICT(team_id, round_number) DO UPDATE SET
            score = excluded.score,
            score_submission_id = excluded.score_submission_id,
-           scored_at = CURRENT_TIMESTAMP`,
+           scored_at = CURRENT_TIMESTAMP
+         RETURNING id`,
         [teamId, roundNumber, scoreValue, id],
       );
 
@@ -744,7 +745,7 @@ export async function acceptEventScore(
         await tx.run(
           `INSERT INTO double_seeding_scores
              (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
-           VALUES (?, ?, ?, ?, 'team1', ?, ?, CURRENT_TIMESTAMP)`,
+           VALUES (?, ?, ?, ?, 'team1', ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
           [
             score.event_id,
             matchId,
@@ -759,7 +760,7 @@ export async function acceptEventScore(
         await tx.run(
           `INSERT INTO double_seeding_scores
              (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
-           VALUES (?, ?, ?, ?, 'team2', ?, ?, CURRENT_TIMESTAMP)`,
+           VALUES (?, ?, ?, ?, 'team2', ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
           [
             score.event_id,
             matchId,
