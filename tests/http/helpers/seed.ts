@@ -1,6 +1,6 @@
 /**
  * Seed helpers for HTTP route tests.
- * Provides functions to insert test data into the in-memory database.
+ * Provides functions to insert test data into the worker's Postgres schema.
  */
 import { Database } from '../../../src/server/database/connection';
 
@@ -16,7 +16,7 @@ export async function seedUser(
   data: SeedUserData = {},
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO users (name, email, google_id, is_admin) VALUES (?, ?, ?, ?)`,
+    `INSERT INTO users (name, email, google_id, is_admin) VALUES (?, ?, ?, ?) RETURNING id`,
     [
       data.name ?? 'Test User',
       data.email ?? 'test@example.com',
@@ -46,7 +46,7 @@ export async function seedEvent(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, double_seeding_rounds, min_rest_minutes, score_accept_mode, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.name ?? 'Test Event',
       data.description ?? null,
@@ -77,7 +77,7 @@ export async function seedTeam(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
-     VALUES (?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?) RETURNING id`,
     [
       data.event_id,
       data.team_number,
@@ -104,7 +104,7 @@ export async function seedBracket(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, created_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.event_id,
       data.name ?? 'Test Bracket',
@@ -135,7 +135,7 @@ export async function seedBracketGame(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO bracket_games (bracket_id, game_number, play_order, round_name, round_number, bracket_side, team1_id, team2_id, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.bracket_id,
       data.game_number,
@@ -177,7 +177,7 @@ export async function seedQueueItem(
        event_id, bracket_game_id, seeding_team_id, seeding_round,
        double_seeding_match_id, queue_type, queue_position, status,
        table_number, present_team1_id, present_team2_id
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.event_id,
       data.bracket_game_id ?? null,
@@ -215,7 +215,7 @@ export async function seedSeedingScore(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO seeding_scores (team_id, round_number, score)
-     VALUES (?, ?, ?)`,
+     VALUES (?, ?, ?) RETURNING id`,
     [data.team_id, data.round_number, data.score ?? null],
   );
   return { id: result.lastID! };
@@ -234,7 +234,7 @@ export async function seedScoresheetTemplate(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO scoresheet_templates (name, schema, access_code, created_by)
-     VALUES (?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?) RETURNING id`,
     [
       data.name ?? 'Test Template',
       data.schema ?? '[]',
@@ -258,7 +258,7 @@ export async function seedEventScoresheetTemplate(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type, is_default)
-     VALUES (?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?) RETURNING id`,
     [
       data.event_id,
       data.template_id,
@@ -290,7 +290,7 @@ export async function seedScoreSubmission(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO score_submissions (user_id, template_id, participant_name, match_id, score_data, status, event_id, bracket_game_id, seeding_score_id, score_type, game_queue_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.user_id ?? null,
       data.template_id,
@@ -355,7 +355,7 @@ export async function seedAuditLog(
         data.new_value ?? null,
       ];
   const result = await db.run(
-    `INSERT INTO audit_log (${columns}) VALUES (${placeholders})`,
+    `INSERT INTO audit_log (${columns}) VALUES (${placeholders}) RETURNING id`,
     values,
   );
   return { id: result.lastID! };
@@ -386,14 +386,14 @@ export async function seedDocumentationScoreCategory(
     categoryId = (existing as { id: number }).id;
   } else {
     const catResult = await db.run(
-      'INSERT INTO documentation_categories (name, weight, max_score) VALUES (?, ?, ?)',
+      'INSERT INTO documentation_categories (name, weight, max_score) VALUES (?, ?, ?) RETURNING id',
       [name, weight, maxScore],
     );
     categoryId = catResult.lastID!;
   }
 
   await db.run(
-    'INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, ?)',
+    'INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, ?) RETURNING id',
     [data.event_id, categoryId, data.ordinal],
   );
   return { id: categoryId };
@@ -412,7 +412,7 @@ export async function seedDocumentationScore(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_by, scored_at)
-     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
     [
       data.event_id,
       data.team_id,
@@ -435,7 +435,7 @@ export async function seedDocumentationSubScore(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
-     VALUES (?, ?, ?)`,
+     VALUES (?, ?, ?) RETURNING id`,
     [data.documentation_score_id, data.category_id, data.score],
   );
   return { id: result.lastID! };
@@ -459,7 +459,7 @@ export async function seedDoubleSeedingMatch(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO double_seeding_matches (event_id, round_number, match_number, team1_id, team2_id, status, score_submission_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.event_id,
       data.round_number,
@@ -489,7 +489,7 @@ export async function seedDoubleSeedingScore(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO double_seeding_scores (event_id, match_id, team_id, round_number, side, score, score_submission_id, scored_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
     [
       data.event_id,
       data.match_id,
@@ -516,7 +516,7 @@ export async function seedAwardTemplate(
   data: SeedAwardTemplateData = {},
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO award_templates (name, description, award_type) VALUES (?, ?, ?)`,
+    `INSERT INTO award_templates (name, description, award_type) VALUES (?, ?, ?) RETURNING id`,
     [
       data.name ?? 'Test Award',
       data.description ?? null,
@@ -541,7 +541,7 @@ export async function seedEventAward(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO event_awards (event_id, template_award_id, name, description, award_type, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.event_id,
       data.template_award_id ?? null,
@@ -564,7 +564,7 @@ export async function seedEventAwardRecipient(
   data: SeedEventAwardRecipientData,
 ): Promise<{ id: number }> {
   const result = await db.run(
-    `INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?)`,
+    `INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?) RETURNING id`,
     [data.event_award_id, data.team_id],
   );
   return { id: result.lastID! };
@@ -582,7 +582,7 @@ export async function seedEventAwardIndividualRecipient(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
-     VALUES (?, ?, ?)`,
+     VALUES (?, ?, ?) RETURNING id`,
     [data.event_award_id, data.name, data.team_id ?? null],
   );
   return { id: result.lastID! };

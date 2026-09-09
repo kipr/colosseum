@@ -501,14 +501,14 @@ describe('Event-Scoped Scores Routes', () => {
       });
 
       await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?), (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?), (?, ?, ?) RETURNING id',
         [team1.id, 1, 100, team2.id, 1, 150],
       );
 
       // Seed stale rankings to ensure accept-event refreshes them.
       await testDb.db.run(
         `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
-         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?) RETURNING id`,
         [team1.id, 999, 2, 0.1, 0, team2.id, 999, 1, 0.9, 0],
       );
       const template = await seedScoresheetTemplate(testDb.db);
@@ -633,7 +633,7 @@ describe('Event-Scoped Scores Routes', () => {
 
       // Create existing seeding score
       await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
         [team.id, 1, 100],
       );
 
@@ -667,7 +667,7 @@ describe('Event-Scoped Scores Routes', () => {
 
       // Create existing seeding score
       await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
         [team.id, 1, 100],
       );
 
@@ -904,14 +904,14 @@ describe('Event-Scoped Scores Routes', () => {
       });
 
       await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?), (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?), (?, ?, ?) RETURNING id',
         [team1.id, 1, 100, team2.id, 1, 200],
       );
 
       // Seed stale rankings to ensure bulk accept refreshes them.
       await testDb.db.run(
         `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score, tiebreaker_value)
-         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?) RETURNING id`,
         [team1.id, 999, 2, 0.1, 0, team2.id, 999, 1, 0.9, 0],
       );
       const template = await seedScoresheetTemplate(testDb.db);
@@ -976,7 +976,7 @@ describe('Event-Scoped Scores Routes', () => {
 
       // Existing seeding score for team/round
       await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
         [team.id, 1, 50],
       );
 
@@ -1306,7 +1306,7 @@ describe('Event-Scoped Scores Routes', () => {
 
       // Create seeding score
       const seedingScoreResult = await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
         [team.id, 1, 150],
       );
 
@@ -1379,7 +1379,7 @@ describe('Event-Scoped Scores Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db);
 
       const seedingScoreResult = await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
         [team.id, 1, 150],
       );
 
@@ -1418,7 +1418,7 @@ describe('Event-Scoped Scores Routes', () => {
       const template = await seedScoresheetTemplate(testDb.db);
 
       const seedingScoreResult = await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
         [team.id, 1, 120],
       );
 
@@ -1494,7 +1494,7 @@ describe('Event-Scoped Scores Routes', () => {
       // Insert game 1 with winner advancement
       await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, team1_id, team2_id, winner_id, status, winner_advances_to_id, winner_slot)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           bracket.id,
           1,

@@ -42,7 +42,7 @@ describe('Test DB Harness', () => {
 
     // Insert an event
     const result = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'setup'],
     );
     expect(result.lastID).toBeGreaterThan(0);

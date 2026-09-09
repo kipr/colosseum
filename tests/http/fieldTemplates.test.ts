@@ -25,7 +25,7 @@ async function seedFieldTemplate(
 ): Promise<{ id: number }> {
   const result = await db.run(
     `INSERT INTO scoresheet_field_templates (name, description, fields_json, created_by)
-     VALUES (?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?) RETURNING id`,
     [
       data.name ?? 'Test Field Template',
       data.description ?? null,

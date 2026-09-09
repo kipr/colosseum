@@ -38,11 +38,11 @@ describe('computeOverallScores - double seeding', () => {
       overall_score: 2.5,
     });
     await testDb.db.run(
-      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?) RETURNING id`,
       [team.id, 100, 1, 0.75],
     );
     await testDb.db.run(
-      `INSERT INTO double_seeding_rankings (team_id, seed_average, seed_rank, raw_double_seed_score) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO double_seeding_rankings (team_id, seed_average, seed_rank, raw_double_seed_score) VALUES (?, ?, ?, ?) RETURNING id`,
       [team.id, 80, 1, 0.9],
     );
 

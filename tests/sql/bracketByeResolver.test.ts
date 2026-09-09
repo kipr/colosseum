@@ -15,13 +15,13 @@ describe('Bracket Bye Resolver', () => {
 
     // Create an event and bracket
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'setup'],
     );
     eventId = eventResult.lastID!;
 
     const bracketResult = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?) RETURNING id`,
       [eventId, 'Test Bracket', 4],
     );
     bracketId = bracketResult.lastID!;
@@ -36,7 +36,7 @@ describe('Bracket Bye Resolver', () => {
    */
   async function createTeam(teamNumber: number): Promise<number> {
     const result = await testDb.db.run(
-      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
       [eventId, teamNumber, `Team ${teamNumber}`],
     );
     return result.lastID!;
@@ -52,8 +52,8 @@ describe('Bracket Bye Resolver', () => {
   ): Promise<void> {
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-       VALUES (?, ?, ?, ?)`,
-      [bracketId, teamId, seedPosition, isBye ? 1 : 0],
+       VALUES (?, ?, ?, ?) RETURNING id`,
+      [bracketId, teamId, seedPosition, isBye],
     );
   }
 
@@ -80,7 +80,7 @@ describe('Bracket Bye Resolver', () => {
         team1_id, team2_id, status,
         winner_advances_to_id, loser_advances_to_id,
         winner_slot, loser_slot
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         bracketId,
         gameNumber,

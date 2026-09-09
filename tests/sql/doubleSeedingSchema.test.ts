@@ -139,7 +139,7 @@ describe('Double seeding schema', () => {
     await expect(
       testDb.db.run(
         `INSERT INTO double_seeding_scores (event_id, match_id, team_id, round_number, side, score)
-         VALUES (?, ?, ?, ?, 'left', 1)`,
+         VALUES (?, ?, ?, ?, 'left', 1) RETURNING id`,
         [event.id, match.id, team.id, 1],
       ),
     ).rejects.toThrow(/violates check constraint/);

@@ -29,7 +29,7 @@ router.get('/users', requireAuth, async (req: AuthRequest, res: Response) => {
     const now = Date.now();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const usersWithStatus = users.map((user: any) => {
-      // Handle both Date objects (PostgreSQL) and strings (SQLite)
+      // pg returns Date; JSON-serialized timestamps arrive as strings.
       let lastActivityTime: number | null = null;
       if (user.last_activity) {
         if (user.last_activity instanceof Date) {

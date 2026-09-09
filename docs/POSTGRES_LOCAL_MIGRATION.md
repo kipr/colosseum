@@ -1,6 +1,6 @@
 # Local PostgreSQL Migration — Design and Implementation Plan
 
-Status: Phases 0–3 implemented (1a Vitest + CI, 1b local Playwright, 2 Postgres-only local default, 3 SQLite dialect deleted); Phase 4 not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
+Status: Phases 0–4 implemented (1a Vitest + CI, 1b local Playwright, 2 Postgres-only local default, 3 SQLite dialect deleted, 4 adapter magic reduced). Work in numbered phases; each phase should be a mergeable PR.
 
 Replace local SQLite with a Docker Compose PostgreSQL 18 server so local Node, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.
 
@@ -19,7 +19,7 @@ GitHub Actions Playwright remains **out of scope**. Local Playwright is **in sco
 | Local Playwright | PostgreSQL 18, `public` schema on `colosseum_test` | Playwright injects `DATABASE_URL=$TEST_DATABASE_URL`; ports 3001/5174 |
 | Production | Cloud SQL PostgreSQL 18 | `CLOUD_SQL_CONNECTION_NAME` + `DB_USER` / `DB_PASSWORD` / `DB_NAME` (Cloud Run does **not** set `DATABASE_URL`) |
 
-Schema is defined once in 13 modules under `src/server/database/schema/` (`SchemaModule` is a name plus one `DialectSchema`). `PostgresAdapter.convertSql()` still rewrites `?` placeholders, `INSERT OR IGNORE`, and appends `RETURNING id` on inserts until Phase 4.
+Schema is defined once in 13 modules under `src/server/database/schema/` (`SchemaModule` is a name plus one `DialectSchema`). `PostgresAdapter.convertSql()` rewrites `?` placeholders to `$n`. Callers that need a generated key include `RETURNING id` in the SQL; the adapter does not append it and does not rewrite `INSERT OR IGNORE`.
 
 The running app uses `connect-pg-simple` on table `"session"`.
 
@@ -192,26 +192,24 @@ Mechanical diffs per file are large but boring: delete the `sqlite:` half of `ev
 
 ---
 
-## 6. Adapter simplification (after SQLite is gone)
+## 6. Adapter simplification (done in Phase 4)
 
-Keep:
+Kept:
 
 - `Database` / `Transaction` async API
-- `?` → `$n` conversion so application SQL does not have to be rewritten in the same change
+- `?` → `$n` conversion so application SQL did not have to switch to `$1` in the same change
 - `getPostgresPool()` for the session store
 - `__setTestDatabaseAdapter` for tests
 - Cloud SQL unix-socket config for production
 
-Remove:
+Removed:
 
 - `SqliteAdapter`, `createSqliteDatabase`, `better-sqlite3`
 - `SqliteSessionStore`
-- `INSERT OR IGNORE` rewriting (no callers in app SQL today)
-- Blind `RETURNING id` + catch-and-retry; either always `RETURNING id` on known-id tables, or require `RETURNING` in the SQL
+- `INSERT OR IGNORE` rewriting
+- Blind `RETURNING id` + catch-and-retry. Callers that need the generated key include `RETURNING id`; `run()` copies `rows[0].id` to `lastID`
 
-Then audit remaining SQLite-shaped writes (`is_bye ? 1 : 0`, `is_championship ? 1 : 0`) and pass real booleans.
-
-`package.json` / lockfile drop `better-sqlite3` and `@types/better-sqlite3`. Production `Dockerfile` can drop `mkdir -p /app/database`.
+Boolean writes use native `true`/`false` for `BOOLEAN` columns. `queue_versions.dirty` and `events.spectator_results_released` remain integers.
 
 ---
 
@@ -305,11 +303,13 @@ Playwright is still **not** added to GitHub Actions.
 - `postgresParity.test.ts` was already replaced by `postgresSchema.test.ts` in Phase 1a
 - `vitest.config.ts`: keep `fileParallelism: false` (isolation-safe but unmeasured; extra workers each pay ~211 DDL statements)
 
-### Phase 4 — Reduce adapter magic
+### Phase 4 — Reduce adapter magic (done)
 
-- Explicit `RETURNING` / boolean params
-- Remove coverage excludes for `connection.ts` / `init.ts` if tests now cover them
-- Pass native booleans from routes/services instead of `? 1 : 0`
+- Explicit `RETURNING id` on INSERTs that read `lastID`; the adapter no longer probes, savepoints, or appends `RETURNING`
+- Dropped the dead `INSERT OR IGNORE` rewrite
+- Native boolean params in remaining tests (`is_bye` `true`/`false` rather than `1`/`0`)
+- Coverage excludes for `connection.ts` / `init.ts` removed; `postgresAdapter.test.ts` and `init.test.ts` cover them
+- Postgres-only constraint classification in `constraintErrors.ts`
 
 ---
 

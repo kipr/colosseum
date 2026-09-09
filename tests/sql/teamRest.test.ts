@@ -54,7 +54,7 @@ describe('team rest service', () => {
 
     await testDb.db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-       VALUES (?, 1, 50, ?)`,
+       VALUES (?, 1, 50, ?) RETURNING id`,
       [team1.id, '2026-08-25 11:00:00'],
     );
 
@@ -71,7 +71,7 @@ describe('team rest service', () => {
 
     await testDb.db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-       VALUES (?, 1, 90, ?)`,
+       VALUES (?, 1, 90, ?) RETURNING id`,
       [otherTeam.id, '2026-08-25 13:00:00'],
     );
 
@@ -102,7 +102,7 @@ describe('team rest service', () => {
     );
     await testDb.db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-       VALUES (?, 1, NULL, CURRENT_TIMESTAMP)`,
+       VALUES (?, 1, NULL, CURRENT_TIMESTAMP) RETURNING id`,
       [team.id],
     );
     const unfinished = await seedDoubleSeedingMatch(testDb.db, {

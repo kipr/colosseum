@@ -1154,15 +1154,15 @@ describe('Awards API', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
         [t1.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5) RETURNING id`,
         [t2.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1) RETURNING id`,
         [t3.id],
       );
 
@@ -1189,7 +1189,7 @@ describe('Awards API', () => {
         ) VALUES
           (?, ?, 1, FALSE, 1, 1, 100),
           (?, ?, 2, FALSE, 2, 0.5, 50),
-          (?, ?, 3, FALSE, 3, 0.33, 10)`,
+          (?, ?, 3, FALSE, 3, 0.33, 10) RETURNING id`,
         [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
       );
 
@@ -1255,7 +1255,7 @@ describe('Awards API', () => {
       }
       for (let i = 0; i < teams.length; i++) {
         await testDb.db.run(
-          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?) RETURNING id`,
           [teams[i].id, 90 - i * 10, i + 1, 10 - i],
         );
         await seedDocumentationScore(testDb.db, {
@@ -1267,7 +1267,7 @@ describe('Awards API', () => {
           `INSERT INTO bracket_entries (
             bracket_id, team_id, seed_position, is_bye,
             final_rank, bracket_raw_score, weighted_bracket_raw_score
-          ) VALUES (?, ?, ?, FALSE, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, FALSE, ?, ?, ?) RETURNING id`,
           [bracket.id, teams[i].id, i + 1, i + 1, 1 - i * 0.1, 100 - i * 10],
         );
       }
@@ -1275,7 +1275,7 @@ describe('Awards API', () => {
       await testDb.db.run(
         `INSERT INTO event_automatic_award_settings
            (event_id, de_top_n, per_bracket_overall_top_n, seeding_top_n)
-         VALUES (?, 2, 0, 4)`,
+         VALUES (?, 2, 0, 4) RETURNING id`,
         [event.id],
       );
 
@@ -1320,7 +1320,7 @@ describe('Awards API', () => {
         team_name: 'Only',
       });
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
         [t1.id],
       );
 
@@ -1394,15 +1394,15 @@ describe('Awards API', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
         [t1.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5) RETURNING id`,
         [t2.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1) RETURNING id`,
         [t3.id],
       );
 
@@ -1429,7 +1429,7 @@ describe('Awards API', () => {
         ) VALUES
           (?, ?, 1, FALSE, 1, 1, 100),
           (?, ?, 2, FALSE, 2, 0.5, 50),
-          (?, ?, 3, FALSE, 3, 0.33, 10)`,
+          (?, ?, 3, FALSE, 3, 0.33, 10) RETURNING id`,
         [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
       );
 
@@ -1611,7 +1611,7 @@ describe('Awards API', () => {
         });
         teams.push(t);
         await testDb.db.run(
-          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?) RETURNING id`,
           [t.id, 100 - n, n, 10],
         );
         await seedDocumentationScore(testDb.db, {
@@ -1623,7 +1623,7 @@ describe('Awards API', () => {
           `INSERT INTO bracket_entries (
             bracket_id, team_id, seed_position, is_bye,
             final_rank, bracket_raw_score, weighted_bracket_raw_score
-          ) VALUES (?, ?, ?, FALSE, ?, 1, 10)`,
+          ) VALUES (?, ?, ?, FALSE, ?, 1, 10) RETURNING id`,
           [bracket.id, t.id, n, n],
         );
       }

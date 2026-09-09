@@ -119,14 +119,14 @@ test.describe('Judge Scoring E2E', () => {
 
     const ev = await db.run(
       `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-       VALUES (?, 'active', 3, 'auto_accept_seeding')`,
+       VALUES (?, 'active', 3, 'auto_accept_seeding') RETURNING id`,
       [EVENT_NAME],
     );
     eventId = Number(ev.lastID);
 
     const tm = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, status)
-       VALUES (?, ?, ?, 'checked_in')`,
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
       [eventId, TEAM_NUMBER, TEAM_NAME],
     );
     teamId = Number(tm.lastID);
@@ -134,21 +134,21 @@ test.describe('Judge Scoring E2E', () => {
     const schema = buildSchema(eventId);
     const tpl = await db.run(
       `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E test template', ?, ?, TRUE)`,
+       VALUES (?, 'E2E test template', ?, ?, TRUE) RETURNING id`,
       [TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
     );
     templateId = Number(tpl.lastID);
 
     await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
-       VALUES (?, ?, 'seeding')`,
+       VALUES (?, ?, 'seeding') RETURNING id`,
       [eventId, templateId],
     );
 
     for (let round = 1; round <= 3; round++) {
       await db.run(
         `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-         VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+         VALUES (?, ?, ?, 'seeding', ?, 'queued') RETURNING id`,
         [eventId, teamId, round, round],
       );
     }

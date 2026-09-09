@@ -279,7 +279,7 @@ describe('Scores Revert-Event Edge Cases', () => {
     const template = await seedScoresheetTemplate(testDb.db);
 
     const seedingScoreResult = await testDb.db.run(
-      'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+      'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
       [team.id, 1, 100],
     );
 
@@ -893,7 +893,7 @@ describe('Scores Revert-Event Edge Cases', () => {
       });
       // Pre-existing score for team/round
       await testDb.db.run(
-        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+        'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
         [team.id, 1, 999],
       );
       const template = await seedScoresheetTemplate(testDb.db);

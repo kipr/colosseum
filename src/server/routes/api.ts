@@ -226,7 +226,7 @@ router.post(
       const result = await db.run(
         `INSERT INTO score_submissions 
        (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           null,
           templateId,

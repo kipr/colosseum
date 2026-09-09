@@ -19,7 +19,7 @@ describe('Transaction Behavior', () => {
   it('should commit all writes when transaction succeeds', async () => {
     // Create an event first
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'setup'],
     );
     const eventId = eventResult.lastID!;
@@ -27,15 +27,15 @@ describe('Transaction Behavior', () => {
     // Insert multiple teams in a transaction
     await testDb.db.transaction(async (tx) => {
       await tx.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 100, 'Team A'],
       );
       await tx.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 200, 'Team B'],
       );
       await tx.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 300, 'Team C'],
       );
     });
@@ -53,14 +53,14 @@ describe('Transaction Behavior', () => {
   it('should rollback all writes when transaction throws', async () => {
     // Create an event first
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'setup'],
     );
     const eventId = eventResult.lastID!;
 
     // Insert one team outside transaction
     await testDb.db.run(
-      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
       [eventId, 50, 'Pre-existing Team'],
     );
 
@@ -68,11 +68,11 @@ describe('Transaction Behavior', () => {
     await expect(
       testDb.db.transaction(async (tx) => {
         await tx.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [eventId, 100, 'Team A'],
         );
         await tx.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [eventId, 200, 'Team B'],
         );
 
@@ -90,7 +90,7 @@ describe('Transaction Behavior', () => {
   it('should rollback on constraint violation within transaction', async () => {
     // Create an event
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'setup'],
     );
     const eventId = eventResult.lastID!;
@@ -99,12 +99,12 @@ describe('Transaction Behavior', () => {
     await expect(
       testDb.db.transaction(async (tx) => {
         await tx.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [eventId, 100, 'Team A'],
         );
         // Duplicate team_number should cause constraint violation
         await tx.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [eventId, 100, 'Team B'],
         );
       }),
@@ -117,7 +117,7 @@ describe('Transaction Behavior', () => {
 
   it('should return value from transaction callback', async () => {
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'setup'],
     );
     const eventId = eventResult.lastID!;
@@ -125,11 +125,11 @@ describe('Transaction Behavior', () => {
     // Transaction that returns a value
     const result = await testDb.db.transaction(async (tx) => {
       const r1 = await tx.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 100, 'Team A'],
       );
       const r2 = await tx.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 200, 'Team B'],
       );
       return { team1Id: r1.lastID, team2Id: r2.lastID };
@@ -150,7 +150,7 @@ describe('Transaction Behavior', () => {
 
   it('should handle nested data manipulation in transaction', async () => {
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status, seeding_rounds) VALUES (?, ?, ?)`,
+      `INSERT INTO events (name, status, seeding_rounds) VALUES (?, ?, ?) RETURNING id`,
       ['Test Event', 'setup', 3],
     );
     const eventId = eventResult.lastID!;
@@ -159,21 +159,21 @@ describe('Transaction Behavior', () => {
     await testDb.db.transaction(async (tx) => {
       // Create teams
       const team1 = await tx.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 100, 'Team A'],
       );
       const team2 = await tx.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 200, 'Team B'],
       );
 
       // Create seeding scores for teams
       await tx.run(
-        `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)`,
+        `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id`,
         [team1.lastID, 1, 150],
       );
       await tx.run(
-        `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)`,
+        `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id`,
         [team2.lastID, 1, 120],
       );
     });

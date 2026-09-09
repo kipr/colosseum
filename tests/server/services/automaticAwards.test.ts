@@ -18,7 +18,7 @@ describe('computeAutomaticAwards', () => {
     __setTestDatabaseAdapter(testDb.db);
 
     const event = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Auto Awards', 'active'],
     );
     eventId = event.lastID!;
@@ -31,7 +31,7 @@ describe('computeAutomaticAwards', () => {
 
   async function createTeam(teamNumber: number): Promise<number> {
     const result = await testDb.db.run(
-      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
       [eventId, teamNumber, `Team ${teamNumber}`],
     );
     return result.lastID!;
@@ -40,16 +40,16 @@ describe('computeAutomaticAwards', () => {
   it('omits categories configured as 0', async () => {
     const t1 = await createTeam(1);
     await testDb.db.run(
-      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
       [t1],
     );
     const bracket = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [eventId, 'Main', 4, 'completed', 1],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank)
-       VALUES (?, ?, 1, FALSE, 1)`,
+       VALUES (?, ?, 1, FALSE, 1) RETURNING id`,
       [bracket.lastID, t1],
     );
 
@@ -67,38 +67,38 @@ describe('computeAutomaticAwards', () => {
     const t1 = await createTeam(1);
     const t2 = await createTeam(2);
     await testDb.db.run(
-      `INSERT INTO documentation_scores (event_id, team_id, overall_score) VALUES (?, ?, ?)`,
+      `INSERT INTO documentation_scores (event_id, team_id, overall_score) VALUES (?, ?, ?) RETURNING id`,
       [eventId, t1, 3],
     );
     await testDb.db.run(
-      `INSERT INTO documentation_scores (event_id, team_id, overall_score) VALUES (?, ?, ?)`,
+      `INSERT INTO documentation_scores (event_id, team_id, overall_score) VALUES (?, ?, ?) RETURNING id`,
       [eventId, t2, 1],
     );
     await testDb.db.run(
-      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
       [t1],
     );
     await testDb.db.run(
-      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5)`,
+      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5) RETURNING id`,
       [t2],
     );
 
     const b1 = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [eventId, 'A', 2, 'completed', 1],
     );
     const b2 = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [eventId, 'B', 2, 'completed', 0.5],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, FALSE, 1, 1)`,
+       VALUES (?, ?, 1, FALSE, 1, 1) RETURNING id`,
       [b1.lastID, t1],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, FALSE, 1, 0.5)`,
+       VALUES (?, ?, 1, FALSE, 1, 0.5) RETURNING id`,
       [b2.lastID, t2],
     );
 
@@ -122,32 +122,32 @@ describe('computeAutomaticAwards', () => {
       [t3, 1],
     ] as const) {
       await testDb.db.run(
-        `INSERT INTO documentation_scores (event_id, team_id, overall_score) VALUES (?, ?, ?)`,
+        `INSERT INTO documentation_scores (event_id, team_id, overall_score) VALUES (?, ?, ?) RETURNING id`,
         [eventId, id, doc],
       );
     }
 
     const b1 = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [eventId, 'A', 4, 'completed', 1],
     );
     const b2 = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [eventId, 'B', 4, 'completed', 0.5],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, FALSE, 1, 1)`,
+       VALUES (?, ?, 1, FALSE, 1, 1) RETURNING id`,
       [b1.lastID, t1],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 2, FALSE, 2, 1)`,
+       VALUES (?, ?, 2, FALSE, 2, 1) RETURNING id`,
       [b1.lastID, t2],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, FALSE, 1, 0)`,
+       VALUES (?, ?, 1, FALSE, 1, 0) RETURNING id`,
       [b2.lastID, t3],
     );
 

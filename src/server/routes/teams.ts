@@ -83,7 +83,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const result = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
-       VALUES (?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [
         event_id,
         team_number,
@@ -219,7 +219,7 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
           for (const team of teamsToInsert) {
             const insertResult = await tx.run(
               `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
-               VALUES (?, ?, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?) RETURNING id`,
               [
                 event_id,
                 team.team_number,

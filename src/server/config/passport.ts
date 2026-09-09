@@ -84,7 +84,7 @@ export function setupPassport() {
             // Create new user - set is_admin = true since they passed the domain check
             const result = await db.run(
               `INSERT INTO users (google_id, email, name, access_token, refresh_token, is_admin, token_expires_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
               [
                 googleId,
                 email,

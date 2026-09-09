@@ -39,39 +39,39 @@ test.describe('Spectator Public Views & Release Gating', () => {
 
     const activeEv = await db.run(
       `INSERT INTO events (name, status, event_date, location, seeding_rounds, score_accept_mode, spectator_results_released)
-       VALUES (?, 'active', ?, ?, 3, 'manual', 0)`,
+       VALUES (?, 'active', ?, ?, 3, 'manual', 0) RETURNING id`,
       [ACTIVE_EVENT_NAME, EVENT_DATE, EVENT_LOCATION],
     );
     activeEventId = Number(activeEv.lastID);
 
     const tA1 = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, status)
-       VALUES (?, ?, ?, 'checked_in')`,
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
       [activeEventId, TEAM_A.number, TEAM_A.name],
     );
     const activeTeamAId = Number(tA1.lastID);
 
     const tB1 = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, status)
-       VALUES (?, ?, ?, 'checked_in')`,
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
       [activeEventId, TEAM_B.number, TEAM_B.name],
     );
     const activeTeamBId = Number(tB1.lastID);
 
     // Seeding scores for active event
     await db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 50)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 50) RETURNING id`,
       [activeTeamAId],
     );
     await db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 45)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 45) RETURNING id`,
       [activeTeamBId],
     );
 
     // Bracket for active event (no games yet is fine)
     const activeBr = await db.run(
       `INSERT INTO brackets (event_id, name, bracket_size, status)
-       VALUES (?, 'Active Bracket', 4, 'setup')`,
+       VALUES (?, 'Active Bracket', 4, 'setup') RETURNING id`,
       [activeEventId],
     );
     const activeBracketId = Number(activeBr.lastID);
@@ -79,12 +79,12 @@ test.describe('Spectator Public Views & Release Gating', () => {
     // Bracket entry so there is at least a bracket to pick
     await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-       VALUES (?, ?, 1, FALSE)`,
+       VALUES (?, ?, 1, FALSE) RETURNING id`,
       [activeBracketId, activeTeamAId],
     );
     await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-       VALUES (?, ?, 2, FALSE)`,
+       VALUES (?, ?, 2, FALSE) RETURNING id`,
       [activeBracketId, activeTeamBId],
     );
 
@@ -92,59 +92,59 @@ test.describe('Spectator Public Views & Release Gating', () => {
 
     const releasedEv = await db.run(
       `INSERT INTO events (name, status, event_date, location, seeding_rounds, score_accept_mode, spectator_results_released)
-       VALUES (?, 'complete', ?, ?, 3, 'manual', 1)`,
+       VALUES (?, 'complete', ?, ?, 3, 'manual', 1) RETURNING id`,
       [RELEASED_EVENT_NAME, EVENT_DATE, EVENT_LOCATION],
     );
     releasedEventId = Number(releasedEv.lastID);
 
     const tA2 = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, status)
-       VALUES (?, ?, ?, 'checked_in')`,
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
       [releasedEventId, TEAM_A.number, TEAM_A.name],
     );
     teamAId = Number(tA2.lastID);
 
     const tB2 = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, status)
-       VALUES (?, ?, ?, 'checked_in')`,
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
       [releasedEventId, TEAM_B.number, TEAM_B.name],
     );
     teamBId = Number(tB2.lastID);
 
     // Seeding scores
     await db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 80)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 80) RETURNING id`,
       [teamAId],
     );
     await db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 75)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 1, 75) RETURNING id`,
       [teamBId],
     );
     await db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 2, 85)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 2, 85) RETURNING id`,
       [teamAId],
     );
     await db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 2, 70)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, 2, 70) RETURNING id`,
       [teamBId],
     );
 
     // Seeding rankings
     await db.run(
       `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score)
-       VALUES (?, 82.5, 1, 165)`,
+       VALUES (?, 82.5, 1, 165) RETURNING id`,
       [teamAId],
     );
     await db.run(
       `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score)
-       VALUES (?, 72.5, 2, 145)`,
+       VALUES (?, 72.5, 2, 145) RETURNING id`,
       [teamBId],
     );
 
     // Bracket
     const br = await db.run(
       `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight)
-       VALUES (?, 'Main Bracket', 4, 2, 'completed', 1.0)`,
+       VALUES (?, 'Main Bracket', 4, 2, 'completed', 1.0) RETURNING id`,
       [releasedEventId],
     );
     bracketId = Number(br.lastID);
@@ -152,83 +152,83 @@ test.describe('Spectator Public Views & Release Gating', () => {
     // Bracket entries with rankings
     await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, FALSE, 1, 100, 100)`,
+       VALUES (?, ?, 1, FALSE, 1, 100, 100) RETURNING id`,
       [bracketId, teamAId],
     );
     await db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score)
-       VALUES (?, ?, 2, FALSE, 2, 50, 50)`,
+       VALUES (?, ?, 2, FALSE, 2, 50, 50) RETURNING id`,
       [bracketId, teamBId],
     );
 
     // Bracket game (completed)
     await db.run(
       `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, team1_id, team2_id, status, winner_id, loser_id, team1_score, team2_score)
-       VALUES (?, 1, 'Finals', 1, 'winners', ?, ?, 'completed', ?, ?, 100, 50)`,
+       VALUES (?, 1, 'Finals', 1, 'winners', ?, ?, 'completed', ?, ?, 100, 50) RETURNING id`,
       [bracketId, teamAId, teamBId, teamAId, teamBId],
     );
 
     // Documentation categories and scores
     const cat = await db.run(
-      `INSERT INTO documentation_categories (name, weight, max_score) VALUES ('E2E Doc Cat', 1.0, 100)`,
+      `INSERT INTO documentation_categories (name, weight, max_score) VALUES ('E2E Doc Cat', 1.0, 100) RETURNING id`,
     );
     const catId = Number(cat.lastID);
 
     await db.run(
-      `INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, 1)`,
+      `INSERT INTO event_documentation_categories (event_id, category_id, ordinal) VALUES (?, ?, 1) RETURNING id`,
       [releasedEventId, catId],
     );
 
     const docScoreA = await db.run(
       `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_at)
-       VALUES (?, ?, 90, CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, 90, CURRENT_TIMESTAMP) RETURNING id`,
       [releasedEventId, teamAId],
     );
     await db.run(
       `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
-       VALUES (?, ?, 90)`,
+       VALUES (?, ?, 90) RETURNING id`,
       [Number(docScoreA.lastID), catId],
     );
 
     const docScoreB = await db.run(
       `INSERT INTO documentation_scores (event_id, team_id, overall_score, scored_at)
-       VALUES (?, ?, 80, CURRENT_TIMESTAMP)`,
+       VALUES (?, ?, 80, CURRENT_TIMESTAMP) RETURNING id`,
       [releasedEventId, teamBId],
     );
     await db.run(
       `INSERT INTO documentation_sub_scores (documentation_score_id, category_id, score)
-       VALUES (?, ?, 80)`,
+       VALUES (?, ?, 80) RETURNING id`,
       [Number(docScoreB.lastID), catId],
     );
 
     // Awards
     const aw = await db.run(
       `INSERT INTO event_awards (event_id, name, description, sort_order)
-       VALUES (?, 'Champion Award', 'Best overall team', 0)`,
+       VALUES (?, 'Champion Award', 'Best overall team', 0) RETURNING id`,
       [releasedEventId],
     );
     awardId = Number(aw.lastID);
 
     await db.run(
       `INSERT INTO event_award_recipients (event_award_id, team_id)
-       VALUES (?, ?)`,
+       VALUES (?, ?) RETURNING id`,
       [awardId, teamAId],
     );
     await db.run(
       `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
-       VALUES (?, 'Ada Lovelace', ?)`,
+       VALUES (?, 'Ada Lovelace', ?) RETURNING id`,
       [awardId, teamAId],
     );
 
     const individualAward = await db.run(
       `INSERT INTO event_awards (event_id, name, description, sort_order)
-       VALUES (?, 'Volunteer Award', 'Outstanding volunteer', 1)`,
+       VALUES (?, 'Volunteer Award', 'Outstanding volunteer', 1) RETURNING id`,
       [releasedEventId],
     );
     individualOnlyAwardId = Number(individualAward.lastID);
     await db.run(
       `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
-       VALUES (?, 'Grace Hopper', NULL)`,
+       VALUES (?, 'Grace Hopper', NULL) RETURNING id`,
       [individualOnlyAwardId],
     );
   });
