@@ -1,6 +1,10 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import {
+  isCheckConstraintError,
+  isForeignKeyConstraintError,
+} from '../database/constraintErrors';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { isEventArchived } from '../utils/eventVisibility';
 import { markQueueDirty } from '../services/queueVersion';
@@ -98,11 +102,10 @@ router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
     res.status(201).json(seedingScore ?? { id: result.lastID });
   } catch (error) {
     console.error('Error submitting seeding score:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
+    if (isForeignKeyConstraintError(error)) {
       return res.status(400).json({ error: 'Team does not exist' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res
         .status(400)
         .json({ error: 'Invalid round_number (must be > 0)' });

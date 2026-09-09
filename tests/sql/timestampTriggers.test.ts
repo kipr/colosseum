@@ -1,7 +1,7 @@
 /**
  * Timestamp Triggers Test
  *
- * Verifies that SQLite triggers automatically clear timestamps when status fields
+ * Verifies that database triggers automatically clear timestamps when status fields
  * are rolled back to earlier states.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';

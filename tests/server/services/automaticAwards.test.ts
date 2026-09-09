@@ -49,7 +49,7 @@ describe('computeAutomaticAwards', () => {
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank)
-       VALUES (?, ?, 1, 0, 1)`,
+       VALUES (?, ?, 1, FALSE, 1)`,
       [bracket.lastID, t1],
     );
 
@@ -93,12 +93,12 @@ describe('computeAutomaticAwards', () => {
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, 0, 1, 1)`,
+       VALUES (?, ?, 1, FALSE, 1, 1)`,
       [b1.lastID, t1],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, 0, 1, 0.5)`,
+       VALUES (?, ?, 1, FALSE, 1, 0.5)`,
       [b2.lastID, t2],
     );
 
@@ -137,17 +137,17 @@ describe('computeAutomaticAwards', () => {
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, 0, 1, 1)`,
+       VALUES (?, ?, 1, FALSE, 1, 1)`,
       [b1.lastID, t1],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 2, 0, 2, 1)`,
+       VALUES (?, ?, 2, FALSE, 2, 1)`,
       [b1.lastID, t2],
     );
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, weighted_bracket_raw_score)
-       VALUES (?, ?, 1, 0, 1, 0)`,
+       VALUES (?, ?, 1, FALSE, 1, 0)`,
       [b2.lastID, t3],
     );
 

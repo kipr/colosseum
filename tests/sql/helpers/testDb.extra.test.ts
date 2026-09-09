@@ -5,19 +5,17 @@ import { describe, it, expect } from 'vitest';
 import { createMinimalTestDb } from './testDb';
 
 describe('createMinimalTestDb', () => {
-  it('creates a minimal database without full schema', () => {
-    const testDb = createMinimalTestDb();
+  it('creates a minimal database without full schema', async () => {
+    const testDb = await createMinimalTestDb();
     try {
-      expect(testDb.sqlite).toBeDefined();
       expect(testDb.db).toBeDefined();
       expect(typeof testDb.close).toBe('function');
 
       // The minimal DB should have no tables from the full schema
-      const tables = testDb.sqlite
-        .prepare(
-          "SELECT name FROM sqlite_master WHERE type='table' AND name != 'sqlite_sequence'",
-        )
-        .all();
+      const tables = await testDb.db.all<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = current_schema()`,
+      );
       expect(tables.length).toBe(0);
     } finally {
       testDb.close();
@@ -25,10 +23,10 @@ describe('createMinimalTestDb', () => {
   });
 
   it('supports basic database operations', async () => {
-    const testDb = createMinimalTestDb();
+    const testDb = await createMinimalTestDb();
     try {
-      testDb.sqlite.exec(
-        'CREATE TABLE test (id INTEGER PRIMARY KEY, val TEXT)',
+      await testDb.db.exec(
+        'CREATE TABLE test (id SERIAL PRIMARY KEY, val TEXT)',
       );
       const result = await testDb.db.run('INSERT INTO test (val) VALUES (?)', [
         'hello',

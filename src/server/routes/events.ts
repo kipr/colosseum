@@ -2,6 +2,7 @@ import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import { isCheckConstraintError } from '../database/constraintErrors';
 import {
   isEventArchived,
   areFinalScoresReleased,
@@ -279,8 +280,7 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error('Error updating event:', error);
     // Check for constraint violations
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid status value' });
     }
     res.status(500).json({ error: 'Failed to update event' });

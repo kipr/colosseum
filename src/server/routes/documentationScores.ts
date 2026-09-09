@@ -2,25 +2,10 @@ import express, { Request, Response } from 'express';
 import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import { isUniqueConstraintError } from '../database/constraintErrors';
 import { areFinalScoresReleased } from '../utils/eventVisibility';
 
 const router = express.Router();
-
-function isUniqueConstraintError(error: unknown): boolean {
-  const code =
-    typeof error === 'object' &&
-    error !== null &&
-    'code' in error &&
-    typeof (error as { code?: unknown }).code === 'string'
-      ? ((error as { code: string }).code as string)
-      : '';
-  const message = error instanceof Error ? error.message : '';
-  return (
-    code === '23505' ||
-    message.includes('UNIQUE constraint failed') ||
-    message.includes('duplicate key value violates unique constraint')
-  );
-}
 
 /**
  * Compute overall_score from sub-scores using:

@@ -101,7 +101,8 @@ describe('recalculateSeedingRankings', () => {
 
     expect(rankB?.seed_rank).toBe(1);
     expect(rankA?.seed_rank).toBe(2);
-    expect(totalRows?.count).toBe(2);
+    // COUNT(*) is BIGINT, which pg returns as a string.
+    expect(Number(totalRows?.count)).toBe(2);
   });
 
   it('gives raw seed score of 1.0 when the leader is perfectly consistent', async () => {

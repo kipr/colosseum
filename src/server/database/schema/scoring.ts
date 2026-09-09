@@ -60,6 +60,7 @@ export const scoringSchema: SchemaModule = {
             SELECT 1 FROM information_schema.table_constraints
             WHERE constraint_name = 'score_submissions_bracket_game_id_fkey'
               AND table_name = 'score_submissions'
+              AND table_schema = current_schema()
           ) THEN
             ALTER TABLE score_submissions
               ADD CONSTRAINT score_submissions_bracket_game_id_fkey
@@ -73,6 +74,7 @@ export const scoringSchema: SchemaModule = {
             SELECT 1 FROM information_schema.table_constraints
             WHERE constraint_name = 'score_submissions_game_queue_id_fkey'
               AND table_name = 'score_submissions'
+              AND table_schema = current_schema()
           ) THEN
             ALTER TABLE score_submissions
               ADD CONSTRAINT score_submissions_game_queue_id_fkey
@@ -86,6 +88,7 @@ export const scoringSchema: SchemaModule = {
             SELECT 1 FROM information_schema.table_constraints
             WHERE constraint_name = 'score_submissions_double_seeding_match_id_fkey'
               AND table_name = 'score_submissions'
+              AND table_schema = current_schema()
           ) THEN
             ALTER TABLE score_submissions
               ADD CONSTRAINT score_submissions_double_seeding_match_id_fkey

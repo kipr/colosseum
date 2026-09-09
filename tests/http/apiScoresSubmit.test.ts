@@ -839,7 +839,7 @@ describe('API Score Submit Routes', () => {
           });
           await testDb.db.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, 1, 0), (?, ?, 2, 0), (?, ?, 3, 0)`,
+             VALUES (?, ?, 1, FALSE), (?, ?, 2, FALSE), (?, ?, 3, FALSE)`,
             [
               bracketA.id,
               alpha1.id,
@@ -892,7 +892,7 @@ describe('API Score Submit Routes', () => {
           });
           await testDb.db.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, 1, 0), (?, ?, 2, 0)`,
+             VALUES (?, ?, 1, FALSE), (?, ?, 2, FALSE)`,
             [bracketB.id, beta1.id, bracketB.id, beta2.id],
           );
           await testDb.db.run(

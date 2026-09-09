@@ -76,7 +76,8 @@ router.get(
       if (!eventAndCount) {
         return res.status(404).json({ error: 'Event not found' });
       }
-      const totalCount = eventAndCount.count || 0;
+      // COUNT(*) is BIGINT, which pg returns as a string.
+      const totalCount = Number(eventAndCount.count) || 0;
       const totalPages = Math.ceil(totalCount / limitNum);
 
       // Fetch rows with joins for display fields

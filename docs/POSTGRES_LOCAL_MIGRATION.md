@@ -1,6 +1,6 @@
 # Local PostgreSQL Migration — Design and Implementation Plan
 
-Status: Phase 0 implemented; later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
+Status: Phase 0 implemented. Phase 1 split into 1a (Vitest + CI, implemented) and 1b (local Playwright, not yet implemented); later phases not yet implemented. Work in numbered phases; each phase should be a mergeable PR.
 
 Replace local SQLite with a Docker Compose PostgreSQL 18 server so development, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.
 
@@ -243,14 +243,33 @@ Mostly new files; almost no runtime risk. Setting `DATABASE_URL` today already s
 
 ### Phase 1 — Tests and local e2e on Postgres
 
-- `createTestDb()` → schema-per-test on `colosseum_test`
-- Rewrite sqlite-catalog assertions
-- CI Postgres 18 service + `TEST_DATABASE_URL` (Vitest only)
-- Playwright: `pg` helper, `TEST_DATABASE_URL`, ports 3001/5174, env-driven Vite proxy, `reuseExistingServer: false`; delete SQLite file access
-- Adapter tests against real Postgres
-- Fix type/constraint mismatches that surface (these are the prod bugs)
+Split in two so the Vitest half could merge on its own. SQLite stays the local default until Phase 2, so e2e keeps working untouched while 1a lands.
 
-Until this lands, local `DATABASE_URL` on the default ports and e2e cannot both be the documented default.
+#### Phase 1a — Vitest and CI on Postgres (done)
+
+- `createTestDb()` → schema per Vitest **worker process** on `colosseum_test`, truncated with `RESTART IDENTITY CASCADE` on each acquire. Schema-per-`createTestDb()` call was measured as impractical: 57 files call it from `beforeEach` across 1166 test cases, and one init is ~211 DDL statements over 32 tables. The suite runs in ~60s as built.
+- `search_path` is pinned via the pool's `options` connection parameter, not a per-query `SET`, so a released connection cannot leak into `public` (where 1b's e2e will live).
+- Each acquire returns a **fresh adapter** over the shared pool: `queueSync` keys its coalescing state on adapter object identity, so reuse leaked sync state between tests.
+- sqlite-catalog assertions rewritten to `information_schema` / `pg_indexes`
+- CI Postgres 18 service + `TEST_DATABASE_URL` (Vitest only)
+- `postgresParity.test.ts` (regex over recorded SQL) replaced by `postgresSchema.test.ts`, which introspects the live schema
+- Adapter tests against real Postgres (`postgresAdapter.test.ts`)
+
+Type/constraint mismatches this surfaced, all fixed as production bugs:
+
+- Routes classified constraint violations by SQLite message text, so on Postgres every violation returned 500 instead of 400/409. Now `src/server/database/constraintErrors.ts`.
+- `PostgresAdapter.runInsert` appended `RETURNING id`, swallowed any error, and retried. Inside a transaction the failed probe aborts the transaction, so the retry reported "current transaction is aborted" and the real error was lost. Now falls back only on SQLSTATE 42703, uses a savepoint inside transactions, and memoizes id-less tables.
+- `bracket_entries` inserts wrote integer literals into the boolean `is_bye` column, which Postgres rejects.
+- `GET /scores/by-event/:eventId` returned `totalCount` as a string, because `COUNT(*)` is BIGINT.
+- The `DO $$` FK guards in `scoring.ts` matched constraint names across all schemas, so they could silently skip adding a foreign key.
+
+Known follow-up: `events.event_date` is a `DATE`, and `pg` parses it at **local** midnight, so the serialized value can land on the previous day when the server is not UTC. This is pre-existing production behaviour that the client tolerates via `toDateOnlyString`, so it was left alone; the test suite pins `TZ=UTC`.
+
+#### Phase 1b — Local Playwright on Postgres (not yet implemented)
+
+- Playwright: `pg` helper, `TEST_DATABASE_URL`, ports 3001/5174, env-driven Vite proxy, `reuseExistingServer: false`; delete SQLite file access
+
+Until 1b lands, local `DATABASE_URL` on the default ports and e2e cannot both be the documented default.
 
 ### Phase 2 — Postgres is the only local default
 

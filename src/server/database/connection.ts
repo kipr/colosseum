@@ -180,8 +180,27 @@ class SqliteAdapter implements Database {
   }
 }
 
+/** Postgres SQLSTATE for a reference to a column that does not exist. */
+const PG_UNDEFINED_COLUMN = '42703';
+
+function isUndefinedColumnError(error: unknown): boolean {
+  return (error as { code?: string })?.code === PG_UNDEFINED_COLUMN;
+}
+
+function insertTargetTable(sql: string): string | null {
+  const match = /^\s*INSERT\s+(?:OR\s+\w+\s+)?INTO\s+"?([\w.]+)"?/i.exec(sql);
+  return match ? match[1].toLowerCase() : null;
+}
+
 // PostgreSQL implementation
 class PostgresAdapter implements Database {
+  /**
+   * Tables that have no `id` column, so appending `RETURNING id` to an INSERT
+   * would fail. Learned on first use to keep the fallback off the hot path,
+   * and so that a savepoint is only ever needed once per table.
+   */
+  private tablesWithoutId = new Set<string>();
+
   constructor(private pool: Pool) {}
 
   private convertSql(sql: string): string {
@@ -199,18 +218,57 @@ class PostgresAdapter implements Database {
     return converted;
   }
 
+  /**
+   * Run an INSERT, reporting `lastID` the way better-sqlite3 does.
+   *
+   * `RETURNING id` is appended so the generated key comes back, but a few
+   * tables key on something else (`queue_versions` on `event_id`, `session` on
+   * `sid`) and reject it. Those are detected by SQLSTATE 42703 and remembered.
+   *
+   * Inside a transaction the probe has to be wrapped in a savepoint: in
+   * PostgreSQL a failed statement aborts the whole transaction, so without one
+   * the retry fails with "current transaction is aborted" and the original
+   * error is lost. Any error other than 42703 is re-raised so callers still
+   * see real constraint violations.
+   */
   private async runInsert(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     queryFn: (sql: string, params?: any[]) => Promise<any>,
     convertedSql: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     params?: any[],
+    inTransaction = false,
   ): Promise<DatabaseResult> {
+    const table = insertTargetTable(convertedSql);
+
+    if (table && this.tablesWithoutId.has(table)) {
+      const result = await queryFn(convertedSql, params);
+      return { changes: result.rowCount || 0 };
+    }
+
     const returningSQL = convertedSql.replace(/;?\s*$/, ' RETURNING id;');
+    const savepoint = inTransaction ? 'colosseum_insert_returning' : null;
+
+    if (savepoint) {
+      await queryFn(`SAVEPOINT ${savepoint}`);
+    }
+
     try {
       const result = await queryFn(returningSQL, params);
+      if (savepoint) {
+        await queryFn(`RELEASE SAVEPOINT ${savepoint}`);
+      }
       return { lastID: result.rows[0]?.id, changes: result.rowCount || 0 };
-    } catch {
+    } catch (error) {
+      if (savepoint) {
+        await queryFn(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+      }
+      if (!isUndefinedColumnError(error)) {
+        throw error;
+      }
+      if (table) {
+        this.tablesWithoutId.add(table);
+      }
       const result = await queryFn(convertedSql, params);
       return { changes: result.rowCount || 0 };
     }
@@ -283,6 +341,7 @@ class PostgresAdapter implements Database {
               (s, p) => client.query(s, p),
               convertedSql,
               normalizedParams,
+              true,
             );
           }
 
@@ -356,6 +415,15 @@ export function getPostgresPool(): Pool | null {
 export function createSqliteDatabase(db: SQLiteDatabase): Database {
   db.pragma('foreign_keys = ON;');
   return new SqliteAdapter(db);
+}
+
+/**
+ * Create a PostgreSQL Database adapter from a pg Pool.
+ * Useful for tests that own their own pool (for example one scoped to a
+ * per-worker schema via the connection's `options` parameter).
+ */
+export function createPostgresDatabase(pool: Pool): Database {
+  return new PostgresAdapter(pool);
 }
 
 /**
