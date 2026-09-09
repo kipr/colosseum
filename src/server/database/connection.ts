@@ -55,8 +55,19 @@ export function resolvePostgresConfig(
   throw new Error(POSTGRES_REQUIRED_MESSAGE);
 }
 
+function isAggregateError(
+  error: unknown,
+): error is Error & { errors: unknown[] } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'errors' in error &&
+    Array.isArray((error as { errors: unknown }).errors)
+  );
+}
+
 function describePostgresError(error: unknown): string {
-  if (error instanceof AggregateError) {
+  if (isAggregateError(error)) {
     return error.errors.map(describePostgresError).join('; ');
   }
   const message = error instanceof Error ? error.message : String(error);
@@ -65,7 +76,7 @@ function describePostgresError(error: unknown): string {
 }
 
 function isUnreachablePostgresError(error: unknown): boolean {
-  if (error instanceof AggregateError) {
+  if (isAggregateError(error)) {
     const message = error.message?.trim() ?? '';
     return (
       !message ||
@@ -83,7 +94,6 @@ function rethrowPostgresError(
     throw new Error(
       'Could not connect to PostgreSQL. Is it running? Try `npm run db:up && npm run db:wait`.\n' +
         `Underlying error: ${describePostgresError(error)}`,
-      { cause: error },
     );
   }
   throw error;
