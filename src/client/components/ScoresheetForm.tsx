@@ -1666,12 +1666,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             -
           </button>
           <input
-            type="number"
+            type="text"
             className="score-input repeatable-group-number"
-            min={min}
-            max={max}
-            step={step}
             inputMode={Number.isInteger(step) ? 'numeric' : 'decimal'}
+            autoComplete="off"
+            spellCheck={false}
+            role="spinbutton"
+            aria-valuemin={min}
+            aria-valuemax={max}
+            aria-valuenow={hasNumericValue ? numericValue : undefined}
             value={value ?? ''}
             placeholder={childField.placeholder || '0'}
             onChange={(e) => {
