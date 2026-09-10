@@ -10,6 +10,11 @@ import {
   updateBracketQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import {
+  getMissingTeamInitialsError,
+  getRequiredTeamInitialsSlots,
+  type EventScoreType,
+} from '../../shared/teamInitials';
 
 const router = express.Router();
 
@@ -1292,6 +1297,36 @@ router.put(
         return res.status(400).json({
           error: 'Disqualification details require a disqualification result',
         });
+      }
+
+      const eventScoreType = oldScore.score_type as EventScoreType | null;
+      if (
+        oldScore.event_id != null &&
+        (eventScoreType === 'seeding' ||
+          eventScoreType === 'bracket' ||
+          eventScoreType === 'double_seeding')
+      ) {
+        let hasTeamB = eventScoreType === 'bracket';
+        if (
+          eventScoreType === 'double_seeding' &&
+          oldScore.double_seeding_match_id != null
+        ) {
+          const match = await db.get<{ team2_id: number | null }>(
+            'SELECT team2_id FROM double_seeding_matches WHERE id = ?',
+            [oldScore.double_seeding_match_id],
+          );
+          hasTeamB = match?.team2_id != null;
+        }
+        const initialsError = getMissingTeamInitialsError(
+          scoreData,
+          getRequiredTeamInitialsSlots({
+            scoreType: eventScoreType,
+            hasTeamB,
+          }),
+        );
+        if (initialsError) {
+          return res.status(400).json({ error: initialsError });
+        }
       }
 
       await db.run(

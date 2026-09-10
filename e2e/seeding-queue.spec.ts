@@ -173,6 +173,8 @@ async function submitSeedingScore(
     page.locator('.grand-total-field').filter({ hasText: 'Total Score' }),
   ).toContainText(String(expectedTotal));
 
+  await page.getByLabel('Team Initials').fill('AB');
+
   await page.getByRole('button', { name: 'Submit Score' }).click();
 
   await expect(page.getByText('Score submitted successfully!')).toBeVisible({

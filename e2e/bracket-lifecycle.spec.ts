@@ -399,6 +399,9 @@ test.describe('Bracket Lifecycle E2E', () => {
     await winnerButtons.first().click();
     await expect(winnerButtons.first().locator('.winner-badge')).toBeVisible();
 
+    await page.getByLabel('Team A Initials').fill('AA');
+    await page.getByLabel('Team B Initials').fill('BB');
+
     // Submit
     await page.getByRole('button', { name: 'Submit Winner' }).click();
 
