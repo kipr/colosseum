@@ -2,6 +2,7 @@
 import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
 import { scoreBotballStartBoxCubes } from '../scoring/botballStartBoxCubes';
 import { getBlankFieldValue } from '../../shared/scoresheetSchema';
+import { stripTeamInitialsFields } from '../../shared/teamInitials';
 
 export interface BracketTeamDisplay {
   teamNumber: string;
@@ -26,24 +27,6 @@ export interface DbBracketSource {
   scope?: 'event';
   eventId?: number | null;
   bracketId?: number | null;
-}
-
-export function shouldHideSoloDoubleSeedingField(
-  fieldId: string | undefined,
-  formData: Record<string, any>,
-  isDoubleSeeding: boolean,
-): boolean {
-  if (
-    !isDoubleSeeding ||
-    formData.double_seeding_match_id == null ||
-    formData.team_b_id != null
-  ) {
-    return false;
-  }
-
-  return ['team_b_team_initials', 'side_b_team_initials'].includes(
-    fieldId ?? '',
-  );
 }
 
 const REPEATABLE_GROUP_TEXT_TYPES = new Set(['text', 'dropdown', 'buttons']);
@@ -497,6 +480,7 @@ export function buildDoubleEliminationSchema(options: {
     title: title || 'Double Elimination Score Sheet',
     eventId,
     scoreDestination: 'db',
+    requireTeamInitials: true,
     bracketSource: buildEventScopedBracketSource(eventId),
     teamsDataSource: {
       type: 'db',
@@ -571,7 +555,9 @@ export function buildDoubleEliminationSchema(options: {
   });
 
   if (templateFields && templateFields.length > 0) {
-    schema.fields.push(...adaptDoubleEliminationFields(templateFields));
+    schema.fields.push(
+      ...stripTeamInitialsFields(adaptDoubleEliminationFields(templateFields)),
+    );
     return schema;
   }
 
@@ -648,6 +634,7 @@ export function buildDoubleSeedingSchema(options: {
     title: title || 'Double Seeding Score Sheet',
     eventId,
     scoreDestination: 'db',
+    requireTeamInitials: true,
     teamsDataSource: {
       type: 'db',
       eventId,
@@ -695,7 +682,9 @@ export function buildDoubleSeedingSchema(options: {
 
   if (templateFields && templateFields.length > 0) {
     // Reuse the side A/B field adaptation from DE; side totals stay separate.
-    schema.fields.push(...adaptDoubleEliminationFields(templateFields));
+    schema.fields.push(
+      ...stripTeamInitialsFields(adaptDoubleEliminationFields(templateFields)),
+    );
     return schema;
   }
 

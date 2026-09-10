@@ -290,10 +290,11 @@ test.describe('Judge Scoring E2E', () => {
       .locator('input[type="number"]');
     await driverInput.fill('30');
 
-    // Calculated total should update
     await expect(
       page.locator('.grand-total-field').filter({ hasText: 'Total Score' }),
     ).toContainText('55');
+
+    await page.getByLabel('Team Initials').fill('AB');
 
     // Submit
     await page.getByRole('button', { name: 'Submit Score' }).click();
@@ -354,6 +355,8 @@ test.describe('Judge Scoring E2E', () => {
       .filter({ hasText: 'Driver' })
       .locator('input[type="number"]')
       .fill('15');
+
+    await page.getByLabel('Team Initials').fill('AB');
 
     await page.getByRole('button', { name: 'Submit Score' }).click();
 

@@ -21,6 +21,7 @@ import {
   seedScoreSubmission,
   seedSeedingScore,
 } from './helpers/seed';
+import { withTeamInitials } from './helpers/teamInitials';
 import scoresRoutes from '../../src/server/routes/scores';
 
 describe('Scores Routes – CRUD extra coverage', () => {
@@ -62,7 +63,7 @@ describe('Scores Routes – CRUD extra coverage', () => {
       });
 
       const res = await http.put(`${baseUrl}/scores/${score.id}`, {
-        scoreData: { total: 100 },
+        scoreData: withTeamInitials({ total: 100 }, 'seeding'),
       });
       expect(res.status).toBe(200);
       expect((res.json as { success: boolean }).success).toBe(true);
@@ -71,7 +72,9 @@ describe('Scores Routes – CRUD extra coverage', () => {
         'SELECT score_data FROM score_submissions WHERE id = ?',
         [score.id],
       );
-      expect(JSON.parse(updated.score_data)).toEqual({ total: 100 });
+      expect(JSON.parse(updated.score_data)).toEqual(
+        withTeamInitials({ total: 100 }, 'seeding'),
+      );
     });
 
     it('creates audit entry for event-scoped score update', async () => {
@@ -85,7 +88,7 @@ describe('Scores Routes – CRUD extra coverage', () => {
       });
 
       await http.put(`${baseUrl}/scores/${score.id}`, {
-        scoreData: { total: 200 },
+        scoreData: withTeamInitials({ total: 200 }, 'seeding'),
       });
 
       const audit = await testDb.db.get(
@@ -94,6 +97,25 @@ describe('Scores Routes – CRUD extra coverage', () => {
       );
       expect(audit).toBeDefined();
       expect(audit.event_id).toBe(event.id);
+    });
+
+    it('returns 400 when event-scoped score is missing team initials', async () => {
+      const event = await seedEvent(testDb.db);
+      const template = await seedScoresheetTemplate(testDb.db);
+      const score = await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        score_data: JSON.stringify({ total: 50 }),
+        event_id: event.id,
+        score_type: 'seeding',
+      });
+
+      const res = await http.put(`${baseUrl}/scores/${score.id}`, {
+        scoreData: { total: 100 },
+      });
+      expect(res.status).toBe(400);
+      expect((res.json as { error: string }).error).toContain(
+        'Team Initials are required',
+      );
     });
 
     it('returns 404 when score not found', async () => {

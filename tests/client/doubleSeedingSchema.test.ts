@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildDoubleSeedingSchema,
-  shouldHideSoloDoubleSeedingField,
-} from '../../src/client/components/scoresheetUtils';
+import { buildDoubleSeedingSchema } from '../../src/client/components/scoresheetUtils';
+import { isTeamInitialsFieldId } from '../../src/shared/teamInitials';
 
 interface SchemaField {
   id: string;
@@ -20,6 +18,7 @@ describe('buildDoubleSeedingSchema', () => {
 
     expect(schema.scoreKind).toBe('double_seeding');
     expect(schema.scoreDestination).toBe('db');
+    expect(schema.requireTeamInitials).toBe(true);
     expect(schema.eventId).toBe(42);
     // Never head-to-head: that means bracket scoring with a winner
     expect(schema.mode).toBeUndefined();
@@ -75,43 +74,29 @@ describe('buildDoubleSeedingSchema', () => {
     );
   });
 
-  it('hides only side-B initials for solo double-seeding matches', () => {
-    const soloFormData = {
-      double_seeding_match_id: 12,
-      team_a_id: 1,
-      team_b_id: undefined,
-    };
+  it('strips template initials fields instead of keeping them as scoring inputs', () => {
+    const schema = buildDoubleSeedingSchema({
+      title: 'Adapted Sheet',
+      eventId: 7,
+      templateFields: [
+        { id: 'side_a_score', label: 'Side A Score', type: 'number' },
+        {
+          id: 'side_a_team_initials',
+          label: 'Team Initials',
+          type: 'text',
+          required: true,
+        },
+        {
+          id: 'side_b_team_initials',
+          label: 'Team Initials',
+          type: 'text',
+          required: true,
+        },
+      ],
+    });
 
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        soloFormData,
-        true,
-      ),
-    ).toBe(true);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'side_b_team_initials',
-        soloFormData,
-        true,
-      ),
-    ).toBe(true);
-    expect(
-      shouldHideSoloDoubleSeedingField('team_b_score', soloFormData, true),
-    ).toBe(false);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        { ...soloFormData, team_b_id: 2 },
-        true,
-      ),
-    ).toBe(false);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        soloFormData,
-        false,
-      ),
-    ).toBe(false);
+    const fields = schema.fields as SchemaField[];
+    expect(fields.some((field) => isTeamInitialsFieldId(field.id))).toBe(false);
+    expect(fields.some((field) => field.id === 'team_a_score')).toBe(true);
   });
 });
