@@ -15,22 +15,35 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Production stage
-FROM node:24-trixie-slim AS production
+# Install production dependencies separately so npm is not needed at runtime.
+FROM node:24-trixie-slim AS production-dependencies
 
 WORKDIR /app
 
-# Copy package files
 COPY package*.json ./
-
-# Install production dependencies only
 RUN npm ci --omit=dev
 
-# Copy built files from builder
+# Production stage
+FROM debian:trixie-slim AS production
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    dumb-init \
+    libatomic1 \
+    libstdc++6 \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --gid 1000 node \
+  && useradd --uid 1000 --gid node --create-home node
+
+WORKDIR /app
+
+# Copy only the Node runtime, production dependencies, and built application.
+COPY --from=production-dependencies /usr/local/bin/node /usr/local/bin/node
+COPY --from=production-dependencies /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/static ./static
 
-# The official Node image provides this unprivileged runtime user.
 USER node
 
 # Set environment
@@ -40,5 +53,5 @@ ENV PORT=8080
 # Expose port (Cloud Run uses 8080 by default)
 EXPOSE 8080
 
-# Start the server
+ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "dist/server/server.js"]
