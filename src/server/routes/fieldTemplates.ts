@@ -7,9 +7,10 @@ import {
 } from '../../shared/scoresheetSchema';
 
 const router = express.Router();
+router.use(requireAuth);
 
 // Get all field templates
-router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
     const templates = await db.all(
@@ -23,7 +24,7 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // Get a single field template
-router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -48,7 +49,7 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // Create a new field template
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const { name, description, fields } = req.body;
 
@@ -91,7 +92,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // Update a field template
-router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.put('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, description, fields } = req.body;
@@ -133,7 +134,7 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // Delete a field template
-router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();

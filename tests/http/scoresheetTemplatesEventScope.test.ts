@@ -313,6 +313,7 @@ describe('Scoresheet Templates Event Scope', () => {
       expect(body.id).toBe(template.id);
       expect(body.name).toBe('Admin Preview');
       expect(body.schema).toEqual({ fields: [] });
+      expect((body as { access_code?: string }).access_code).toBeDefined();
     });
 
     it('returns 404 when template does not exist', async () => {

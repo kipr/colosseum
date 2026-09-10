@@ -14,11 +14,20 @@ import {
   updateSeedingQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import {
+  getMissingTeamInitialsError,
+  getRequiredTeamInitialsSlots,
+  type EventScoreType,
+} from '../../shared/teamInitials';
 
-const router = express.Router();
+import { composeRouters } from './composeRouters';
+
+const judgeRouter = express.Router();
+const staffRouter = express.Router();
+staffRouter.use(requireAuth);
 
 // Submit a score (requires judge session or admin auth)
-router.post(
+judgeRouter.post(
   '/scores/submit',
   scoreSubmitLimiter,
   requireJudgeSession,
@@ -149,9 +158,12 @@ router.post(
         scoreType === 'double_seeding' &&
         double_seeding_match_id != null;
       let isDbBackedDoubleSeeding = false;
+      let doubleSeedingMatch:
+        | { id: number; team2_id: number | null }
+        | undefined;
       if (attemptingDbBackedDoubleSeeding) {
-        const match = await db.get(
-          `SELECT id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
+        const match = await db.get<{ id: number; team2_id: number | null }>(
+          `SELECT id, team2_id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
           [double_seeding_match_id, eventId],
         );
         if (!match) {
@@ -160,6 +172,7 @@ router.post(
               'Double-seeding match not found or does not belong to this event. Invalid event.',
           });
         }
+        doubleSeedingMatch = match;
         isDbBackedDoubleSeeding = true;
       }
 
@@ -207,6 +220,26 @@ router.post(
           error:
             'Event-scoped submission is required. Provide eventId and scoreType (seeding, bracket, or double_seeding) with bracket_game_id for bracket scores and double_seeding_match_id for double-seeding scores.',
         });
+      }
+
+      if (
+        scoreType === 'seeding' ||
+        scoreType === 'bracket' ||
+        scoreType === 'double_seeding'
+      ) {
+        const initialsError = getMissingTeamInitialsError(
+          scoreData,
+          getRequiredTeamInitialsSlots({
+            scoreType: scoreType as EventScoreType,
+            hasTeamB:
+              scoreType === 'bracket' ||
+              (scoreType === 'double_seeding' &&
+                doubleSeedingMatch?.team2_id != null),
+          }),
+        );
+        if (initialsError) {
+          return res.status(400).json({ error: initialsError });
+        }
       }
 
       // Add metadata to score data for head-to-head
@@ -345,9 +378,8 @@ router.post(
 );
 
 // Get user's score history
-router.get(
+staffRouter.get(
   '/scores/history',
-  requireAuth,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const db = await getDatabase();
@@ -374,4 +406,4 @@ router.get(
   },
 );
 
-export default router;
+export default composeRouters(judgeRouter, staffRouter);

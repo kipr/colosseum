@@ -37,11 +37,11 @@
 .scoresheet-header-fields .score-field {
   border-bottom: none;
   padding: 0.5rem 0;
-  grid-template-columns: 150px 1fr;
+  grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
 }
 
 .scoresheet-header-fields .score-field.compact {
-  grid-template-columns: 150px auto;
+  grid-template-columns: minmax(0, 150px) minmax(0, max-content);
 }
 
 .scoresheet-columns {
@@ -52,6 +52,7 @@
 }
 
 .scoresheet-column {
+  min-width: 0;
   border: 1px solid var(--border-color);
   padding: 1rem;
   border-radius: 0.5rem;
@@ -92,15 +93,20 @@
 
 .score-field {
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0.5rem;
   border-bottom: 1px solid #e5e5e5;
+  min-width: 0;
 }
 
 .score-field.compact {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
+}
+
+.score-field.compact .score-button-group {
+  justify-content: flex-end;
 }
 
 [data-theme='dark'] .score-field {
@@ -116,9 +122,11 @@
 }
 
 .score-label {
+  min-width: 0;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-color);
+  overflow-wrap: break-word;
 }
 
 .score-label .multiplier {
@@ -189,10 +197,14 @@ select.score-input {
 
 .score-button-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .score-option-button {
+  flex: 0 0 auto;
   padding: 0.35rem 0.75rem;
   border: 1px solid var(--border-color);
   background-color: var(--card-bg);
@@ -298,6 +310,8 @@ select.score-input {
   align-items: stretch;
   width: auto;
   max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .repeatable-group-number {
@@ -307,7 +321,16 @@ select.score-input {
   border-radius: 0;
 }
 
+/* Repeatable-group steppers use a text input plus custom +/- buttons so
+   native number-field arrows cannot overlay the value when rows reflow. */
+.repeatable-group-number-stepper .score-input.repeatable-group-number {
+  flex: 1 1 2.5rem;
+  width: 2.75rem;
+  max-width: 100%;
+}
+
 .repeatable-group-number-stepper-button {
+  flex: 0 0 auto;
   min-width: 1.65rem;
   padding: 0 0.35rem;
   border: 1px solid var(--border-color);
@@ -465,6 +488,13 @@ select.score-input {
   text-align: center;
 }
 
+@media (max-width: 840px) {
+  .scoresheet-columns {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
+
 @media (max-width: 768px) {
   .scoresheet-columns {
     grid-template-columns: 1fr;
@@ -480,12 +510,12 @@ select.score-input {
   }
 
   .score-field {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0.25rem;
   }
 
   .score-field.compact {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, max-content);
   }
 
   .scoresheet-header-fields .score-field {
@@ -516,9 +546,9 @@ select.score-input {
     max-width: 100%;
   }
 
-  .repeatable-group-number-stepper .repeatable-group-number {
-    flex: 1 1 auto;
-    min-width: 0;
+  .repeatable-group-number-stepper .score-input.repeatable-group-number {
+    width: 2.75rem;
+    max-width: 100%;
   }
 
   .calculated-value {
@@ -582,16 +612,13 @@ select.score-input {
     max-width: none;
   }
 
-  .repeatable-group-number-stepper .repeatable-group-number {
+  .repeatable-group-number-stepper .score-input.repeatable-group-number {
     flex: 0 0 3.25rem;
+    width: 3.25rem;
   }
 
   .score-label {
     font-size: 0.8rem;
-  }
-
-  .score-button-group {
-    flex-wrap: wrap;
   }
 
   .score-option-button {
@@ -668,6 +695,32 @@ select.score-input {
   margin-top: 0.5rem;
   resize: vertical;
   width: 100%;
+}
+
+.team-initials-container {
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin: 1.5rem 0 0;
+}
+
+.team-initials-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.team-initials-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  min-width: 180px;
+  max-width: 280px;
+  flex: 1;
 }
 
 .winner-select-container {

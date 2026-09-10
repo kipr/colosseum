@@ -27,14 +27,27 @@ describe('Admin Routes', () => {
   // ==========================================================================
 
   describe('GET /api/admin/users', () => {
-    it('returns 401 when not authenticated', async () => {
+    it('returns 403 when not authenticated', async () => {
       const app = createTestApp();
       app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
       try {
         const res = await http.get(`${server.baseUrl}/api/admin/users`);
-        expect(res.status).toBe(401);
+        expect(res.status).toBe(403);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it('returns 403 for authenticated non-admin', async () => {
+      const app = createTestApp({ user: { id: 1, is_admin: false } });
+      app.use('/api/admin', adminRoutes);
+      const server = await startServer(app);
+
+      try {
+        const res = await http.get(`${server.baseUrl}/api/admin/users`);
+        expect(res.status).toBe(403);
       } finally {
         await server.close();
       }

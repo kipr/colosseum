@@ -12,11 +12,18 @@ import {
   getBracketGameOptionValue,
   getBracketSourceEventId,
   isEventScopedBracketSource,
-  shouldHideSoloDoubleSeedingField,
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
 import { getFieldDefaultValue } from '../../shared/scoresheetSchema';
 import type { BracketResultType } from '../../shared/bracketResult';
+import {
+  buildTeamInitialsScoreEntries,
+  getMissingTeamInitialsError,
+  getRequiredTeamInitialsSlots,
+  inferEventScoreType,
+  isTeamInitialsFieldId,
+} from '../../shared/teamInitials';
+import TeamInitialsFields from './TeamInitialsFields';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -130,13 +137,16 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }>
   >([]);
 
-  const isSoloDoubleSeedingFieldHidden = (field: any): boolean => {
-    return shouldHideSoloDoubleSeedingField(
-      field.id,
-      formData,
-      isDoubleSeeding,
-    );
-  };
+  const eventScoreType = inferEventScoreType(schema);
+  const teamInitialsSlots =
+    eventScoreType == null
+      ? []
+      : getRequiredTeamInitialsSlots({
+          scoreType: eventScoreType,
+          hasTeamB:
+            eventScoreType === 'bracket' ||
+            (eventScoreType === 'double_seeding' && formData.team_b_id != null),
+        });
 
   // Show notification and auto-dismiss
   const showNotification = (
@@ -939,6 +949,17 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return;
     }
 
+    if (teamInitialsSlots.length > 0) {
+      const initialsError = getMissingTeamInitialsError(
+        formData,
+        teamInitialsSlots,
+      );
+      if (initialsError) {
+        alert(initialsError);
+        return;
+      }
+    }
+
     if (
       isHeadToHead &&
       resultType !== 'standard' &&
@@ -959,7 +980,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     );
 
     schema.fields.forEach((field: any) => {
-      if (isSoloDoubleSeedingFieldHidden(field)) {
+      if (isTeamInitialsFieldId(field.id)) {
         return;
       }
 
@@ -1004,6 +1025,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     Object.assign(
       scoreData,
       buildRepeatableGroupDerivedScoreEntries(schema.fields, derivedByFieldId),
+      buildTeamInitialsScoreEntries(formData, teamInitialsSlots),
     );
 
     // For head-to-head, determine the winner info
@@ -1408,7 +1430,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const renderField = (field: any) => {
-    if (isSoloDoubleSeedingFieldHidden(field)) {
+    if (isTeamInitialsFieldId(field.id)) {
       return null;
     }
 
@@ -1666,12 +1688,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             -
           </button>
           <input
-            type="number"
+            type="text"
             className="score-input repeatable-group-number"
-            min={min}
-            max={max}
-            step={step}
             inputMode={Number.isInteger(step) ? 'numeric' : 'decimal'}
+            autoComplete="off"
+            spellCheck={false}
+            role="spinbutton"
+            aria-valuemin={min}
+            aria-valuemax={max}
+            aria-valuenow={hasNumericValue ? numericValue : undefined}
             value={value ?? ''}
             placeholder={childField.placeholder || '0'}
             onChange={(e) => {
@@ -1983,6 +2008,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     )
       return false;
     if (f.type === 'winner-select') return false;
+    if (isTeamInitialsFieldId(f.id)) return false;
     if (
       useQueueForSeeding &&
       ['team_number', 'team_name', 'round'].includes(f.id)
@@ -2262,6 +2288,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
         {/* Render grand total if it exists (no column specified) */}
         {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
+
+        <TeamInitialsFields
+          slots={teamInitialsSlots}
+          values={formData}
+          onChange={handleInputChange}
+          required={resultType === 'standard'}
+        />
 
         <div className="scoresheet-footer">
           <button type="submit" className="btn btn-primary btn-large">

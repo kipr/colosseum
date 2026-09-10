@@ -497,6 +497,19 @@ describe('Double Seeding Routes', () => {
       expect((res.json as Array<{ score: number }>)[0].score).toBe(17);
     });
 
+    it('returns 404 for team scores when the event is archived', async () => {
+      const event = await seedEvent(testDb.db, { status: 'archived' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+
+      const res = await http.get(
+        `${publicServer.baseUrl}/double-seeding/scores/team/${team.id}`,
+      );
+      expect(res.status).toBe(404);
+    });
+
     it('recalculates and lists rankings', async () => {
       const event = await seedEvent(testDb.db, { status: 'active' });
       const team = await seedTeam(testDb.db, {

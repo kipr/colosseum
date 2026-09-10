@@ -187,7 +187,7 @@ export default function TemplateEditorModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!accessCode.trim()) {
+    if (!templateId && !accessCode.trim()) {
       alert('Access code is required');
       return;
     }
@@ -315,18 +315,26 @@ export default function TemplateEditorModal({
             <div className="form-group">
               <label>
                 Access Code{' '}
-                <span style={{ color: 'var(--danger-color)' }}>*</span>
+                {!templateId && (
+                  <span style={{ color: 'var(--danger-color)' }}>*</span>
+                )}
               </label>
               <input
                 type="text"
                 className="field-input"
                 value={accessCode}
                 onChange={(e) => setAccessCode(e.target.value)}
-                placeholder="Enter code for judges to use"
-                required
+                placeholder={
+                  templateId
+                    ? 'Leave blank to keep the current code'
+                    : 'Enter code for judges to use'
+                }
+                required={!templateId}
               />
               <small>
-                Judges will need this code to access the score sheet
+                {templateId
+                  ? 'Leave blank to keep the current access code.'
+                  : 'Judges will need this code to access the score sheet'}
               </small>
             </div>
             <div className="form-group">

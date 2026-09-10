@@ -68,6 +68,24 @@ describe('Teams Routes', () => {
           await server.close();
         }
       });
+
+      it('returns 404 for a team on an archived event', async () => {
+        const event = await seedEvent(testDb.db, { status: 'archived' });
+        const team = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+        });
+        const app = createTestApp();
+        app.use('/teams', teamsRoutes);
+        const server = await startServer(app);
+
+        try {
+          const res = await http.get(`${server.baseUrl}/teams/${team.id}`);
+          expect(res.status).toBe(404);
+        } finally {
+          await server.close();
+        }
+      });
     });
 
     describe('POST /teams (auth required)', () => {

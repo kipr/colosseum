@@ -1,15 +1,21 @@
 import express, { Request, Response } from 'express';
-import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
+import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import {
   isCheckConstraintError,
   isForeignKeyConstraintError,
 } from '../database/constraintErrors';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
-import { isEventArchived } from '../utils/eventVisibility';
+import {
+  isEventArchived,
+  isExistingTeamEventArchived,
+} from '../utils/eventVisibility';
 import { markQueueDirty } from '../services/queueVersion';
+import { composeRouters } from './composeRouters';
 
+const publicRouter = express.Router();
 const router = express.Router();
+router.use(requireAdmin);
 
 // Allowed fields for PATCH updates on seeding_scores
 const ALLOWED_SCORE_UPDATE_FIELDS = [
@@ -19,50 +25,59 @@ const ALLOWED_SCORE_UPDATE_FIELDS = [
 ];
 
 // GET /seeding/scores/team/:teamId - Get scores for team (public for judges)
-router.get('/scores/team/:teamId', async (req: Request, res: Response) => {
-  try {
-    const { teamId } = req.params;
-    const db = await getDatabase();
+publicRouter.get(
+  '/scores/team/:teamId',
+  async (req: Request, res: Response) => {
+    try {
+      const { teamId } = req.params;
+      if (await isExistingTeamEventArchived(teamId)) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const db = await getDatabase();
 
-    const scores = await db.all(
-      'SELECT * FROM seeding_scores WHERE team_id = ? ORDER BY round_number ASC',
-      [teamId],
-    );
+      const scores = await db.all(
+        'SELECT * FROM seeding_scores WHERE team_id = ? ORDER BY round_number ASC',
+        [teamId],
+      );
 
-    res.json(scores);
-  } catch (error) {
-    console.error('Error fetching seeding scores:', error);
-    res.status(500).json({ error: 'Failed to fetch seeding scores' });
-  }
-});
+      res.json(scores);
+    } catch (error) {
+      console.error('Error fetching seeding scores:', error);
+      res.status(500).json({ error: 'Failed to fetch seeding scores' });
+    }
+  },
+);
 
 // GET /seeding/scores/event/:eventId - Get all scores for event (public; blocked for archived events)
-router.get('/scores/event/:eventId', async (req: Request, res: Response) => {
-  try {
-    const { eventId } = req.params;
-    if (await isEventArchived(eventId)) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-    const db = await getDatabase();
+publicRouter.get(
+  '/scores/event/:eventId',
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      if (await isEventArchived(eventId)) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const db = await getDatabase();
 
-    const scores = await db.all(
-      `SELECT ss.*, t.team_number, t.team_name, t.display_name
+      const scores = await db.all(
+        `SELECT ss.*, t.team_number, t.team_name, t.display_name
        FROM seeding_scores ss
        JOIN teams t ON ss.team_id = t.id
        WHERE t.event_id = ?
        ORDER BY t.team_number ASC, ss.round_number ASC`,
-      [eventId],
-    );
+        [eventId],
+      );
 
-    res.json(scores);
-  } catch (error) {
-    console.error('Error fetching event seeding scores:', error);
-    res.status(500).json({ error: 'Failed to fetch seeding scores' });
-  }
-});
+      res.json(scores);
+    } catch (error) {
+      console.error('Error fetching event seeding scores:', error);
+      res.status(500).json({ error: 'Failed to fetch seeding scores' });
+    }
+  },
+);
 
 // POST /seeding/scores - Submit seeding score (admin only)
-router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
+router.post('/scores', async (req: Request, res: Response) => {
   try {
     const { team_id, round_number, score, score_submission_id } = req.body;
 
@@ -115,122 +130,116 @@ router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
 });
 
 // PATCH /seeding/scores/:id - Update score (admin only)
-router.patch(
-  '/scores/:id',
-  requireAuth,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const db = await getDatabase();
-
-      // Filter to only allowed fields
-      const updates = Object.entries(req.body).filter(([key]) =>
-        ALLOWED_SCORE_UPDATE_FIELDS.includes(key),
-      );
-
-      if (updates.length === 0) {
-        return res.status(400).json({ error: 'No valid fields to update' });
-      }
-
-      const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
-      const values = updates.map(([, value]) => value);
-
-      const result = await db.run(
-        `UPDATE seeding_scores SET ${setClause} WHERE id = ?`,
-        [...values, id],
-      );
-
-      if (result.changes === 0) {
-        return res.status(404).json({ error: 'Seeding score not found' });
-      }
-
-      const score = await db.get('SELECT * FROM seeding_scores WHERE id = ?', [
-        id,
-      ]);
-
-      if (score) {
-        const team = await db.get<{ event_id: number }>(
-          'SELECT event_id FROM teams WHERE id = ?',
-          [score.team_id],
-        );
-        if (team) {
-          await markQueueDirty(db, team.event_id);
-        }
-      }
-
-      res.json(score);
-    } catch (error) {
-      console.error('Error updating seeding score:', error);
-      res.status(500).json({ error: 'Failed to update seeding score' });
-    }
-  },
-);
-
-// DELETE /seeding/scores/:id - Delete score (admin only)
-router.delete(
-  '/scores/:id',
-  requireAuth,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const db = await getDatabase();
-
-      const existing = await db.get<{ team_id: number }>(
-        'SELECT team_id FROM seeding_scores WHERE id = ?',
-        [id],
-      );
-
-      // DELETE is idempotent
-      await db.run('DELETE FROM seeding_scores WHERE id = ?', [id]);
-
-      if (existing) {
-        const team = await db.get<{ event_id: number }>(
-          'SELECT event_id FROM teams WHERE id = ?',
-          [existing.team_id],
-        );
-        if (team) {
-          // Deleted score re-queues the round on the next queue read.
-          await markQueueDirty(db, team.event_id);
-        }
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting seeding score:', error);
-      res.status(500).json({ error: 'Failed to delete seeding score' });
-    }
-  },
-);
-
-// GET /seeding/rankings/event/:eventId - Get rankings for event (public; blocked for archived events)
-router.get('/rankings/event/:eventId', async (req: Request, res: Response) => {
+router.patch('/scores/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const { eventId } = req.params;
-    if (await isEventArchived(eventId)) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
+    const { id } = req.params;
     const db = await getDatabase();
 
-    const rankings = await db.all(
-      `SELECT sr.*, t.team_number, t.team_name, t.display_name
+    // Filter to only allowed fields
+    const updates = Object.entries(req.body).filter(([key]) =>
+      ALLOWED_SCORE_UPDATE_FIELDS.includes(key),
+    );
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
+    const values = updates.map(([, value]) => value);
+
+    const result = await db.run(
+      `UPDATE seeding_scores SET ${setClause} WHERE id = ?`,
+      [...values, id],
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Seeding score not found' });
+    }
+
+    const score = await db.get('SELECT * FROM seeding_scores WHERE id = ?', [
+      id,
+    ]);
+
+    if (score) {
+      const team = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM teams WHERE id = ?',
+        [score.team_id],
+      );
+      if (team) {
+        await markQueueDirty(db, team.event_id);
+      }
+    }
+
+    res.json(score);
+  } catch (error) {
+    console.error('Error updating seeding score:', error);
+    res.status(500).json({ error: 'Failed to update seeding score' });
+  }
+});
+
+// DELETE /seeding/scores/:id - Delete score (admin only)
+router.delete('/scores/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+
+    const existing = await db.get<{ team_id: number }>(
+      'SELECT team_id FROM seeding_scores WHERE id = ?',
+      [id],
+    );
+
+    // DELETE is idempotent
+    await db.run('DELETE FROM seeding_scores WHERE id = ?', [id]);
+
+    if (existing) {
+      const team = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM teams WHERE id = ?',
+        [existing.team_id],
+      );
+      if (team) {
+        // Deleted score re-queues the round on the next queue read.
+        await markQueueDirty(db, team.event_id);
+      }
+    }
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting seeding score:', error);
+    res.status(500).json({ error: 'Failed to delete seeding score' });
+  }
+});
+
+// GET /seeding/rankings/event/:eventId - Get rankings for event (public; blocked for archived events)
+publicRouter.get(
+  '/rankings/event/:eventId',
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      if (await isEventArchived(eventId)) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const db = await getDatabase();
+
+      const rankings = await db.all(
+        `SELECT sr.*, t.team_number, t.team_name, t.display_name
        FROM seeding_rankings sr
        JOIN teams t ON sr.team_id = t.id
        WHERE t.event_id = ?
        ORDER BY sr.seed_rank ASC NULLS LAST`,
-      [eventId],
-    );
+        [eventId],
+      );
 
-    res.json(rankings);
-  } catch (error) {
-    console.error('Error fetching seeding rankings:', error);
-    res.status(500).json({ error: 'Failed to fetch seeding rankings' });
-  }
-});
+      res.json(rankings);
+    } catch (error) {
+      console.error('Error fetching seeding rankings:', error);
+      res.status(500).json({ error: 'Failed to fetch seeding rankings' });
+    }
+  },
+);
 
 // POST /seeding/rankings/recalculate/:eventId - Recalculate rankings (admin only)
 router.post(
   '/rankings/recalculate/:eventId',
-  requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
@@ -266,4 +275,4 @@ router.post(
   },
 );
 
-export default router;
+export default composeRouters(publicRouter, router);

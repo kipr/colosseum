@@ -14,6 +14,15 @@ import {
 } from '../scoresheetUtils';
 import type { BracketResultType } from '../../../shared/bracketResult';
 import { loadAdminScoreTemplate } from '../../utils/adminScoreTemplate';
+import {
+  buildTeamInitialsScoreEntries,
+  getMissingTeamInitialsError,
+  getRequiredTeamInitialsSlots,
+  inferEventScoreType,
+  isTeamInitialsFieldId,
+  type EventScoreType,
+} from '../../../shared/teamInitials';
+import TeamInitialsFields from '../TeamInitialsFields';
 
 interface ScoreViewModalProps {
   score: any;
@@ -41,6 +50,23 @@ export default function ScoreViewModal({
   );
   const [resultNote, setResultNote] = useState(score.result_note ?? '');
   const isReadOnly = score.status !== 'pending';
+  const eventScoreType: EventScoreType | null =
+    score.score_type === 'seeding' ||
+    score.score_type === 'bracket' ||
+    score.score_type === 'double_seeding'
+      ? score.score_type
+      : inferEventScoreType(template?.schema);
+  const teamInitialsSlots =
+    eventScoreType == null || score.event_id == null
+      ? []
+      : getRequiredTeamInitialsSlots({
+          scoreType: eventScoreType,
+          hasTeamB:
+            eventScoreType === 'bracket' ||
+            (eventScoreType === 'double_seeding' &&
+              (score.double_seeding_team2_id != null ||
+                formData.team_b_id != null)),
+        });
 
   useEffect(() => {
     loadTemplate();
@@ -233,6 +259,16 @@ export default function ScoreViewModal({
       alert('Select the disqualified team and enter a private reason.');
       return;
     }
+    if (teamInitialsSlots.length > 0) {
+      const initialsError = getMissingTeamInitialsError(
+        formData,
+        teamInitialsSlots,
+      );
+      if (initialsError) {
+        alert(initialsError);
+        return;
+      }
+    }
 
     setSaving(true);
     try {
@@ -286,6 +322,7 @@ export default function ScoreViewModal({
           template?.schema?.fields || [],
           derivedByFieldId,
         ),
+        buildTeamInitialsScoreEntries(formData, teamInitialsSlots),
       );
 
       const response = await fetch(`/scores/${score.id}`, {
@@ -315,6 +352,10 @@ export default function ScoreViewModal({
   };
 
   const renderField = (field: any) => {
+    if (isTeamInitialsFieldId(field.id)) {
+      return null;
+    }
+
     if (field.type === 'section_header') {
       return (
         <div key={field.id} className="section-header">
@@ -1136,6 +1177,14 @@ export default function ScoreViewModal({
               {schema.fields
                 .filter((f: any) => f.isGrandTotal)
                 .map(renderField)}
+
+              <TeamInitialsFields
+                slots={teamInitialsSlots}
+                values={formData}
+                onChange={handleInputChange}
+                disabled={isReadOnly}
+                required={false}
+              />
             </div>
           )}
         </div>

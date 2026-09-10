@@ -94,7 +94,9 @@ function validateSchema(template) {
   }
 
   if (schema.scoreDestination === 'db') {
-    errors.push('Unsupported schema.scoreDestination "db" for portable export.');
+    errors.push(
+      'Unsupported schema.scoreDestination "db" for portable export.',
+    );
   }
 
   if (schema.queueConfig || schema.useQueueForSeeding) {
@@ -112,18 +114,27 @@ function validateSchema(template) {
       errors.push('Unsupported field type "winner-select".');
     }
 
-    if (!field.id && field.type !== 'section_header' && field.type !== 'group_header') {
+    if (
+      !field.id &&
+      field.type !== 'section_header' &&
+      field.type !== 'group_header'
+    ) {
       errors.push('All non-header fields must include an "id".');
     }
 
-    if (field.dataSource?.type === 'db' || field.dataSource?.type === 'bracket') {
+    if (
+      field.dataSource?.type === 'db' ||
+      field.dataSource?.type === 'bracket'
+    ) {
       errors.push(
         `Unsupported dataSource.type "${field.dataSource.type}" on field "${field.id}".`,
       );
     }
 
     if (field.id === 'game_queue_id') {
-      errors.push('Queue-specific field "game_queue_id" is unsupported in portable V1.');
+      errors.push(
+        'Queue-specific field "game_queue_id" is unsupported in portable V1.',
+      );
     }
 
     errors.push(...validateFieldDefaultValue(field));
@@ -144,7 +155,11 @@ function validateFieldDefaultValue(field, path = '') {
   const errors = [];
   const label = path || `field "${fieldLabel(field)}"`;
 
-  if (field && Object.prototype.hasOwnProperty.call(field, 'startValue') && field.startValue !== undefined) {
+  if (
+    field &&
+    Object.prototype.hasOwnProperty.call(field, 'startValue') &&
+    field.startValue !== undefined
+  ) {
     errors.push(
       `${label}: "startValue" is no longer supported; use "defaultValue" instead.`,
     );
@@ -162,7 +177,9 @@ function validateFieldDefaultValue(field, path = '') {
     type === 'group_header' ||
     type === 'winner-select'
   ) {
-    errors.push(`${label}: field type "${type}" does not support defaultValue.`);
+    errors.push(
+      `${label}: field type "${type}" does not support defaultValue.`,
+    );
     return errors;
   }
 
@@ -232,8 +249,29 @@ function validateFieldDefaultValue(field, path = '') {
   return errors;
 }
 
+function injectTeamInitialsFields(fields) {
+  const next = Array.isArray(fields) ? [...fields] : [];
+  const ids = new Set(next.map((field) => field?.id).filter(Boolean));
+  if (ids.has('side_a_team_initials') || ids.has('team_a_team_initials')) {
+    return next;
+  }
+  next.push({
+    id: 'side_a_team_initials',
+    label: 'Team Initials',
+    type: 'text',
+    required: true,
+    column: 'left',
+    placeholder: 'Initials of team representative',
+  });
+  return next;
+}
+
 function normalizeSchemaShape(template) {
   const schema = template.schema;
+  const fields =
+    schema.requireTeamInitials === true
+      ? injectTeamInitialsFields(schema.fields)
+      : schema.fields;
 
   return {
     name: template.name,
@@ -243,7 +281,8 @@ function normalizeSchemaShape(template) {
       description: schema.description || template.description || '',
       layout: schema.layout || 'two-column',
       gameAreasImage: schema.gameAreasImage || null,
-      fields: schema.fields,
+      requireTeamInitials: schema.requireTeamInitials === true,
+      fields,
     },
   };
 }
@@ -259,7 +298,9 @@ async function buildHtml({ normalizedTemplate }) {
     readFile(path.join(__dirname, 'template.html'), 'utf8'),
   ]);
 
-  const schemaJson = escapeForScriptTag(JSON.stringify(normalizedTemplate, null, 2));
+  const schemaJson = escapeForScriptTag(
+    JSON.stringify(normalizedTemplate, null, 2),
+  );
 
   return templateHtml
     .replace('/*__INLINE_STYLES__*/', stylesCss)
@@ -277,7 +318,9 @@ async function main() {
     const validationErrors = validateSchema(template);
 
     if (validationErrors.length > 0) {
-      const details = validationErrors.map((error) => `  - ${error}`).join('\n');
+      const details = validationErrors
+        .map((error) => `  - ${error}`)
+        .join('\n');
       throw new Error(`Unsupported schema for portable V1:\n${details}`);
     }
 
@@ -287,9 +330,13 @@ async function main() {
     await mkdir(path.dirname(output), { recursive: true });
     await writeFile(output, html, 'utf8');
 
-    console.log(`Portable scoresheet exported:\n  input: ${input}\n  output: ${output}`);
+    console.log(
+      `Portable scoresheet exported:\n  input: ${input}\n  output: ${output}`,
+    );
   } catch (error) {
-    console.error(`[export:scoresheet] ${error instanceof Error ? error.message : String(error)}`);
+    console.error(
+      `[export:scoresheet] ${error instanceof Error ? error.message : String(error)}`,
+    );
     process.exit(1);
   }
 }

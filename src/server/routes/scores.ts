@@ -1,5 +1,5 @@
 import express from 'express';
-import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
+import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
@@ -10,13 +10,18 @@ import {
   updateBracketQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import {
+  getMissingTeamInitialsError,
+  getRequiredTeamInitialsSlots,
+  type EventScoreType,
+} from '../../shared/teamInitials';
 
 const router = express.Router();
+router.use(requireAdmin);
 
 // Get scores filtered by event (admin-only, paginated)
 router.get(
   '/by-event/:eventId',
-  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { eventId } = req.params;
@@ -168,7 +173,6 @@ router.get(
 // single accept; conflicts are skipped/reported, never overridden).
 router.post(
   '/event/:eventId/accept/bulk',
-  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { eventId } = req.params;
@@ -250,7 +254,6 @@ router.post(
 // Accept event-scoped score (admin-only, DB-only, no sheets)
 router.post(
   '/:id/accept-event',
-  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
@@ -647,7 +650,6 @@ function flattenAffectedSlots(affected: AffectedBracketGame[]): {
 // Revert event-scoped score (admin-only)
 router.post(
   '/:id/revert-event',
-  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
@@ -1113,260 +1115,272 @@ router.post(
 );
 
 // Reject a score
-router.post(
-  '/:id/reject',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const { id } = req.params;
-      const db = await getDatabase();
+router.post('/:id/reject', async (req: AuthRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
 
-      const oldScore = await db.get(
-        'SELECT * FROM score_submissions WHERE id = ?',
-        [id],
-      );
-      if (!oldScore) {
-        return res.status(404).json({ error: 'Score not found' });
-      }
+    const oldScore = await db.get(
+      'SELECT * FROM score_submissions WHERE id = ?',
+      [id],
+    );
+    if (!oldScore) {
+      return res.status(404).json({ error: 'Score not found' });
+    }
 
-      await db.run(
-        `UPDATE score_submissions 
+    await db.run(
+      `UPDATE score_submissions 
        SET status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-        [req.user.id, id],
-      );
+      [req.user.id, id],
+    );
 
-      if (oldScore.event_id && oldScore.score_type === 'seeding') {
-        try {
-          const scoreData = JSON.parse(oldScore.score_data ?? '{}');
-          const teamId = scoreData.team_id?.value;
-          const roundNumber =
-            scoreData.round?.value ?? scoreData.round_number?.value;
-          if (teamId != null && roundNumber != null) {
-            await updateSeedingQueueItem(
-              db,
-              oldScore.event_id,
-              Number(teamId),
-              Number(roundNumber),
-              false,
-            );
-          }
-        } catch {
-          // Leave queue unchanged if score_data cannot be parsed.
+    if (oldScore.event_id && oldScore.score_type === 'seeding') {
+      try {
+        const scoreData = JSON.parse(oldScore.score_data ?? '{}');
+        const teamId = scoreData.team_id?.value;
+        const roundNumber =
+          scoreData.round?.value ?? scoreData.round_number?.value;
+        if (teamId != null && roundNumber != null) {
+          await updateSeedingQueueItem(
+            db,
+            oldScore.event_id,
+            Number(teamId),
+            Number(roundNumber),
+            false,
+          );
         }
-      } else if (
-        oldScore.event_id &&
-        oldScore.score_type === 'bracket' &&
-        oldScore.bracket_game_id != null
-      ) {
-        await updateBracketQueueItem(
-          db,
-          oldScore.event_id,
-          oldScore.bracket_game_id,
-          false,
-        );
-      } else if (
-        oldScore.event_id &&
-        oldScore.score_type === 'double_seeding' &&
-        oldScore.double_seeding_match_id != null
-      ) {
-        await updateDoubleSeedingQueueItem(
-          db,
-          oldScore.event_id,
-          oldScore.double_seeding_match_id,
-          false,
-        );
+      } catch {
+        // Leave queue unchanged if score_data cannot be parsed.
       }
-
-      if (oldScore.event_id) {
-        const updatedScore = await db.get(
-          'SELECT * FROM score_submissions WHERE id = ?',
-          [id],
-        );
-        await createAuditEntry(db, {
-          event_id: oldScore.event_id,
-          user_id: req.user?.id ?? null,
-          action: 'score_rejected',
-          entity_type: 'score_submission',
-          entity_id: Number(id),
-          old_value: toAuditJson(oldScore),
-          new_value: toAuditJson(updatedScore),
-          ip_address: req.ip ?? null,
-        });
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error rejecting score:', error);
-      res.status(500).json({ error: 'Failed to reject score' });
+    } else if (
+      oldScore.event_id &&
+      oldScore.score_type === 'bracket' &&
+      oldScore.bracket_game_id != null
+    ) {
+      await updateBracketQueueItem(
+        db,
+        oldScore.event_id,
+        oldScore.bracket_game_id,
+        false,
+      );
+    } else if (
+      oldScore.event_id &&
+      oldScore.score_type === 'double_seeding' &&
+      oldScore.double_seeding_match_id != null
+    ) {
+      await updateDoubleSeedingQueueItem(
+        db,
+        oldScore.event_id,
+        oldScore.double_seeding_match_id,
+        false,
+      );
     }
-  },
-);
+
+    if (oldScore.event_id) {
+      const updatedScore = await db.get(
+        'SELECT * FROM score_submissions WHERE id = ?',
+        [id],
+      );
+      await createAuditEntry(db, {
+        event_id: oldScore.event_id,
+        user_id: req.user?.id ?? null,
+        action: 'score_rejected',
+        entity_type: 'score_submission',
+        entity_id: Number(id),
+        old_value: toAuditJson(oldScore),
+        new_value: toAuditJson(updatedScore),
+        ip_address: req.ip ?? null,
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error rejecting score:', error);
+    res.status(500).json({ error: 'Failed to reject score' });
+  }
+});
 
 // Revert a score (undo accept/reject) - DB-only, no sheet operations
-router.post(
-  '/:id/revert',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const { id } = req.params;
-      const db = await getDatabase();
+router.post('/:id/revert', async (req: AuthRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
 
-      const score = await db.get(
-        'SELECT * FROM score_submissions WHERE id = ?',
-        [id],
-      );
-      if (!score) {
-        return res.status(404).json({ error: 'Score not found' });
-      }
+    const score = await db.get('SELECT * FROM score_submissions WHERE id = ?', [
+      id,
+    ]);
+    if (!score) {
+      return res.status(404).json({ error: 'Score not found' });
+    }
 
-      await db.run(
-        `UPDATE score_submissions 
+    await db.run(
+      `UPDATE score_submissions 
        SET status = 'pending', reviewed_by = NULL, reviewed_at = NULL
        WHERE id = ?`,
-        [id],
-      );
+      [id],
+    );
 
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error reverting score:', error);
-      res.status(500).json({ error: 'Failed to revert score' });
-    }
-  },
-);
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error reverting score:', error);
+    res.status(500).json({ error: 'Failed to revert score' });
+  }
+});
 
 // Update a score
-router.put(
-  '/:id',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const { id } = req.params;
-      const { scoreData, resultType, disqualifiedTeamId, resultNote } =
-        req.body;
-      const db = await getDatabase();
+router.put('/:id', async (req: AuthRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const { scoreData, resultType, disqualifiedTeamId, resultNote } = req.body;
+    const db = await getDatabase();
 
-      const oldScore = await db.get(
-        'SELECT * FROM score_submissions WHERE id = ?',
-        [id],
+    const oldScore = await db.get(
+      'SELECT * FROM score_submissions WHERE id = ?',
+      [id],
+    );
+    if (!oldScore) {
+      return res.status(404).json({ error: 'Score not found' });
+    }
+
+    const nextResultType = resultType ?? oldScore.result_type ?? 'standard';
+    const nextDisqualifiedTeamId =
+      disqualifiedTeamId !== undefined
+        ? disqualifiedTeamId
+        : oldScore.disqualified_team_id;
+    const nextResultNote =
+      resultNote !== undefined ? resultNote : oldScore.result_note;
+
+    if (oldScore.score_type !== 'bracket' && nextResultType !== 'standard') {
+      return res.status(400).json({
+        error: 'Special results are only supported for bracket scores',
+      });
+    }
+
+    if (nextResultType === 'disqualification') {
+      const game = await db.get(
+        'SELECT team1_id, team2_id FROM bracket_games WHERE id = ?',
+        [oldScore.bracket_game_id],
       );
-      if (!oldScore) {
-        return res.status(404).json({ error: 'Score not found' });
-      }
-
-      const nextResultType = resultType ?? oldScore.result_type ?? 'standard';
-      const nextDisqualifiedTeamId =
-        disqualifiedTeamId !== undefined
-          ? disqualifiedTeamId
-          : oldScore.disqualified_team_id;
-      const nextResultNote =
-        resultNote !== undefined ? resultNote : oldScore.result_note;
-
-      if (oldScore.score_type !== 'bracket' && nextResultType !== 'standard') {
+      if (
+        !game ||
+        nextDisqualifiedTeamId == null ||
+        (game.team1_id !== nextDisqualifiedTeamId &&
+          game.team2_id !== nextDisqualifiedTeamId)
+      ) {
         return res.status(400).json({
-          error: 'Special results are only supported for bracket scores',
+          error: 'Disqualified team must be a participant in the game',
         });
       }
+      if (!String(nextResultNote ?? '').trim()) {
+        return res.status(400).json({
+          error: 'A disqualification requires a private reason',
+        });
+      }
+    } else if (nextDisqualifiedTeamId != null || nextResultNote != null) {
+      return res.status(400).json({
+        error: 'Disqualification details require a disqualification result',
+      });
+    }
 
-      if (nextResultType === 'disqualification') {
-        const game = await db.get(
-          'SELECT team1_id, team2_id FROM bracket_games WHERE id = ?',
-          [oldScore.bracket_game_id],
+    const eventScoreType = oldScore.score_type as EventScoreType | null;
+    if (
+      oldScore.event_id != null &&
+      (eventScoreType === 'seeding' ||
+        eventScoreType === 'bracket' ||
+        eventScoreType === 'double_seeding')
+    ) {
+      let hasTeamB = eventScoreType === 'bracket';
+      if (
+        eventScoreType === 'double_seeding' &&
+        oldScore.double_seeding_match_id != null
+      ) {
+        const match = await db.get<{ team2_id: number | null }>(
+          'SELECT team2_id FROM double_seeding_matches WHERE id = ?',
+          [oldScore.double_seeding_match_id],
         );
-        if (
-          !game ||
-          nextDisqualifiedTeamId == null ||
-          (game.team1_id !== nextDisqualifiedTeamId &&
-            game.team2_id !== nextDisqualifiedTeamId)
-        ) {
-          return res.status(400).json({
-            error: 'Disqualified team must be a participant in the game',
-          });
-        }
-        if (!String(nextResultNote ?? '').trim()) {
-          return res.status(400).json({
-            error: 'A disqualification requires a private reason',
-          });
-        }
-      } else if (nextDisqualifiedTeamId != null || nextResultNote != null) {
-        return res.status(400).json({
-          error: 'Disqualification details require a disqualification result',
-        });
+        hasTeamB = match?.team2_id != null;
       }
+      const initialsError = getMissingTeamInitialsError(
+        scoreData,
+        getRequiredTeamInitialsSlots({
+          scoreType: eventScoreType,
+          hasTeamB,
+        }),
+      );
+      if (initialsError) {
+        return res.status(400).json({ error: initialsError });
+      }
+    }
 
-      await db.run(
-        `UPDATE score_submissions 
+    await db.run(
+      `UPDATE score_submissions 
        SET score_data = ?, result_type = ?, disqualified_team_id = ?, result_note = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
-        [
-          JSON.stringify(scoreData),
-          nextResultType,
-          nextDisqualifiedTeamId ?? null,
-          nextResultNote?.trim() ?? null,
-          id,
-        ],
-      );
+      [
+        JSON.stringify(scoreData),
+        nextResultType,
+        nextDisqualifiedTeamId ?? null,
+        nextResultNote?.trim() ?? null,
+        id,
+      ],
+    );
 
-      if (oldScore.event_id) {
-        const updatedScore = await db.get(
-          'SELECT * FROM score_submissions WHERE id = ?',
-          [id],
-        );
-        await createAuditEntry(db, {
-          event_id: oldScore.event_id,
-          user_id: req.user?.id ?? null,
-          action: 'score_updated',
-          entity_type: 'score_submission',
-          entity_id: Number(id),
-          old_value: toAuditJson(oldScore),
-          new_value: toAuditJson(updatedScore),
-          ip_address: req.ip ?? null,
-        });
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error updating score:', error);
-      res.status(500).json({ error: 'Failed to update score' });
-    }
-  },
-);
-
-// Delete a score
-router.delete(
-  '/:id',
-  requireAuth,
-  async (req: AuthRequest, res: express.Response) => {
-    try {
-      const { id } = req.params;
-      const db = await getDatabase();
-
-      const oldScore = await db.get(
+    if (oldScore.event_id) {
+      const updatedScore = await db.get(
         'SELECT * FROM score_submissions WHERE id = ?',
         [id],
       );
-
-      await db.run('DELETE FROM score_submissions WHERE id = ?', [id]);
-
-      if (oldScore?.event_id) {
-        await createAuditEntry(db, {
-          event_id: oldScore.event_id,
-          user_id: req.user?.id ?? null,
-          action: 'score_deleted',
-          entity_type: 'score_submission',
-          entity_id: Number(id),
-          old_value: toAuditJson(oldScore),
-          new_value: null,
-          ip_address: req.ip ?? null,
-        });
-      }
-
-      res.json({ success: true });
-    } catch (error) {
-      console.error('Error deleting score:', error);
-      res.status(500).json({ error: 'Failed to delete score' });
+      await createAuditEntry(db, {
+        event_id: oldScore.event_id,
+        user_id: req.user?.id ?? null,
+        action: 'score_updated',
+        entity_type: 'score_submission',
+        entity_id: Number(id),
+        old_value: toAuditJson(oldScore),
+        new_value: toAuditJson(updatedScore),
+        ip_address: req.ip ?? null,
+      });
     }
-  },
-);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error updating score:', error);
+    res.status(500).json({ error: 'Failed to update score' });
+  }
+});
+
+// Delete a score
+router.delete('/:id', async (req: AuthRequest, res: express.Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
+
+    const oldScore = await db.get(
+      'SELECT * FROM score_submissions WHERE id = ?',
+      [id],
+    );
+
+    await db.run('DELETE FROM score_submissions WHERE id = ?', [id]);
+
+    if (oldScore?.event_id) {
+      await createAuditEntry(db, {
+        event_id: oldScore.event_id,
+        user_id: req.user?.id ?? null,
+        action: 'score_deleted',
+        entity_type: 'score_submission',
+        entity_id: Number(id),
+        old_value: toAuditJson(oldScore),
+        new_value: null,
+        ip_address: req.ip ?? null,
+      });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting score:', error);
+    res.status(500).json({ error: 'Failed to delete score' });
+  }
+});
 
 export default router;

@@ -27,6 +27,7 @@ import scoresRoutes from '../../src/server/routes/scores';
 import { JUDGE_SESSION_TTL_MS } from '../../src/server/middleware/auth';
 import { calculateBracketRankings } from '../../src/server/services/bracketRankings';
 import { resetAllRateLimiters } from '../../src/server/middleware/rateLimit';
+import { withTeamInitials } from './helpers/teamInitials';
 
 describe('API Score Submit Routes', () => {
   let testDb: TestDb;
@@ -146,13 +147,16 @@ describe('API Score Submit Routes', () => {
           templateId: template.id,
           participantName: 'Test Team',
           matchId: '1',
-          scoreData: {
-            team_id: { value: team.id, type: 'number' },
-            team_number: { value: 42, type: 'text' },
-            team_name: { value: 'Test Team', type: 'text' },
-            round: { value: 1, type: 'number' },
-            grand_total: { value: 150, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_id: { value: team.id, type: 'number' },
+              team_number: { value: 42, type: 'text' },
+              team_name: { value: 'Test Team', type: 'text' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 150, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -200,12 +204,15 @@ describe('API Score Submit Routes', () => {
           templateId: template.id,
           participantName: 'Lucky Seven',
           matchId: '2',
-          scoreData: {
-            team_number: { value: 7, type: 'text' },
-            team_name: { value: 'Lucky Seven', type: 'text' },
-            round: { value: 2, type: 'number' },
-            grand_total: { value: 200, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_number: { value: 7, type: 'text' },
+              team_name: { value: 'Lucky Seven', type: 'text' },
+              round: { value: 2, type: 'number' },
+              grand_total: { value: 200, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -232,11 +239,14 @@ describe('API Score Submit Routes', () => {
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: {
-            team_id: { value: 1, type: 'number' },
-            round: { value: 1, type: 'number' },
-            grand_total: { value: 100, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_id: { value: 1, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 100, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: 99999,
           scoreType: 'seeding',
         });
@@ -256,11 +266,14 @@ describe('API Score Submit Routes', () => {
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: {
-            team_number: { value: 999, type: 'text' },
-            round: { value: 1, type: 'number' },
-            grand_total: { value: 100, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_number: { value: 999, type: 'text' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 100, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -280,10 +293,13 @@ describe('API Score Submit Routes', () => {
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: {
-            round: { value: 1, type: 'number' },
-            grand_total: { value: 100, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 100, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -309,11 +325,14 @@ describe('API Score Submit Routes', () => {
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: {
-            team_id: { value: teamInB.id, type: 'number' },
-            round: { value: 1, type: 'number' },
-            grand_total: { value: 100, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_id: { value: teamInB.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 100, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: eventA.id,
           scoreType: 'seeding',
         });
@@ -347,13 +366,16 @@ describe('API Score Submit Routes', () => {
           templateId: template.id,
           participantName: 'Queue Team',
           matchId: '2',
-          scoreData: {
-            team_id: { value: team.id, type: 'number' },
-            team_number: { value: 99, type: 'text' },
-            team_name: { value: 'Queue Team', type: 'text' },
-            round: { value: 2, type: 'number' },
-            grand_total: { value: 180, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_id: { value: team.id, type: 'number' },
+              team_number: { value: 99, type: 'text' },
+              team_name: { value: 'Queue Team', type: 'text' },
+              round: { value: 2, type: 'number' },
+              grand_total: { value: 180, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: event.id,
           scoreType: 'seeding',
           game_queue_id: queueItem.id,
@@ -393,11 +415,14 @@ describe('API Score Submit Routes', () => {
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
           participantName: 'Submit Queue Team',
-          scoreData: {
-            team_id: { value: team.id, type: 'number' },
-            round: { value: 1, type: 'number' },
-            grand_total: { value: 123, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 123, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -446,11 +471,14 @@ describe('API Score Submit Routes', () => {
           templateId: template.id,
           participantName: '1 - Team A',
           matchId: '1',
-          scoreData: {
-            winner_team_id: { value: team1.id, type: 'number' },
-            team1_score: { value: 100, type: 'number' },
-            team2_score: { value: 80, type: 'number' },
-          },
+          scoreData: withTeamInitials(
+            {
+              winner_team_id: { value: team1.id, type: 'number' },
+              team1_score: { value: 100, type: 'number' },
+              team2_score: { value: 80, type: 'number' },
+            },
+            'bracket',
+          ),
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
@@ -517,11 +545,14 @@ describe('API Score Submit Routes', () => {
           templateId: template.id,
           participantName: '1 - Team A',
           matchId: '1',
-          scoreData: {
-            winner_team_id: { value: team1.id, type: 'number' },
-            team1_score: { value: 100, type: 'number' },
-            team2_score: { value: 80, type: 'number' },
-          },
+          scoreData: withTeamInitials(
+            {
+              winner_team_id: { value: team1.id, type: 'number' },
+              team1_score: { value: 100, type: 'number' },
+              team2_score: { value: 80, type: 'number' },
+            },
+            'bracket',
+          ),
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
@@ -548,11 +579,14 @@ describe('API Score Submit Routes', () => {
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: {
-            winner_team_id: { value: 1, type: 'number' },
-            team1_score: { value: 100, type: 'number' },
-            team2_score: { value: 80, type: 'number' },
-          },
+          scoreData: withTeamInitials(
+            {
+              winner_team_id: { value: 1, type: 'number' },
+              team1_score: { value: 100, type: 'number' },
+              team2_score: { value: 80, type: 'number' },
+            },
+            'bracket',
+          ),
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
@@ -596,11 +630,14 @@ describe('API Score Submit Routes', () => {
 
         const res = await http.post(`${baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: {
-            winner_team_id: { value: team1.id, type: 'number' },
-            team1_score: { value: 100, type: 'number' },
-            team2_score: { value: 80, type: 'number' },
-          },
+          scoreData: withTeamInitials(
+            {
+              winner_team_id: { value: team1.id, type: 'number' },
+              team1_score: { value: 100, type: 'number' },
+              team2_score: { value: 80, type: 'number' },
+            },
+            'bracket',
+          ),
           isHeadToHead: true,
           eventId: event.id,
           scoreType: 'bracket',
@@ -634,11 +671,14 @@ describe('API Score Submit Routes', () => {
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: {
-              team_id: { value: team.id, type: 'number' },
-              round: { value: 1, type: 'number' },
-              grand_total: { value: 200, type: 'calculated' },
-            },
+            scoreData: withTeamInitials(
+              {
+                team_id: { value: team.id, type: 'number' },
+                round: { value: 1, type: 'number' },
+                grand_total: { value: 200, type: 'calculated' },
+              },
+              'seeding',
+            ),
             eventId: event.id,
             scoreType: 'seeding',
           });
@@ -687,11 +727,14 @@ describe('API Score Submit Routes', () => {
 
           const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: {
-              team_id: { value: team.id, type: 'number' },
-              round: { value: 1, type: 'number' },
-              grand_total: { value: 200, type: 'calculated' },
-            },
+            scoreData: withTeamInitials(
+              {
+                team_id: { value: team.id, type: 'number' },
+                round: { value: 1, type: 'number' },
+                grand_total: { value: 200, type: 'calculated' },
+              },
+              'seeding',
+            ),
             eventId: event.id,
             scoreType: 'seeding',
           });
@@ -759,11 +802,14 @@ describe('API Score Submit Routes', () => {
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: {
-              winner_team_id: { value: team1.id, type: 'number' },
-              team1_score: { value: 100, type: 'number' },
-              team2_score: { value: 80, type: 'number' },
-            },
+            scoreData: withTeamInitials(
+              {
+                winner_team_id: { value: team1.id, type: 'number' },
+                team1_score: { value: 100, type: 'number' },
+                team2_score: { value: 80, type: 'number' },
+              },
+              'bracket',
+            ),
             eventId: event.id,
             scoreType: 'bracket',
             bracket_game_id: game.id,
@@ -790,11 +836,14 @@ describe('API Score Submit Routes', () => {
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: {
-              team_id: { value: team.id, type: 'number' },
-              round: { value: 1, type: 'number' },
-              grand_total: { value: 150, type: 'calculated' },
-            },
+            scoreData: withTeamInitials(
+              {
+                team_id: { value: team.id, type: 'number' },
+                round: { value: 1, type: 'number' },
+                grand_total: { value: 150, type: 'calculated' },
+              },
+              'seeding',
+            ),
             eventId: event.id,
             scoreType: 'seeding',
           });
@@ -915,11 +964,14 @@ describe('API Score Submit Routes', () => {
             templateId: template.id,
             participantName: '11 - Alpha One',
             matchId: '1',
-            scoreData: {
-              winner_team_id: { value: alpha1.id, type: 'number' },
-              team1_score: { value: 140, type: 'number' },
-              team2_score: { value: 120, type: 'number' },
-            },
+            scoreData: withTeamInitials(
+              {
+                winner_team_id: { value: alpha1.id, type: 'number' },
+                team1_score: { value: 140, type: 'number' },
+                team2_score: { value: 120, type: 'number' },
+              },
+              'bracket',
+            ),
             isHeadToHead: true,
             eventId: event.id,
             scoreType: 'bracket',
@@ -931,11 +983,14 @@ describe('API Score Submit Routes', () => {
             templateId: template.id,
             participantName: '22 - Beta Two',
             matchId: '1',
-            scoreData: {
-              winner_team_id: { value: beta2.id, type: 'number' },
-              team1_score: { value: 95, type: 'number' },
-              team2_score: { value: 110, type: 'number' },
-            },
+            scoreData: withTeamInitials(
+              {
+                winner_team_id: { value: beta2.id, type: 'number' },
+                team1_score: { value: 95, type: 'number' },
+                team2_score: { value: 110, type: 'number' },
+              },
+              'bracket',
+            ),
             isHeadToHead: true,
             eventId: event.id,
             scoreType: 'bracket',
@@ -1027,7 +1082,7 @@ describe('API Score Submit Routes', () => {
 
           const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: privateScoreData,
+            scoreData: withTeamInitials(privateScoreData, 'bracket'),
             eventId: event.id,
             scoreType: 'bracket',
             bracket_game_id: game.id,
@@ -1107,11 +1162,14 @@ describe('API Score Submit Routes', () => {
 
           const submitRes = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: {
-              winner_team_id: { value: team1.id, type: 'number' },
-              team1_score: { value: 100, type: 'number' },
-              team2_score: { value: 80, type: 'number' },
-            },
+            scoreData: withTeamInitials(
+              {
+                winner_team_id: { value: team1.id, type: 'number' },
+                team1_score: { value: 100, type: 'number' },
+                team2_score: { value: 80, type: 'number' },
+              },
+              'bracket',
+            ),
             eventId: event.id,
             scoreType: 'bracket',
             bracket_game_id: game.id,
@@ -1169,11 +1227,14 @@ describe('API Score Submit Routes', () => {
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: {
-              team_id: { value: team.id, type: 'number' },
-              round: { value: 1, type: 'number' },
-              grand_total: { value: 200, type: 'calculated' },
-            },
+            scoreData: withTeamInitials(
+              {
+                team_id: { value: team.id, type: 'number' },
+                round: { value: 1, type: 'number' },
+                grand_total: { value: 200, type: 'calculated' },
+              },
+              'seeding',
+            ),
             eventId: event.id,
             scoreType: 'seeding',
           });
@@ -1199,11 +1260,14 @@ describe('API Score Submit Routes', () => {
 
           const res = await http.post(`${baseUrl}/api/scores/submit`, {
             templateId: template.id,
-            scoreData: {
-              team_id: { value: team.id, type: 'number' },
-              round: { value: 1, type: 'number' },
-              grand_total: { value: 100, type: 'calculated' },
-            },
+            scoreData: withTeamInitials(
+              {
+                team_id: { value: team.id, type: 'number' },
+                round: { value: 1, type: 'number' },
+                grand_total: { value: 100, type: 'calculated' },
+              },
+              'seeding',
+            ),
             eventId: event.id,
             scoreType: 'seeding',
           });
@@ -1212,6 +1276,149 @@ describe('API Score Submit Routes', () => {
           const submission = res.json as { status: string };
           expect(submission.status).toBe('pending');
         });
+      });
+    });
+
+    describe('Team initials', () => {
+      it('rejects seeding submissions without team initials', async () => {
+        const event = await seedEvent(testDb.db);
+        const team = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+          team_name: 'No Initials',
+        });
+        const template = await seedScoresheetTemplate(testDb.db);
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            team_id: { value: team.id, type: 'number' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 10, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'Team Initials are required',
+        );
+      });
+
+      it('rejects no-contest submissions without team initials', async () => {
+        const event = await seedEvent(testDb.db);
+        const team1 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+        });
+        const team2 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 2,
+        });
+        const bracket = await seedBracket(testDb.db, { event_id: event.id });
+        const game = await seedBracketGame(testDb.db, {
+          bracket_id: bracket.id,
+          game_number: 1,
+          team1_id: team1.id,
+          team2_id: team2.id,
+          status: 'ready',
+        });
+        const template = await seedScoresheetTemplate(testDb.db);
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            winner_team_id: { value: team1.id, type: 'number' },
+            team1_score: { value: 0, type: 'number' },
+            team2_score: { value: 0, type: 'number' },
+          },
+          eventId: event.id,
+          scoreType: 'bracket',
+          bracket_game_id: game.id,
+          resultType: 'no_contest',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'Team initials are required',
+        );
+      });
+
+      it('rejects disqualification submissions without team initials', async () => {
+        const event = await seedEvent(testDb.db);
+        const team1 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+        });
+        const team2 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 2,
+        });
+        const bracket = await seedBracket(testDb.db, { event_id: event.id });
+        const game = await seedBracketGame(testDb.db, {
+          bracket_id: bracket.id,
+          game_number: 1,
+          team1_id: team1.id,
+          team2_id: team2.id,
+          status: 'ready',
+        });
+        const template = await seedScoresheetTemplate(testDb.db);
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: {
+            winner_team_id: { value: team2.id, type: 'number' },
+          },
+          eventId: event.id,
+          scoreType: 'bracket',
+          bracket_game_id: game.id,
+          resultType: 'disqualification',
+          disqualifiedTeamId: team1.id,
+          resultNote: 'Rule 5.2',
+        });
+
+        expect(res.status).toBe(400);
+        expect((res.json as { error: string }).error).toContain(
+          'Team initials are required',
+        );
+      });
+
+      it('accepts a disqualification when both teams initial', async () => {
+        const event = await seedEvent(testDb.db);
+        const team1 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+        });
+        const team2 = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 2,
+        });
+        const bracket = await seedBracket(testDb.db, { event_id: event.id });
+        const game = await seedBracketGame(testDb.db, {
+          bracket_id: bracket.id,
+          game_number: 1,
+          team1_id: team1.id,
+          team2_id: team2.id,
+          status: 'ready',
+        });
+        const template = await seedScoresheetTemplate(testDb.db);
+
+        const res = await http.post(`${baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          scoreData: withTeamInitials(
+            { winner_team_id: { value: team2.id, type: 'number' } },
+            'bracket',
+          ),
+          eventId: event.id,
+          scoreType: 'bracket',
+          bracket_game_id: game.id,
+          resultType: 'disqualification',
+          disqualifiedTeamId: team1.id,
+          resultNote: 'Rule 5.2',
+        });
+
+        expect(res.status).toBe(200);
       });
     });
   });
@@ -1235,7 +1442,7 @@ describe('API Score Submit Routes', () => {
       try {
         const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: { points: 100 },
+          scoreData: withTeamInitials({ points: 100 }, 'seeding'),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -1271,7 +1478,7 @@ describe('API Score Submit Routes', () => {
       try {
         const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: { points: 100 },
+          scoreData: withTeamInitials({ points: 100 }, 'seeding'),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -1307,7 +1514,7 @@ describe('API Score Submit Routes', () => {
       try {
         const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: { points: 100 },
+          scoreData: withTeamInitials({ points: 100 }, 'seeding'),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -1344,7 +1551,7 @@ describe('API Score Submit Routes', () => {
       try {
         const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
           templateId: template.id,
-          scoreData: { points: 100 },
+          scoreData: withTeamInitials({ points: 100 }, 'seeding'),
           eventId: eventA.id,
           scoreType: 'seeding',
         });
@@ -1387,11 +1594,14 @@ describe('API Score Submit Routes', () => {
           templateId: template.id,
           participantName: 'Judge Team',
           matchId: '1',
-          scoreData: {
-            team_id: { value: team.id, type: 'number' },
-            round: { value: 1, type: 'number' },
-            grand_total: { value: 100, type: 'calculated' },
-          },
+          scoreData: withTeamInitials(
+            {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 100, type: 'calculated' },
+            },
+            'seeding',
+          ),
           eventId: event.id,
           scoreType: 'seeding',
         });
@@ -1426,6 +1636,47 @@ describe('API Score Submit Routes', () => {
           templateId: template.id,
           participantName: 'Admin Team',
           matchId: '1',
+          scoreData: withTeamInitials(
+            {
+              team_id: { value: team.id, type: 'number' },
+              round: { value: 1, type: 'number' },
+              grand_total: { value: 100, type: 'calculated' },
+            },
+            'seeding',
+          ),
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(200);
+        const submission = res.json as { event_id: number };
+        expect(submission.event_id).toBe(event.id);
+      } finally {
+        await srv.close();
+      }
+    });
+
+    it('rejects authenticated non-admin submit without a judge session', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 61,
+        team_name: 'Staff Team',
+      });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Staff Submit Template',
+        created_by: null,
+      });
+
+      const app = createTestApp({ user: { id: 1, is_admin: false } });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Staff Team',
+          matchId: '1',
           scoreData: {
             team_id: { value: team.id, type: 'number' },
             round: { value: 1, type: 'number' },
@@ -1435,9 +1686,7 @@ describe('API Score Submit Routes', () => {
           scoreType: 'seeding',
         });
 
-        expect(res.status).toBe(200);
-        const submission = res.json as { event_id: number };
-        expect(submission.event_id).toBe(event.id);
+        expect(res.status).toBe(401);
       } finally {
         await srv.close();
       }

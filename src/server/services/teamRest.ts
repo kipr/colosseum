@@ -1,7 +1,7 @@
 import type { Database } from '../database/connection';
 
 export interface TeamRestInfo {
-  /** Most recent completed appearance per team, normalized to UTC ISO. */
+  /** Most recent accepted appearance per team, from submit time when available. */
   lastPlayedAt: Map<number, string>;
   /** Teams currently called, arrived, or on a table in this event. */
   busy: Set<number>;
@@ -41,9 +41,10 @@ function normalizeTimestamp(value: string | Date): string | null {
 }
 
 /**
- * Read event-wide completed appearances and active queue participation in two
- * bounded queries. Queue routes use these maps to enrich each returned row
- * without per-team lookups.
+ * Rest is measured from when the team finished playing (score submission
+ * time), but only after that score has been accepted. Pending and rejected
+ * submissions are ignored; official rows with no linked submission fall back
+ * to scored_at / completed_at (admin-entered scores).
  */
 export async function getTeamRest(
   db: Database,
@@ -53,46 +54,60 @@ export async function getTeamRest(
     `SELECT appearances.team_id,
             MAX(appearances.played_at) AS last_played_at
      FROM (
-       SELECT bg.team1_id AS team_id, bg.completed_at AS played_at
+       SELECT bg.team1_id AS team_id,
+              COALESCE(sub.created_at, bg.completed_at) AS played_at
        FROM bracket_games bg
        JOIN brackets b ON b.id = bg.bracket_id
+       LEFT JOIN score_submissions sub
+         ON sub.id = bg.score_submission_id AND sub.status = 'accepted'
        WHERE b.event_id = ?
          AND bg.status = 'completed'
-         AND bg.completed_at IS NOT NULL
+         AND COALESCE(sub.created_at, bg.completed_at) IS NOT NULL
 
        UNION ALL
 
-       SELECT bg.team2_id AS team_id, bg.completed_at AS played_at
+       SELECT bg.team2_id AS team_id,
+              COALESCE(sub.created_at, bg.completed_at) AS played_at
        FROM bracket_games bg
        JOIN brackets b ON b.id = bg.bracket_id
+       LEFT JOIN score_submissions sub
+         ON sub.id = bg.score_submission_id AND sub.status = 'accepted'
        WHERE b.event_id = ?
          AND bg.status = 'completed'
-         AND bg.completed_at IS NOT NULL
+         AND COALESCE(sub.created_at, bg.completed_at) IS NOT NULL
 
        UNION ALL
 
-       SELECT ss.team_id, ss.scored_at AS played_at
+       SELECT ss.team_id, COALESCE(sub.created_at, ss.scored_at) AS played_at
        FROM seeding_scores ss
        JOIN teams t ON t.id = ss.team_id
+       LEFT JOIN score_submissions sub
+         ON sub.id = ss.score_submission_id AND sub.status = 'accepted'
        WHERE t.event_id = ?
          AND ss.score IS NOT NULL
-         AND ss.scored_at IS NOT NULL
+         AND COALESCE(sub.created_at, ss.scored_at) IS NOT NULL
 
        UNION ALL
 
-       SELECT dsm.team1_id AS team_id, dsm.completed_at AS played_at
+       SELECT dsm.team1_id AS team_id,
+              COALESCE(sub.created_at, dsm.completed_at) AS played_at
        FROM double_seeding_matches dsm
+       LEFT JOIN score_submissions sub
+         ON sub.id = dsm.score_submission_id AND sub.status = 'accepted'
        WHERE dsm.event_id = ?
          AND dsm.status = 'completed'
-         AND dsm.completed_at IS NOT NULL
+         AND COALESCE(sub.created_at, dsm.completed_at) IS NOT NULL
 
        UNION ALL
 
-       SELECT dsm.team2_id AS team_id, dsm.completed_at AS played_at
+       SELECT dsm.team2_id AS team_id,
+              COALESCE(sub.created_at, dsm.completed_at) AS played_at
        FROM double_seeding_matches dsm
+       LEFT JOIN score_submissions sub
+         ON sub.id = dsm.score_submission_id AND sub.status = 'accepted'
        WHERE dsm.event_id = ?
          AND dsm.status = 'completed'
-         AND dsm.completed_at IS NOT NULL
+         AND COALESCE(sub.created_at, dsm.completed_at) IS NOT NULL
      ) appearances
      WHERE appearances.team_id IS NOT NULL
      GROUP BY appearances.team_id`,
