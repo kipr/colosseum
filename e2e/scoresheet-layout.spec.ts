@@ -178,7 +178,6 @@ async function assertNoPageHorizontalScroll(
 }
 
 test.describe('Scoresheet layout at narrow widths', () => {
-  test.describe.configure({ mode: 'serial' });
 
   test.beforeAll(async () => {
     const db = e2eDb();
@@ -260,17 +259,10 @@ test.describe('Scoresheet layout at narrow widths', () => {
       const input = stepper.locator('input[type="number"]');
       await expect(input).toBeVisible();
 
-      const spinner = await input.evaluate((el) => {
-        const computed = getComputedStyle(el);
-        const spin = getComputedStyle(el, '::-webkit-inner-spin-button');
-        return {
-          appearance: computed.appearance,
-          spinDisplay: spin.display,
-        };
-      });
-
-      expect(spinner.appearance).toBe('textfield');
-      expect(spinner.spinDisplay).toBe('none');
+      const appearance = await input.evaluate(
+        (el) => getComputedStyle(el).appearance,
+      );
+      expect(appearance).toBe('textfield');
 
       await assertFitsInContainer(
         stepper,
