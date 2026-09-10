@@ -59,7 +59,8 @@ export default function ScoreSheetEditorModal({
             style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
           >
             <button
-              className="btn btn-primary"
+              type="button"
+              className="btn btn-primary btn-card"
               onClick={() => setMode('wizard')}
               style={{
                 padding: '1.5rem',
@@ -85,7 +86,8 @@ export default function ScoreSheetEditorModal({
             </button>
 
             <button
-              className="btn btn-secondary"
+              type="button"
+              className="btn btn-secondary btn-card"
               onClick={() => setMode('manual')}
               style={{
                 padding: '1.5rem',
