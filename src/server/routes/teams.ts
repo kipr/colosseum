@@ -10,8 +10,11 @@ import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { isEventArchived } from '../utils/eventVisibility';
 import { markQueueDirty } from '../services/queueVersion';
+import { composeRouters } from './composeRouters';
 
+const publicRouter = express.Router();
 const router = express.Router();
+router.use(requireAuth);
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = [
@@ -22,7 +25,7 @@ const ALLOWED_UPDATE_FIELDS = [
 ];
 
 // GET /teams/event/:eventId - List teams for event (public for judges/spectators; blocked for archived events)
-router.get('/event/:eventId', async (req: Request, res: Response) => {
+publicRouter.get('/event/:eventId', async (req: Request, res: Response) => {
   try {
     const { eventId } = req.params;
     if (await isEventArchived(eventId)) {
@@ -50,7 +53,7 @@ router.get('/event/:eventId', async (req: Request, res: Response) => {
 });
 
 // GET /teams/:id - Get single team (public for judges)
-router.get('/:id', async (req: Request, res: Response) => {
+publicRouter.get('/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -58,6 +61,10 @@ router.get('/:id', async (req: Request, res: Response) => {
     const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
 
     if (!team) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
+    if (await isEventArchived(team.event_id)) {
       return res.status(404).json({ error: 'Team not found' });
     }
 
@@ -69,7 +76,7 @@ router.get('/:id', async (req: Request, res: Response) => {
 });
 
 // POST /teams - Create team
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const { event_id, team_number, team_name, display_name, status } = req.body;
 
@@ -130,7 +137,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // POST /teams/bulk - Bulk create teams
-router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/bulk', async (req: AuthRequest, res: Response) => {
   try {
     const { event_id, teams } = req.body;
 
@@ -267,7 +274,7 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // PATCH /teams/:id - Update team
-router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.patch('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -330,53 +337,48 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // PATCH /teams/:id/check-in - Check in team
-router.patch(
-  '/:id/check-in',
-  requireAuth,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const db = await getDatabase();
+router.patch('/:id/check-in', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const db = await getDatabase();
 
-      const oldTeam = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
-      if (!oldTeam) {
-        return res.status(404).json({ error: 'Team not found' });
-      }
-
-      const result = await db.run(
-        `UPDATE teams SET status = 'checked_in', checked_in_at = CURRENT_TIMESTAMP WHERE id = ?`,
-        [id],
-      );
-
-      if (result.changes === 0) {
-        return res.status(404).json({ error: 'Team not found' });
-      }
-
-      const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
-
-      await createAuditEntry(db, {
-        event_id: oldTeam.event_id,
-        user_id: req.user?.id ?? null,
-        action: 'team_checked_in',
-        entity_type: 'team',
-        entity_id: Number(id),
-        old_value: toAuditJson(oldTeam),
-        new_value: toAuditJson(team),
-        ip_address: req.ip ?? null,
-      });
-
-      res.json(team);
-    } catch (error) {
-      console.error('Error checking in team:', error);
-      res.status(500).json({ error: 'Failed to check in team' });
+    const oldTeam = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+    if (!oldTeam) {
+      return res.status(404).json({ error: 'Team not found' });
     }
-  },
-);
+
+    const result = await db.run(
+      `UPDATE teams SET status = 'checked_in', checked_in_at = CURRENT_TIMESTAMP WHERE id = ?`,
+      [id],
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
+    const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
+
+    await createAuditEntry(db, {
+      event_id: oldTeam.event_id,
+      user_id: req.user?.id ?? null,
+      action: 'team_checked_in',
+      entity_type: 'team',
+      entity_id: Number(id),
+      old_value: toAuditJson(oldTeam),
+      new_value: toAuditJson(team),
+      ip_address: req.ip ?? null,
+    });
+
+    res.json(team);
+  } catch (error) {
+    console.error('Error checking in team:', error);
+    res.status(500).json({ error: 'Failed to check in team' });
+  }
+});
 
 // PATCH /teams/event/:eventId/check-in/bulk - Bulk check in teams by team numbers
 router.patch(
   '/event/:eventId/check-in/bulk',
-  requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
@@ -448,7 +450,7 @@ router.patch(
 );
 
 // DELETE /teams/:id - Delete team
-router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -481,4 +483,4 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-export default router;
+export default composeRouters(publicRouter, router);

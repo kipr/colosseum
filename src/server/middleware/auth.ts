@@ -25,6 +25,12 @@ export interface AuthRequest extends Request {
   user?: any;
 }
 
+/** True when the request is a Passport-authenticated admin. */
+export function isAdminUser(req: Request): boolean {
+  const authReq = req as AuthRequest;
+  return Boolean(authReq.isAuthenticated?.() && authReq.user?.is_admin);
+}
+
 export function requireAuth(
   req: AuthRequest,
   res: Response,
@@ -41,7 +47,7 @@ export function requireAdmin(
   res: Response,
   next: NextFunction,
 ) {
-  if (req.isAuthenticated() && req.user?.is_admin) {
+  if (isAdminUser(req)) {
     return next();
   }
   res.status(403).json({ error: 'Admin access required' });
@@ -61,6 +67,28 @@ export function isJudgeSessionValidForEvent(
   return judgeAuth.eventIds.includes(eventId);
 }
 
+function rejectInvalidJudgeSession(
+  req: Request,
+  res: Response,
+): JudgeAuth | null {
+  const judgeAuth = req.session?.judgeAuth;
+  if (!judgeAuth) {
+    res.status(401).json({
+      error: 'Judge session required. Please verify your access code.',
+    });
+    return null;
+  }
+
+  if (Date.now() > judgeAuth.expiresAt) {
+    res.status(401).json({
+      error: 'Judge session expired. Please verify your access code again.',
+    });
+    return null;
+  }
+
+  return judgeAuth;
+}
+
 /**
  * Middleware that requires a valid judge session (created during access-code
  * verification) OR an authenticated admin user. Rejects with 401 when the
@@ -72,23 +100,12 @@ export function requireJudgeSession(
   res: Response,
   next: NextFunction,
 ) {
-  // Authenticated admins bypass the judge-session check
-  if (req.isAuthenticated?.()) {
+  if (isAdminUser(req)) {
     return next();
   }
 
-  const judgeAuth = req.session?.judgeAuth;
-  if (!judgeAuth) {
-    return res.status(401).json({
-      error: 'Judge session required. Please verify your access code.',
-    });
-  }
-
-  if (Date.now() > judgeAuth.expiresAt) {
-    return res.status(401).json({
-      error: 'Judge session expired. Please verify your access code again.',
-    });
-  }
+  const judgeAuth = rejectInvalidJudgeSession(req, res);
+  if (!judgeAuth) return;
 
   const { templateId, eventId } = req.body ?? {};
 
@@ -110,33 +127,20 @@ export function requireJudgeSession(
 /**
  * Authorization guard for event-scoped chat routes. Unlike requireJudgeSession,
  * it reads `eventId` from `req.params` (chat routes are nested under
- * `/events/:eventId`). Authenticated users bypass (per-route admin checks
- * apply); access-code judges must have a valid, unexpired session whose
- * eventIds include the requested event.
+ * `/events/:eventId`). Authenticated admins bypass; access-code judges must
+ * have a valid, unexpired session whose eventIds include the requested event.
  */
 export function requireEventChatAccess(
   req: Request,
   res: Response,
   next: NextFunction,
 ) {
-  // Authenticated admins (and other authenticated users) bypass; routes that
-  // are admin-only enforce is_admin themselves.
-  if (req.isAuthenticated?.()) {
+  if (isAdminUser(req)) {
     return next();
   }
 
-  const judgeAuth = req.session?.judgeAuth;
-  if (!judgeAuth) {
-    return res.status(401).json({
-      error: 'Judge session required. Please verify your access code.',
-    });
-  }
-
-  if (Date.now() > judgeAuth.expiresAt) {
-    return res.status(401).json({
-      error: 'Judge session expired. Please verify your access code again.',
-    });
-  }
+  const judgeAuth = rejectInvalidJudgeSession(req, res);
+  if (!judgeAuth) return;
 
   const eventId = req.params.eventId;
   if (eventId == null || !judgeAuth.eventIds.includes(Number(eventId))) {

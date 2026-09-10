@@ -15,10 +15,14 @@ import {
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
 
-const router = express.Router();
+import { composeRouters } from './composeRouters';
+
+const judgeRouter = express.Router();
+const staffRouter = express.Router();
+staffRouter.use(requireAuth);
 
 // Submit a score (requires judge session or admin auth)
-router.post(
+judgeRouter.post(
   '/scores/submit',
   scoreSubmitLimiter,
   requireJudgeSession,
@@ -345,9 +349,8 @@ router.post(
 );
 
 // Get user's score history
-router.get(
+staffRouter.get(
   '/scores/history',
-  requireAuth,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const db = await getDatabase();
@@ -374,4 +377,4 @@ router.get(
   },
 );
 
-export default router;
+export default composeRouters(judgeRouter, staffRouter);

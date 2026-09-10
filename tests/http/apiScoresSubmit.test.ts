@@ -1442,6 +1442,42 @@ describe('API Score Submit Routes', () => {
         await srv.close();
       }
     });
+
+    it('rejects authenticated non-admin submit without a judge session', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 61,
+        team_name: 'Staff Team',
+      });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Staff Submit Template',
+        created_by: null,
+      });
+
+      const app = createTestApp({ user: { id: 1, is_admin: false } });
+      app.use('/api', apiRoutes);
+      const srv = await startServer(app);
+
+      try {
+        const res = await http.post(`${srv.baseUrl}/api/scores/submit`, {
+          templateId: template.id,
+          participantName: 'Staff Team',
+          matchId: '1',
+          scoreData: {
+            team_id: { value: team.id, type: 'number' },
+            round: { value: 1, type: 'number' },
+            grand_total: { value: 100, type: 'calculated' },
+          },
+          eventId: event.id,
+          scoreType: 'seeding',
+        });
+
+        expect(res.status).toBe(401);
+      } finally {
+        await srv.close();
+      }
+    });
   });
 
   // ==========================================================================

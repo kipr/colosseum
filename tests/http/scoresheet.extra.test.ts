@@ -110,6 +110,19 @@ describe('Scoresheet Routes – extra coverage', () => {
   });
 
   describe('GET /scoresheet/templates/admin', () => {
+    it('returns 403 for authenticated non-admin', async () => {
+      const app = createTestApp({ user: { id: userId, is_admin: false } });
+      app.use('/scoresheet', scoresheetRoutes);
+      const server = await startServer(app);
+      try {
+        const res = await http.get(
+          `${server.baseUrl}/scoresheet/templates/admin`,
+        );
+        expect(res.status).toBe(403);
+      } finally {
+        await server.close();
+      }
+    });
     it('returns all active templates without eventId filter', async () => {
       await seedScoresheetTemplate(testDb.db, {
         name: 'Admin Template',
@@ -220,6 +233,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       const body = res.json as { name: string; schema: { mode: string } };
       expect(body.name).toBe('My Template');
       expect(body.schema).toEqual({ mode: 'seeding' });
+      expect((body as { access_code?: string }).access_code).toBeUndefined();
     });
   });
 

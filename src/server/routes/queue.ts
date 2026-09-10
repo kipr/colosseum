@@ -19,8 +19,11 @@ import {
   mergeBracketQueueItems,
 } from '../services/bracketQueueOrder';
 import { getTeamRest } from '../services/teamRest';
+import { composeRouters } from './composeRouters';
 
+const publicRouter = express.Router();
 const router = express.Router();
+router.use(requireAuth);
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = ['status', 'table_number'];
@@ -128,7 +131,7 @@ function participantSnapshotPredicate(item: QueuePresenceSource): {
 // clients sending If-None-Match get a 304 from a single-row version lookup
 // when nothing changed. Repair syncs only run when the event queue is
 // flagged dirty (or when sync=1 is explicitly requested, rate-limited).
-router.get(
+publicRouter.get(
   '/event/:eventId',
   queueSyncLimiter,
   async (req: Request, res: Response) => {
@@ -140,6 +143,14 @@ router.get(
       const eventIdNum = parseInt(eventId, 10);
       if (isNaN(eventIdNum)) {
         return res.status(400).json({ error: 'Invalid event ID' });
+      }
+
+      const eventRow = await db.get<{ status: string }>(
+        'SELECT status FROM events WHERE id = ?',
+        [eventIdNum],
+      );
+      if (eventRow && eventRow.status === 'archived') {
+        return res.status(404).json({ error: 'Event not found' });
       }
 
       if (sync === '1' || sync === 'true') {
@@ -261,7 +272,7 @@ router.get(
 );
 
 // POST /queue - Add item to queue
-router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
+router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const {
       event_id,
@@ -383,7 +394,6 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 // POST /queue/populate-from-bracket - Populate queue from event bracket games
 router.post(
   '/populate-from-bracket',
-  requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
       const { event_id, bracket_id } = req.body;
@@ -581,7 +591,6 @@ router.post(
 // POST /queue/populate-from-seeding - Populate queue from unplayed seeding rounds
 router.post(
   '/populate-from-seeding',
-  requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
       const { event_id } = req.body;
@@ -674,105 +683,99 @@ router.post(
 );
 
 // PATCH /queue/:id/presence - Confirm one participant in a paired queue item
-router.patch(
-  '/:id/presence',
-  requireAuth,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { team_id, present } = req.body;
-      const teamId = team_id;
+router.patch('/:id/presence', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { team_id, present } = req.body;
+    const teamId = team_id;
 
-      if (
-        typeof teamId !== 'number' ||
-        !Number.isInteger(teamId) ||
-        teamId <= 0 ||
-        typeof present !== 'boolean'
-      ) {
-        return res.status(400).json({
-          error:
-            'team_id must be a positive integer and present must be boolean',
-        });
-      }
+    if (
+      typeof teamId !== 'number' ||
+      !Number.isInteger(teamId) ||
+      teamId <= 0 ||
+      typeof present !== 'boolean'
+    ) {
+      return res.status(400).json({
+        error: 'team_id must be a positive integer and present must be boolean',
+      });
+    }
 
-      const db = await getDatabase();
-      const source = await getQueuePresenceSource(db, id);
-      if (!source) {
-        return res.status(404).json({ error: 'Queue item not found' });
-      }
-      if (
-        !['bracket', 'double_seeding'].includes(source.queue_type) ||
-        !isPairedQueueItem(source)
-      ) {
-        return res.status(400).json({
-          error: 'Presence tracking requires a two-team match',
-        });
-      }
-      if (source.status !== 'called') {
-        return res.status(409).json({
-          error: 'Presence can only be changed while the queue item is called',
-        });
-      }
+    const db = await getDatabase();
+    const source = await getQueuePresenceSource(db, id);
+    if (!source) {
+      return res.status(404).json({ error: 'Queue item not found' });
+    }
+    if (
+      !['bracket', 'double_seeding'].includes(source.queue_type) ||
+      !isPairedQueueItem(source)
+    ) {
+      return res.status(400).json({
+        error: 'Presence tracking requires a two-team match',
+      });
+    }
+    if (source.status !== 'called') {
+      return res.status(409).json({
+        error: 'Presence can only be changed while the queue item is called',
+      });
+    }
 
-      const [team1Id, team2Id] = getQueueParticipants(source);
-      const slot = teamId === team1Id ? 1 : teamId === team2Id ? 2 : null;
-      if (slot === null) {
-        return res.status(409).json({
-          error: 'Team is not a current participant in this queue item',
-        });
-      }
+    const [team1Id, team2Id] = getQueueParticipants(source);
+    const slot = teamId === team1Id ? 1 : teamId === team2Id ? 2 : null;
+    if (slot === null) {
+      return res.status(409).json({
+        error: 'Team is not a current participant in this queue item',
+      });
+    }
 
-      const nextPresentId = present ? teamId : null;
-      const snapshot = participantSnapshotPredicate(source);
-      const presentColumn =
-        slot === 1 ? 'present_team1_id' : 'present_team2_id';
-      const otherPresentColumn =
-        slot === 1 ? 'present_team2_id' : 'present_team1_id';
-      const otherTeamId = slot === 1 ? team2Id! : team1Id!;
+    const nextPresentId = present ? teamId : null;
+    const snapshot = participantSnapshotPredicate(source);
+    const presentColumn = slot === 1 ? 'present_team1_id' : 'present_team2_id';
+    const otherPresentColumn =
+      slot === 1 ? 'present_team2_id' : 'present_team1_id';
+    const otherTeamId = slot === 1 ? team2Id! : team1Id!;
 
-      // The status expression reads the other stored confirmation at update
-      // time. Concurrent confirmations therefore reconcile to `arrived`
-      // regardless of which request acquires the row lock first.
-      const result = await db.run(
-        `UPDATE game_queue
+    // The status expression reads the other stored confirmation at update
+    // time. Concurrent confirmations therefore reconcile to `arrived`
+    // regardless of which request acquires the row lock first.
+    const result = await db.run(
+      `UPDATE game_queue
          SET ${presentColumn} = ?,
              status = CASE
                WHEN ? AND ${otherPresentColumn} = ? THEN 'arrived'
                ELSE 'called'
              END
          WHERE id = ? AND status = 'called' AND ${snapshot.sql}`,
-        [nextPresentId, present, otherTeamId, id, ...snapshot.params],
-      );
+      [nextPresentId, present, otherTeamId, id, ...snapshot.params],
+    );
 
-      if ((result.changes ?? 0) === 0) {
-        const current = await getQueuePresenceSource(db, id);
-        if (!current) {
-          return res.status(404).json({ error: 'Queue item not found' });
-        }
-        return res.status(409).json({
-          error: 'Queue status or participants changed; refresh and try again',
-        });
-      }
-
-      await bumpQueueVersion(db, source.event_id);
-      const updated = await getQueuePresenceSource(db, id);
-      if (!updated) {
+    if ((result.changes ?? 0) === 0) {
+      const current = await getQueuePresenceSource(db, id);
+      if (!current) {
         return res.status(404).json({ error: 'Queue item not found' });
       }
-      res.json({
-        id: updated.id,
-        status: updated.status,
-        ...normalizedPresence(updated),
+      return res.status(409).json({
+        error: 'Queue status or participants changed; refresh and try again',
       });
-    } catch (error) {
-      console.error('Error updating queue presence:', error);
-      res.status(500).json({ error: 'Failed to update queue presence' });
     }
-  },
-);
+
+    await bumpQueueVersion(db, source.event_id);
+    const updated = await getQueuePresenceSource(db, id);
+    if (!updated) {
+      return res.status(404).json({ error: 'Queue item not found' });
+    }
+    res.json({
+      id: updated.id,
+      status: updated.status,
+      ...normalizedPresence(updated),
+    });
+  } catch (error) {
+    console.error('Error updating queue presence:', error);
+    res.status(500).json({ error: 'Failed to update queue presence' });
+  }
+});
 
 // PATCH /queue/:id - Update queue item status
-router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.patch('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -868,50 +871,46 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 // PATCH /queue/:id/call - Call team/game (sets status to 'called' and records time)
-router.patch(
-  '/:id/call',
-  requireAuth,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const { table_number } = req.body;
-      const db = await getDatabase();
+router.patch('/:id/call', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { table_number } = req.body;
+    const db = await getDatabase();
 
-      let query = `UPDATE game_queue
+    let query = `UPDATE game_queue
                    SET status = 'called', called_at = CURRENT_TIMESTAMP,
                        present_team1_id = NULL, present_team2_id = NULL`;
-      const params: (string | number | null)[] = [];
+    const params: (string | number | null)[] = [];
 
-      if (table_number !== undefined) {
-        query += ', table_number = ?';
-        params.push(table_number);
-      }
-
-      query += ' WHERE id = ?';
-      params.push(id);
-
-      const result = await db.run(query, params);
-
-      if (result.changes === 0) {
-        return res.status(404).json({ error: 'Queue item not found' });
-      }
-
-      const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
-        id,
-      ]);
-      if (queueItem) {
-        await bumpQueueVersion(db, queueItem.event_id);
-      }
-      res.json(queueItem);
-    } catch (error) {
-      console.error('Error calling queue item:', error);
-      res.status(500).json({ error: 'Failed to call queue item' });
+    if (table_number !== undefined) {
+      query += ', table_number = ?';
+      params.push(table_number);
     }
-  },
-);
+
+    query += ' WHERE id = ?';
+    params.push(id);
+
+    const result = await db.run(query, params);
+
+    if (result.changes === 0) {
+      return res.status(404).json({ error: 'Queue item not found' });
+    }
+
+    const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
+      id,
+    ]);
+    if (queueItem) {
+      await bumpQueueVersion(db, queueItem.event_id);
+    }
+    res.json(queueItem);
+  } catch (error) {
+    console.error('Error calling queue item:', error);
+    res.status(500).json({ error: 'Failed to call queue item' });
+  }
+});
 
 // DELETE /queue/:id - Remove from queue
-router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -934,4 +933,4 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
   }
 });
 
-export default router;
+export default composeRouters(publicRouter, router);

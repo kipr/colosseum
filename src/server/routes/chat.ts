@@ -1,13 +1,17 @@
 import express, { Request, Response } from 'express';
 import {
   AuthRequest,
-  requireAuth,
+  requireAdmin,
   requireEventChatAccess,
   isJudgeSessionValidForEvent,
+  isAdminUser,
 } from '../middleware/auth';
 import { chatWriteLimiter, chatReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import { composeRouters } from './composeRouters';
 
+const adminRouter = express.Router();
+adminRouter.use(requireAdmin);
 const router = express.Router();
 
 /**
@@ -96,21 +100,11 @@ function normalizeJudgeSenderName(provided: unknown): string {
   return trimmed.slice(0, JUDGE_CHAT_SENDER_NAME_MAX);
 }
 
-function isAdminRequest(req: Request): boolean {
-  const authReq = req as AuthRequest;
-  return Boolean(authReq.isAuthenticated?.() && authReq.user?.is_admin);
-}
-
 // List conversations for an event (admin only).
-router.get(
+adminRouter.get(
   '/events/:eventId/conversations',
-  requireAuth,
   async (req: Request, res: Response) => {
     try {
-      if (!isAdminRequest(req)) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
-
       const eventId = Number(req.params.eventId);
       if (!Number.isInteger(eventId)) {
         return res.status(400).json({ error: 'Invalid event id' });
@@ -187,13 +181,13 @@ router.get(
       const hasQueryKey = typeof queryKey === 'string' && queryKey.length > 0;
 
       if (hasQueryKey) {
-        if (!isAdminRequest(req)) {
+        if (!isAdminUser(req)) {
           return res.status(403).json({ error: 'Admin access required' });
         }
         conversationKey = queryKey;
       } else if (isJudgeSessionValidForEvent(req, eventId)) {
         conversationKey = req.session!.judgeAuth!.conversationKey;
-      } else if (isAdminRequest(req)) {
+      } else if (isAdminUser(req)) {
         return res
           .status(400)
           .json({ error: 'conversationKey query parameter is required' });
@@ -279,7 +273,7 @@ router.post(
         senderName = normalizeJudgeSenderName(req.body?.senderName);
         userId = null;
         templateId = judgeAuth.templateId ?? null;
-      } else if (isAdminRequest(req)) {
+      } else if (isAdminUser(req)) {
         const authReq = req as AuthRequest;
         if (!hasBodyKey) {
           return res
@@ -333,15 +327,10 @@ router.post(
 );
 
 // Delete a single conversation thread (admin only).
-router.delete(
+adminRouter.delete(
   '/events/:eventId/conversations/:conversationKey',
-  requireAuth,
   async (req: Request, res: Response) => {
     try {
-      if (!isAdminRequest(req)) {
-        return res.status(403).json({ error: 'Admin access required' });
-      }
-
       const eventId = Number(req.params.eventId);
       if (!Number.isInteger(eventId)) {
         return res.status(400).json({ error: 'Invalid event id' });
@@ -365,4 +354,4 @@ router.delete(
   },
 );
 
-export default router;
+export default composeRouters(adminRouter, router);

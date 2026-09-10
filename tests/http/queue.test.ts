@@ -63,6 +63,12 @@ describe('Queue Routes', () => {
       expect(res.json).toEqual([]);
     });
 
+    it('returns 404 when the event is archived', async () => {
+      const event = await seedEvent(testDb.db, { status: 'archived' });
+      const res = await http.get(`${baseUrl}/queue/event/${event.id}`);
+      expect(res.status).toBe(404);
+    });
+
     it('returns queue items for the event', async () => {
       const event = await seedEvent(testDb.db);
       const team = await seedTeam(testDb.db, {

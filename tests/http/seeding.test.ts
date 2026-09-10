@@ -96,6 +96,24 @@ describe('Seeding Routes', () => {
       expect(scores[1].round_number).toBe(2);
       expect(scores[2].round_number).toBe(3);
     });
+
+    it('returns 404 when the team belongs to an archived event', async () => {
+      const event = await seedEvent(testDb.db, { status: 'archived' });
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      await seedSeedingScore(testDb.db, {
+        team_id: team.id,
+        round_number: 1,
+        score: 100,
+      });
+
+      const res = await http.get(
+        `${server.baseUrl}/seeding/scores/team/${team.id}`,
+      );
+      expect(res.status).toBe(404);
+    });
   });
 
   // ==========================================================================
@@ -257,7 +275,7 @@ describe('Seeding Routes', () => {
   // ==========================================================================
 
   describe('PATCH /seeding/scores/:id', () => {
-    it('returns 401 when not authenticated', async () => {
+    it('returns 403 when not authenticated', async () => {
       const app = createTestApp();
       app.use('/seeding', seedingRoutes);
       const server = await startServer(app);
@@ -266,7 +284,7 @@ describe('Seeding Routes', () => {
         const res = await http.patch(`${server.baseUrl}/seeding/scores/1`, {
           score: 999,
         });
-        expect(res.status).toBe(401);
+        expect(res.status).toBe(403);
       } finally {
         await server.close();
       }
@@ -339,14 +357,14 @@ describe('Seeding Routes', () => {
   // ==========================================================================
 
   describe('DELETE /seeding/scores/:id', () => {
-    it('returns 401 when not authenticated', async () => {
+    it('returns 403 when not authenticated', async () => {
       const app = createTestApp();
       app.use('/seeding', seedingRoutes);
       const server = await startServer(app);
 
       try {
         const res = await http.delete(`${server.baseUrl}/seeding/scores/1`);
-        expect(res.status).toBe(401);
+        expect(res.status).toBe(403);
       } finally {
         await server.close();
       }
@@ -425,7 +443,7 @@ describe('Seeding Routes', () => {
   // ==========================================================================
 
   describe('POST /seeding/rankings/recalculate/:eventId', () => {
-    it('returns 401 when not authenticated', async () => {
+    it('returns 403 when not authenticated', async () => {
       const app = createTestApp();
       app.use('/seeding', seedingRoutes);
       const server = await startServer(app);
@@ -434,7 +452,7 @@ describe('Seeding Routes', () => {
         const res = await http.post(
           `${server.baseUrl}/seeding/rankings/recalculate/1`,
         );
-        expect(res.status).toBe(401);
+        expect(res.status).toBe(403);
       } finally {
         await server.close();
       }
