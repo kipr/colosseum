@@ -340,7 +340,6 @@ function evaluateFormula(
 
   try {
     // Formula strings are authored in the scoresheet template, not user input.
-    // eslint-disable-next-line no-eval
     const result = eval(expression);
     return Number(result) || 0;
   } catch (error) {
