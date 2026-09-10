@@ -193,6 +193,31 @@ export function shouldAutoAppendRepeatableGroupRow(
   return !isRepeatableGroupRowBlank(rows[rows.length - 1], field);
 }
 
+export function applyRepeatableGroupInputChange(
+  currentValue: any,
+  field: any,
+  rowIndex: number,
+  childFieldId: string,
+  value: any,
+): Array<Record<string, any>> {
+  const rows = normalizeRepeatableGroupRows(currentValue, field).map((row) => ({
+    ...row,
+  }));
+  rows[rowIndex] = {
+    ...(rows[rowIndex] ?? createBlankRepeatableGroupRow(field)),
+    [childFieldId]: value,
+  };
+
+  if (
+    field.autoAppendBlankRow &&
+    shouldAutoAppendRepeatableGroupRow(rows, field)
+  ) {
+    rows.push(createBlankRepeatableGroupRow(field));
+  }
+
+  return rows;
+}
+
 export function pruneRepeatableGroupRows(
   rows: any[],
   field: any,

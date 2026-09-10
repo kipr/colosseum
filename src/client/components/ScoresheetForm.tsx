@@ -6,6 +6,7 @@ import {
   calculateRepeatableGroupDerived,
   calculateRepeatableGroupDerivedValues,
   calculateScoresheetValues,
+  applyRepeatableGroupInputChange,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
   normalizeRepeatableGroupRows,
@@ -13,7 +14,6 @@ import {
   getBracketGameOptionValue,
   getBracketSourceEventId,
   isEventScopedBracketSource,
-  shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
 import { getFieldDefaultValue } from '../../shared/scoresheetSchema';
 import type { BracketResultType } from '../../shared/bracketResult';
@@ -26,6 +26,7 @@ import {
 } from '../../shared/teamInitials';
 import TeamInitialsFields from './TeamInitialsFields';
 import ScoresheetFieldControl from './ScoresheetFieldControl';
+import RepeatableGroupTable from './RepeatableGroupTable';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -668,27 +669,16 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     childField: any,
     value: any,
   ) => {
-    setFormData((prev) => {
-      const rows = normalizeRepeatableGroupRows(prev[field.id], field).map(
-        (row) => ({ ...row }),
-      );
-      rows[rowIndex] = {
-        ...rows[rowIndex],
-        [childField.id]: value,
-      };
-
-      if (
-        field.autoAppendBlankRow &&
-        shouldAutoAppendRepeatableGroupRow(rows, field)
-      ) {
-        rows.push(normalizeRepeatableGroupRows(undefined, field)[0]);
-      }
-
-      return {
-        ...prev,
-        [field.id]: rows,
-      };
-    });
+    setFormData((prev) => ({
+      ...prev,
+      [field.id]: applyRepeatableGroupInputChange(
+        prev[field.id],
+        field,
+        rowIndex,
+        childField.id,
+        value,
+      ),
+    }));
   };
 
   const handleInputChange = (fieldId: string, value: any, field?: any) => {
@@ -1381,11 +1371,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const renderRepeatableGroup = (field: any) => {
     const rows = normalizeRepeatableGroupRows(formData[field.id], field);
-    const supportedFields = (field.fields || []).filter((childField: any) =>
-      ['text', 'number', 'dropdown', 'buttons', 'checkbox'].includes(
-        childField.type,
-      ),
-    );
     const derivedColumns =
       field.derived?.type === 'botballCubeStacks'
         ? [
@@ -1401,99 +1386,17 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     );
 
     return (
-      <div key={field.id} className="repeatable-group">
-        <div className="repeatable-group-title">
-          <span>{field.label}</span>
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </div>
-        <div className="repeatable-group-table">
-          <div className="repeatable-group-header">
-            <div className="repeatable-group-row-label">
-              {field.rowLabel || 'Row'}
-            </div>
-            {supportedFields.map((childField: any) => (
-              <div
-                key={childField.id}
-                className="repeatable-group-column-label"
-              >
-                {childField.label}
-              </div>
-            ))}
-            {derivedColumns.map((column) => (
-              <div key={column.key} className="repeatable-group-column-label">
-                {column.label}
-              </div>
-            ))}
-          </div>
-          {rows.map((row, rowIndex) => (
-            <div key={rowIndex} className="repeatable-group-row">
-              <div className="repeatable-group-row-label">
-                {field.rowLabel || 'Row'} {rowIndex + 1}
-              </div>
-              {supportedFields.map((childField: any) => (
-                <div key={childField.id} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {childField.label}
-                  </label>
-                  {renderRepeatableGroupInput(
-                    field,
-                    rowIndex,
-                    childField,
-                    row[childField.id],
-                  )}
-                </div>
-              ))}
-              {derivedColumns.map((column) => (
-                <div key={column.key} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {column.label}
-                  </label>
-                  <div className="calculated-value" style={{ width: 'auto' }}>
-                    {renderRepeatableGroupDerivedValue(
-                      derivedRows[rowIndex]?.[column.key],
-                      column.key,
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      <RepeatableGroupTable
+        key={field.id}
+        field={field}
+        rows={rows}
+        derivedColumns={derivedColumns}
+        derivedRows={derivedRows}
+        renderControl={(childField, value, rowIndex) =>
+          renderRepeatableGroupInput(field, rowIndex, childField, value)
+        }
+      />
     );
-  };
-
-  const renderRepeatableGroupDerivedValue = (value: any, columnKey: string) => {
-    if (value === undefined || value === null || value === '') {
-      return '';
-    }
-
-    if (columnKey === 'sortedColor') {
-      return (
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: '0.75rem',
-              height: '0.75rem',
-              borderRadius: '999px',
-              border: '1px solid var(--border-color)',
-              backgroundColor: String(value),
-              display: 'inline-block',
-            }}
-          />
-          {String(value)}
-        </span>
-      );
-    }
-
-    return String(value);
   };
 
   const renderRepeatableGroupInput = (

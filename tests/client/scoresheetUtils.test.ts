@@ -8,6 +8,7 @@ import {
   calculateRepeatableGroupDerivedValues,
   calculateScoresheetValues,
   createBlankRepeatableGroupRow,
+  applyRepeatableGroupInputChange,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
   getBracketGameOptionValue,
@@ -261,6 +262,35 @@ describe('scoresheetUtils', () => {
         repeatableGroupField,
       ),
     ).toBe(false);
+  });
+
+  it('applies a repeatable group cell update and auto-appends a blank row', () => {
+    const nextRows = applyRepeatableGroupInputChange(
+      [{ cube_type: '', quantity: '', on_pallet: false }],
+      startBoxCubeField,
+      0,
+      'quantity',
+      '2',
+    );
+
+    expect(nextRows[0]).toMatchObject({ quantity: '2' });
+    expect(nextRows).toHaveLength(2);
+    expect(nextRows[1]).toEqual(
+      createBlankRepeatableGroupRow(startBoxCubeField),
+    );
+  });
+
+  it('fills a missing repeatable group row from a blank template', () => {
+    const field = { ...repeatableGroupField, minRows: 1 };
+    const nextRows = applyRepeatableGroupInputChange(
+      [{ has_pallet: false, small_red: '', notes: '' }],
+      field,
+      2,
+      'notes',
+      'hello',
+    );
+
+    expect(nextRows[2]).toMatchObject({ notes: 'hello' });
   });
 
   it('treats start box cube rows without quantity as blank', () => {

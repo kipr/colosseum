@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
 import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
 import ScoresheetFieldControl from '../ScoresheetFieldControl';
+import RepeatableGroupTable from '../RepeatableGroupTable';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 
@@ -65,53 +66,16 @@ export default function TemplatePreviewModal({
     />
   );
 
-  const renderRepeatableGroup = (field: any) => {
-    const rows = getPreviewRepeatableGroupRows(field);
-    const supportedFields = (field.fields || []).filter((childField: any) =>
-      ['text', 'number', 'dropdown', 'buttons', 'checkbox'].includes(
-        childField.type,
-      ),
-    );
-
-    return (
-      <div key={field.id} className="repeatable-group">
-        <div className="repeatable-group-title">
-          <span>{field.label}</span>
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </div>
-        <div className="repeatable-group-table">
-          <div className="repeatable-group-header">
-            <div className="repeatable-group-row-label">
-              {field.rowLabel || 'Row'}
-            </div>
-            {supportedFields.map((childField: any) => (
-              <div
-                key={childField.id}
-                className="repeatable-group-column-label"
-              >
-                {childField.label}
-              </div>
-            ))}
-          </div>
-          {rows.map((row, rowIndex) => (
-            <div key={rowIndex} className="repeatable-group-row">
-              <div className="repeatable-group-row-label">
-                {field.rowLabel || 'Row'} {rowIndex + 1}
-              </div>
-              {supportedFields.map((childField: any) => (
-                <div key={childField.id} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {childField.label}
-                  </label>
-                  {renderRepeatableGroupInput(childField, row[childField.id])}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  const renderRepeatableGroup = (field: any) => (
+    <RepeatableGroupTable
+      key={field.id}
+      field={field}
+      rows={getPreviewRepeatableGroupRows(field)}
+      renderControl={(childField, value) =>
+        renderRepeatableGroupInput(childField, value)
+      }
+    />
+  );
 
   const renderField = (field: any) => {
     if (field.type === 'section_header') {
