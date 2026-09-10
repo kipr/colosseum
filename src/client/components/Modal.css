@@ -51,13 +51,20 @@
   color: var(--text-color);
 }
 
-/* Score View Modal */
-.score-view-modal {
+/* Score View Modal
+   Combined selector beats `.modal-content { overflow-y: auto }` so the
+   form—not the dialog—is the scrollport. A definite height is required:
+   `max-height` alone lets the form's `min-height: 0` collapse to a sliver
+   and sticky headers never have a real viewport to pin to. */
+.modal-content.score-view-modal {
   max-width: 1200px;
   width: 95%;
+  height: 95vh;
   max-height: 95vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .score-view-header {
@@ -80,12 +87,22 @@
 }
 
 .score-view-form {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 0 1rem 1rem;
   background: var(--bg-color);
   border-radius: 0.5rem;
   margin-bottom: 1rem;
+  /* Judge scoresheet uses 4.5rem to clear the navbar. This form is the
+     scrollport, so Team A/B stick flush to its top. Unitless 0 is not a
+     <length> in custom properties, so use 0px. */
+  --scoresheet-sticky-header-top: 0px;
+}
+
+.score-view-result-panel,
+.score-view-winner-banner {
+  flex-shrink: 0;
 }
 
 .score-view-form .scoresheet-form {
@@ -124,8 +141,9 @@
     font-size: 1.75rem;
   }
 
-  .score-view-modal {
+  .modal-content.score-view-modal {
     width: 98%;
+    height: 90vh;
     max-height: 90vh;
     padding: 1rem;
   }
@@ -157,12 +175,12 @@
     padding-right: 2rem;
   }
 
-  .score-view-modal {
+  .modal-content.score-view-modal {
     padding: 0.75rem;
   }
 
   .score-view-form {
-    padding: 0.5rem;
+    padding: 0 0.5rem 0.5rem;
   }
 
   .score-view-actions {
