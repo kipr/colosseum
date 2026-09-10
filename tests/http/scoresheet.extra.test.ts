@@ -219,10 +219,11 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(res.status).toBe(404);
     });
 
-    it('returns template with parsed schema', async () => {
+    it('returns template with parsed schema and access code for admin', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'My Template',
         schema: JSON.stringify({ mode: 'seeding' }),
+        access_code: 'admin-secret',
         created_by: userId,
       });
 
@@ -230,10 +231,37 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
       );
       expect(res.status).toBe(200);
-      const body = res.json as { name: string; schema: { mode: string } };
+      const body = res.json as {
+        name: string;
+        schema: { mode: string };
+        access_code?: string;
+      };
       expect(body.name).toBe('My Template');
       expect(body.schema).toEqual({ mode: 'seeding' });
-      expect((body as { access_code?: string }).access_code).toBeUndefined();
+      expect(body.access_code).toBe('admin-secret');
+    });
+
+    it('omits access code for authenticated non-admin', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Staff Preview',
+        schema: JSON.stringify({ fields: [] }),
+        access_code: 'hidden-code',
+        created_by: userId,
+      });
+
+      const app = createTestApp({ user: { id: userId, is_admin: false } });
+      app.use('/scoresheet', scoresheetRoutes);
+      const staffServer = await startServer(app);
+      try {
+        const res = await http.get(
+          `${staffServer.baseUrl}/scoresheet/templates/${template.id}`,
+        );
+        expect(res.status).toBe(200);
+        const body = res.json as { access_code?: string };
+        expect(body.access_code).toBeUndefined();
+      } finally {
+        await staffServer.close();
+      }
     });
   });
 
@@ -432,6 +460,55 @@ describe('Scoresheet Routes – extra coverage', () => {
         [template.id],
       );
       expect(link).toBeUndefined();
+    });
+
+    it('keeps the existing access code when accessCode is blank', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Keep Code',
+        schema: JSON.stringify({ fields: [] }),
+        access_code: 'keep-me',
+        created_by: userId,
+      });
+
+      const res = await http.put(
+        `${baseUrl}/scoresheet/templates/${template.id}`,
+        {
+          name: 'Keep Code',
+          schema: { fields: [] },
+          accessCode: '   ',
+        },
+      );
+      expect(res.status).toBe(200);
+
+      const row = await testDb.db.get<{ access_code: string }>(
+        'SELECT access_code FROM scoresheet_templates WHERE id = ?',
+        [template.id],
+      );
+      expect(row?.access_code).toBe('keep-me');
+    });
+
+    it('keeps the existing access code when accessCode is omitted', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Omit Code',
+        schema: JSON.stringify({ fields: [] }),
+        access_code: 'still-here',
+        created_by: userId,
+      });
+
+      const res = await http.put(
+        `${baseUrl}/scoresheet/templates/${template.id}`,
+        {
+          name: 'Omit Code',
+          schema: { fields: [] },
+        },
+      );
+      expect(res.status).toBe(200);
+
+      const row = await testDb.db.get<{ access_code: string }>(
+        'SELECT access_code FROM scoresheet_templates WHERE id = ?',
+        [template.id],
+      );
+      expect(row?.access_code).toBe('still-here');
     });
 
     it('rejects invalid defaultValue on update', async () => {

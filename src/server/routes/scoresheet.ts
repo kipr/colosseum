@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto';
 import {
   requireAuth,
   requireAdmin,
+  isAdminUser,
   AuthRequest,
   JUDGE_SESSION_TTL_MS,
 } from '../middleware/auth';
@@ -205,7 +206,8 @@ publicRouter.post(
   },
 );
 
-// Get a specific template with full schema (authenticated - for admin preview)
+// Get a specific template with full schema (authenticated - for admin preview).
+// Access codes are only included for admins so staff preview cannot leak them.
 router.get(
   '/templates/:id',
   requireAuth,
@@ -213,8 +215,11 @@ router.get(
     try {
       const { id } = req.params;
       const db = await getDatabase();
+      const columns = isAdminUser(req)
+        ? 'id, name, description, schema, access_code, created_by, is_active, created_at, updated_at'
+        : 'id, name, description, schema, created_by, is_active, created_at, updated_at';
       const template = await db.get(
-        `SELECT id, name, description, schema, created_by, is_active, created_at, updated_at
+        `SELECT ${columns}
          FROM scoresheet_templates WHERE id = ? AND is_active IS TRUE`,
         [id],
       );
@@ -294,6 +299,10 @@ router.put(
     try {
       const { id } = req.params;
       const { name, description, schema, accessCode, eventId } = req.body;
+      const nextAccessCode =
+        typeof accessCode === 'string' && accessCode.trim() !== ''
+          ? accessCode.trim()
+          : null;
 
       if (schema !== undefined) {
         const schemaValidation = validateScoresheetSchema(schema);
@@ -309,9 +318,11 @@ router.put(
       await db.transaction(async (tx) => {
         await tx.run(
           `UPDATE scoresheet_templates 
-         SET name = ?, description = ?, schema = ?, access_code = ?, updated_at = CURRENT_TIMESTAMP
+         SET name = ?, description = ?, schema = ?,
+             access_code = COALESCE(?, access_code),
+             updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-          [name, description, JSON.stringify(schema), accessCode, id],
+          [name, description, JSON.stringify(schema), nextAccessCode, id],
         );
 
         await tx.run(
