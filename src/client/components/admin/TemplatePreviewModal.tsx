@@ -251,27 +251,22 @@ export default function TemplatePreviewModal({
   return (
     <div className="modal show" onClick={onClose}>
       <div
-        className="modal-content"
-        style={{ maxWidth: '95%', maxHeight: '95vh', overflowY: 'auto' }}
+        className="modal-content score-view-modal"
         onClick={(e) => e.stopPropagation()}
       >
         <span className="close" onClick={onClose}>
           &times;
         </span>
-        <h3 style={{ marginBottom: '1rem' }}>Template Preview</h3>
+        <div className="score-view-header">
+          <h3>Template Preview</h3>
+        </div>
         {loading ? (
           <p>Loading preview...</p>
         ) : template ? (
-          <div
-            style={{
-              background: 'var(--bg-color)',
-              padding: '1rem',
-              borderRadius: '0.5rem',
-            }}
-          >
+          <div className="score-view-form">
             <div
               className="scoresheet-form"
-              style={{ background: 'var(--card-bg)' }}
+              style={{ background: 'var(--card-bg)', boxShadow: 'none' }}
             >
               {template.schema.title && (
                 <div className="scoresheet-title">{template.schema.title}</div>
@@ -324,7 +319,7 @@ export default function TemplatePreviewModal({
         ) : (
           <p>Failed to load template</p>
         )}
-        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <div className="score-view-actions">
           <button className="btn btn-secondary" onClick={onClose}>
             Close
           </button>

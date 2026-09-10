@@ -13,6 +13,10 @@ import {
   formatSchemaValidationError,
   validateScoresheetSchema,
 } from '../../shared/scoresheetSchema';
+import {
+  parseStoredJson,
+  tryParseStoredJson,
+} from '../../shared/parseStoredJson';
 import { composeRouters } from './composeRouters';
 
 const publicRouter = express.Router();
@@ -72,12 +76,7 @@ publicRouter.get(
       // Parse schema JSON for each template
       templates.forEach((template) => {
         if (template.schema) {
-          try {
-            template.schema = JSON.parse(template.schema);
-          } catch (e) {
-            console.error('Error parsing template schema:', e);
-            template.schema = null;
-          }
+          template.schema = tryParseStoredJson(template.schema);
         }
       });
 
@@ -194,7 +193,7 @@ publicRouter.post(
       }
 
       // Parse JSON schema and remove sensitive data
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredJson(template.schema);
       delete template.access_code;
       delete template.created_by;
 
@@ -229,7 +228,7 @@ router.get(
       }
 
       // Parse JSON schema
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredJson(template.schema);
       res.json(template);
     } catch (error) {
       console.error('Error fetching template:', error);
@@ -281,7 +280,7 @@ router.post(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredJson(template.schema);
 
       res.json(template);
     } catch (error) {
@@ -343,7 +342,7 @@ router.put(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [id],
       );
-      template.schema = JSON.parse(template.schema);
+      template.schema = parseStoredJson(template.schema);
 
       res.json(template);
     } catch (error) {

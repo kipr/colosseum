@@ -14,6 +14,7 @@ import type { BracketResultType } from '../../../shared/bracketResult';
 
 interface ScoreSubmission {
   id: number;
+  template_id: number;
   template_name: string;
   participant_name: string;
   match_id: string;
