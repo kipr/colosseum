@@ -2,25 +2,38 @@
   "name": "colosseum-dev",
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
   "service": "app",
-  "workspaceFolder": "/workspaces/colosseum",
+  // Host-identical path so node_modules, LSPs and Claude sessions line up with the host.
+  "workspaceFolder": "${localWorkspaceFolder}",
+  "initializeCommand": "mkdir -p \"$HOME/.claude\" \"$HOME/.config/codex\" && touch \"$HOME/.claude.json\"",
+  "mounts": [
+    "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
+    "source=${localEnv:HOME}/.claude,target=${localEnv:HOME}/.claude,type=bind",
+    "source=${localEnv:HOME}/.claude.json,target=${localEnv:HOME}/.claude.json,type=bind"
+  ],
   "customizations": {
     "vscode": {
       "extensions": [
+        "anthropic.claude-code",
         "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode"
-      ]
+        "esbenp.prettier-vscode",
+        "ms-playwright.playwright"
+      ],
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "fish",
+        "terminal.integrated.profiles.linux": {
+          "fish": { "path": "/usr/bin/fish" }
+        },
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      }
     }
   },
-  "mounts": [
-    "source=${localEnv:HOME}/.config/codex,target=/home/node/.codex,type=bind,consistency=cached",
-    "source=${localEnv:HOME}/.serena,target=/home/node/.serena,type=bind,consistency=cached"
-  ],
   "forwardPorts": [3000, 5173, 3001, 5174, 5432],
-  "remoteUser": "node",
+  "remoteUser": "${localEnv:USER}",
+  "updateRemoteUserUID": false,
   "containerEnv": {
     "DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum",
     "TEST_DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum_test"
   },
-  "postCreateCommand": "npm ci",
+  "postCreateCommand": "npm ci && npx playwright install chromium",
   "postStartCommand": "sh -c 'until pg_isready -h postgres -U colosseum -d colosseum; do sleep 1; done'"
 }
