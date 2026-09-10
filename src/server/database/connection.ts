@@ -16,7 +16,8 @@ export type PostgresConfig =
 const POSTGRES_REQUIRED_MESSAGE =
   'PostgreSQL is required. Copy `.env.example` to `.env`, ' +
   'set `DATABASE_URL`, then run `npm run db:up && npm run db:wait`. ' +
-  'Production uses `CLOUD_SQL_CONNECTION_NAME` with `DB_USER`, `DB_PASSWORD`, and `DB_NAME`.';
+  'Production uses `DB_HOST` or `CLOUD_SQL_CONNECTION_NAME` with ' +
+  '`DB_USER`, `DB_PASSWORD`, and `DB_NAME`.';
 
 function envValue(
   env: NodeJS.Dict<string | undefined>,
@@ -28,8 +29,9 @@ function envValue(
 
 /**
  * Choose Postgres connection settings from the current environment.
- * `DATABASE_URL` wins; otherwise Cloud SQL unix-socket vars. `NODE_ENV`
- * is not a dialect signal. Reads env at call time so `.env` can load first.
+ * `DATABASE_URL` wins; otherwise Cloud SQL TCP or unix-socket vars.
+ * `NODE_ENV` is not a dialect signal. Reads env at call time so `.env` can
+ * load first.
  */
 export function resolvePostgresConfig(
   env: NodeJS.Dict<string | undefined> = process.env,
@@ -39,14 +41,15 @@ export function resolvePostgresConfig(
     return { source: 'url', connectionString: databaseUrl };
   }
 
+  const dbHost = envValue(env, 'DB_HOST');
   const connectionName = envValue(env, 'CLOUD_SQL_CONNECTION_NAME');
-  if (connectionName) {
+  if (dbHost || connectionName) {
     return {
       source: 'cloudsql',
       user: envValue(env, 'DB_USER') || 'postgres',
       password: envValue(env, 'DB_PASSWORD'),
       database: envValue(env, 'DB_NAME') || 'colosseum',
-      host: envValue(env, 'DB_HOST') || `/cloudsql/${connectionName}`,
+      host: dbHost || `/cloudsql/${connectionName}`,
     };
   }
 

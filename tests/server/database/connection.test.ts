@@ -116,6 +116,23 @@ describe('resolvePostgresConfig', () => {
     });
   });
 
+  it('uses DB_HOST without requiring a Cloud SQL connection name', () => {
+    expect(
+      resolvePostgresConfig({
+        DB_HOST: '10.30.0.3',
+        DB_USER: 'cloud',
+        DB_PASSWORD: 'secret',
+        DB_NAME: 'prod',
+      }),
+    ).toEqual({
+      source: 'cloudsql',
+      user: 'cloud',
+      password: 'secret',
+      database: 'prod',
+      host: '10.30.0.3',
+    });
+  });
+
   it('treats empty DATABASE_URL as unset', () => {
     expect(() =>
       resolvePostgresConfig({ DATABASE_URL: '', NODE_ENV: 'test' }),

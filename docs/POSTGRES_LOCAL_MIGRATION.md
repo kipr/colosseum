@@ -17,7 +17,7 @@ GitHub Actions Playwright remains **out of scope**. Local Playwright is **in sco
 | Local `npm run dev` | PostgreSQL 18 via Docker Compose (`colosseum`) | `DATABASE_URL` (required). Unset + no Cloud SQL vars → fail with a `db:up` hint. `NODE_ENV` is not a dialect signal |
 | Vitest | PostgreSQL 18, schema per worker on `colosseum_test` | `TEST_DATABASE_URL` (`tests/sql/helpers/testDb.ts`) |
 | Local Playwright | PostgreSQL 18, `public` schema on `colosseum_test` | Playwright injects `DATABASE_URL=$TEST_DATABASE_URL`; ports 3001/5174 |
-| Production | Cloud SQL PostgreSQL 18 | `CLOUD_SQL_CONNECTION_NAME` + `DB_USER` / `DB_PASSWORD` / `DB_NAME` (Cloud Run does **not** set `DATABASE_URL`) |
+| Production | Cloud SQL PostgreSQL 18 | `DB_HOST` (private-IP TCP) or `CLOUD_SQL_CONNECTION_NAME` (Unix socket) + `DB_USER` / `DB_PASSWORD` / `DB_NAME` (Cloud Run does **not** set `DATABASE_URL`) |
 
 Schema is defined once in 13 modules under `src/server/database/schema/` (`SchemaModule` is a name plus one `DialectSchema`). `PostgresAdapter.convertSql()` rewrites `?` placeholders to `$n`. Callers that need a generated key include `RETURNING id` in the SQL; the adapter does not append it and does not rewrite `INSERT OR IGNORE`.
 
@@ -288,7 +288,7 @@ Playwright is still **not** added to GitHub Actions.
 ### Phase 2 — Postgres is the only local default (done)
 
 - `getDatabase()` / `initializeDatabase()` / `server.ts` session store: Postgres only
-- Connection selection is lazy `resolvePostgresConfig()`: `DATABASE_URL` → TCP; else `CLOUD_SQL_CONNECTION_NAME` → unix socket; otherwise throw. `NODE_ENV === 'production'` is not a dialect proxy
+- Connection selection is lazy `resolvePostgresConfig()`: `DATABASE_URL` → URL; else `DB_HOST` → TCP; else `CLOUD_SQL_CONNECTION_NAME` → unix socket; otherwise throw. `NODE_ENV === 'production'` is not a dialect proxy
 - `src/server/loadEnv.ts` is the first import in `server.ts` so `.env` is applied before connection code runs
 - Fail fast with a Compose hint if the server is unreachable via `DATABASE_URL` (`ECONNREFUSED` / empty-message `AggregateError`)
 - Remove SQLite session branch from the running app (`SqliteSessionStore` file stays until Phase 3)
