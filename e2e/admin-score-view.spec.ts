@@ -171,3 +171,287 @@ test.describe('Admin score view template lookup', () => {
     ).toHaveValue('40');
   });
 });
+
+const STICKY_ADMIN_EMAIL = 'e2e-admin-score-sticky@kipr.org';
+const STICKY_ADMIN_NAME = 'E2E Admin Score Sticky';
+const STICKY_EVENT_NAME = `E2E Admin Score Sticky ${Date.now()}`;
+const STICKY_TEMPLATE_TITLE = 'E2E Team A B Sticky Sheet';
+
+let stickyAdmin: Awaited<ReturnType<typeof seedAdminSession>>;
+let stickyEventId: number;
+let stickyTemplateId: number;
+
+function boxesOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+): boolean {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+test.describe('Admin score view Team A/B sticky headers', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test.beforeAll(async () => {
+    const db = e2eDb();
+
+    stickyAdmin = await seedAdminSession({
+      email: STICKY_ADMIN_EMAIL,
+      name: STICKY_ADMIN_NAME,
+      googleId: `e2e-admin-score-sticky-${Date.now()}`,
+    });
+
+    const ev = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+       VALUES (?, 'active', 3, 'manual') RETURNING id`,
+      [STICKY_EVENT_NAME],
+    );
+    stickyEventId = Number(ev.lastID);
+
+    const schema = {
+      title: STICKY_TEMPLATE_TITLE,
+      eventId: stickyEventId,
+      mode: 'head-to-head',
+      layout: 'two-column',
+      fields: [
+        {
+          id: 'section_header_team_a',
+          label: 'TEAM A',
+          type: 'section_header',
+          column: 'left',
+        },
+        {
+          id: 'group_header_start_box_a',
+          label: 'Lower Start Box',
+          type: 'group_header',
+          column: 'left',
+        },
+        {
+          id: 'drums_a',
+          label: 'Drums × 25',
+          type: 'number',
+          min: 0,
+          max: 4,
+          column: 'left',
+        },
+        {
+          id: 'cubes_a',
+          label: 'Cubes',
+          type: 'number',
+          min: 0,
+          max: 20,
+          column: 'left',
+        },
+        {
+          id: 'botguy_a',
+          label: 'Botguy',
+          type: 'number',
+          min: 0,
+          max: 10,
+          column: 'left',
+        },
+        {
+          id: 'pom_a',
+          label: 'Poms',
+          type: 'number',
+          min: 0,
+          max: 20,
+          column: 'left',
+        },
+        {
+          id: 'bonus_a',
+          label: 'Bonus',
+          type: 'number',
+          min: 0,
+          max: 50,
+          column: 'left',
+        },
+        {
+          id: 'section_header_team_b',
+          label: 'TEAM B',
+          type: 'section_header',
+          column: 'right',
+        },
+        {
+          id: 'group_header_start_box_b',
+          label: 'Lower Start Box',
+          type: 'group_header',
+          column: 'right',
+        },
+        {
+          id: 'drums_b',
+          label: 'Drums × 25',
+          type: 'number',
+          min: 0,
+          max: 4,
+          column: 'right',
+        },
+        {
+          id: 'cubes_b',
+          label: 'Cubes',
+          type: 'number',
+          min: 0,
+          max: 20,
+          column: 'right',
+        },
+        {
+          id: 'botguy_b',
+          label: 'Botguy',
+          type: 'number',
+          min: 0,
+          max: 10,
+          column: 'right',
+        },
+        {
+          id: 'pom_b',
+          label: 'Poms',
+          type: 'number',
+          min: 0,
+          max: 20,
+          column: 'right',
+        },
+        {
+          id: 'bonus_b',
+          label: 'Bonus',
+          type: 'number',
+          min: 0,
+          max: 50,
+          column: 'right',
+        },
+      ],
+    };
+
+    const tpl = await db.run(
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'Head-to-head sheet with Team A/B headers', ?, 'e2e-score-sticky', TRUE)
+       RETURNING id`,
+      [STICKY_TEMPLATE_TITLE, JSON.stringify(schema)],
+    );
+    stickyTemplateId = Number(tpl.lastID);
+
+    await db.run(
+      `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
+       VALUES (?, ?, 'bracket') RETURNING id`,
+      [stickyEventId, stickyTemplateId],
+    );
+
+    await db.run(
+      `INSERT INTO score_submissions
+        (user_id, template_id, participant_name, score_data, status, event_id, score_type,
+         result_type, result_note)
+       VALUES (?, ?, ?, ?, 'accepted', ?, 'bracket', 'no_contest', 'E2E no contest')
+       RETURNING id`,
+      [
+        stickyAdmin.adminUserId,
+        stickyTemplateId,
+        'Sticky Match',
+        JSON.stringify({
+          drums_a: { label: 'Drums × 25', value: 0, type: 'number' },
+          cubes_a: { label: 'Cubes', value: 2, type: 'number' },
+          drums_b: { label: 'Drums × 25', value: 0, type: 'number' },
+          cubes_b: { label: 'Cubes', value: 1, type: 'number' },
+        }),
+        stickyEventId,
+      ],
+    );
+  });
+
+  test.afterAll(async () => {
+    const db = e2eDb();
+
+    await db.run('DELETE FROM score_submissions WHERE template_id = ?', [
+      stickyTemplateId,
+    ]);
+    await db.run(
+      'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
+      [stickyTemplateId],
+    );
+    await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [
+      stickyTemplateId,
+    ]);
+    await db.run('DELETE FROM events WHERE id = ?', [stickyEventId]);
+    await deleteSession(stickyAdmin.sid);
+    await db.run('DELETE FROM users WHERE id = ?', [stickyAdmin.adminUserId]);
+    await closeE2eDb();
+  });
+
+  test('does not cover score rows with Team A/B headers, and keeps the judge offset', async ({
+    page,
+  }) => {
+    await setSessionCookie(page, stickyAdmin.signedCookie);
+    await page.setViewportSize({ width: 1400, height: 560 });
+    await page.goto(`/admin/events/${stickyEventId}?view=scoring`);
+
+    await expect(
+      page.getByRole('heading', { name: 'Bracket Scores' }),
+    ).toBeVisible({ timeout: 30_000 });
+
+    await page.getByRole('button', { name: 'View' }).click();
+
+    const modal = page.locator('.modal.show');
+    await expect(
+      modal.getByRole('heading', { name: 'View Score' }),
+    ).toBeVisible();
+
+    const teamAHeader = modal
+      .locator('.scoresheet-column')
+      .first()
+      .locator('.section-header');
+    const drumsField = modal
+      .locator('.scoresheet-column')
+      .first()
+      .locator('.score-field', { hasText: 'Drums × 25' });
+
+    await expect(teamAHeader).toHaveText('TEAM A');
+    await expect(drumsField).toBeVisible();
+    await expect(teamAHeader).toHaveCSS('top', '0px');
+
+    const restHeaderBox = await teamAHeader.boundingBox();
+    const restFieldBox = await drumsField.boundingBox();
+    expect(restHeaderBox).toBeTruthy();
+    expect(restFieldBox).toBeTruthy();
+    expect(boxesOverlap(restHeaderBox!, restFieldBox!)).toBe(false);
+
+    const form = modal.locator('.score-view-form');
+    await form.evaluate((el) => {
+      el.scrollTop = 400;
+    });
+
+    const stuckOffset = await page.evaluate(() => {
+      const formEl = document.querySelector('.score-view-form');
+      const headerEl = document.querySelector(
+        '.score-view-form .scoresheet-column .section-header',
+      );
+      if (!formEl || !headerEl) return Number.NaN;
+      return (
+        headerEl.getBoundingClientRect().top -
+        formEl.getBoundingClientRect().top
+      );
+    });
+    expect(stuckOffset).toBeGreaterThanOrEqual(0);
+    expect(stuckOffset).toBeLessThan(40);
+
+    const defaultStickyTop = await page.evaluate(() => {
+      const el = document.createElement('div');
+      el.className = 'section-header';
+      document.body.appendChild(el);
+      const top = getComputedStyle(el).top;
+      el.remove();
+      return top;
+    });
+    const fourPointFiveRem = await page.evaluate(() => {
+      const probe = document.createElement('div');
+      probe.style.position = 'absolute';
+      probe.style.top = '4.5rem';
+      document.body.appendChild(probe);
+      const top = getComputedStyle(probe).top;
+      probe.remove();
+      return top;
+    });
+    expect(defaultStickyTop).toBe(fourPointFiveRem);
+  });
+});

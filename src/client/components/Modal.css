@@ -58,6 +58,7 @@
   max-height: 95vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .score-view-header {
@@ -86,6 +87,10 @@
   background: var(--bg-color);
   border-radius: 0.5rem;
   margin-bottom: 1rem;
+  /* Judge scoresheet uses 4.5rem to clear the navbar. This form is the
+     scrollport, so Team A/B stick to its top instead of floating into the
+     score rows. */
+  --scoresheet-sticky-header-top: 0;
 }
 
 .score-view-form .scoresheet-form {
