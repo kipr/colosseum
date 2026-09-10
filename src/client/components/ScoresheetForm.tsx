@@ -5,6 +5,7 @@ import {
   buildRepeatableGroupDerivedScoreEntries,
   calculateRepeatableGroupDerived,
   calculateRepeatableGroupDerivedValues,
+  calculateScoresheetValues,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
   normalizeRepeatableGroupRows,
@@ -824,85 +825,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     return field.placeholder || '0';
   };
 
-  const calculateFormulaValues = (data: Record<string, any>) => {
-    const calculated: Record<string, number> = {};
-    const { outputs } = calculateRepeatableGroupDerivedValues(
-      schema.fields,
-      data,
-    );
-    const formulaData = { ...data, ...outputs };
-
-    schema.fields.forEach((field: any) => {
-      if (field.type === 'calculated' && field.formula) {
-        try {
-          const result = evaluateFormula(
-            field.formula,
-            formulaData,
-            calculated,
-          );
-          calculated[field.id] = result;
-        } catch (error) {
-          console.error(`Error calculating ${field.id}:`, error);
-          calculated[field.id] = 0;
-        }
-      }
-    });
-
-    return calculated;
-  };
-
   const calculateAllFormulas = () => {
-    setCalculatedValues(calculateFormulaValues(formData));
-  };
-
-  const evaluateFormula = (
-    formula: string,
-    data: Record<string, any>,
-    calculated: Record<string, number>,
-  ): number => {
-    let expression = formula;
-    const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-    const uniqueFieldIds = Array.from(new Set(fieldIds));
-
-    uniqueFieldIds.forEach((fieldId) => {
-      let value: any = 0;
-
-      if (calculated[fieldId] !== undefined) {
-        value = calculated[fieldId];
-      } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
-        value = data[fieldId];
-      }
-
-      let replacement: string;
-
-      if (formula.includes(`${fieldId} ===`)) {
-        replacement = `'${String(value)}'`;
-      } else if (typeof value === 'string') {
-        replacement = String(Number(value) || 0);
-      } else if (typeof value === 'boolean') {
-        replacement = value ? '1' : '0';
-      } else {
-        replacement = String(Number(value) || 0);
-      }
-
-      const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
-      expression = expression.replace(regex, replacement);
-    });
-
-    try {
-      const result = eval(expression);
-      return Number(result) || 0;
-    } catch (error) {
-      console.error(
-        'Formula evaluation error:',
-        error,
-        'Formula:',
-        formula,
-        'Expression:',
-        expression,
-      );
-      return 0;
-    }
+    setCalculatedValues(calculateScoresheetValues(schema.fields, formData));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -973,7 +897,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     const scoreData: Record<string, any> = {};
-    const submitCalculatedValues = calculateFormulaValues(formData);
+    const submitCalculatedValues = calculateScoresheetValues(
+      schema.fields,
+      formData,
+    );
     const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
       schema.fields,
       formData,

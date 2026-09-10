@@ -279,6 +279,88 @@ export function calculateRepeatableGroupDerivedValues(
   return { derivedByFieldId, outputs };
 }
 
+function evaluateFormula(
+  formula: string,
+  data: Record<string, any>,
+  calculated: Record<string, number>,
+): number {
+  let expression = formula;
+  const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
+  const uniqueFieldIds = Array.from(new Set(fieldIds));
+
+  uniqueFieldIds.forEach((fieldId) => {
+    let value: any = 0;
+
+    if (calculated[fieldId] !== undefined) {
+      value = calculated[fieldId];
+    } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
+      value = data[fieldId];
+    }
+
+    let replacement: string;
+
+    if (formula.includes(`${fieldId} ===`)) {
+      replacement = `'${String(value)}'`;
+    } else if (typeof value === 'string') {
+      replacement = String(Number(value) || 0);
+    } else if (typeof value === 'boolean') {
+      replacement = value ? '1' : '0';
+    } else {
+      replacement = String(Number(value) || 0);
+    }
+
+    const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
+    expression = expression.replace(regex, replacement);
+  });
+
+  try {
+    // Formula strings are authored in the scoresheet template, not user input.
+    // eslint-disable-next-line no-eval
+    const result = eval(expression);
+    return Number(result) || 0;
+  } catch (error) {
+    console.error(
+      'Formula evaluation error:',
+      error,
+      'Formula:',
+      formula,
+      'Expression:',
+      expression,
+    );
+    return 0;
+  }
+}
+
+export function calculateScoresheetValues(
+  fields: any[] | undefined,
+  data: Record<string, any>,
+): Record<string, number> {
+  if (!fields?.length) {
+    return {};
+  }
+
+  const calculated: Record<string, number> = {};
+  const { outputs } = calculateRepeatableGroupDerivedValues(fields, data);
+  const formulaData = { ...data, ...outputs };
+
+  fields.forEach((field: any) => {
+    if (field.type === 'calculated' && field.formula) {
+      try {
+        calculated[field.id] = evaluateFormula(
+          field.formula,
+          formulaData,
+          calculated,
+        );
+      } catch (error) {
+        console.error(`Error calculating ${field.id}:`, error);
+        calculated[field.id] = 0;
+      }
+    }
+  });
+
+  return calculated;
+}
+
 export function buildRepeatableGroupDerivedOutputScoreEntries(
   field: any,
   derived: any,

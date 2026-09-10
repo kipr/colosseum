@@ -6,6 +6,7 @@ import {
   buildRepeatableGroupScoreEntry,
   calculateRepeatableGroupDerivedRows,
   calculateRepeatableGroupDerivedValues,
+  calculateScoresheetValues,
   createBlankRepeatableGroupRow,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
@@ -586,5 +587,104 @@ describe('scoresheetUtils', () => {
 
     expect(derivedByFieldId).toEqual({});
     expect(outputs).toEqual({});
+  });
+
+  describe('calculateScoresheetValues', () => {
+    it('returns an empty object when fields are missing or empty', () => {
+      expect(calculateScoresheetValues(undefined, { a: 1 })).toEqual({});
+      expect(calculateScoresheetValues([], { a: 1 })).toEqual({});
+    });
+
+    it('evaluates arithmetic formulas from form data', () => {
+      expect(
+        calculateScoresheetValues(
+          [
+            { id: 'a', type: 'number' },
+            { id: 'b', type: 'number' },
+            { id: 'total', type: 'calculated', formula: 'a + b' },
+          ],
+          { a: 10, b: 5 },
+        ),
+      ).toEqual({ total: 15 });
+    });
+
+    it('lets later calculated fields read earlier calculated values', () => {
+      expect(
+        calculateScoresheetValues(
+          [
+            { id: 'a', type: 'number' },
+            { id: 'subtotal', type: 'calculated', formula: 'a * 2' },
+            { id: 'grand_total', type: 'calculated', formula: 'subtotal + 1' },
+          ],
+          { a: 4 },
+        ),
+      ).toEqual({ subtotal: 8, grand_total: 9 });
+    });
+
+    it('includes repeatable-group derived outputs in formulas', () => {
+      expect(
+        calculateScoresheetValues(
+          [
+            startBoxCubeField,
+            {
+              id: 'grand_total',
+              type: 'calculated',
+              formula: 'side_a_ls_cube_points + bonus',
+            },
+            { id: 'bonus', type: 'number' },
+          ],
+          {
+            side_a_ls_cube_stacks: [
+              { cube_type: 'small', quantity: '2', on_pallet: false },
+              { cube_type: 'large_brown', quantity: 1, on_pallet: true },
+            ],
+            bonus: 10,
+          },
+        ),
+      ).toEqual({ grand_total: 100 });
+    });
+
+    it('quotes values for fieldId === string comparisons', () => {
+      expect(
+        calculateScoresheetValues(
+          [
+            { id: 'color', type: 'dropdown' },
+            {
+              id: 'points',
+              type: 'calculated',
+              formula: "color === 'red' ? 10 : 0",
+            },
+          ],
+          { color: 'red' },
+        ),
+      ).toEqual({ points: 10 });
+    });
+
+    it('treats booleans as 1/0 and empty values as 0', () => {
+      expect(
+        calculateScoresheetValues(
+          [
+            { id: 'flag', type: 'checkbox' },
+            { id: 'missing', type: 'number' },
+            { id: 'blank', type: 'text' },
+            {
+              id: 'total',
+              type: 'calculated',
+              formula: 'flag + missing + blank',
+            },
+          ],
+          { flag: true, blank: '' },
+        ),
+      ).toEqual({ total: 1 });
+    });
+
+    it('returns 0 for invalid formulas', () => {
+      expect(
+        calculateScoresheetValues(
+          [{ id: 'total', type: 'calculated', formula: 'a +' }],
+          { a: 1 },
+        ),
+      ).toEqual({ total: 0 });
+    });
   });
 });

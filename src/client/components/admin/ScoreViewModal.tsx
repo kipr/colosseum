@@ -8,6 +8,7 @@ import {
   buildRepeatableGroupDerivedScoreEntries,
   buildRepeatableGroupScoreEntry,
   calculateRepeatableGroupDerivedValues,
+  calculateScoresheetValues,
   getRepeatableGroupRowKeys,
   normalizeRepeatableGroupRows,
   shouldAutoAppendRepeatableGroupRow,
@@ -109,36 +110,10 @@ export default function ScoreViewModal({
     setFormData(data);
   };
 
-  const calculateFormulaValues = (data: Record<string, any>) => {
-    if (!template?.schema?.fields) return {};
-
-    const calculated: Record<string, number> = {};
-    const { outputs } = calculateRepeatableGroupDerivedValues(
-      template.schema.fields,
-      data,
-    );
-    const formulaData = { ...data, ...outputs };
-
-    template.schema.fields.forEach((field: any) => {
-      if (field.type === 'calculated' && field.formula) {
-        try {
-          const result = evaluateFormula(
-            field.formula,
-            formulaData,
-            calculated,
-          );
-          calculated[field.id] = result;
-        } catch {
-          calculated[field.id] = 0;
-        }
-      }
-    });
-
-    return calculated;
-  };
-
   const calculateAllFormulas = () => {
-    setCalculatedValues(calculateFormulaValues(formData));
+    setCalculatedValues(
+      calculateScoresheetValues(template?.schema?.fields, formData),
+    );
   };
 
   const handleDisqualifiedTeamChange = (teamId: number | null) => {
@@ -167,47 +142,6 @@ export default function ScoreViewModal({
       winner_team_name: winnerName,
       winner_display: winnerDisplay,
     }));
-  };
-
-  const evaluateFormula = (
-    formula: string,
-    data: Record<string, any>,
-    calculated: Record<string, number>,
-  ): number => {
-    let expression = formula;
-    const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-    const uniqueFieldIds = Array.from(new Set(fieldIds));
-
-    uniqueFieldIds.forEach((fieldId) => {
-      let value: any = 0;
-
-      if (calculated[fieldId] !== undefined) {
-        value = calculated[fieldId];
-      } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
-        value = data[fieldId];
-      }
-
-      let replacement: string;
-      if (formula.includes(`${fieldId} ===`)) {
-        replacement = `'${String(value)}'`;
-      } else if (typeof value === 'string') {
-        replacement = String(Number(value) || 0);
-      } else if (typeof value === 'boolean') {
-        replacement = value ? '1' : '0';
-      } else {
-        replacement = String(Number(value) || 0);
-      }
-
-      const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
-      expression = expression.replace(regex, replacement);
-    });
-
-    try {
-      const result = eval(expression);
-      return Number(result) || 0;
-    } catch {
-      return 0;
-    }
   };
 
   const handleInputChange = (fieldId: string, value: any) => {
@@ -278,7 +212,10 @@ export default function ScoreViewModal({
       const fieldsById = new Map<string, any>(
         (template?.schema?.fields || []).map((field: any) => [field.id, field]),
       );
-      const saveCalculatedValues = calculateFormulaValues(formData);
+      const saveCalculatedValues = calculateScoresheetValues(
+        template?.schema?.fields,
+        formData,
+      );
       const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
         template?.schema?.fields || [],
         formData,
