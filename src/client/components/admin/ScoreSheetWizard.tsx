@@ -7,6 +7,7 @@ import {
 } from '../scoresheetUtils';
 import { stripTeamInitialsFields } from '../../../shared/teamInitials';
 import '../Modal.css';
+import './ScoreSheetWizard.css';
 
 interface FieldTemplate {
   id: number;
@@ -27,6 +28,32 @@ interface ScoreSheetWizardProps {
 
 type StepType = 'type' | 'template' | 'basic' | 'review';
 type SheetType = 'seeding' | 'double_seeding' | 'de';
+
+const SHEET_TYPE_OPTIONS: {
+  type: SheetType;
+  icon: string;
+  title: string;
+  description: string;
+}[] = [
+  {
+    type: 'seeding',
+    icon: '📊',
+    title: 'Seeding',
+    description: 'For qualification rounds',
+  },
+  {
+    type: 'double_seeding',
+    icon: '👥',
+    title: 'Double Seeding',
+    description: 'Paired rounds, per-side scores',
+  },
+  {
+    type: 'de',
+    icon: '🏆',
+    title: 'Double Elimination',
+    description: 'For bracket games',
+  },
+];
 
 export default function ScoreSheetWizard({
   onComplete,
@@ -289,60 +316,27 @@ export default function ScoreSheetWizard({
               bracket.
             </p>
 
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-              <button
-                className={`btn ${sheetType === 'seeding' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setSheetType('seeding')}
-                style={{
-                  flex: 1,
-                  padding: '2rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                }}
-              >
-                <div style={{ fontSize: '2rem' }}>📊</div>
-                <div style={{ fontWeight: 'bold' }}>Seeding</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-                  For qualification rounds
-                </div>
-              </button>
-
-              <button
-                className={`btn ${sheetType === 'double_seeding' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setSheetType('double_seeding')}
-                style={{
-                  flex: 1,
-                  padding: '2rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                }}
-              >
-                <div style={{ fontSize: '2rem' }}>👥</div>
-                <div style={{ fontWeight: 'bold' }}>Double Seeding</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-                  Paired rounds, per-side scores
-                </div>
-              </button>
-
-              <button
-                className={`btn ${sheetType === 'de' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setSheetType('de')}
-                style={{
-                  flex: 1,
-                  padding: '2rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                }}
-              >
-                <div style={{ fontSize: '2rem' }}>🏆</div>
-                <div style={{ fontWeight: 'bold' }}>Double Elimination</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-                  For bracket games
-                </div>
-              </button>
+            <div className="score-sheet-wizard-type-options">
+              {SHEET_TYPE_OPTIONS.map((option) => (
+                <button
+                  key={option.type}
+                  type="button"
+                  className={`btn btn-card score-sheet-wizard-type-card ${
+                    sheetType === option.type ? 'btn-primary' : 'btn-secondary'
+                  }`}
+                  onClick={() => setSheetType(option.type)}
+                >
+                  <div className="score-sheet-wizard-type-icon">
+                    {option.icon}
+                  </div>
+                  <div className="score-sheet-wizard-type-title">
+                    {option.title}
+                  </div>
+                  <div className="score-sheet-wizard-type-desc">
+                    {option.description}
+                  </div>
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -394,15 +388,9 @@ export default function ScoreSheetWizard({
               >
                 {/* None selected option */}
                 <button
-                  className={`btn ${!selectedTemplate ? 'btn-primary' : 'btn-secondary'}`}
+                  type="button"
+                  className={`btn btn-card score-sheet-wizard-option-card ${!selectedTemplate ? 'btn-primary' : 'btn-secondary'}`}
                   onClick={() => setSelectedTemplate(null)}
-                  style={{
-                    padding: '1rem',
-                    textAlign: 'left',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
                 >
                   <div>
                     <div style={{ fontWeight: 'bold' }}>
@@ -419,15 +407,9 @@ export default function ScoreSheetWizard({
                 {fieldTemplates.map((template) => (
                   <button
                     key={template.id}
-                    className={`btn ${selectedTemplate?.id === template.id ? 'btn-primary' : 'btn-secondary'}`}
+                    type="button"
+                    className={`btn btn-card score-sheet-wizard-option-card ${selectedTemplate?.id === template.id ? 'btn-primary' : 'btn-secondary'}`}
                     onClick={() => setSelectedTemplate(template)}
-                    style={{
-                      padding: '1rem',
-                      textAlign: 'left',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
                   >
                     <div>
                       <div style={{ fontWeight: 'bold' }}>{template.name}</div>
