@@ -53,11 +53,13 @@
 
 /* Score View Modal
    Combined selector beats `.modal-content { overflow-y: auto }` so the
-   form—not the dialog—is the scrollport. `min-height: 0` lets the flex
-   column shrink under `max-height`, which is what makes Team A/B sticky. */
+   form—not the dialog—is the scrollport. A definite height is required:
+   `max-height` alone lets the form's `min-height: 0` collapse to a sliver
+   and sticky headers never have a real viewport to pin to. */
 .modal-content.score-view-modal {
   max-width: 1200px;
   width: 95%;
+  height: 95vh;
   max-height: 95vh;
   min-height: 0;
   display: flex;
@@ -141,6 +143,7 @@
 
   .modal-content.score-view-modal {
     width: 98%;
+    height: 90vh;
     max-height: 90vh;
     padding: 1rem;
   }
@@ -172,7 +175,7 @@
     padding-right: 2rem;
   }
 
-  .score-view-modal {
+  .modal-content.score-view-modal {
     padding: 0.75rem;
   }
 

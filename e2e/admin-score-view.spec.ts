@@ -330,6 +330,10 @@ test.describe('Admin score view Team A/B sticky headers', () => {
       clientHeight: el.clientHeight,
     }));
     expect(
+      overflow.clientHeight,
+      'the form must be a real scrollport, not a collapsed flex sliver',
+    ).toBeGreaterThan(300);
+    expect(
       overflow.scrollHeight,
       'the Botball DE sheet must overflow the form so sticky can be tested',
     ).toBeGreaterThan(overflow.clientHeight + 200);
