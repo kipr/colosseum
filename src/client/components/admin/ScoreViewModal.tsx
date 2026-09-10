@@ -13,6 +13,7 @@ import {
   shouldAutoAppendRepeatableGroupRow,
 } from '../scoresheetUtils';
 import type { BracketResultType } from '../../../shared/bracketResult';
+import { loadAdminScoreTemplate } from '../../utils/adminScoreTemplate';
 
 interface ScoreViewModalProps {
   score: any;
@@ -54,20 +55,7 @@ export default function ScoreViewModal({
 
   const loadTemplate = async () => {
     try {
-      const response = await fetch('/scoresheet/templates');
-      if (!response.ok) throw new Error('Failed to load templates');
-      const templates = await response.json();
-
-      // Find template by ID first (more reliable), then fall back to name
-      let foundTemplate = templates.find(
-        (t: any) => t.id === score.template_id,
-      );
-      if (!foundTemplate) {
-        foundTemplate = templates.find(
-          (t: any) => t.name === score.template_name,
-        );
-      }
-
+      const foundTemplate = await loadAdminScoreTemplate(score);
       if (foundTemplate) {
         setTemplate(foundTemplate);
       } else {
@@ -76,10 +64,6 @@ export default function ScoreViewModal({
           score.template_id,
           'template_name:',
           score.template_name,
-        );
-        console.error(
-          'Available templates:',
-          templates.map((t: any) => ({ id: t.id, name: t.name })),
         );
       }
     } catch (error) {

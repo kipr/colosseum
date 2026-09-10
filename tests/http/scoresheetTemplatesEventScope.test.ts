@@ -319,6 +319,38 @@ describe('Scoresheet Templates Event Scope', () => {
       const res = await http.get(`${baseUrl}/scoresheet/templates/99999`);
       expect(res.status).toBe(404);
     });
+
+    it('returns a template linked only to a complete event', async () => {
+      const event = await seedEvent(testDb.db, {
+        name: 'Finished Event',
+        status: 'complete',
+      });
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Finished Sheet',
+        schema: JSON.stringify({ title: 'Finished Sheet', fields: [] }),
+      });
+      await seedEventScoresheetTemplate(testDb.db, {
+        event_id: event.id,
+        template_id: template.id,
+        template_type: 'seeding',
+      });
+
+      const judgeList = await http.get(`${baseUrl}/scoresheet/templates`);
+      expect(judgeList.status).toBe(200);
+      expect(
+        (judgeList.json as { id: number }[]).some(
+          (row) => row.id === template.id,
+        ),
+      ).toBe(false);
+
+      const res = await http.get(
+        `${baseUrl}/scoresheet/templates/${template.id}`,
+      );
+      expect(res.status).toBe(200);
+      const body = res.json as { id: number; schema: { title: string } };
+      expect(body.id).toBe(template.id);
+      expect(body.schema.title).toBe('Finished Sheet');
+    });
   });
 
   describe('DELETE /scoresheet/templates/:id', () => {
