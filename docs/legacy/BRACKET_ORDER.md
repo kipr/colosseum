@@ -1,3 +1,7 @@
+> **Status: Legacy plan — implemented.**
+> Shipped (see `src/server/services/bracketQueueOrder.ts` and the rest warnings in `QueueTab.tsx`). The "proposed, not yet implemented" line below is out of date; the code is the source of truth. Also still describes SQLite-era dual-dialect SQL.
+> Archived 2026-09-30; do not treat as current documentation.
+
 # Bracket Queue Order — Design and Implementation Plan
 
 Status: proposed, not yet implemented.

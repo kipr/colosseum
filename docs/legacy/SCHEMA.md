@@ -1,3 +1,7 @@
+> **Status: Legacy / superseded — original SQLite-era design brief.**
+> Written when migrating from Google Sheets to a SQLite database. The project now uses PostgreSQL; the authoritative schema is in `src/server/database/schema/`. Kept for historical context only.
+> Archived 2026-09-30; do not treat as current documentation.
+
 I want to transition from google sheets to a full DB backend. The first step is a SQLite schema to replace the sheets functionality. Here is the important functionality the google sheets fulfilled:
 
 **List participating teams. Columns**:

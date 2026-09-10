@@ -6,6 +6,22 @@
 
 Colosseum is a tournament management and scoring platform (React 19 + Express 5 + TypeScript). See `README.md` for full details.
 
+### Environment detection
+
+- This workspace is commonly run inside the repository's devcontainer. Before
+  reporting that Docker, PostgreSQL, or another required tool/service does not
+  exist, check `/.dockerenv`, the `DEVCONTAINER` /
+  `REMOTE_CONTAINERS` environment markers, and the `.devcontainer/`
+  configuration files.
+- Inside the devcontainer, PostgreSQL is already running as the `postgres`
+  Compose service, and `DATABASE_URL` / `TEST_DATABASE_URL` are preset to point
+  at it. Do not run `npm run db:up` / `db:wait` there (no Docker CLI inside the
+  container); the devcontainer waits for Postgres on start. See
+  `.devcontainer/README.md`.
+- Distinguish a missing CLI inside the current container from an unavailable
+  Docker socket or host-side service, and report the specific limitation
+  observed rather than concluding that the environment does not provide it.
+
 ### Services
 
 | Service | Port | Command |
@@ -17,9 +33,9 @@ Colosseum is a tournament management and scoring platform (React 19 + Express 5 
 
 ### Key caveats
 
-- **PostgreSQL via Docker Compose is required.** Cursor Cloud must have Compose. Do not fall back to SQLite. Start it with `npm run db:up && npm run db:wait` before `npm run dev`, `npm run test:run`, or `npm run test:e2e`.
+- **PostgreSQL via Docker Compose is required.** Cursor Cloud must have Compose. (In the devcontainer it is provided automatically; see Environment detection.) Do not fall back to SQLite. Start it with `npm run db:up && npm run db:wait` before `npm run dev`, `npm run test:run`, or `npm run test:e2e`.
 - Copy `.env.example` to `.env` before starting the server: `cp .env.example .env`. `DATABASE_URL` (app) and `TEST_DATABASE_URL` (Vitest + Playwright) are required. Unset `DATABASE_URL` does not open SQLite; the server fails fast with a `db:up` hint.
-- If Postgres is unreachable and config came from `DATABASE_URL`, the server wraps the error with `npm run db:up && npm run db:wait`. Production uses `CLOUD_SQL_CONNECTION_NAME` / `DB_USER` / `DB_PASSWORD` / `DB_NAME` instead of `DATABASE_URL`; `NODE_ENV=production` is not a dialect signal.
+- If Postgres is unreachable and config came from `DATABASE_URL`, the server wraps the error with `npm run db:up && npm run db:wait`. Production uses `DB_HOST` or `CLOUD_SQL_CONNECTION_NAME` with `DB_USER` / `DB_PASSWORD` / `DB_NAME` instead of `DATABASE_URL`; `NODE_ENV=production` is not a dialect signal.
 - `npm run dev` uses `concurrently`; the Vite client waits for the Express health endpoint to become available before starting. Vite runs with `strictPort`, so a taken port is an error rather than a silent move to the next one — that keeps the dev stack from landing on the e2e suite's port.
 - Google OAuth (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`) is only needed for admin login. Judge-facing features (score submission via access codes) and public/spectator views work without OAuth. Tests use auth shims and do not require real credentials.
 - By default, only `@kipr.org` email addresses can log in as admin. To allow all domains, set `ALLOWED_EMAIL_DOMAINS=` (empty string) in `.env`.
@@ -32,5 +48,5 @@ Colosseum is a tournament management and scoring platform (React 19 + Express 5 
 - **Lint**: `npm run lint` (ESLint) and `npm run pretty` (Prettier check)
 - **Test**: `npm run test:run` (all tests, single run) or `npm test` (watch mode)
 - **Build**: `npm run build` (cleans, then builds client + server)
-- **Dev**: `npm run db:up && npm run db:wait && npm run dev` (starts both servers concurrently)
-- **Verify all**: `npm run pretty && npm run lint && npm run test:run && npm run build`
+- **Dev** (outside the devcontainer): `npm run db:up && npm run db:wait && npm run dev` (starts both servers concurrently); inside the devcontainer just `npm run dev`
+- **Verify all**: `npm run pretty && npm run lint && npm run typecheck:client && npm run typecheck:server && npm run test:run && npm run build`

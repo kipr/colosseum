@@ -1,3 +1,7 @@
+> **Status: Legacy implementation notes — implemented.**
+> The claim below that scoring templates have not yet been changed is out of date: repeatable stack rows exist (see `src/client/scoring/botballCubeStacks.ts`). The rule text is retained as reference; verify against official Botball rules.
+> Archived 2026-09-30; do not treat as current documentation.
+
 # Botball 2026 Cube Stack Scoring Rules
 
 These notes capture the clarified cube stack rules for the planned 2026 GCER scoresheet update.
