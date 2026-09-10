@@ -1,5 +1,5 @@
 # Build stage
-FROM node:24-alpine AS builder
+FROM node:24-trixie AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:24-alpine AS production
+FROM node:24-trixie-slim AS production
 
 WORKDIR /app
 
@@ -29,6 +29,9 @@ RUN npm ci --omit=dev
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/static ./static
+
+# The official Node image provides this unprivileged runtime user.
+USER node
 
 # Set environment
 ENV NODE_ENV=production
