@@ -1,11 +1,12 @@
 import express, { Response } from 'express';
-import { requireAuth, AuthRequest } from '../middleware/auth';
+import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 
 const router = express.Router();
+router.use(requireAdmin);
 
 // Get all admin users with activity status
-router.get('/users', requireAuth, async (req: AuthRequest, res: Response) => {
+router.get('/users', async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
 

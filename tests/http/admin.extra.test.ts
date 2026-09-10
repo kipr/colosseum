@@ -40,7 +40,7 @@ describe('Admin Routes - additional coverage', () => {
         [user.id],
       );
 
-      const app = createTestApp({ user: { id: user.id, is_admin: false } });
+      const app = createTestApp({ user: { id: user.id, is_admin: true } });
       app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
@@ -75,7 +75,7 @@ describe('Admin Routes - additional coverage', () => {
         [user.id],
       );
 
-      const app = createTestApp({ user: { id: user.id, is_admin: false } });
+      const app = createTestApp({ user: { id: user.id, is_admin: true } });
       app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 
@@ -113,7 +113,7 @@ describe('Admin Routes - additional coverage', () => {
         user.id,
       ]);
 
-      const app = createTestApp({ user: { id: user.id, is_admin: false } });
+      const app = createTestApp({ user: { id: user.id, is_admin: true } });
       app.use('/api/admin', adminRoutes);
       const server = await startServer(app);
 

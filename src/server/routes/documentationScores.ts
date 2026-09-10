@@ -4,8 +4,11 @@ import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
 import { isUniqueConstraintError } from '../database/constraintErrors';
 import { areFinalScoresReleased } from '../utils/eventVisibility';
+import { composeRouters } from './composeRouters';
 
+const publicRouter = express.Router();
 const router = express.Router();
+router.use(requireAdmin);
 
 /**
  * Compute overall_score from sub-scores using:
@@ -24,29 +27,24 @@ function computeOverallScore(
 }
 
 // GET /documentation-scores/global-categories
-router.get(
-  '/global-categories',
-  requireAdmin,
-  async (_req: AuthRequest, res: Response) => {
-    try {
-      const db = await getDatabase();
-      const categories = await db.all(
-        `SELECT id, name, weight, max_score FROM documentation_categories ORDER BY name ASC`,
-      );
-      res.json(categories);
-    } catch (error) {
-      console.error('Error fetching global documentation categories:', error);
-      res
-        .status(500)
-        .json({ error: 'Failed to fetch global documentation categories' });
-    }
-  },
-);
+router.get('/global-categories', async (_req: AuthRequest, res: Response) => {
+  try {
+    const db = await getDatabase();
+    const categories = await db.all(
+      `SELECT id, name, weight, max_score FROM documentation_categories ORDER BY name ASC`,
+    );
+    res.json(categories);
+  } catch (error) {
+    console.error('Error fetching global documentation categories:', error);
+    res
+      .status(500)
+      .json({ error: 'Failed to fetch global documentation categories' });
+  }
+});
 
 // GET /documentation-scores/categories/event/:eventId
 router.get(
   '/categories/event/:eventId',
-  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
@@ -87,245 +85,226 @@ router.get(
 );
 
 // POST /documentation-scores/categories
-router.post(
-  '/categories',
-  requireAdmin,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { event_id, ordinal, name, weight, max_score, category_id } =
-        req.body;
+router.post('/categories', async (req: AuthRequest, res: Response) => {
+  try {
+    const { event_id, ordinal, name, weight, max_score, category_id } =
+      req.body;
 
-      if (!event_id || !ordinal) {
+    if (!event_id || !ordinal) {
+      return res.status(400).json({
+        error: 'event_id and ordinal are required',
+      });
+    }
+
+    const ord = parseInt(String(ordinal), 10);
+    if (ord < 1 || ord > 4) {
+      return res.status(400).json({
+        error: 'ordinal must be between 1 and 4',
+      });
+    }
+
+    const db = await getDatabase();
+
+    const event = await db.get('SELECT id FROM events WHERE id = ?', [
+      event_id,
+    ]);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    let categoryId: number | null = null;
+    let linkedInTransaction = false;
+
+    if (category_id != null) {
+      const existing = await db.get(
+        'SELECT id, name, weight, max_score FROM documentation_categories WHERE id = ?',
+        [category_id],
+      );
+      if (!existing) {
+        return res.status(404).json({ error: 'Global category not found' });
+      }
+      categoryId = Number(category_id);
+    } else {
+      if (!name || max_score == null) {
         return res.status(400).json({
-          error: 'event_id and ordinal are required',
+          error: 'name and max_score are required when creating a new category',
         });
       }
-
-      const ord = parseInt(String(ordinal), 10);
-      if (ord < 1 || ord > 4) {
+      const w = weight != null ? parseFloat(String(weight)) : 1.0;
+      if (w < 0) {
         return res.status(400).json({
-          error: 'ordinal must be between 1 and 4',
+          error: 'weight must be non-negative',
         });
       }
-
-      const db = await getDatabase();
-
-      const event = await db.get('SELECT id FROM events WHERE id = ?', [
-        event_id,
-      ]);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
+      const max = parseFloat(String(max_score));
+      if (max <= 0 || !Number.isFinite(max)) {
+        return res.status(400).json({
+          error: 'max_score must be a positive number',
+        });
       }
+      const trimmedName = String(name).trim();
 
-      let categoryId: number | null = null;
-      let linkedInTransaction = false;
-
-      if (category_id != null) {
-        const existing = await db.get(
-          'SELECT id, name, weight, max_score FROM documentation_categories WHERE id = ?',
-          [category_id],
+      await db.transaction(async (tx) => {
+        const result = await tx.run(
+          `INSERT INTO documentation_categories (name, weight, max_score)
+             VALUES (?, ?, ?) RETURNING id`,
+          [trimmedName, w, max],
         );
-        if (!existing) {
-          return res.status(404).json({ error: 'Global category not found' });
-        }
-        categoryId = Number(category_id);
-      } else {
-        if (!name || max_score == null) {
-          return res.status(400).json({
-            error:
-              'name and max_score are required when creating a new category',
-          });
-        }
-        const w = weight != null ? parseFloat(String(weight)) : 1.0;
-        if (w < 0) {
-          return res.status(400).json({
-            error: 'weight must be non-negative',
-          });
-        }
-        const max = parseFloat(String(max_score));
-        if (max <= 0 || !Number.isFinite(max)) {
-          return res.status(400).json({
-            error: 'max_score must be a positive number',
-          });
-        }
-        const trimmedName = String(name).trim();
-
-        await db.transaction(async (tx) => {
-          const result = await tx.run(
-            `INSERT INTO documentation_categories (name, weight, max_score)
-             VALUES (?, ?, ?) RETURNING id`,
-            [trimmedName, w, max],
-          );
-          categoryId = result.lastID!;
-          await tx.run(
-            `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
-             VALUES (?, ?, ?) RETURNING id`,
-            [event_id, categoryId, ord],
-          );
-        });
-        linkedInTransaction = true;
-      }
-
-      if (categoryId == null) {
-        return res
-          .status(500)
-          .json({ error: 'Failed to determine documentation category id' });
-      }
-
-      if (!linkedInTransaction) {
-        await db.run(
+        categoryId = result.lastID!;
+        await tx.run(
           `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
-           VALUES (?, ?, ?) RETURNING id`,
+             VALUES (?, ?, ?) RETURNING id`,
           [event_id, categoryId, ord],
         );
-      }
+      });
+      linkedInTransaction = true;
+    }
 
-      const category = await db.get(
-        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
+    if (categoryId == null) {
+      return res
+        .status(500)
+        .json({ error: 'Failed to determine documentation category id' });
+    }
+
+    if (!linkedInTransaction) {
+      await db.run(
+        `INSERT INTO event_documentation_categories (event_id, category_id, ordinal)
+           VALUES (?, ?, ?) RETURNING id`,
+        [event_id, categoryId, ord],
+      );
+    }
+
+    const category = await db.get(
+      `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
          FROM event_documentation_categories edc
          JOIN documentation_categories dc ON edc.category_id = dc.id
          WHERE edc.event_id = ? AND edc.category_id = ?`,
-        [event_id, categoryId],
-      );
-      res.status(201).json(category);
-    } catch (error) {
-      console.error('Error creating documentation category:', error);
-      if (isUniqueConstraintError(error)) {
-        return res.status(409).json({
-          error:
-            'A category with this ordinal already exists for this event, or this category is already linked',
-        });
-      }
-      res
-        .status(500)
-        .json({ error: 'Failed to create documentation category' });
+      [event_id, categoryId],
+    );
+    res.status(201).json(category);
+  } catch (error) {
+    console.error('Error creating documentation category:', error);
+    if (isUniqueConstraintError(error)) {
+      return res.status(409).json({
+        error:
+          'A category with this ordinal already exists for this event, or this category is already linked',
+      });
     }
-  },
-);
+    res.status(500).json({ error: 'Failed to create documentation category' });
+  }
+});
 
 // PATCH /documentation-scores/categories/:id
 // :id is the global category_id; event_id required as query param
-router.patch(
-  '/categories/:id',
-  requireAdmin,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const eventId = req.query.event_id as string | undefined;
-      if (!eventId) {
-        return res.status(400).json({
-          error: 'event_id query parameter is required',
-        });
-      }
+router.patch('/categories/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const eventId = req.query.event_id as string | undefined;
+    if (!eventId) {
+      return res.status(400).json({
+        error: 'event_id query parameter is required',
+      });
+    }
 
-      const { ordinal } = req.body;
-      if (ordinal == null) {
-        return res.status(400).json({ error: 'ordinal is required' });
-      }
+    const { ordinal } = req.body;
+    if (ordinal == null) {
+      return res.status(400).json({ error: 'ordinal is required' });
+    }
 
-      const ord = parseInt(String(ordinal), 10);
-      if (ord < 1 || ord > 4) {
-        return res.status(400).json({
-          error: 'ordinal must be between 1 and 4',
-        });
-      }
+    const ord = parseInt(String(ordinal), 10);
+    if (ord < 1 || ord > 4) {
+      return res.status(400).json({
+        error: 'ordinal must be between 1 and 4',
+      });
+    }
 
-      const db = await getDatabase();
+    const db = await getDatabase();
 
-      const result = await db.run(
-        `UPDATE event_documentation_categories SET ordinal = ? WHERE event_id = ? AND category_id = ?`,
-        [ord, eventId, id],
-      );
+    const result = await db.run(
+      `UPDATE event_documentation_categories SET ordinal = ? WHERE event_id = ? AND category_id = ?`,
+      [ord, eventId, id],
+    );
 
-      if (result.changes === 0) {
-        return res
-          .status(404)
-          .json({ error: 'Category not found for this event' });
-      }
+    if (result.changes === 0) {
+      return res
+        .status(404)
+        .json({ error: 'Category not found for this event' });
+    }
 
-      const category = await db.get(
-        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
+    const category = await db.get(
+      `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
          FROM event_documentation_categories edc
          JOIN documentation_categories dc ON edc.category_id = dc.id
          WHERE edc.event_id = ? AND edc.category_id = ?`,
-        [eventId, id],
-      );
-      res.json(category);
-    } catch (error) {
-      console.error('Error updating documentation category:', error);
-      if (isUniqueConstraintError(error)) {
-        return res.status(409).json({
-          error: 'A category with this ordinal already exists for this event',
-        });
-      }
-      res
-        .status(500)
-        .json({ error: 'Failed to update documentation category' });
+      [eventId, id],
+    );
+    res.json(category);
+  } catch (error) {
+    console.error('Error updating documentation category:', error);
+    if (isUniqueConstraintError(error)) {
+      return res.status(409).json({
+        error: 'A category with this ordinal already exists for this event',
+      });
     }
-  },
-);
+    res.status(500).json({ error: 'Failed to update documentation category' });
+  }
+});
 
 // DELETE /documentation-scores/categories/:id
 // :id is the global category_id; event_id required as query param
 // Removes the event link and deletes the global category when unreferenced.
-router.delete(
-  '/categories/:id',
-  requireAdmin,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const eventId = req.query.event_id as string | undefined;
-      if (!eventId) {
-        return res.status(400).json({
-          error: 'event_id query parameter is required',
-        });
+router.delete('/categories/:id', async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const eventId = req.query.event_id as string | undefined;
+    if (!eventId) {
+      return res.status(400).json({
+        error: 'event_id query parameter is required',
+      });
+    }
+
+    const db = await getDatabase();
+    let removedLink = false;
+    const categoryId = parseInt(id, 10);
+
+    await db.transaction(async (tx) => {
+      const result = await tx.run(
+        'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
+        [eventId, categoryId],
+      );
+      removedLink = (result.changes ?? 0) > 0;
+      if (!removedLink) {
+        return;
       }
 
-      const db = await getDatabase();
-      let removedLink = false;
-      const categoryId = parseInt(id, 10);
-
-      await db.transaction(async (tx) => {
-        const result = await tx.run(
-          'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
-          [eventId, categoryId],
-        );
-        removedLink = (result.changes ?? 0) > 0;
-        if (!removedLink) {
-          return;
-        }
-
-        // Clean up now-unreferenced global categories.
-        await tx.run(
-          `DELETE FROM documentation_categories
+      // Clean up now-unreferenced global categories.
+      await tx.run(
+        `DELETE FROM documentation_categories
            WHERE id = ?
              AND NOT EXISTS (
                SELECT 1
                FROM event_documentation_categories
                WHERE category_id = ?
              )`,
-          [categoryId, categoryId],
-        );
-      });
+        [categoryId, categoryId],
+      );
+    });
 
-      if (!removedLink) {
-        return res
-          .status(404)
-          .json({ error: 'Category not found for this event' });
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting documentation category:', error);
-      res
-        .status(500)
-        .json({ error: 'Failed to delete documentation category' });
+    if (!removedLink) {
+      return res
+        .status(404)
+        .json({ error: 'Category not found for this event' });
     }
-  },
-);
+
+    res.status(204).send();
+  } catch (error) {
+    console.error('Error deleting documentation category:', error);
+    res.status(500).json({ error: 'Failed to delete documentation category' });
+  }
+});
 
 // GET /documentation-scores/event/:eventId/public - Public view of documentation scores
-router.get(
+publicRouter.get(
   '/event/:eventId/public',
   publicExpensiveReadLimiter,
   async (req: Request, res: Response) => {
@@ -379,113 +358,102 @@ router.get(
 );
 
 // GET /documentation-scores/event/:eventId
-router.get(
-  '/event/:eventId',
-  requireAdmin,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { eventId } = req.params;
-      const db = await getDatabase();
+router.get('/event/:eventId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const db = await getDatabase();
 
-      const event = await db.get('SELECT id FROM events WHERE id = ?', [
-        eventId,
-      ]);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
+    const event = await db.get('SELECT id FROM events WHERE id = ?', [eventId]);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
 
-      const scores = await db.all(
-        `SELECT ds.*, t.team_number, t.team_name, t.display_name
+    const scores = await db.all(
+      `SELECT ds.*, t.team_number, t.team_name, t.display_name
          FROM documentation_scores ds
          JOIN teams t ON ds.team_id = t.id
          WHERE ds.event_id = ?
          ORDER BY t.team_number ASC`,
-        [eventId],
-      );
+      [eventId],
+    );
 
-      // Attach sub-scores for each
-      for (const row of scores) {
-        const subScores = await db.all(
-          `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
+    // Attach sub-scores for each
+    for (const row of scores) {
+      const subScores = await db.all(
+        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
            FROM documentation_sub_scores dss
            JOIN documentation_categories dc ON dss.category_id = dc.id
            JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
            WHERE dss.documentation_score_id = ?
            ORDER BY edc.ordinal ASC`,
-          [eventId, row.id],
-        );
-        (row as Record<string, unknown>).sub_scores = subScores;
-      }
-
-      res.json(scores);
-    } catch (error) {
-      console.error('Error fetching documentation scores for event:', error);
-      res.status(500).json({
-        error: 'Failed to fetch documentation scores for event',
-      });
+        [eventId, row.id],
+      );
+      (row as Record<string, unknown>).sub_scores = subScores;
     }
-  },
-);
+
+    res.json(scores);
+  } catch (error) {
+    console.error('Error fetching documentation scores for event:', error);
+    res.status(500).json({
+      error: 'Failed to fetch documentation scores for event',
+    });
+  }
+});
 
 // GET /documentation-scores/team/:teamId
-router.get(
-  '/team/:teamId',
-  requireAdmin,
-  async (req: AuthRequest, res: Response) => {
-    try {
-      const { teamId } = req.params;
-      const db = await getDatabase();
+router.get('/team/:teamId', async (req: AuthRequest, res: Response) => {
+  try {
+    const { teamId } = req.params;
+    const db = await getDatabase();
 
-      const team = await db.get(
-        'SELECT id, event_id, team_number, team_name, display_name FROM teams WHERE id = ?',
-        [teamId],
-      );
-      if (!team) {
-        return res.status(404).json({ error: 'Team not found' });
-      }
+    const team = await db.get(
+      'SELECT id, event_id, team_number, team_name, display_name FROM teams WHERE id = ?',
+      [teamId],
+    );
+    if (!team) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
 
-      const docScore = await db.get(
-        'SELECT * FROM documentation_scores WHERE team_id = ?',
-        [teamId],
-      );
+    const docScore = await db.get(
+      'SELECT * FROM documentation_scores WHERE team_id = ?',
+      [teamId],
+    );
 
-      if (!docScore) {
-        return res.json({
-          team,
-          documentation_score: null,
-          sub_scores: [],
-        });
-      }
+    if (!docScore) {
+      return res.json({
+        team,
+        documentation_score: null,
+        sub_scores: [],
+      });
+    }
 
-      const teamRow = team as { id: number; event_id: number };
-      const subScores = await db.all(
-        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
+    const teamRow = team as { id: number; event_id: number };
+    const subScores = await db.all(
+      `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
          FROM documentation_sub_scores dss
          JOIN documentation_categories dc ON dss.category_id = dc.id
          JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
          WHERE dss.documentation_score_id = ?
          ORDER BY edc.ordinal ASC`,
-        [teamRow.event_id, docScore.id],
-      );
+      [teamRow.event_id, docScore.id],
+    );
 
-      res.json({
-        team,
-        documentation_score: docScore,
-        sub_scores: subScores,
-      });
-    } catch (error) {
-      console.error('Error fetching documentation scores for team:', error);
-      res.status(500).json({
-        error: 'Failed to fetch documentation scores for team',
-      });
-    }
-  },
-);
+    res.json({
+      team,
+      documentation_score: docScore,
+      sub_scores: subScores,
+    });
+  } catch (error) {
+    console.error('Error fetching documentation scores for team:', error);
+    res.status(500).json({
+      error: 'Failed to fetch documentation scores for team',
+    });
+  }
+});
 
 // PUT /documentation-scores/event/:eventId/team/:teamId
 router.put(
   '/event/:eventId/team/:teamId',
-  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId, teamId } = req.params;
@@ -668,7 +636,6 @@ router.put(
 // DELETE /documentation-scores/event/:eventId/team/:teamId
 router.delete(
   '/event/:eventId/team/:teamId',
-  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId, teamId } = req.params;
@@ -687,4 +654,4 @@ router.delete(
   },
 );
 
-export default router;
+export default composeRouters(publicRouter, router);

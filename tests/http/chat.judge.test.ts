@@ -590,7 +590,7 @@ describe('Judge Chat Routes', () => {
         const res = await http.get(
           `${server.baseUrl}/chat/events/${eventId}/conversations`,
         );
-        expect(res.status).toBe(401);
+        expect(res.status).toBe(403);
       } finally {
         await server.close();
       }
@@ -761,7 +761,7 @@ describe('Judge Chat Routes', () => {
         const res = await http.delete(
           `${server.baseUrl}/chat/events/${eventId}/conversations/judge-A`,
         );
-        expect(res.status).toBe(401);
+        expect(res.status).toBe(403);
       } finally {
         await server.close();
       }

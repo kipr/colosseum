@@ -37,3 +37,21 @@ export async function areFinalScoresReleased(
   if (!row) return false;
   return row.status === 'complete' && !!row.spectator_results_released;
 }
+
+/**
+ * True when the team exists and belongs to an archived event. False when the
+ * team does not exist (callers keep their missing-team behavior).
+ */
+export async function isExistingTeamEventArchived(
+  teamId: number | string,
+): Promise<boolean> {
+  const db = await getDatabase();
+  const row = await db.get<{ status: string }>(
+    `SELECT e.status FROM teams t
+     JOIN events e ON e.id = t.event_id
+     WHERE t.id = ?`,
+    [teamId],
+  );
+  if (!row) return false;
+  return SPECTATOR_EXCLUDED_STATUSES.includes(row.status);
+}
