@@ -1,4 +1,6 @@
 import { test, expect } from '@playwright/test';
+import fs from 'fs';
+import path from 'path';
 import { closeE2eDb, e2eDb } from './helpers/db';
 import {
   deleteSession,
@@ -175,7 +177,15 @@ test.describe('Admin score view template lookup', () => {
 const STICKY_ADMIN_EMAIL = 'e2e-admin-score-sticky@kipr.org';
 const STICKY_ADMIN_NAME = 'E2E Admin Score Sticky';
 const STICKY_EVENT_NAME = `E2E Admin Score Sticky ${Date.now()}`;
-const STICKY_TEMPLATE_TITLE = 'E2E Team A B Sticky Sheet';
+const STICKY_TEMPLATE_TITLE =
+  '2026 Botball Fall Tournament - Double Elimination Score Sheet';
+
+const botballDeSchema = JSON.parse(
+  fs.readFileSync(
+    path.join(__dirname, '../templates/botball-de-template.json'),
+    'utf8',
+  ),
+) as { title: string; fields: unknown[] };
 
 let stickyAdmin: Awaited<ReturnType<typeof seedAdminSession>>;
 let stickyEventId: number;
@@ -212,118 +222,7 @@ test.describe('Admin score view Team A/B sticky headers', () => {
     );
     stickyEventId = Number(ev.lastID);
 
-    const schema = {
-      title: STICKY_TEMPLATE_TITLE,
-      eventId: stickyEventId,
-      mode: 'head-to-head',
-      layout: 'two-column',
-      fields: [
-        {
-          id: 'section_header_team_a',
-          label: 'TEAM A',
-          type: 'section_header',
-          column: 'left',
-        },
-        {
-          id: 'group_header_start_box_a',
-          label: 'Lower Start Box',
-          type: 'group_header',
-          column: 'left',
-        },
-        {
-          id: 'drums_a',
-          label: 'Drums × 25',
-          type: 'number',
-          min: 0,
-          max: 4,
-          column: 'left',
-        },
-        {
-          id: 'cubes_a',
-          label: 'Cubes',
-          type: 'number',
-          min: 0,
-          max: 20,
-          column: 'left',
-        },
-        {
-          id: 'botguy_a',
-          label: 'Botguy',
-          type: 'number',
-          min: 0,
-          max: 10,
-          column: 'left',
-        },
-        {
-          id: 'pom_a',
-          label: 'Poms',
-          type: 'number',
-          min: 0,
-          max: 20,
-          column: 'left',
-        },
-        {
-          id: 'bonus_a',
-          label: 'Bonus',
-          type: 'number',
-          min: 0,
-          max: 50,
-          column: 'left',
-        },
-        {
-          id: 'section_header_team_b',
-          label: 'TEAM B',
-          type: 'section_header',
-          column: 'right',
-        },
-        {
-          id: 'group_header_start_box_b',
-          label: 'Lower Start Box',
-          type: 'group_header',
-          column: 'right',
-        },
-        {
-          id: 'drums_b',
-          label: 'Drums × 25',
-          type: 'number',
-          min: 0,
-          max: 4,
-          column: 'right',
-        },
-        {
-          id: 'cubes_b',
-          label: 'Cubes',
-          type: 'number',
-          min: 0,
-          max: 20,
-          column: 'right',
-        },
-        {
-          id: 'botguy_b',
-          label: 'Botguy',
-          type: 'number',
-          min: 0,
-          max: 10,
-          column: 'right',
-        },
-        {
-          id: 'pom_b',
-          label: 'Poms',
-          type: 'number',
-          min: 0,
-          max: 20,
-          column: 'right',
-        },
-        {
-          id: 'bonus_b',
-          label: 'Bonus',
-          type: 'number',
-          min: 0,
-          max: 50,
-          column: 'right',
-        },
-      ],
-    };
+    const schema = { ...botballDeSchema, eventId: stickyEventId };
 
     const tpl = await db.run(
       `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
@@ -350,10 +249,18 @@ test.describe('Admin score view Team A/B sticky headers', () => {
         stickyTemplateId,
         'Sticky Match',
         JSON.stringify({
-          drums_a: { label: 'Drums × 25', value: 0, type: 'number' },
-          cubes_a: { label: 'Cubes', value: 2, type: 'number' },
-          drums_b: { label: 'Drums × 25', value: 0, type: 'number' },
-          cubes_b: { label: 'Cubes', value: 1, type: 'number' },
+          team_a_starting_cubes: { label: 'Cubes', value: 4, type: 'number' },
+          team_a_starting_baskets: {
+            label: 'Baskets',
+            value: 1,
+            type: 'number',
+          },
+          team_b_starting_cubes: { label: 'Cubes', value: 2, type: 'number' },
+          team_b_starting_baskets: {
+            label: 'Baskets',
+            value: 0,
+            type: 'number',
+          },
         }),
         stickyEventId,
       ],
@@ -379,11 +286,11 @@ test.describe('Admin score view Team A/B sticky headers', () => {
     await closeE2eDb();
   });
 
-  test('does not cover score rows with Team A/B headers, and keeps the judge offset', async ({
+  test('pins Team A/B to the form top on a long sheet, and keeps the judge offset', async ({
     page,
   }) => {
     await setSessionCookie(page, stickyAdmin.signedCookie);
-    await page.setViewportSize({ width: 1400, height: 560 });
+    await page.setViewportSize({ width: 1400, height: 800 });
     await page.goto(`/admin/events/${stickyEventId}?view=scoring`);
 
     await expect(
@@ -397,43 +304,61 @@ test.describe('Admin score view Team A/B sticky headers', () => {
       modal.getByRole('heading', { name: 'View Score' }),
     ).toBeVisible();
 
+    const form = modal.locator('.score-view-form');
     const teamAHeader = modal
       .locator('.scoresheet-column')
       .first()
       .locator('.section-header');
-    const drumsField = modal
+    const cubesField = modal
       .locator('.scoresheet-column')
       .first()
-      .locator('.score-field', { hasText: 'Drums × 25' });
+      .locator('.score-field', { hasText: 'Cubes' })
+      .first();
 
     await expect(teamAHeader).toHaveText('TEAM A');
-    await expect(drumsField).toBeVisible();
+    await expect(cubesField).toBeVisible();
     await expect(teamAHeader).toHaveCSS('top', '0px');
 
     const restHeaderBox = await teamAHeader.boundingBox();
-    const restFieldBox = await drumsField.boundingBox();
+    const restFieldBox = await cubesField.boundingBox();
     expect(restHeaderBox).toBeTruthy();
     expect(restFieldBox).toBeTruthy();
     expect(boxesOverlap(restHeaderBox!, restFieldBox!)).toBe(false);
 
-    const form = modal.locator('.score-view-form');
+    const overflow = await form.evaluate((el) => ({
+      scrollHeight: el.scrollHeight,
+      clientHeight: el.clientHeight,
+    }));
+    expect(
+      overflow.scrollHeight,
+      'the Botball DE sheet must overflow the form so sticky can be tested',
+    ).toBeGreaterThan(overflow.clientHeight + 200);
+
     await form.evaluate((el) => {
-      el.scrollTop = 400;
+      el.scrollTop = Math.min(el.scrollHeight - el.clientHeight, 520);
     });
 
-    const stuckOffset = await page.evaluate(() => {
-      const formEl = document.querySelector('.score-view-form');
+    const { stuckOffset, formScrollTop } = await page.evaluate(() => {
+      const formEl = document.querySelector('.modal.show .score-view-form');
       const headerEl = document.querySelector(
-        '.score-view-form .scoresheet-column .section-header',
+        '.modal.show .score-view-form .scoresheet-column .section-header',
       );
-      if (!formEl || !headerEl) return Number.NaN;
-      return (
-        headerEl.getBoundingClientRect().top -
-        formEl.getBoundingClientRect().top
-      );
+      if (!formEl || !headerEl) {
+        throw new Error('Could not find score-view-form or TEAM A header');
+      }
+      return {
+        stuckOffset:
+          headerEl.getBoundingClientRect().top -
+          formEl.getBoundingClientRect().top,
+        formScrollTop: formEl.scrollTop,
+      };
     });
+    expect(formScrollTop).toBeGreaterThan(200);
     expect(stuckOffset).toBeGreaterThanOrEqual(0);
-    expect(stuckOffset).toBeLessThan(40);
+    expect(
+      stuckOffset,
+      'after scrolling a long sheet, TEAM A should stick flush to the top of the form',
+    ).toBeLessThan(8);
 
     const defaultStickyTop = await page.evaluate(() => {
       const el = document.createElement('div');
