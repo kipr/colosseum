@@ -17,7 +17,6 @@ const PUBLIC_EVENT_FIELDS =
 
 const publicRouter = express.Router();
 const staffRouter = express.Router();
-staffRouter.use(requireAuth);
 const adminRouter = express.Router();
 adminRouter.use(requireAdmin);
 
@@ -36,7 +35,7 @@ const ALLOWED_UPDATE_FIELDS = [
 ];
 
 // GET /events - List all events
-staffRouter.get('/', async (req: AuthRequest, res: Response) => {
+staffRouter.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
     const { status } = req.query;
@@ -109,25 +108,29 @@ publicRouter.get('/:id/public', async (req: Request, res: Response) => {
 });
 
 // GET /events/:id/overall - Admin overall scores (single request, auth required)
-staffRouter.get('/:id/overall', async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
-    const event = await db.get('SELECT id FROM events WHERE id = ?', [
-      parseInt(id, 10),
-    ]);
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
+staffRouter.get(
+  '/:id/overall',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const db = await getDatabase();
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        parseInt(id, 10),
+      ]);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const eventId = parseInt(id, 10);
+      await calculateEventBracketRankingsIfReady(eventId);
+      const rows = await computeOverallScores(eventId);
+      res.json(rows);
+    } catch (error) {
+      console.error('Error fetching overall scores:', error);
+      res.status(500).json({ error: 'Failed to fetch overall scores' });
     }
-    const eventId = parseInt(id, 10);
-    await calculateEventBracketRankingsIfReady(eventId);
-    const rows = await computeOverallScores(eventId);
-    res.json(rows);
-  } catch (error) {
-    console.error('Error fetching overall scores:', error);
-    res.status(500).json({ error: 'Failed to fetch overall scores' });
-  }
-});
+  },
+);
 
 // GET /events/:id/overall/public - Public overall scores (released completed events only)
 publicRouter.get(
@@ -151,23 +154,27 @@ publicRouter.get(
 );
 
 // GET /events/:id - Get single event
-staffRouter.get('/:id', async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
+staffRouter.get(
+  '/:id',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const db = await getDatabase();
 
-    const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+      const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
 
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      res.json(event);
+    } catch (error) {
+      console.error('Error fetching event:', error);
+      res.status(500).json({ error: 'Failed to fetch event' });
     }
-
-    res.json(event);
-  } catch (error) {
-    console.error('Error fetching event:', error);
-    res.status(500).json({ error: 'Failed to fetch event' });
-  }
-});
+  },
+);
 
 // POST /events - Create event (admin only)
 adminRouter.post('/', async (req: AuthRequest, res: Response) => {

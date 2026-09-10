@@ -15,10 +15,7 @@ import {
 import { composeRouters } from './composeRouters';
 
 const publicRouter = express.Router();
-const adminRouter = express.Router();
-adminRouter.use(requireAdmin);
-const staffRouter = express.Router();
-staffRouter.use(requireAuth);
+const router = express.Router();
 
 function inferTemplateType(
   schema: unknown,
@@ -93,8 +90,9 @@ publicRouter.get(
 
 // Get all scoresheet templates with access codes (admin only)
 // Optional eventId: when present, returns only templates linked to that event
-adminRouter.get(
+router.get(
   '/templates/admin',
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const db = await getDatabase();
@@ -208,8 +206,9 @@ publicRouter.post(
 );
 
 // Get a specific template with full schema (authenticated - for admin preview)
-staffRouter.get(
+router.get(
   '/templates/:id',
+  requireAuth,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
@@ -235,8 +234,9 @@ staffRouter.get(
 );
 
 // Create a new template
-adminRouter.post(
+router.post(
   '/templates',
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { name, description, schema, accessCode, eventId } = req.body;
@@ -287,8 +287,9 @@ adminRouter.post(
 );
 
 // Update a template
-adminRouter.put(
+router.put(
   '/templates/:id',
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
@@ -342,8 +343,9 @@ adminRouter.put(
 );
 
 // Delete a template
-adminRouter.delete(
+router.delete(
   '/templates/:id',
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
@@ -359,4 +361,4 @@ adminRouter.delete(
   },
 );
 
-export default composeRouters(publicRouter, adminRouter, staffRouter);
+export default composeRouters(publicRouter, router);

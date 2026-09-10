@@ -354,4 +354,4 @@ adminRouter.delete(
   },
 );
 
-export default composeRouters(adminRouter, router);
+export default composeRouters(router, adminRouter);
