@@ -349,14 +349,14 @@ async function syncSeedingQueue(
       } else if (!combo.scored) {
         await tx.run(
           `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-           VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+           VALUES (?, ?, ?, 'seeding', ?, 'queued') RETURNING id`,
           [eventId, combo.team_id, combo.round, nextPos++],
         );
         changes++;
       } else if (pendingSeedingSet.has(key)) {
         await tx.run(
           `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-           VALUES (?, ?, ?, 'seeding', ?, 'scored')`,
+           VALUES (?, ?, ?, 'seeding', ?, 'scored') RETURNING id`,
           [eventId, combo.team_id, combo.round, nextPos++],
         );
         changes++;
@@ -561,7 +561,7 @@ async function syncBracketQueue(
         const result = await tx.run(
           `INSERT INTO game_queue (
              event_id, bracket_game_id, queue_type, queue_position, status
-           ) VALUES (?, ?, 'bracket', ?, 'queued')`,
+           ) VALUES (?, ?, 'bracket', ?, 'queued') RETURNING id`,
           [eventId, row.newBracketGameId, queuePosition],
         );
         changes += result.changes ?? 0;
@@ -686,7 +686,7 @@ async function syncDoubleSeedingQueue(
       } else if (isEligible && !isCompleted) {
         await tx.run(
           `INSERT INTO game_queue (event_id, double_seeding_match_id, queue_type, queue_position, status)
-           VALUES (?, ?, 'double_seeding', ?, ?)`,
+           VALUES (?, ?, 'double_seeding', ?, ?) RETURNING id`,
           [
             eventId,
             match.id,

@@ -122,7 +122,8 @@ export async function recalculateSeedingRankings(
            seed_average = excluded.seed_average,
            seed_rank = excluded.seed_rank,
            raw_seed_score = excluded.raw_seed_score,
-           tiebreaker_value = excluded.tiebreaker_value`,
+           tiebreaker_value = excluded.tiebreaker_value
+         RETURNING id`,
         [r.teamId, r.seedAverage, seedRank, rawSeedScore, r.tiebreaker],
       );
     }

@@ -1,6 +1,11 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import {
+  isCheckConstraintError,
+  isForeignKeyConstraintError,
+  isUniqueConstraintError,
+} from '../database/constraintErrors';
 import { ensureBracketTemplatesSeeded } from '../services/bracketTemplates';
 import { resolveBracketByes } from '../services/bracketByeResolver';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
@@ -493,7 +498,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       await db.transaction(async (tx) => {
         const br = await tx.run(
           `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
           [
             event_id,
             name,
@@ -519,7 +524,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
           const isBye = teamId === null;
           await tx.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?) RETURNING id`,
             [newBracketId, teamId, seedPosition, isBye],
           );
         }
@@ -561,7 +566,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
           `INSERT INTO bracket_games (
             bracket_id, game_number, play_order, round_name, round_number, bracket_side,
             team1_source, team2_source, status, winner_slot, loser_slot
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING id`,
           [
             bracketId,
             template.game_number,
@@ -680,7 +685,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const result = await db.run(
       `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status, weight, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
       [
         event_id,
         name,
@@ -698,11 +703,10 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     res.status(201).json(bracket);
   } catch (error) {
     console.error('Error creating bracket:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
+    if (isForeignKeyConstraintError(error)) {
       return res.status(400).json({ error: 'Event does not exist' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid status value' });
     }
     res.status(500).json({ error: 'Failed to create bracket' });
@@ -756,8 +760,7 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     res.json(bracket);
   } catch (error) {
     console.error('Error updating bracket:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res
         .status(400)
         .json({ error: 'Invalid field value (check constraint failed)' });
@@ -868,13 +871,13 @@ router.post(
 
       const result = await db.run(
         `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, initial_slot, is_bye)
-         VALUES (?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?) RETURNING id`,
         [
           bracketId,
           team_id ?? null,
           seed_position,
           initial_slot ?? null,
-          is_bye ? 1 : 0,
+          !!is_bye,
         ],
       );
 
@@ -884,13 +887,12 @@ router.post(
       res.status(201).json(entry);
     } catch (error) {
       console.error('Error adding bracket entry:', error);
-      const errMsg = (error as Error).message || '';
-      if (errMsg.includes('UNIQUE constraint failed')) {
+      if (isUniqueConstraintError(error)) {
         return res.status(409).json({
           error: 'Team or seed position already exists in this bracket',
         });
       }
-      if (errMsg.includes('CHECK constraint failed')) {
+      if (isCheckConstraintError(error)) {
         return res.status(400).json({
           error:
             'Invalid entry: bye requires null team_id, non-bye requires team_id',
@@ -994,16 +996,16 @@ router.post(
           // Real team entry
           await db.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, ?, 0)`,
-            [id, team.team_id, seedPosition],
+             VALUES (?, ?, ?, ?) RETURNING id`,
+            [id, team.team_id, seedPosition, false],
           );
           entriesCreated++;
         } else {
           // Bye entry
           await db.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, NULL, ?, 1)`,
-            [id, seedPosition],
+             VALUES (?, NULL, ?, ?) RETURNING id`,
+            [id, seedPosition, true],
           );
           byeCount++;
         }
@@ -1116,7 +1118,7 @@ router.post(
            team1_id, team2_id, team1_source, team2_source, status,
            winner_advances_to_id, loser_advances_to_id, winner_slot, loser_slot,
            scheduled_time
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           bracketId,
           game_number,
@@ -1144,13 +1146,12 @@ router.post(
       res.status(201).json(game);
     } catch (error) {
       console.error('Error creating bracket game:', error);
-      const errMsg = (error as Error).message || '';
-      if (errMsg.includes('UNIQUE constraint failed')) {
+      if (isUniqueConstraintError(error)) {
         return res
           .status(409)
           .json({ error: 'Game number already exists in this bracket' });
       }
-      if (errMsg.includes('CHECK constraint failed')) {
+      if (isCheckConstraintError(error)) {
         return res
           .status(400)
           .json({ error: 'Invalid status or bracket_side value' });
@@ -1226,8 +1227,7 @@ router.patch(
       res.json(updatedGame);
     } catch (error) {
       console.error('Error updating bracket game:', error);
-      const errMsg = (error as Error).message || '';
-      if (errMsg.includes('CHECK constraint failed')) {
+      if (isCheckConstraintError(error)) {
         return res
           .status(400)
           .json({ error: 'Invalid status or bracket_side value' });
@@ -1387,7 +1387,7 @@ router.post(
           `INSERT INTO bracket_games (
             bracket_id, game_number, play_order, round_name, round_number, bracket_side,
             team1_source, team2_source, status, winner_slot, loser_slot
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?) RETURNING id`,
           [
             id,
             template.game_number,
@@ -1697,7 +1697,7 @@ router.post(
            bracket_size, game_number, play_order, round_name, round_number, bracket_side,
            team1_source, team2_source, winner_advances_to, loser_advances_to,
            winner_slot, loser_slot, is_championship, is_grand_final, is_reset_game
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           bracket_size,
           game_number,
@@ -1711,9 +1711,9 @@ router.post(
           loser_advances_to ?? null,
           winner_slot ?? null,
           loser_slot ?? null,
-          is_championship ? 1 : 0,
-          is_grand_final ? 1 : 0,
-          is_reset_game ? 1 : 0,
+          !!is_championship,
+          !!is_grand_final,
+          !!is_reset_game,
         ],
       );
 
@@ -1724,13 +1724,12 @@ router.post(
       res.status(201).json(template);
     } catch (error) {
       console.error('Error creating bracket template:', error);
-      const errMsg = (error as Error).message || '';
-      if (errMsg.includes('UNIQUE constraint failed')) {
+      if (isUniqueConstraintError(error)) {
         return res
           .status(409)
           .json({ error: 'Game number already exists for this bracket size' });
       }
-      if (errMsg.includes('CHECK constraint failed')) {
+      if (isCheckConstraintError(error)) {
         return res.status(400).json({ error: 'Invalid winner_slot value' });
       }
       res.status(500).json({ error: 'Failed to create bracket template' });

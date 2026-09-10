@@ -46,7 +46,7 @@ async function seedJudgeChatMessage(
   const result = await db.run(
     `INSERT INTO judge_chat_messages
        (event_id, conversation_key, sender_role, sender_name, message, template_id, user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       data.event_id,
       data.conversation_key,

@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createTestDb, TestDb } from './helpers/testDb';
-import { initializeSQLite } from '../../src/server/database/init';
+import { initializePostgres } from '../../src/server/database/init';
 import {
   ensureBracketTemplatesSeeded,
   generateDEBracketTemplates,
@@ -99,7 +99,8 @@ describe('Bracket Template Seeding', () => {
       );
 
       expect(firstCount?.count).toBe(secondCount?.count);
-      expect(secondCount?.count).toBe(15);
+      // COUNT(*) is BIGINT, which pg returns as a string.
+      expect(Number(secondCount?.count)).toBe(15);
     });
 
     it('should seed different bracket sizes independently', async () => {
@@ -160,44 +161,44 @@ describe('Bracket Template Seeding', () => {
 
     it('should backfill legacy bracket games during database initialization', async () => {
       const event = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES ('Legacy Event', 'setup')`,
+        `INSERT INTO events (name, status) VALUES ('Legacy Event', 'setup') RETURNING id`,
       );
       const bracket = await testDb.db.run(
         `INSERT INTO brackets (event_id, name, bracket_size)
-         VALUES (?, 'Legacy Bracket', 8)`,
+         VALUES (?, 'Legacy Bracket', 8) RETURNING id`,
         [event.lastID],
       );
       const game1 = await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, play_order)
-         VALUES (?, 1, NULL)`,
+         VALUES (?, 1, NULL) RETURNING id`,
         [bracket.lastID],
       );
       await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, play_order)
-         VALUES (?, 5, 77), (?, 99, NULL)`,
+         VALUES (?, 5, 77), (?, 99, NULL) RETURNING id`,
         [bracket.lastID, bracket.lastID],
       );
       await testDb.db.run(
         `INSERT INTO game_queue (
            event_id, queue_type, queue_position, bracket_game_id
-         ) VALUES (?, 'bracket', 7, ?)`,
+         ) VALUES (?, 'bracket', 7, ?) RETURNING id`,
         [event.lastID, game1.lastID],
       );
 
       const unsupported = await testDb.db.run(
         `INSERT INTO brackets (event_id, name, bracket_size)
-         VALUES (?, 'Custom Bracket', 10)`,
+         VALUES (?, 'Custom Bracket', 10) RETURNING id`,
         [event.lastID],
       );
       await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, play_order)
-         VALUES (?, 1, NULL)`,
+         VALUES (?, 1, NULL) RETURNING id`,
         [unsupported.lastID],
       );
       const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
       try {
-        await initializeSQLite(testDb.db);
+        await initializePostgres(testDb.db);
       } finally {
         warning.mockRestore();
       }

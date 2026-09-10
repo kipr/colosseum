@@ -11,8 +11,8 @@ import { getDatabase } from '../database/connection';
 
 /**
  * Events with created_at strictly before this timestamp keep the legacy
- * (avg / maxAverage) denominator. Space-separated so the same string works for
- * SQLite text comparison and Postgres timestamp coercion.
+ * (avg / maxAverage) denominator. Space-separated so Postgres timestamp
+ * comparison accepts the literal without a timezone suffix.
  */
 export const RAW_SCORE_FORMULA_V2_CUTOFF = '2026-07-27 00:00:00';
 

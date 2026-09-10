@@ -1,13 +1,11 @@
-FROM node:20-bookworm
+FROM node:24-trixie
 
-# Minimal build+run deps for native node modules (e.g., sqlite3)
+# postgresql-client: pg_isready / psql against the sibling Compose Postgres service
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
     git \
-    python3 \
-    make \
-    g++ \
+    postgresql-client \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspaces/colosseum

@@ -1,5 +1,5 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # Production stage
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 WORKDIR /app
 
@@ -30,9 +30,6 @@ RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/static ./static
 
-# Create database directory
-RUN mkdir -p /app/database
-
 # Set environment
 ENV NODE_ENV=production
 ENV PORT=8080
@@ -42,4 +39,3 @@ EXPOSE 8080
 
 # Start the server
 CMD ["node", "dist/server/server.js"]
-

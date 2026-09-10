@@ -164,7 +164,7 @@ describe('recalculateDoubleSeedingRankings', () => {
 
     // Ordinary seeding score exists, but should not affect double-seeding rankings
     await testDb.db.run(
-      'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)',
+      'INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id',
       [teamB.id, 1, 999],
     );
 

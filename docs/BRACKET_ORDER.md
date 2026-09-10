@@ -223,7 +223,7 @@ Extend `BracketTemplate` with `play_order: number`, populated in `generateDEBrac
 
 **Schema** — `src/server/database/schema/brackets.ts`
 
-Add `play_order INTEGER` to both `bracket_templates` and `bracket_games`, in both the `postgres` and `sqlite` blocks. New databases pick it up from `CREATE TABLE IF NOT EXISTS`; existing ones need an additive migration (see 3.4).
+Add `play_order INTEGER` to both `bracket_templates` and `bracket_games` in the `brackets` schema module. New databases pick it up from `CREATE TABLE IF NOT EXISTS`; existing ones need an additive migration (see 3.4).
 
 Add an index: `CREATE INDEX IF NOT EXISTS idx_bracket_games_play_order ON bracket_games(bracket_id, play_order)`.
 
@@ -287,7 +287,7 @@ Details worth getting right:
 
 ### 3.3 A reusable additive-column migration
 
-There is currently no mechanism for adding a column to an existing table. `runSchema` (`src/server/database/schema/runner.ts`) executes `tables` → `constraints` → updated-at triggers → `triggers` → `indexes`, and `scoring.ts` does schema evolution with idempotent Postgres `DO $$ … END $$` blocks. Postgres supports `ALTER TABLE … ADD COLUMN IF NOT EXISTS`; SQLite does not, and errors on a duplicate column.
+There is currently no mechanism for adding a column to an existing table. `runSchema` (`src/server/database/schema/runner.ts`) executes `tables` → `columns` → `constraints` → updated-at triggers → `triggers` → `indexes`, and `scoring.ts` does schema evolution with idempotent Postgres `DO $$ … END $$` blocks.
 
 Add a `columns` phase to `DialectSchema` in `src/server/database/schema/types.ts`:
 
@@ -307,7 +307,7 @@ export interface DialectSchema {
 }
 ```
 
-In `runner.ts`, run `columns` between `tables` and `constraints`, checking existence first — `information_schema.columns` for Postgres, `PRAGMA table_info(<table>)` for SQLite — and issuing the `ALTER TABLE … ADD COLUMN` only when missing. This is reusable for the `events.min_rest_minutes` column in phase 3 and for every future additive migration, which is worth more than a one-off hack.
+In `runner.ts`, run `columns` between `tables` and `constraints`, checking existence first via `information_schema.columns` (scoped to `current_schema()`) and issuing the `ALTER TABLE … ADD COLUMN` only when missing. This is reusable for the `events.min_rest_minutes` column in phase 3 and for every future additive migration, which is worth more than a one-off hack.
 
 ### 3.4 Backfilling in-flight brackets
 
@@ -375,7 +375,7 @@ The client computes elapsed time against `Date.now()` and re-renders on its own 
 
 ### 4.4 The threshold
 
-Add `min_rest_minutes INTEGER NOT NULL DEFAULT 10` to `events` (both dialects, via the `columns` phase from 3.3), exposed in the event settings UI and returned by the events API. Ten minutes is a reasonable default for a KIPR-style match cycle; a director running a fast event can lower it, and setting it to `0` disables the warning entirely.
+Add `min_rest_minutes INTEGER NOT NULL DEFAULT 10` to `events` (via the `columns` phase from 3.3), exposed in the event settings UI and returned by the events API. Ten minutes is a reasonable default for a KIPR-style match cycle; a director running a fast event can lower it, and setting it to `0` disables the warning entirely.
 
 Time-based rather than round-based, because a "round" is not a thing the system tracks — table count and match duration vary between events, and elapsed minutes is what the person at the queue table actually cares about.
 

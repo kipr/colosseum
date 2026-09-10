@@ -1,7 +1,6 @@
 # Tournament API Testing Guide
 
-This document provides curl commands to test all new tournament management endpoints,
-along with SQLite verification queries.
+This document provides curl commands to test all new tournament management endpoints.
 
 ## Prerequisites
 
@@ -571,12 +570,12 @@ curl -X DELETE http://localhost:3000/documentation-scores/event/1/team/1 \
   -H "Cookie: $COOKIE"
 ```
 
-## SQLite Verification Queries
+## PostgreSQL Verification Queries
 
-Run these in the SQLite CLI to verify the curl commands worked:
+Run these in `psql` to verify the curl commands worked:
 
 ```bash
-sqlite3 database/colosseum.db
+npm run db:psql
 ```
 
 ### Verify Events

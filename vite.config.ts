@@ -2,6 +2,10 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
+// The Playwright suite runs its own Express on a different port so it can use
+// the test database while `npm run dev` keeps the dev database on 3000.
+const apiTarget = process.env.COLOSSEUM_API_URL || 'http://localhost:3000';
+
 // Shared proxy config that suppresses connection errors during startup
 const createProxyConfig = (target: string) => ({
   target,
@@ -38,25 +42,26 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // Drifting to the next free port would let the e2e stack attach to the dev
+    // stack's Vite (or the reverse), so a taken port has to be an error.
+    strictPort: true,
     proxy: {
-      '^/api/.*': createProxyConfig('http://localhost:3000'),
-      '^/auth/.*': createProxyConfig('http://localhost:3000'),
-      '^/scoresheet/.*': createProxyConfig('http://localhost:3000'),
-      '^/field-templates.*': createProxyConfig('http://localhost:3000'),
-      '^/data/.*': createProxyConfig('http://localhost:3000'),
-      '^/scores/.*': createProxyConfig('http://localhost:3000'),
-      '^/chat/.*': createProxyConfig('http://localhost:3000'),
-      '^/events(?:/.*)?$': createProxyConfig('http://localhost:3000'),
-      '^/teams(?:/.*)?$': createProxyConfig('http://localhost:3000'),
-      '^/seeding/.*': createProxyConfig('http://localhost:3000'),
-      '^/double-seeding/.*': createProxyConfig('http://localhost:3000'),
-      '^/brackets(?:/.*)?$': createProxyConfig('http://localhost:3000'),
-      '^/queue(?:/.*)?$': createProxyConfig('http://localhost:3000'),
-      '^/audit/.*': createProxyConfig('http://localhost:3000'),
-      '^/documentation-scores(?:/.*)?$': createProxyConfig(
-        'http://localhost:3000',
-      ),
-      '^/awards(?:/.*)?$': createProxyConfig('http://localhost:3000'),
+      '^/api/.*': createProxyConfig(apiTarget),
+      '^/auth/.*': createProxyConfig(apiTarget),
+      '^/scoresheet/.*': createProxyConfig(apiTarget),
+      '^/field-templates.*': createProxyConfig(apiTarget),
+      '^/data/.*': createProxyConfig(apiTarget),
+      '^/scores/.*': createProxyConfig(apiTarget),
+      '^/chat/.*': createProxyConfig(apiTarget),
+      '^/events(?:/.*)?$': createProxyConfig(apiTarget),
+      '^/teams(?:/.*)?$': createProxyConfig(apiTarget),
+      '^/seeding/.*': createProxyConfig(apiTarget),
+      '^/double-seeding/.*': createProxyConfig(apiTarget),
+      '^/brackets(?:/.*)?$': createProxyConfig(apiTarget),
+      '^/queue(?:/.*)?$': createProxyConfig(apiTarget),
+      '^/audit/.*': createProxyConfig(apiTarget),
+      '^/documentation-scores(?:/.*)?$': createProxyConfig(apiTarget),
+      '^/awards(?:/.*)?$': createProxyConfig(apiTarget),
     },
   },
   resolve: {

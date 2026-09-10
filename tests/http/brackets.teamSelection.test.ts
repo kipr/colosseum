@@ -102,7 +102,7 @@ describe('Brackets Team Selection', () => {
       [bracket.id],
     );
     expect(entries).toHaveLength(16);
-    const byeCount = entries.filter((e) => e.is_bye === 1).length;
+    const byeCount = entries.filter((e) => e.is_bye === true).length;
     expect(byeCount).toBe(5);
 
     const games = await testDb.db.all(
@@ -240,7 +240,7 @@ describe('Brackets Team Selection', () => {
     });
     await testDb.db.run(
       `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-       VALUES (?, ?, 1, 0)`,
+       VALUES (?, ?, 1, FALSE) RETURNING id`,
       [bracket.id, team.id],
     );
 

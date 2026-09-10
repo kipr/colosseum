@@ -1,6 +1,10 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import {
+  isCheckConstraintError,
+  isForeignKeyConstraintError,
+} from '../database/constraintErrors';
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { isEventArchived } from '../utils/eventVisibility';
 import { markQueueDirty } from '../services/queueVersion';
@@ -70,14 +74,14 @@ router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
 
     const db = await getDatabase();
 
-    // Use INSERT OR REPLACE to handle upsert
     const result = await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
        ON CONFLICT(team_id, round_number) DO UPDATE SET
          score = excluded.score,
          score_submission_id = excluded.score_submission_id,
-         scored_at = CURRENT_TIMESTAMP`,
+         scored_at = CURRENT_TIMESTAMP
+       RETURNING id`,
       [team_id, round_number, score ?? null, score_submission_id ?? null],
     );
 
@@ -98,11 +102,10 @@ router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
     res.status(201).json(seedingScore ?? { id: result.lastID });
   } catch (error) {
     console.error('Error submitting seeding score:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
+    if (isForeignKeyConstraintError(error)) {
       return res.status(400).json({ error: 'Team does not exist' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res
         .status(400)
         .json({ error: 'Invalid round_number (must be > 0)' });

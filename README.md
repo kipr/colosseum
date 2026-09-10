@@ -33,8 +33,9 @@ See [Template Schema Guide](docs/TEMPLATE_SCHEMA_GUIDE.md) for detailed schema d
 
 ## Prerequisites
 
-- Node.js 16+ and npm
+- Node.js 24 LTS and npm 11
 - Google Cloud Platform account with OAuth 2.0 credentials (for admin authentication)
+- Docker Engine + Compose (required; local PostgreSQL 18)
 
 ## Setup Instructions
 
@@ -67,11 +68,44 @@ Edit `.env` and add your Google OAuth credentials:
 GOOGLE_CLIENT_ID=your-client-id-here
 GOOGLE_CLIENT_SECRET=your-client-secret-here
 SESSION_SECRET=your-random-session-secret
+DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum
+TEST_DATABASE_URL=postgres://colosseum:colosseum@localhost:5432/colosseum_test
 ```
 
-### 4. Run the Application
+`.env.example` already includes those database URLs. Inside a devcontainer the hostname is `postgres` rather than `localhost`.
 
-**Development mode (runs both React + Express):**
+### 4. Start PostgreSQL
+
+Do not auto-start Compose from `npm run dev`. Start it first:
+
+```bash
+npm run db:up && npm run db:wait
+```
+
+**Port 5432 already in use.** Create `docker-compose.override.yml` (gitignored if you prefer; do not commit local port choices):
+
+```yaml
+services:
+  postgres:
+    ports:
+      - '5433:5432'
+```
+
+Point `DATABASE_URL` and `TEST_DATABASE_URL` at `localhost:5433`.
+
+**Wipe local Postgres data:**
+
+```bash
+npm run db:reset
+```
+
+Helper scripts: `db:up`, `db:wait`, `db:down`, `db:reset`, `db:psql`.
+
+**Devcontainer / Codespaces.** Reopening the folder in a container starts Compose siblings (`app` + `postgres`) with `DATABASE_URL` already pointing at hostname `postgres`. Wait for `postStartCommand` (`pg_isready`) before `npm run dev`.
+
+### 5. Run the Application
+
+**Dev servers (React + Express):**
 
 ```bash
 npm run dev
@@ -84,6 +118,38 @@ This starts two servers:
 
 The Vite server proxies API calls to Express automatically.
 
+Expect these logs:
+
+```
+Using PostgreSQL session store
+Using PostgreSQL database
+Database initialized successfully
+```
+
+Confirm the API is up:
+
+```bash
+curl http://localhost:3000/health
+```
+
+Should return `{ "status": "ok", ... }`.
+
+Inspect databases and schema:
+
+```bash
+npm run db:psql
+```
+
+Then in `psql`:
+
+```
+\l
+\c colosseum
+\dt
+```
+
+`\l` should list both `colosseum` and `colosseum_test`. `\dt` should show application tables plus `"session"` after the first server start (the session table is created by `connect-pg-simple`).
+
 **Production mode:**
 
 ```bash
@@ -93,7 +159,7 @@ npm start
 
 In production, Express serves the built React app at `http://localhost:3000`.
 
-**Important**: During development, always use `http://localhost:5173` (Vite) for the frontend, NOT port 3000.
+**Important**: When running the Vite + Express pair, always use `http://localhost:5173` (Vite) for the frontend, NOT port 3000.
 
 ## Usage Guide
 
@@ -174,7 +240,9 @@ colosseum/
 ├── templates/                     # Example score sheet templates
 ├── tests/                         # Unit & integration tests (Vitest)
 ├── e2e/                           # End-to-end tests (Playwright)
-├── database/                      # SQLite databases (auto-created)
+├── config/                        # Shared test-runner configuration
+├── docker/                        # Local Postgres init scripts
+├── docker-compose.yml             # Local PostgreSQL 18 (required for app and tests)
 ├── dist/                          # Build output
 ├── playwright.config.ts           # Playwright E2E config
 ├── vite.config.ts                 # Vite configuration
@@ -186,7 +254,7 @@ colosseum/
 
 ## Database Schema
 
-The application uses SQLite (development) or PostgreSQL (production) with the following tables:
+The application uses PostgreSQL with the following tables:
 
 ### Core Tables
 
@@ -296,13 +364,13 @@ The application uses SQLite (development) or PostgreSQL (production) with the fo
 - `GET /audit/event/:eventId` - Get audit log for event
 - `GET /audit/entity/:type/:id` - Get audit log for entity
 
-## Development
+## Working on the app
 
 ### Tech Stack
 
 - **Frontend**: React 19, TypeScript, React Router, Vite
 - **Backend**: Node.js, Express 5, TypeScript
-- **Database**: SQLite (dev) / PostgreSQL (production)
+- **Database**: PostgreSQL 18 (Docker Compose locally; Cloud SQL in production)
 - **Authentication**: Passport.js with Google OAuth 2.0
 - **Testing**: Vitest (unit/integration), Playwright (E2E)
 - **Build Tools**: Vite (frontend), TypeScript Compiler (backend)
@@ -318,7 +386,7 @@ Builds both React frontend and Express backend:
 - React app -> `dist/client/`
 - Express server -> `dist/server/`
 
-### Development Servers
+### Dev Servers
 
 ```bash
 npm run dev
@@ -326,7 +394,7 @@ npm run dev
 
 Runs both servers concurrently:
 
-- **Vite** (React with HMR): http://localhost:5173 - **Use this for development**
+- **Vite** (React with HMR): http://localhost:5173 - **Open this URL in your browser**
 - **Express** (API): http://localhost:3000
 
 Changes to React components update instantly (Hot Module Replacement).
@@ -343,15 +411,38 @@ npm run dev:server  # Express only
 
 **Unit & integration tests** (Vitest):
 
+These run against PostgreSQL 18, the same major version as production, so the
+tests exercise the dialect the application actually ships on. Start the server
+first — `npm run db:up` also creates the `colosseum_test` database:
+
 ```bash
+npm run db:up && npm run db:wait
 npm test           # Run tests in watch mode
 npm run test:run   # Run tests once
 npm run coverage   # Run with coverage report
 ```
 
+The connection string comes from `TEST_DATABASE_URL` (in your environment or
+`.env`), and defaults to
+`postgres://colosseum:colosseum@localhost:5432/colosseum_test`. Inside a
+devcontainer the host is `postgres` rather than `localhost`.
+
+Each Vitest worker process creates its own schema in that database and
+truncates it between tests, so runs never touch your `colosseum` dev data.
+
 **End-to-end tests** (Playwright):
 
-Playwright tests live in the `e2e/` directory and run against the full application (Express API + Vite dev server). The Playwright config (`playwright.config.ts`) starts both servers automatically via `webServer` entries, so no manual server setup is needed.
+Playwright tests live in the `e2e/` directory and run against the full
+application. `npm run db:up` must have been run first.
+
+The Playwright config (`playwright.config.ts`) starts its **own** Express on
+port 3001 and Vite on port 5174, with `DATABASE_URL` set to
+`TEST_DATABASE_URL`. It never reuses a server already listening on 3000/5173,
+so you can leave `npm run dev` running while the suite executes and it will not
+touch your dev data. The suite uses the `public` schema of `colosseum_test` and
+truncates it once at the start of each run, which does not disturb the Vitest
+suite's per-worker schemas on the same database.
+
 Before your first run, you will need to download Playwright's headless browser builds and their required OS libraries.
 This is not handled by `npm install`.
 

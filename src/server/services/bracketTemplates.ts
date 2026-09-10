@@ -230,7 +230,8 @@ export async function ensureBracketTemplatesSeeded(
         winner_slot, loser_slot, is_championship, is_grand_final, is_reset_game
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (bracket_size, game_number) DO UPDATE
-      SET play_order = EXCLUDED.play_order`,
+      SET play_order = EXCLUDED.play_order
+      RETURNING id`,
       [
         t.bracket_size,
         t.game_number,

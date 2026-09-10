@@ -15,6 +15,23 @@ jobs:
   CI:
     runs-on: ubuntu-24.04
 
+    # The Vitest suite runs against PostgreSQL, matching Cloud SQL's major
+    # version. Playwright is not run here.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: colosseum
+          POSTGRES_PASSWORD: colosseum
+          POSTGRES_DB: colosseum_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U colosseum -d colosseum_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +39,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
       - name: Install dependencies
@@ -41,6 +58,8 @@ jobs:
 
       - name: Test
         run: npm run test:run
+        env:
+          TEST_DATABASE_URL: postgres://colosseum:colosseum@localhost:5432/colosseum_test
 
       - name: Build
         run: npm run build

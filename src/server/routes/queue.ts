@@ -2,6 +2,10 @@ import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { queueSyncLimiter } from '../middleware/rateLimit';
 import { getDatabase, type Database } from '../database/connection';
+import {
+  isCheckConstraintError,
+  isForeignKeyConstraintError,
+} from '../database/constraintErrors';
 import { isValidQueueStatus } from '../constants/queueStatus';
 import {
   ensureQueueFresh,
@@ -344,7 +348,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       `INSERT INTO game_queue (
          event_id, bracket_game_id, seeding_team_id, seeding_round, double_seeding_match_id,
          queue_type, queue_position, status, table_number
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?) RETURNING id`,
       [
         event_id,
         queue_type === 'bracket' ? bracket_game_id : null,
@@ -364,13 +368,12 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     res.status(201).json(queueItem);
   } catch (error) {
     console.error('Error adding to queue:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
+    if (isForeignKeyConstraintError(error)) {
       return res
         .status(400)
         .json({ error: 'Event, game, or team does not exist' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid queue_type or status' });
     }
     res.status(500).json({ error: 'Failed to add to queue' });
@@ -542,7 +545,7 @@ router.post(
             const result = await tx.run(
               `INSERT INTO game_queue (
                  event_id, bracket_game_id, queue_type, queue_position, status
-               ) VALUES (?, ?, 'bracket', ?, 'queued')`,
+               ) VALUES (?, ?, 'bracket', ?, 'queued') RETURNING id`,
               [eventId, row.newBracketGameId, queuePosition],
             );
             changes += result.changes ?? 0;
@@ -649,7 +652,7 @@ router.post(
         await db.run(
           `INSERT INTO game_queue (
              event_id, seeding_team_id, seeding_round, queue_type, queue_position, status
-           ) VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
+           ) VALUES (?, ?, ?, 'seeding', ?, 'queued') RETURNING id`,
           [event_id, item.team_id, item.round, i + 1],
         );
         created++;
@@ -857,11 +860,7 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     res.json(queueItem);
   } catch (error) {
     console.error('Error updating queue item:', error);
-    const errMsg = (error as Error).message || '';
-    if (
-      errMsg.includes('CHECK constraint failed') ||
-      errMsg.includes('violates check constraint')
-    ) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid status value' });
     }
     res.status(500).json({ error: 'Failed to update queue item' });

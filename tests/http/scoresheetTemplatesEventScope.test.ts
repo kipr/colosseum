@@ -566,7 +566,7 @@ describe('Scoresheet Templates Event Scope', () => {
       expect(templates.length).toBe(1);
       expect(templates[0].event_id).toBe(event.id);
       expect(templates[0].event_name).toBe('My Event');
-      expect(templates[0].event_date).toBe('2026-03-15');
+      expect(templates[0].event_date).toBe('2026-03-15T00:00:00.000Z');
     });
   });
 });
