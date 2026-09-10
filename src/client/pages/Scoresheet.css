@@ -319,27 +319,12 @@ select.score-input {
   border-radius: 0;
 }
 
-/* Custom +/- buttons replace native spinners; hide the arrows so they
-   cannot overlay the value when repeatable-group rows reflow. */
-.repeatable-group-number-stepper
-  .score-input[type='number'].repeatable-group-number {
+/* Repeatable-group steppers use a text input plus custom +/- buttons so
+   native number-field arrows cannot overlay the value when rows reflow. */
+.repeatable-group-number-stepper .score-input.repeatable-group-number {
   flex: 1 1 2.5rem;
   width: 2.75rem;
   max-width: 100%;
-  appearance: textfield;
-  -moz-appearance: textfield;
-}
-
-.repeatable-group-number-stepper
-  .score-input[type='number'].repeatable-group-number::-webkit-inner-spin-button,
-.repeatable-group-number-stepper
-  .score-input[type='number'].repeatable-group-number::-webkit-outer-spin-button {
-  appearance: none;
-  -webkit-appearance: none;
-  margin: 0;
-  display: none;
-  opacity: 0;
-  pointer-events: none;
 }
 
 .repeatable-group-number-stepper-button {
@@ -559,8 +544,7 @@ select.score-input {
     max-width: 100%;
   }
 
-  .repeatable-group-number-stepper
-    .score-input[type='number'].repeatable-group-number {
+  .repeatable-group-number-stepper .score-input.repeatable-group-number {
     width: 2.75rem;
     max-width: 100%;
   }
@@ -626,8 +610,7 @@ select.score-input {
     max-width: none;
   }
 
-  .repeatable-group-number-stepper
-    .score-input[type='number'].repeatable-group-number {
+  .repeatable-group-number-stepper .score-input.repeatable-group-number {
     flex: 0 0 3.25rem;
     width: 3.25rem;
   }

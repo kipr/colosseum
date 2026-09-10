@@ -256,13 +256,10 @@ test.describe('Scoresheet layout at narrow widths', () => {
       const stepper = page.locator('.repeatable-group-number-stepper').first();
       await expect(stepper).toBeVisible();
 
-      const input = stepper.locator('input[type="number"]');
+      const input = stepper.locator('input.repeatable-group-number');
       await expect(input).toBeVisible();
-
-      const appearance = await input.evaluate(
-        (el) => getComputedStyle(el).appearance,
-      );
-      expect(appearance).toBe('textfield');
+      await expect(input).toHaveAttribute('type', 'text');
+      await expect(input).toHaveAttribute('inputmode', /numeric|decimal/);
 
       await assertFitsInContainer(
         stepper,
@@ -279,7 +276,7 @@ test.describe('Scoresheet layout at narrow widths', () => {
     await enterAsJudge(page);
 
     const stepper = page.locator('.repeatable-group-number-stepper').first();
-    const input = stepper.locator('input[type="number"]');
+    const input = stepper.locator('input.repeatable-group-number');
     const increment = stepper.getByRole('button', { name: /Increase/ });
     const decrement = stepper.getByRole('button', { name: /Decrease/ });
 
