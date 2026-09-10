@@ -419,7 +419,6 @@ first — `npm run db:up` also creates the `colosseum_test` database:
 npm run db:up && npm run db:wait
 npm test           # Run tests in watch mode
 npm run test:run   # Run tests once
-npm run coverage   # Run with coverage report
 ```
 
 The connection string comes from `TEST_DATABASE_URL` (in your environment or

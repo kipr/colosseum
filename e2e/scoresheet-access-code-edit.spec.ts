@@ -57,7 +57,7 @@ test.describe('Admin scoresheet access code on edit', () => {
 
   test('autofills the access code and keeps it when the field is left blank', async ({
     page,
-  }) => {
+  }, testInfo) => {
     await setSessionCookie(page, admin.signedCookie);
     await page.goto(`/admin/events/${eventId}?view=scoresheets`);
 
@@ -81,7 +81,7 @@ test.describe('Admin scoresheet access code on edit', () => {
       .locator('input');
     await expect(accessInput).toHaveValue(ACCESS_CODE);
     await page.screenshot({
-      path: '/opt/cursor/artifacts/scoresheet-edit-access-code-autofill.png',
+      path: testInfo.outputPath('scoresheet-edit-access-code-autofill.png'),
       fullPage: true,
     });
 
@@ -113,7 +113,9 @@ test.describe('Admin scoresheet access code on edit', () => {
         .locator('input'),
     ).toHaveValue(ACCESS_CODE);
     await page.screenshot({
-      path: '/opt/cursor/artifacts/scoresheet-edit-access-code-after-blank-save.png',
+      path: testInfo.outputPath(
+        'scoresheet-edit-access-code-after-blank-save.png',
+      ),
       fullPage: true,
     });
   });
