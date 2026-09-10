@@ -10,6 +10,11 @@ import {
   updateBracketQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import {
+  getMissingTeamInitialsError,
+  getRequiredTeamInitialsSlots,
+  type EventScoreType,
+} from '../../shared/teamInitials';
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -1278,8 +1283,38 @@ router.put('/:id', async (req: AuthRequest, res: express.Response) => {
       });
     }
 
-    await db.run(
-      `UPDATE score_submissions 
+      const eventScoreType = oldScore.score_type as EventScoreType | null;
+      if (
+        oldScore.event_id != null &&
+        (eventScoreType === 'seeding' ||
+          eventScoreType === 'bracket' ||
+          eventScoreType === 'double_seeding')
+      ) {
+        let hasTeamB = eventScoreType === 'bracket';
+        if (
+          eventScoreType === 'double_seeding' &&
+          oldScore.double_seeding_match_id != null
+        ) {
+          const match = await db.get<{ team2_id: number | null }>(
+            'SELECT team2_id FROM double_seeding_matches WHERE id = ?',
+            [oldScore.double_seeding_match_id],
+          );
+          hasTeamB = match?.team2_id != null;
+        }
+        const initialsError = getMissingTeamInitialsError(
+          scoreData,
+          getRequiredTeamInitialsSlots({
+            scoreType: eventScoreType,
+            hasTeamB,
+          }),
+        );
+        if (initialsError) {
+          return res.status(400).json({ error: initialsError });
+        }
+      }
+
+      await db.run(
+        `UPDATE score_submissions 
        SET score_data = ?, result_type = ?, disqualified_team_id = ?, result_note = ?, updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
       [

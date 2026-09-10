@@ -91,6 +91,16 @@ describe('Double Seeding Score Lifecycle', () => {
         team_a_total: { value: 55, type: 'number' },
         team_b_total: { value: 65, type: 'number' },
         round: { value: 1, type: 'number' },
+        team_a_team_initials: {
+          label: 'Team A Initials',
+          value: 'TA',
+          type: 'text',
+        },
+        team_b_team_initials: {
+          label: 'Team B Initials',
+          value: 'TB',
+          type: 'text',
+        },
       },
       eventId: event.id,
       scoreType: 'double_seeding',

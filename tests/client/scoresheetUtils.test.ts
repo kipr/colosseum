@@ -67,6 +67,7 @@ describe('scoresheetUtils', () => {
 
     expect(schema.mode).toBe('head-to-head');
     expect(schema.eventId).toBe(42);
+    expect(schema.requireTeamInitials).toBe(true);
     expect(schema.bracketSource).toEqual(buildEventScopedBracketSource(42));
     expect(schema.teamsDataSource.eventId).toBe(42);
   });
@@ -126,6 +127,11 @@ describe('scoresheetUtils', () => {
       unsortedEquivalent: 'team_a_unsorted_cubes',
       subtotal: 'team_a_cube_points',
     });
+    expect(
+      schema.fields.some((field: { id: string }) =>
+        field.id.includes('team_initials'),
+      ),
+    ).toBe(false);
   });
 
   it('formats judge game labels without bracket or game context', () => {

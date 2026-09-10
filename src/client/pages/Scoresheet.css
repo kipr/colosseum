@@ -695,6 +695,32 @@ select.score-input {
   width: 100%;
 }
 
+.team-initials-container {
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin: 1.5rem 0 0;
+}
+
+.team-initials-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.team-initials-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-weight: 600;
+  min-width: 180px;
+  max-width: 280px;
+  flex: 1;
+}
+
 .winner-select-container {
   background: linear-gradient(135deg, var(--card-bg) 0%, var(--bg-color) 100%);
   border: 2px solid var(--primary-color);
