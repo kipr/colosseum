@@ -107,4 +107,34 @@ describe('portable scoresheet exporter', () => {
 
     expect(() => runExporter(inputPath, outputPath)).toThrow(/startValue/);
   });
+
+  it('injects team initials when requireTeamInitials is set', () => {
+    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-scoresheet-'));
+    const inputPath = path.join(tempDir, 'initials.json');
+    const outputPath = path.join(tempDir, 'initials.html');
+
+    writeFileSync(
+      inputPath,
+      JSON.stringify({
+        schema: {
+          title: 'Initials',
+          layout: 'two-column',
+          requireTeamInitials: true,
+          fields: [
+            {
+              id: 'side_a_score',
+              label: 'Side A Score',
+              type: 'number',
+              column: 'left',
+            },
+          ],
+        },
+      }),
+    );
+
+    runExporter(inputPath, outputPath);
+    const html = readFileSync(outputPath, 'utf8');
+    expect(html).toContain('"id": "side_a_team_initials"');
+    expect(html).toContain('Team Initials');
+  });
 });

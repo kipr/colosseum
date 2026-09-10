@@ -111,6 +111,12 @@ export interface ScoresheetSchema {
   layout?: string;
   mode?: string;
   scoreKind?: string;
+  /**
+   * When true, the client (or portable exporter) shows team-initials
+   * certification even if the sheet is not event-scoped. Event-scoped
+   * sheets always require initials regardless of this flag.
+   */
+  requireTeamInitials?: boolean;
   fields?: ScoresheetField[];
   [key: string]: unknown;
 }

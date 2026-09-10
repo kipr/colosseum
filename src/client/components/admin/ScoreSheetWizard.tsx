@@ -5,6 +5,7 @@ import {
   buildDoubleEliminationSchema,
   buildDoubleSeedingSchema,
 } from '../scoresheetUtils';
+import { stripTeamInitialsFields } from '../../../shared/teamInitials';
 import '../Modal.css';
 
 interface FieldTemplate {
@@ -89,6 +90,7 @@ export default function ScoreSheetWizard({
       title: name || 'Seeding Score Sheet',
       eventId: selectedEvent?.id ?? null,
       scoreDestination: 'db',
+      requireTeamInitials: true,
       fields: [],
     };
 
@@ -131,13 +133,7 @@ export default function ScoreSheetWizard({
 
     // Add scoring fields from template if selected
     if (selectedTemplate && selectedTemplate.fields) {
-      // Shared side A/B templates can carry one certification field per side for
-      // DE. Seeding only needs a single team certification, so keep the side A
-      // field and omit the side B counterpart when generating the seeding schema.
-      const seedingFields = selectedTemplate.fields.filter(
-        (field: any) => field.id !== 'side_b_team_initials',
-      );
-      schema.fields.push(...seedingFields);
+      schema.fields.push(...stripTeamInitialsFields(selectedTemplate.fields));
 
       // Add grand total for seeding sheets (templates don't include this so it can be conditional)
       schema.fields.push({
