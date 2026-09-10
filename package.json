@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Colosseum - Tournament management and scoring platform",
   "main": "dist/server/server.js",
+  "engines": {
+    "node": "^24.0.0"
+  },
   "scripts": {
     "dev": "sh -c 'npm run dev:server & server=$!; trap \"kill $server\" EXIT INT TERM; npm run dev:client'",
     "dev:server": "nodemon --watch src/server --watch src/shared --exec ts-node src/server/server.ts",
@@ -55,7 +58,7 @@
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/express-session": "^1.18.2",
-    "@types/node": "^20.19.43",
+    "@types/node": "^24.13.4",
     "@types/passport": "^1.0.17",
     "@types/passport-google-oauth20": "^2.0.17",
     "@types/pg": "^8.15.6",
@@ -78,5 +81,8 @@
     "vite": "^7.2.6",
     "vitest": "^4.0.18",
     "wait-on": "^9.0.3"
+  },
+  "allowScripts": {
+    "esbuild@0.28.1": true
   }
 }

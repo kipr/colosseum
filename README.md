@@ -33,7 +33,7 @@ See [Template Schema Guide](docs/TEMPLATE_SCHEMA_GUIDE.md) for detailed schema d
 
 ## Prerequisites
 
-- Node.js 16+ and npm
+- Node.js 24 LTS and npm 11
 - Google Cloud Platform account with OAuth 2.0 credentials (for admin authentication)
 - Docker Engine + Compose (required; local PostgreSQL 18)
 

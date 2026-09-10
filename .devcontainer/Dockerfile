@@ -1,4 +1,4 @@
-FROM node:20-bookworm
+FROM node:24-trixie
 
 # postgresql-client: pg_isready / psql against the sibling Compose Postgres service
 RUN apt-get update \
