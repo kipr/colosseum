@@ -8,6 +8,8 @@ import {
   buildRepeatableGroupDerivedScoreEntries,
   buildRepeatableGroupScoreEntry,
   calculateRepeatableGroupDerivedValues,
+  calculateScoresheetValues,
+  applyRepeatableGroupInputChange,
   getRepeatableGroupRowKeys,
   normalizeRepeatableGroupRows,
   shouldAutoAppendRepeatableGroupRow,
@@ -23,6 +25,8 @@ import {
   type EventScoreType,
 } from '../../../shared/teamInitials';
 import TeamInitialsFields from '../TeamInitialsFields';
+import ScoresheetFieldControl from '../ScoresheetFieldControl';
+import RepeatableGroupTable from '../RepeatableGroupTable';
 
 interface ScoreViewModalProps {
   score: any;
@@ -109,36 +113,10 @@ export default function ScoreViewModal({
     setFormData(data);
   };
 
-  const calculateFormulaValues = (data: Record<string, any>) => {
-    if (!template?.schema?.fields) return {};
-
-    const calculated: Record<string, number> = {};
-    const { outputs } = calculateRepeatableGroupDerivedValues(
-      template.schema.fields,
-      data,
-    );
-    const formulaData = { ...data, ...outputs };
-
-    template.schema.fields.forEach((field: any) => {
-      if (field.type === 'calculated' && field.formula) {
-        try {
-          const result = evaluateFormula(
-            field.formula,
-            formulaData,
-            calculated,
-          );
-          calculated[field.id] = result;
-        } catch {
-          calculated[field.id] = 0;
-        }
-      }
-    });
-
-    return calculated;
-  };
-
   const calculateAllFormulas = () => {
-    setCalculatedValues(calculateFormulaValues(formData));
+    setCalculatedValues(
+      calculateScoresheetValues(template?.schema?.fields, formData),
+    );
   };
 
   const handleDisqualifiedTeamChange = (teamId: number | null) => {
@@ -169,47 +147,6 @@ export default function ScoreViewModal({
     }));
   };
 
-  const evaluateFormula = (
-    formula: string,
-    data: Record<string, any>,
-    calculated: Record<string, number>,
-  ): number => {
-    let expression = formula;
-    const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-    const uniqueFieldIds = Array.from(new Set(fieldIds));
-
-    uniqueFieldIds.forEach((fieldId) => {
-      let value: any = 0;
-
-      if (calculated[fieldId] !== undefined) {
-        value = calculated[fieldId];
-      } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
-        value = data[fieldId];
-      }
-
-      let replacement: string;
-      if (formula.includes(`${fieldId} ===`)) {
-        replacement = `'${String(value)}'`;
-      } else if (typeof value === 'string') {
-        replacement = String(Number(value) || 0);
-      } else if (typeof value === 'boolean') {
-        replacement = value ? '1' : '0';
-      } else {
-        replacement = String(Number(value) || 0);
-      }
-
-      const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
-      expression = expression.replace(regex, replacement);
-    });
-
-    try {
-      const result = eval(expression);
-      return Number(result) || 0;
-    } catch {
-      return 0;
-    }
-  };
-
   const handleInputChange = (fieldId: string, value: any) => {
     if (isReadOnly) return;
     setFormData((prev) => ({ ...prev, [fieldId]: value }));
@@ -223,28 +160,16 @@ export default function ScoreViewModal({
   ) => {
     if (isReadOnly) return;
 
-    setFormData((prev) => {
-      const rows = normalizeRepeatableGroupRows(prev[field.id], field).map(
-        (row) => ({ ...row }),
-      );
-      rows[rowIndex] = {
-        ...(rows[rowIndex] ??
-          normalizeRepeatableGroupRows(undefined, field)[0]),
-        [childField.id]: value,
-      };
-
-      if (
-        field.autoAppendBlankRow &&
-        shouldAutoAppendRepeatableGroupRow(rows, field)
-      ) {
-        rows.push(normalizeRepeatableGroupRows(undefined, field)[0]);
-      }
-
-      return {
-        ...prev,
-        [field.id]: rows,
-      };
-    });
+    setFormData((prev) => ({
+      ...prev,
+      [field.id]: applyRepeatableGroupInputChange(
+        prev[field.id],
+        field,
+        rowIndex,
+        childField.id,
+        value,
+      ),
+    }));
   };
 
   const handleSave = async () => {
@@ -278,7 +203,10 @@ export default function ScoreViewModal({
       const fieldsById = new Map<string, any>(
         (template?.schema?.fields || []).map((field: any) => [field.id, field]),
       );
-      const saveCalculatedValues = calculateFormulaValues(formData);
+      const saveCalculatedValues = calculateScoresheetValues(
+        template?.schema?.fields,
+        formData,
+      );
       const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
         template?.schema?.fields || [],
         formData,
@@ -437,72 +365,16 @@ export default function ScoreViewModal({
     const disabled = isReadOnly || field.autoPopulated;
 
     return (
-      <>
-        {field.type === 'text' && (
-          <input
-            type="text"
-            className="score-input"
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-          />
-        )}
-        {field.type === 'number' && (
-          <input
-            type="number"
-            className="score-input"
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-          />
-        )}
-        {field.type === 'dropdown' && (
-          <select
-            className={`score-input ${isCompact ? 'compact' : ''}`}
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-            style={{ width: isCompact ? '70px' : '100%' }}
-          >
-            <option value="">Select...</option>
-            {field.options?.map((opt: any) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-            {/* If the current value isn't in options, show it anyway */}
-            {value &&
-              !field.options?.some(
-                (opt: any) => String(opt.value) === String(value),
-              ) && <option value={value}>{value}</option>}
-          </select>
-        )}
-        {field.type === 'buttons' && (
-          <div className="score-button-group">
-            {field.options?.map((opt: any) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-                onClick={() =>
-                  !isReadOnly && handleInputChange(field.id, opt.value)
-                }
-                disabled={isReadOnly}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {field.type === 'checkbox' && (
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => handleInputChange(field.id, e.target.checked)}
-            disabled={disabled}
-          />
-        )}
-      </>
+      <ScoresheetFieldControl
+        field={field}
+        value={value}
+        onChange={(nextValue) => handleInputChange(field.id, nextValue)}
+        disabled={field.type === 'buttons' ? isReadOnly : disabled}
+        isCompact={isCompact}
+        numberUi="native"
+        includeOrphanDropdownValue
+        compareSelectionAsString
+      />
     );
   };
 
@@ -573,113 +445,22 @@ export default function ScoreViewModal({
     });
   };
 
-  const renderDerivedValue = (value: any, columnKey: string) => {
-    if (value === undefined || value === null || value === '') {
-      return '';
-    }
-
-    if (columnKey === 'sortedColor' || columnKey === 'color') {
-      return (
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: '0.75rem',
-              height: '0.75rem',
-              borderRadius: '999px',
-              border: '1px solid var(--border-color)',
-              backgroundColor: String(value),
-              display: 'inline-block',
-            }}
-          />
-          {String(value)}
-        </span>
-      );
-    }
-
-    if (typeof value === 'boolean') {
-      return value ? 'Yes' : 'No';
-    }
-
-    return String(value);
-  };
-
   const renderRepeatableGroup = (field: any) => {
     const rows = getRepeatableGroupRowsForRender(field);
-    const supportedFields = (field.fields || []).filter((childField: any) =>
-      ['text', 'number', 'dropdown', 'buttons', 'checkbox'].includes(
-        childField.type,
-      ),
-    );
     const derivedRows = getRepeatableGroupDerivedRows(field, rows);
     const derivedColumns = getRepeatableGroupDerivedColumns(field, derivedRows);
 
     return (
-      <div key={field.id} className="repeatable-group">
-        <div className="repeatable-group-title">
-          <span>{field.label}</span>
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </div>
-        <div className="repeatable-group-table">
-          <div className="repeatable-group-header">
-            <div className="repeatable-group-row-label">
-              {field.rowLabel || 'Row'}
-            </div>
-            {supportedFields.map((childField: any) => (
-              <div
-                key={childField.id}
-                className="repeatable-group-column-label"
-              >
-                {childField.label}
-              </div>
-            ))}
-            {derivedColumns.map((column) => (
-              <div key={column.key} className="repeatable-group-column-label">
-                {column.label}
-              </div>
-            ))}
-          </div>
-          {rows.map((row, rowIndex) => (
-            <div key={rowIndex} className="repeatable-group-row">
-              <div className="repeatable-group-row-label">
-                {field.rowLabel || 'Row'} {rowIndex + 1}
-              </div>
-              {supportedFields.map((childField: any) => (
-                <div key={childField.id} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {childField.label}
-                  </label>
-                  {renderRepeatableGroupInput(
-                    field,
-                    rowIndex,
-                    childField,
-                    row[childField.id],
-                  )}
-                </div>
-              ))}
-              {derivedColumns.map((column) => (
-                <div key={column.key} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {column.label}
-                  </label>
-                  <div className="calculated-value" style={{ width: 'auto' }}>
-                    {renderDerivedValue(
-                      derivedRows[rowIndex]?.[column.key],
-                      column.key,
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      <RepeatableGroupTable
+        key={field.id}
+        field={field}
+        rows={rows}
+        derivedColumns={derivedColumns}
+        derivedRows={derivedRows}
+        renderControl={(childField, value, rowIndex) =>
+          renderRepeatableGroupInput(field, rowIndex, childField, value)
+        }
+      />
     );
   };
 
@@ -688,126 +469,28 @@ export default function ScoreViewModal({
     rowIndex: number,
     childField: any,
     value: any,
-  ) => {
-    const disabled = isReadOnly || childField.autoPopulated;
-
-    if (childField.type === 'text') {
-      return (
-        <input
-          type="text"
-          className="score-input repeatable-group-input"
-          placeholder={childField.placeholder || ''}
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    if (childField.type === 'number') {
-      return (
-        <input
-          type="number"
-          className="score-input repeatable-group-number"
-          min={childField.min ?? 0}
-          max={childField.max}
-          step={childField.step || 1}
-          value={value ?? ''}
-          placeholder={childField.placeholder || '0'}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    if (childField.type === 'dropdown') {
-      return (
-        <select
-          className="score-input repeatable-group-input"
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        >
-          <option value="">Select...</option>
-          {childField.options?.map((opt: any) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-          {value &&
-            !childField.options?.some(
-              (opt: any) => String(opt.value) === String(value),
-            ) && <option value={value}>{value}</option>}
-        </select>
-      );
-    }
-
-    if (childField.type === 'buttons') {
-      return (
-        <div className="score-button-group repeatable-group-buttons">
-          {childField.options?.map((opt: any) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-              onClick={() =>
-                handleRepeatableGroupInputChange(
-                  field,
-                  rowIndex,
-                  childField,
-                  opt.value,
-                )
-              }
-              disabled={disabled}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      );
-    }
-
-    if (childField.type === 'checkbox') {
-      return (
-        <input
-          type="checkbox"
-          checked={!!value}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.checked,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    return null;
-  };
+  ) => (
+    <ScoresheetFieldControl
+      field={childField}
+      value={value}
+      onChange={(nextValue) =>
+        handleRepeatableGroupInputChange(field, rowIndex, childField, nextValue)
+      }
+      disabled={isReadOnly || childField.autoPopulated}
+      numberUi="native"
+      includeNumberBounds
+      includeOrphanDropdownValue
+      compareSelectionAsString
+      placeholder={
+        childField.type === 'number'
+          ? childField.placeholder || '0'
+          : childField.placeholder || ''
+      }
+      inputClassName="score-input repeatable-group-input"
+      numberClassName="score-input repeatable-group-number"
+      buttonGroupClassName="score-button-group repeatable-group-buttons"
+    />
+  );
 
   const renderFallbackRepeatableGroup = (fieldId: string, data: any) => {
     const rows = Array.isArray(data.value) ? data.value : [];
@@ -821,55 +504,26 @@ export default function ScoreViewModal({
     );
 
     return (
-      <div key={fieldId} className="repeatable-group">
-        <div className="repeatable-group-title">{data.label || fieldId}</div>
-        <div className="repeatable-group-table">
-          <div className="repeatable-group-header">
-            <div className="repeatable-group-row-label">Row</div>
-            {rowKeys.map((key) => (
-              <div key={key} className="repeatable-group-column-label">
-                {key}
-              </div>
-            ))}
-            {derivedColumns.map((column) => (
-              <div key={column.key} className="repeatable-group-column-label">
-                {column.label}
-              </div>
-            ))}
-          </div>
-          {rows.map((row: any, rowIndex: number) => (
-            <div key={rowIndex} className="repeatable-group-row">
-              <div className="repeatable-group-row-label">
-                Row {rowIndex + 1}
-              </div>
-              {rowKeys.map((key) => (
-                <div key={key} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">{key}</label>
-                  <input
-                    type="text"
-                    className="score-input repeatable-group-input"
-                    value={String(row?.[key] ?? '')}
-                    disabled
-                  />
-                </div>
-              ))}
-              {derivedColumns.map((column) => (
-                <div key={column.key} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {column.label}
-                  </label>
-                  <div className="calculated-value" style={{ width: 'auto' }}>
-                    {renderDerivedValue(
-                      derivedRows[rowIndex]?.[column.key],
-                      column.key,
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      <RepeatableGroupTable
+        key={fieldId}
+        field={{ id: fieldId, label: data.label || fieldId }}
+        rows={rows}
+        supportedFields={rowKeys.map((key) => ({
+          id: key,
+          label: key,
+          type: 'text',
+        }))}
+        derivedColumns={derivedColumns}
+        derivedRows={derivedRows}
+        renderControl={(childField, value) => (
+          <ScoresheetFieldControl
+            field={childField}
+            value={String(value ?? '')}
+            disabled
+            inputClassName="score-input repeatable-group-input"
+          />
+        )}
+      />
     );
   };
 
