@@ -97,7 +97,11 @@ test.describe('Score sheet wizard type cards', () => {
     await expect(cards).toHaveCount(expectedCards.length);
 
     for (const expected of expectedCards) {
-      const card = cards.filter({ hasText: expected.title });
+      const card = cards.filter({
+        has: page.locator('.score-sheet-wizard-type-title', {
+          hasText: new RegExp(`^${expected.title}$`),
+        }),
+      });
       await expect(card.getByText(expected.description)).toBeVisible();
       await assertDescriptionFitsInsideCard(card);
     }
