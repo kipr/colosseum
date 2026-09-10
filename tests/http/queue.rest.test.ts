@@ -14,6 +14,8 @@ import {
   seedDoubleSeedingMatch,
   seedEvent,
   seedQueueItem,
+  seedScoreSubmission,
+  seedScoresheetTemplate,
   seedTeam,
 } from './helpers/seed';
 
@@ -152,6 +154,43 @@ describe('queue team-rest response', () => {
     );
     expect(bracketRow.team1_busy).toBe(false);
     expect(seedingRow.seeding_team_busy).toBe(false);
+  });
+
+  it('exposes accepted submission time rather than later accept-time stamps', async () => {
+    const event = await seedEvent(testDb.db);
+    const team = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 101,
+    });
+    const template = await seedScoresheetTemplate(testDb.db);
+    const submission = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: '{}',
+      status: 'accepted',
+      event_id: event.id,
+      score_type: 'seeding',
+    });
+    await testDb.db.run(
+      'UPDATE score_submissions SET created_at = ? WHERE id = ?',
+      ['2026-08-25 10:00:00', submission.id],
+    );
+    await testDb.db.run(
+      `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
+       VALUES (?, 9, 10, ?, ?) RETURNING id`,
+      [team.id, submission.id, '2026-08-25 10:25:00'],
+    );
+    await seedQueueItem(testDb.db, {
+      event_id: event.id,
+      queue_type: 'seeding',
+      seeding_team_id: team.id,
+      seeding_round: 1,
+      queue_position: 1,
+    });
+
+    const res = await http.get(`${baseUrl}/queue/event/${event.id}`);
+    expect(res.status).toBe(200);
+    const row = (res.json as Array<Record<string, unknown>>)[0];
+    expect(row.seeding_team_last_played_at).toBe('2026-08-25T10:00:00.000Z');
   });
 
   it('reports active participation even when the active row is filtered out', async () => {
