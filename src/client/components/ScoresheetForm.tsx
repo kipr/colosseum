@@ -25,6 +25,7 @@ import {
   isTeamInitialsFieldId,
 } from '../../shared/teamInitials';
 import TeamInitialsFields from './TeamInitialsFields';
+import ScoresheetFieldControl from './ScoresheetFieldControl';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -688,68 +689,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         [field.id]: rows,
       };
     });
-  };
-
-  const getRepeatableGroupNumberBounds = (childField: any) => {
-    const step = Number(childField.step || 1);
-
-    return {
-      min: Number(childField.min ?? 0),
-      max:
-        childField.max === undefined || childField.max === ''
-          ? undefined
-          : Number(childField.max),
-      step: isNaN(step) ? 1 : step,
-    };
-  };
-
-  const clampRepeatableGroupNumber = (value: number, childField: any) => {
-    const { min, max } = getRepeatableGroupNumberBounds(childField);
-    let nextValue = value;
-
-    if (max !== undefined && nextValue > max) {
-      nextValue = max;
-    }
-
-    if (min !== undefined && nextValue < min) {
-      nextValue = min;
-    }
-
-    return nextValue;
-  };
-
-  const getStepPrecision = (step: number) => {
-    const [, decimalPart = ''] = String(step).split('.');
-    return decimalPart.length;
-  };
-
-  const adjustRepeatableGroupNumber = (
-    field: any,
-    rowIndex: number,
-    childField: any,
-    value: any,
-    direction: -1 | 1,
-  ) => {
-    const { min, step } = getRepeatableGroupNumberBounds(childField);
-    const parsedValue = Number(value);
-    const baseValue =
-      value === '' ||
-      value === undefined ||
-      value === null ||
-      isNaN(parsedValue)
-        ? min
-        : parsedValue;
-    const nextValue = clampRepeatableGroupNumber(
-      Number((baseValue + step * direction).toFixed(getStepPrecision(step))),
-      childField,
-    );
-
-    handleRepeatableGroupInputChange(
-      field,
-      rowIndex,
-      childField,
-      String(nextValue),
-    );
   };
 
   const handleInputChange = (fieldId: string, value: any, field?: any) => {
@@ -1562,198 +1501,27 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     rowIndex: number,
     childField: any,
     value: any,
-  ) => {
-    if (childField.type === 'text') {
-      return (
-        <input
-          type="text"
-          className="score-input repeatable-group-input"
-          placeholder={childField.placeholder || ''}
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          required={childField.required}
-        />
-      );
-    }
-
-    if (childField.type === 'number') {
-      const { min, max, step } = getRepeatableGroupNumberBounds(childField);
-      const numericValue = Number(value);
-      const hasNumericValue =
-        value !== '' &&
-        value !== undefined &&
-        value !== null &&
-        !isNaN(numericValue);
-      const currentNumericValue = hasNumericValue ? numericValue : min;
-      const canDecrement = currentNumericValue > min;
-      const canIncrement = max === undefined || currentNumericValue < max;
-
-      return (
-        <div className="repeatable-group-number-stepper">
-          <button
-            type="button"
-            className="repeatable-group-number-stepper-button"
-            onClick={() =>
-              adjustRepeatableGroupNumber(
-                field,
-                rowIndex,
-                childField,
-                value,
-                -1,
-              )
-            }
-            disabled={!canDecrement}
-            aria-label={`Decrease ${childField.label}`}
-          >
-            -
-          </button>
-          <input
-            type="text"
-            className="score-input repeatable-group-number"
-            inputMode={Number.isInteger(step) ? 'numeric' : 'decimal'}
-            autoComplete="off"
-            spellCheck={false}
-            role="spinbutton"
-            aria-valuemin={min}
-            aria-valuemax={max}
-            aria-valuenow={hasNumericValue ? numericValue : undefined}
-            value={value ?? ''}
-            placeholder={childField.placeholder || '0'}
-            onChange={(e) => {
-              let newValue = e.target.value;
-              if (newValue === '' || !isNaN(Number(newValue))) {
-                const numValue = Number(newValue);
-                if (
-                  newValue !== '' &&
-                  childField.max !== undefined &&
-                  numValue > childField.max
-                ) {
-                  newValue = String(childField.max);
-                }
-                if (
-                  newValue !== '' &&
-                  childField.min !== undefined &&
-                  numValue < childField.min
-                ) {
-                  newValue = String(childField.min);
-                }
-                handleRepeatableGroupInputChange(
-                  field,
-                  rowIndex,
-                  childField,
-                  newValue,
-                );
-              }
-            }}
-            onInput={(e) => {
-              const input = e.target as HTMLInputElement;
-              const cursorPosition = input.selectionStart;
-              const cleaned = input.value.replace(/[^0-9.-]/g, '');
-              if (input.value !== cleaned) {
-                input.value = cleaned;
-                if (cursorPosition) {
-                  input.setSelectionRange(
-                    cursorPosition - 1,
-                    cursorPosition - 1,
-                  );
-                }
-                e.preventDefault();
-              }
-            }}
-            required={childField.required}
-          />
-          <button
-            type="button"
-            className="repeatable-group-number-stepper-button"
-            onClick={() =>
-              adjustRepeatableGroupNumber(field, rowIndex, childField, value, 1)
-            }
-            disabled={!canIncrement}
-            aria-label={`Increase ${childField.label}`}
-          >
-            +
-          </button>
-        </div>
-      );
-    }
-
-    if (childField.type === 'dropdown') {
-      return (
-        <select
-          className="score-input repeatable-group-input"
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          required={childField.required}
-        >
-          <option value="">Select...</option>
-          {childField.options?.map((opt: any) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-      );
-    }
-
-    if (childField.type === 'buttons') {
-      return (
-        <div className="score-button-group repeatable-group-buttons">
-          {childField.options?.map((opt: any) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`score-option-button ${value === opt.value ? 'selected' : ''}`}
-              onClick={() =>
-                handleRepeatableGroupInputChange(
-                  field,
-                  rowIndex,
-                  childField,
-                  opt.value,
-                )
-              }
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      );
-    }
-
-    if (childField.type === 'checkbox') {
-      return (
-        <input
-          type="checkbox"
-          className="repeatable-group-checkbox"
-          checked={!!value}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.checked,
-            )
-          }
-          required={childField.required}
-        />
-      );
-    }
-
-    return null;
-  };
+  ) => (
+    <ScoresheetFieldControl
+      field={childField}
+      value={value}
+      onChange={(nextValue) =>
+        handleRepeatableGroupInputChange(field, rowIndex, childField, nextValue)
+      }
+      required={childField.required}
+      numberUi="stepper"
+      includeNumberBounds
+      placeholder={
+        childField.type === 'number'
+          ? childField.placeholder || '0'
+          : childField.placeholder || ''
+      }
+      inputClassName="score-input repeatable-group-input"
+      numberClassName="score-input repeatable-group-number"
+      buttonGroupClassName="score-button-group repeatable-group-buttons"
+      checkboxClassName="repeatable-group-checkbox"
+    />
+  );
 
   const renderFieldInput = (field: any, value: any, isCompact: boolean) => {
     // Handle bracket data source for game selection
@@ -1803,121 +1571,35 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     return (
-      <>
-        {field.type === 'text' && (
-          <input
-            type="text"
-            className="score-input"
-            placeholder={field.placeholder || ''}
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            required={field.required}
-            disabled={field.autoPopulated}
-          />
-        )}
-        {field.type === 'number' && (
-          <input
-            type="number"
-            className="score-input"
-            min={field.min ?? 0}
-            max={field.max}
-            step={field.step || 1}
-            value={getDisplayedNumberValue(field, value)}
-            placeholder={getNumberPlaceholder(field, value)}
-            onChange={(e) => {
-              let newValue = e.target.value;
-              if (newValue === '' || !isNaN(Number(newValue))) {
-                // Enforce min/max bounds
-                const numValue = Number(newValue);
-                if (
-                  newValue !== '' &&
-                  field.max !== undefined &&
-                  numValue > field.max
-                ) {
-                  newValue = String(field.max);
-                }
-                if (
-                  newValue !== '' &&
-                  field.min !== undefined &&
-                  numValue < field.min
-                ) {
-                  newValue = String(field.min);
-                }
-                setTouchedFields((prev) => ({
-                  ...prev,
-                  [field.id]: newValue !== '',
-                }));
-                handleInputChange(field.id, newValue);
-              }
-            }}
-            onInput={(e) => {
-              const input = e.target as HTMLInputElement;
-              const cursorPosition = input.selectionStart;
-              const cleaned = input.value.replace(/[^0-9.-]/g, '');
-              if (input.value !== cleaned) {
-                input.value = cleaned;
-                if (cursorPosition) {
-                  input.setSelectionRange(
-                    cursorPosition - 1,
-                    cursorPosition - 1,
-                  );
-                }
-                e.preventDefault();
-              }
-            }}
-            required={field.required}
-          />
-        )}
-        {field.type === 'dropdown' && (
-          <select
-            className={`score-input ${isCompact ? 'compact' : ''}`}
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value, field)}
-            required={field.required}
-            style={{
-              width: isCompact ? '70px' : '100%',
-              textAlign: isCompact ? 'center' : 'left',
-            }}
-          >
-            <option value="">Select...</option>
-            {field.dataSource && dynamicData[field.id]
-              ? dynamicData[field.id].map((item: any, idx: number) => (
-                  <option key={idx} value={item[field.dataSource.valueField]}>
-                    {item[field.dataSource.labelField]}
-                  </option>
-                ))
-              : field.options
-                ? field.options.map((opt: any) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))
-                : null}
-          </select>
-        )}
-        {field.type === 'buttons' && (
-          <div className="score-button-group">
-            {field.options?.map((opt: any) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`score-option-button ${value === opt.value ? 'selected' : ''}`}
-                onClick={() => handleInputChange(field.id, opt.value)}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {field.type === 'checkbox' && (
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => handleInputChange(field.id, e.target.checked)}
-            required={field.required}
-          />
-        )}
-      </>
+      <ScoresheetFieldControl
+        field={field}
+        value={value}
+        onChange={(nextValue) => {
+          if (field.type === 'number') {
+            setTouchedFields((prev) => ({
+              ...prev,
+              [field.id]: nextValue !== '',
+            }));
+          }
+          handleInputChange(field.id, nextValue, field);
+        }}
+        required={field.required}
+        disabled={field.autoPopulated}
+        isCompact={isCompact}
+        numberUi="judge"
+        includeNumberBounds
+        displayedNumberValue={getDisplayedNumberValue(field, value)}
+        numberPlaceholder={getNumberPlaceholder(field, value)}
+        placeholder={field.placeholder || ''}
+        options={
+          field.dataSource && dynamicData[field.id]
+            ? dynamicData[field.id].map((item: any) => ({
+                value: item[field.dataSource.valueField],
+                label: item[field.dataSource.labelField],
+              }))
+            : field.options
+        }
+      />
     );
   };
 

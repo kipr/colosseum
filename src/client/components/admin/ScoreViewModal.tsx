@@ -24,6 +24,7 @@ import {
   type EventScoreType,
 } from '../../../shared/teamInitials';
 import TeamInitialsFields from '../TeamInitialsFields';
+import ScoresheetFieldControl from '../ScoresheetFieldControl';
 
 interface ScoreViewModalProps {
   score: any;
@@ -374,72 +375,16 @@ export default function ScoreViewModal({
     const disabled = isReadOnly || field.autoPopulated;
 
     return (
-      <>
-        {field.type === 'text' && (
-          <input
-            type="text"
-            className="score-input"
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-          />
-        )}
-        {field.type === 'number' && (
-          <input
-            type="number"
-            className="score-input"
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-          />
-        )}
-        {field.type === 'dropdown' && (
-          <select
-            className={`score-input ${isCompact ? 'compact' : ''}`}
-            value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
-            disabled={disabled}
-            style={{ width: isCompact ? '70px' : '100%' }}
-          >
-            <option value="">Select...</option>
-            {field.options?.map((opt: any) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-            {/* If the current value isn't in options, show it anyway */}
-            {value &&
-              !field.options?.some(
-                (opt: any) => String(opt.value) === String(value),
-              ) && <option value={value}>{value}</option>}
-          </select>
-        )}
-        {field.type === 'buttons' && (
-          <div className="score-button-group">
-            {field.options?.map((opt: any) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-                onClick={() =>
-                  !isReadOnly && handleInputChange(field.id, opt.value)
-                }
-                disabled={isReadOnly}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {field.type === 'checkbox' && (
-          <input
-            type="checkbox"
-            checked={!!value}
-            onChange={(e) => handleInputChange(field.id, e.target.checked)}
-            disabled={disabled}
-          />
-        )}
-      </>
+      <ScoresheetFieldControl
+        field={field}
+        value={value}
+        onChange={(nextValue) => handleInputChange(field.id, nextValue)}
+        disabled={field.type === 'buttons' ? isReadOnly : disabled}
+        isCompact={isCompact}
+        numberUi="native"
+        includeOrphanDropdownValue
+        compareSelectionAsString
+      />
     );
   };
 
@@ -625,126 +570,28 @@ export default function ScoreViewModal({
     rowIndex: number,
     childField: any,
     value: any,
-  ) => {
-    const disabled = isReadOnly || childField.autoPopulated;
-
-    if (childField.type === 'text') {
-      return (
-        <input
-          type="text"
-          className="score-input repeatable-group-input"
-          placeholder={childField.placeholder || ''}
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    if (childField.type === 'number') {
-      return (
-        <input
-          type="number"
-          className="score-input repeatable-group-number"
-          min={childField.min ?? 0}
-          max={childField.max}
-          step={childField.step || 1}
-          value={value ?? ''}
-          placeholder={childField.placeholder || '0'}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    if (childField.type === 'dropdown') {
-      return (
-        <select
-          className="score-input repeatable-group-input"
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        >
-          <option value="">Select...</option>
-          {childField.options?.map((opt: any) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-          {value &&
-            !childField.options?.some(
-              (opt: any) => String(opt.value) === String(value),
-            ) && <option value={value}>{value}</option>}
-        </select>
-      );
-    }
-
-    if (childField.type === 'buttons') {
-      return (
-        <div className="score-button-group repeatable-group-buttons">
-          {childField.options?.map((opt: any) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-              onClick={() =>
-                handleRepeatableGroupInputChange(
-                  field,
-                  rowIndex,
-                  childField,
-                  opt.value,
-                )
-              }
-              disabled={disabled}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      );
-    }
-
-    if (childField.type === 'checkbox') {
-      return (
-        <input
-          type="checkbox"
-          checked={!!value}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.checked,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    return null;
-  };
+  ) => (
+    <ScoresheetFieldControl
+      field={childField}
+      value={value}
+      onChange={(nextValue) =>
+        handleRepeatableGroupInputChange(field, rowIndex, childField, nextValue)
+      }
+      disabled={isReadOnly || childField.autoPopulated}
+      numberUi="native"
+      includeNumberBounds
+      includeOrphanDropdownValue
+      compareSelectionAsString
+      placeholder={
+        childField.type === 'number'
+          ? childField.placeholder || '0'
+          : childField.placeholder || ''
+      }
+      inputClassName="score-input repeatable-group-input"
+      numberClassName="score-input repeatable-group-number"
+      buttonGroupClassName="score-button-group repeatable-group-buttons"
+    />
+  );
 
   const renderFallbackRepeatableGroup = (fieldId: string, data: any) => {
     const rows = Array.isArray(data.value) ? data.value : [];
