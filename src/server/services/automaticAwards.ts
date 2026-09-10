@@ -271,7 +271,8 @@ export async function saveAutomaticAwardSettings(
        seeding_top_n = excluded.seeding_top_n,
        de_award_type = excluded.de_award_type,
        per_bracket_overall_award_type = excluded.per_bracket_overall_award_type,
-       seeding_award_type = excluded.seeding_award_type`,
+       seeding_award_type = excluded.seeding_award_type
+     RETURNING id`,
     [
       eventId,
       settings.de_top_n,
@@ -589,7 +590,8 @@ export async function applyAutomaticAwardsAsEventAwards(
          seeding_top_n = excluded.seeding_top_n,
          de_award_type = excluded.de_award_type,
          per_bracket_overall_award_type = excluded.per_bracket_overall_award_type,
-         seeding_award_type = excluded.seeding_award_type`,
+         seeding_award_type = excluded.seeding_award_type
+       RETURNING id`,
       [
         eventId,
         settings.de_top_n,
@@ -615,7 +617,7 @@ export async function applyAutomaticAwardsAsEventAwards(
     for (const a of planned) {
       const ins = await tx.run(
         `INSERT INTO event_awards (event_id, template_award_id, name, description, award_type, sort_order)
-         VALUES (?, NULL, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM event_awards WHERE event_id = ?))`,
+         VALUES (?, NULL, ?, ?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM event_awards WHERE event_id = ?)) RETURNING id`,
         [eventId, a.name, a.description, a.awardType, eventId],
       );
       const awardId = ins.lastID;
@@ -626,7 +628,7 @@ export async function applyAutomaticAwardsAsEventAwards(
         const teamId = teamNumberToId.get(tn);
         if (teamId == null) continue;
         await tx.run(
-          `INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?)`,
+          `INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?) RETURNING id`,
           [awardId, teamId],
         );
       }

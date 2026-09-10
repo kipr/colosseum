@@ -1,7 +1,7 @@
 /**
  * Timestamp Triggers Test
  *
- * Verifies that SQLite triggers automatically clear timestamps when status fields
+ * Verifies that database triggers automatically clear timestamps when status fields
  * are rolled back to earlier states.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -16,7 +16,7 @@ describe('Timestamp Cleanup Triggers', () => {
 
     // Setup basic event
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Test Event', 'active'],
     );
     eventId = eventResult.lastID!;
@@ -30,7 +30,7 @@ describe('Timestamp Cleanup Triggers', () => {
     it('should clear checked_in_at when status changes from checked_in to registered', async () => {
       // Create team
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name, status, checked_in_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO teams (event_id, team_number, team_name, status, checked_in_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
         [eventId, 101, 'Team 101', 'checked_in'],
       );
       const teamId = teamResult.lastID!;
@@ -57,7 +57,7 @@ describe('Timestamp Cleanup Triggers', () => {
     it('should clear checked_in_at when status changes to no_show', async () => {
       // Create team
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name, status, checked_in_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO teams (event_id, team_number, team_name, status, checked_in_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
         [eventId, 102, 'Team 102', 'checked_in'],
       );
       const teamId = teamResult.lastID!;
@@ -78,7 +78,7 @@ describe('Timestamp Cleanup Triggers', () => {
     it('should NOT clear checked_in_at when status changes to withdrawn', async () => {
       // Create team
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name, status, checked_in_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)`,
+        `INSERT INTO teams (event_id, team_number, team_name, status, checked_in_at) VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
         [eventId, 103, 'Team 103', 'checked_in'],
       );
       const teamId = teamResult.lastID!;
@@ -102,13 +102,13 @@ describe('Timestamp Cleanup Triggers', () => {
     it('should clear called_at when status changes from called to queued', async () => {
       // Create seeded item in queue
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 201, 'Team 201'],
       );
 
       const queueResult = await testDb.db.run(
         `INSERT INTO game_queue (event_id, queue_type, seeding_team_id, seeding_round, queue_position, status, called_at) 
-         VALUES (?, 'seeding', ?, 1, 1, 'called', CURRENT_TIMESTAMP)`,
+         VALUES (?, 'seeding', ?, 1, 1, 'called', CURRENT_TIMESTAMP) RETURNING id`,
         [eventId, teamResult.lastID],
       );
       const queueId = queueResult.lastID!;
@@ -137,13 +137,13 @@ describe('Timestamp Cleanup Triggers', () => {
     it('should NOT clear called_at when status changes to on_table or scored', async () => {
       // Create seeded item
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 202, 'Team 202'],
       );
 
       const queueResult = await testDb.db.run(
         `INSERT INTO game_queue (event_id, queue_type, seeding_team_id, seeding_round, queue_position, status, called_at) 
-         VALUES (?, 'seeding', ?, 1, 1, 'called', CURRENT_TIMESTAMP)`,
+         VALUES (?, 'seeding', ?, 1, 1, 'called', CURRENT_TIMESTAMP) RETURNING id`,
         [eventId, teamResult.lastID],
       );
       const queueId = queueResult.lastID!;
@@ -176,7 +176,7 @@ describe('Timestamp Cleanup Triggers', () => {
     it('should clear scored_at when score is set to NULL', async () => {
       // Create team
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 301, 'Team 301'],
       );
       const teamId = teamResult.lastID!;
@@ -184,7 +184,7 @@ describe('Timestamp Cleanup Triggers', () => {
       // Create score
       const scoreResult = await testDb.db.run(
         `INSERT INTO seeding_scores (team_id, round_number, score, scored_at) 
-         VALUES (?, 1, 100, CURRENT_TIMESTAMP)`,
+         VALUES (?, 1, 100, CURRENT_TIMESTAMP) RETURNING id`,
         [teamId],
       );
       const scoreId = scoreResult.lastID!;
@@ -217,7 +217,7 @@ describe('Timestamp Cleanup Triggers', () => {
 
     beforeEach(async () => {
       const bracketResult = await testDb.db.run(
-        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?)`,
+        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 'Test Bracket', 4],
       );
       bracketId = bracketResult.lastID!;
@@ -227,7 +227,7 @@ describe('Timestamp Cleanup Triggers', () => {
       // Create completed game
       const gameResult = await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, status, started_at, completed_at) 
-         VALUES (?, 1, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+         VALUES (?, 1, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id`,
         [bracketId],
       );
       const gameId = gameResult.lastID!;
@@ -260,7 +260,7 @@ describe('Timestamp Cleanup Triggers', () => {
       // Create completed game
       const gameResult = await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, status, started_at, completed_at) 
-         VALUES (?, 2, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+         VALUES (?, 2, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING id`,
         [bracketId],
       );
       const gameId = gameResult.lastID!;

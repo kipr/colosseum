@@ -1,16 +1,14 @@
 import { test, expect } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import crypto from 'crypto';
-import path from 'path';
+import { closeE2eDb, e2eDb } from './helpers/db';
+import {
+  deleteSessionsForUser,
+  seedAdminSession,
+  setSessionCookie,
+} from './helpers/session';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
-
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
-const SESSION_DB_PATH = path.join(__dirname, '..', 'database', 'sessions.db');
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || 'colosseum-secret-key-change-in-production';
 
 const EVENT_NAME = 'E2E Bracket Lifecycle Event';
 const BRACKET_NAME = 'E2E Main Bracket';
@@ -30,23 +28,13 @@ const TEAMS = [
 
 let eventId: number;
 let teamIds: number[];
-let adminUserId: number;
+let admin: Awaited<ReturnType<typeof seedAdminSession>>;
 let templateId: number;
-let signedCookie: string;
 let bracketId: number;
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                           */
 /* ------------------------------------------------------------------ */
-
-function signSessionId(sid: string, secret: string): string {
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(sid)
-    .digest('base64')
-    .replace(/=+$/, '');
-  return `s:${sid}.${signature}`;
-}
 
 function buildH2hSchema(evtId: number, bktId: number) {
   return {
@@ -113,151 +101,105 @@ test.describe('Bracket Lifecycle E2E', () => {
 
   /* ── Seed data ─────────────────────────────────────────────────── */
 
-  test.beforeAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.beforeAll(async () => {
+    const db = e2eDb();
 
-    // 1. Admin user
-    const userResult = db
-      .prepare(
-        `INSERT INTO users (name, email, google_id, is_admin)
-         VALUES (?, ?, ?, 1)`,
-      )
-      .run('E2E Bracket Admin', 'e2e-bracket@test.com', 'google-e2e-bracket');
-    adminUserId = Number(userResult.lastInsertRowid);
+    // 1. Admin user and session
+    admin = await seedAdminSession({
+      name: 'E2E Bracket Admin',
+      email: 'e2e-bracket@test.com',
+      googleId: 'google-e2e-bracket',
+    });
 
     // 2. Event (manual score acceptance so bracket scores stay pending)
-    const evResult = db
-      .prepare(
-        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-         VALUES (?, 'active', 3, 'manual')`,
-      )
-      .run(EVENT_NAME);
-    eventId = Number(evResult.lastInsertRowid);
+    const evResult = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+       VALUES (?, 'active', 3, 'manual') RETURNING id`,
+      [EVENT_NAME],
+    );
+    eventId = Number(evResult.lastID);
 
     // 3. Teams
-    teamIds = TEAMS.map((t) => {
-      const r = db
-        .prepare(
-          `INSERT INTO teams (event_id, team_number, team_name, status)
-           VALUES (?, ?, ?, 'checked_in')`,
-        )
-        .run(eventId, t.number, t.name);
-      return Number(r.lastInsertRowid);
-    });
+    teamIds = [];
+    for (const t of TEAMS) {
+      const r = await db.run(
+        `INSERT INTO teams (event_id, team_number, team_name, status)
+         VALUES (?, ?, ?, 'checked_in') RETURNING id`,
+        [eventId, t.number, t.name],
+      );
+      teamIds.push(Number(r.lastID));
+    }
 
     // 4. Seeding scores (3 rounds per team; descending so team order is predictable)
     const baseScores = [90, 70, 50, 30];
     for (let i = 0; i < teamIds.length; i++) {
       for (let round = 1; round <= 3; round++) {
-        db.prepare(
+        await db.run(
           `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-           VALUES (?, ?, ?, datetime('now'))`,
-        ).run(teamIds[i], round, baseScores[i] + round);
+           VALUES (?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
+          [teamIds[i], round, baseScores[i] + round],
+        );
       }
     }
 
     // 5. Seeding rankings (seed 1 = highest average)
     for (let i = 0; i < teamIds.length; i++) {
       const avg = baseScores[i] + 2; // average of rounds 1-3
-      db.prepare(
+      await db.run(
         `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score)
-         VALUES (?, ?, ?, ?)`,
-      ).run(teamIds[i], avg, i + 1, avg / 100);
+         VALUES (?, ?, ?, ?) RETURNING id`,
+        [teamIds[i], avg, i + 1, avg / 100],
+      );
     }
-
-    // 6. Admin session in sessions.db
-    const sid = crypto.randomUUID();
-    const sessionData = JSON.stringify({
-      cookie: {
-        originalMaxAge: 604800000,
-        expires: new Date(Date.now() + 604800000).toISOString(),
-        secure: false,
-        httpOnly: true,
-        path: '/',
-        sameSite: 'lax',
-      },
-      passport: { user: adminUserId },
-    });
-
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('journal_mode = WAL');
-    sessDb.pragma('busy_timeout = 5000');
-    sessDb
-      .prepare(
-        `INSERT OR REPLACE INTO sessions (sid, sess, expires)
-         VALUES (?, ?, ?)`,
-      )
-      .run(sid, sessionData, Date.now() + 604800000);
-    sessDb.close();
-
-    signedCookie = signSessionId(sid, SESSION_SECRET);
-
-    db.close();
   });
 
   /* ── Cleanup ───────────────────────────────────────────────────── */
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
-    db.prepare('DELETE FROM score_submissions WHERE event_id = ?').run(eventId);
-    db.prepare(
+    await db.run('DELETE FROM score_submissions WHERE event_id = ?', [eventId]);
+    await db.run(
       `DELETE FROM bracket_games WHERE bracket_id IN
        (SELECT id FROM brackets WHERE event_id = ?)`,
-    ).run(eventId);
-    db.prepare(
+      [eventId],
+    );
+    await db.run(
       `DELETE FROM bracket_entries WHERE bracket_id IN
        (SELECT id FROM brackets WHERE event_id = ?)`,
-    ).run(eventId);
-    db.prepare('DELETE FROM brackets WHERE event_id = ?').run(eventId);
+      [eventId],
+    );
+    await db.run('DELETE FROM brackets WHERE event_id = ?', [eventId]);
     if (templateId) {
-      db.prepare(
+      await db.run(
         'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
-      ).run(templateId);
-      db.prepare('DELETE FROM scoresheet_templates WHERE id = ?').run(
-        templateId,
+        [templateId],
       );
+      await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [
+        templateId,
+      ]);
     }
-    db.prepare('DELETE FROM seeding_rankings WHERE team_id IN (?, ?, ?, ?)').run(
-      ...teamIds,
+    await db.run(
+      'DELETE FROM seeding_rankings WHERE team_id IN (?, ?, ?, ?)',
+      teamIds,
     );
-    db.prepare('DELETE FROM seeding_scores WHERE team_id IN (?, ?, ?, ?)').run(
-      ...teamIds,
+    await db.run(
+      'DELETE FROM seeding_scores WHERE team_id IN (?, ?, ?, ?)',
+      teamIds,
     );
-    db.prepare('DELETE FROM audit_log WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM teams WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
-    db.prepare('DELETE FROM users WHERE id = ?').run(adminUserId);
+    await db.run('DELETE FROM audit_log WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM teams WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM events WHERE id = ?', [eventId]);
+    await deleteSessionsForUser(admin.adminUserId);
+    await db.run('DELETE FROM users WHERE id = ?', [admin.adminUserId]);
 
-    db.close();
-
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-    sessDb
-      .prepare(
-        `DELETE FROM sessions WHERE sess LIKE ?`,
-      )
-      .run(`%"user":${adminUserId}%`);
-    sessDb.close();
+    await closeE2eDb();
   });
 
   /* ── Helper: set admin cookie on page ──────────────────────────── */
 
   async function setAdminCookie(page: import('@playwright/test').Page) {
-    await page.context().addCookies([
-      {
-        name: 'connect.sid',
-        value: signedCookie,
-        domain: 'localhost',
-        path: '/',
-        httpOnly: true,
-        sameSite: 'Lax',
-      },
-    ]);
+    await setSessionCookie(page, admin.signedCookie);
   }
 
   /* ── 1. Admin creates bracket from ranked teams ────────────────── */
@@ -277,20 +219,20 @@ test.describe('Bracket Lifecycle E2E', () => {
     await page.getByRole('button', { name: '+ Create Bracket' }).click();
 
     // Modal appears
-    await expect(page.getByRole('heading', { name: 'Create Bracket' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Create Bracket' }),
+    ).toBeVisible();
 
     // Wait for teams to load in the modal
-    await expect(
-      page.locator('.bracket-create-teams-table'),
-    ).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('.bracket-create-teams-table')).toBeVisible({
+      timeout: 10_000,
+    });
 
     // Enter bracket name
     await page.locator('#bracket-name').fill(BRACKET_NAME);
 
     // Select all available teams
-    await page
-      .getByRole('button', { name: 'Select All Available' })
-      .click();
+    await page.getByRole('button', { name: 'Select All Available' }).click();
 
     // Summary should show 4 teams selected, bracket size 4, 0 byes
     const summary = page.locator('.bracket-create-summary');
@@ -377,25 +319,21 @@ test.describe('Bracket Lifecycle E2E', () => {
   /* ── 3. Seed H2H template (now that bracket exists) ────────────── */
 
   test('seed head-to-head scoresheet template for bracket games', async () => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+    const db = e2eDb();
 
     const schema = buildH2hSchema(eventId, bracketId);
-    const tpl = db
-      .prepare(
-        `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-         VALUES (?, 'E2E bracket head-to-head template', ?, ?, 1)`,
-      )
-      .run(H2H_TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE);
-    templateId = Number(tpl.lastInsertRowid);
+    const tpl = await db.run(
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'E2E bracket head-to-head template', ?, ?, TRUE) RETURNING id`,
+      [H2H_TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
+    );
+    templateId = Number(tpl.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
-       VALUES (?, ?, 'bracket')`,
-    ).run(eventId, templateId);
-
-    db.close();
+       VALUES (?, ?, 'bracket') RETURNING id`,
+      [eventId, templateId],
+    );
 
     expect(templateId).toBeGreaterThan(0);
   });
@@ -465,9 +403,9 @@ test.describe('Bracket Lifecycle E2E', () => {
     await page.getByRole('button', { name: 'Submit Winner' }).click();
 
     // Success notification
-    await expect(
-      page.getByText('Score submitted successfully!'),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText('Score submitted successfully!')).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   /* ── 5. Admin accepts the bracket score ────────────────────────── */
@@ -507,9 +445,9 @@ test.describe('Bracket Lifecycle E2E', () => {
     await pendingRow.getByRole('button', { name: 'Accept' }).click();
 
     // Success toast should appear
-    await expect(
-      page.getByText(/Score accepted/i),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(/Score accepted/i)).toBeVisible({
+      timeout: 5_000,
+    });
   });
 
   /* ── 6. Bracket view shows updated winner and advancement ──────── */
@@ -540,7 +478,9 @@ test.describe('Bracket Lifecycle E2E', () => {
     // The completed row should show a winner team name
     const completedRow = winnersSection
       .locator('tr')
-      .filter({ has: page.locator('.game-status-badge', { hasText: 'Completed' }) })
+      .filter({
+        has: page.locator('.game-status-badge', { hasText: 'Completed' }),
+      })
       .first();
     await expect(completedRow).toBeVisible();
 
@@ -548,7 +488,10 @@ test.describe('Bracket Lifecycle E2E', () => {
     await expect(completedRow.locator('td .team-name').last()).toBeVisible();
 
     // The winner should be one of our team numbers
-    const winnerText = await completedRow.locator('td .team-name').last().textContent();
+    const winnerText = await completedRow
+      .locator('td .team-name')
+      .last()
+      .textContent();
     const hasTeamNumber = TEAMS.some((t) =>
       winnerText?.includes(String(t.number)),
     );

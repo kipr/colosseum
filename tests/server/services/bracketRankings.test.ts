@@ -13,7 +13,7 @@ describe('calculateBracketRankings', () => {
     __setTestDatabaseAdapter(testDb.db);
 
     const event = await testDb.db.run(
-      `INSERT INTO events (name, status) VALUES (?, ?)`,
+      `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
       ['Bracket Test Event', 'active'],
     );
     eventId = event.lastID!;
@@ -26,7 +26,7 @@ describe('calculateBracketRankings', () => {
 
   async function createTeam(teamNumber: number): Promise<number> {
     const result = await testDb.db.run(
-      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
       [eventId, teamNumber, `Team ${teamNumber}`],
     );
     return result.lastID!;
@@ -34,7 +34,7 @@ describe('calculateBracketRankings', () => {
 
   async function createBracket(size: number): Promise<number> {
     const result = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, status) VALUES (?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, status) VALUES (?, ?, ?, ?) RETURNING id`,
       [eventId, 'Test Bracket', size, 'in_progress'],
     );
     return result.lastID!;
@@ -46,14 +46,14 @@ describe('calculateBracketRankings', () => {
     seedPosition: number,
   ): Promise<void> {
     await testDb.db.run(
-      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, 0)`,
+      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, FALSE) RETURNING id`,
       [bId, teamId, seedPosition],
     );
   }
 
   async function addByeEntry(bId: number, seedPosition: number): Promise<void> {
     await testDb.db.run(
-      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, NULL, ?, 1)`,
+      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, NULL, ?, TRUE) RETURNING id`,
       [bId, seedPosition],
     );
   }
@@ -63,7 +63,7 @@ describe('calculateBracketRankings', () => {
     seedRank: number,
   ): Promise<void> {
     await testDb.db.run(
-      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank) VALUES (?, ?, ?)`,
+      `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank) VALUES (?, ?, ?) RETURNING id`,
       [teamId, 100 - seedRank, seedRank],
     );
   }
@@ -78,7 +78,7 @@ describe('calculateBracketRankings', () => {
   }): Promise<void> {
     await testDb.db.run(
       `INSERT INTO bracket_games (bracket_id, game_number, bracket_side, round_number, status, winner_id, loser_id, team1_id, team2_id)
-       VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, 'completed', ?, ?, ?, ?) RETURNING id`,
       [
         opts.bracketId,
         opts.gameNumber,
@@ -119,7 +119,7 @@ describe('calculateBracketRankings', () => {
     weight: number,
   ): Promise<number> {
     const result = await testDb.db.run(
-      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?)`,
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [eventId, 'Test Bracket', size, 'in_progress', weight],
     );
     return result.lastID!;

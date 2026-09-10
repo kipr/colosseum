@@ -13,7 +13,7 @@ import {
   seedEventScoresheetTemplate,
 } from '../http/helpers/seed';
 
-describe('Double seeding schema (SQLite)', () => {
+describe('Double seeding schema', () => {
   let testDb: TestDb;
 
   beforeEach(async () => {
@@ -25,10 +25,14 @@ describe('Double seeding schema (SQLite)', () => {
   });
 
   it('creates the double-seeding tables', async () => {
-    const tables = await testDb.db.all<{ name: string }>(
-      `SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'double_seeding%' ORDER BY name`,
+    const tables = await testDb.db.all<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+       WHERE table_schema = current_schema()
+         AND table_type = 'BASE TABLE'
+         AND table_name LIKE 'double_seeding%'
+       ORDER BY table_name`,
     );
-    expect(tables.map((t) => t.name)).toEqual([
+    expect(tables.map((t) => t.table_name)).toEqual([
       'double_seeding_matches',
       'double_seeding_rankings',
       'double_seeding_scores',
@@ -36,17 +40,22 @@ describe('Double seeding schema (SQLite)', () => {
   });
 
   it('adds double_seeding_match_id to score_submissions and game_queue', async () => {
-    const submissionCols = await testDb.db.all<{ name: string }>(
-      `PRAGMA table_info(score_submissions)`,
-    );
-    expect(submissionCols.map((c) => c.name)).toContain(
+    const columnsOf = (table: string) =>
+      testDb.db.all<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = current_schema() AND table_name = ?`,
+        [table],
+      );
+
+    const submissionCols = await columnsOf('score_submissions');
+    expect(submissionCols.map((c) => c.column_name)).toContain(
       'double_seeding_match_id',
     );
 
-    const queueCols = await testDb.db.all<{ name: string }>(
-      `PRAGMA table_info(game_queue)`,
+    const queueCols = await columnsOf('game_queue');
+    expect(queueCols.map((c) => c.column_name)).toContain(
+      'double_seeding_match_id',
     );
-    expect(queueCols.map((c) => c.name)).toContain('double_seeding_match_id');
   });
 
   it('adds double_seeding_rounds to events with default 0', async () => {
@@ -94,7 +103,7 @@ describe('Double seeding schema (SQLite)', () => {
         side: 'team1',
         score: 20,
       }),
-    ).rejects.toThrow(/UNIQUE/);
+    ).rejects.toThrow(/violates unique constraint/);
 
     // Same team/round in another match
     const otherMatch = await seedDoubleSeedingMatch(testDb.db, {
@@ -112,7 +121,7 @@ describe('Double seeding schema (SQLite)', () => {
         side: 'team1',
         score: 30,
       }),
-    ).rejects.toThrow(/UNIQUE/);
+    ).rejects.toThrow(/violates unique constraint/);
   });
 
   it('rejects invalid double-seeding score sides', async () => {
@@ -130,10 +139,10 @@ describe('Double seeding schema (SQLite)', () => {
     await expect(
       testDb.db.run(
         `INSERT INTO double_seeding_scores (event_id, match_id, team_id, round_number, side, score)
-         VALUES (?, ?, ?, ?, 'left', 1)`,
+         VALUES (?, ?, ?, ?, 'left', 1) RETURNING id`,
         [event.id, match.id, team.id, 1],
       ),
-    ).rejects.toThrow(/CHECK/);
+    ).rejects.toThrow(/violates check constraint/);
   });
 
   it('accepts queue_type double_seeding with a match id and rejects mixed identities', async () => {
@@ -163,7 +172,7 @@ describe('Double seeding schema (SQLite)', () => {
         queue_type: 'double_seeding',
         queue_position: 2,
       }),
-    ).rejects.toThrow(/CHECK/);
+    ).rejects.toThrow(/violates check constraint/);
 
     // seeding identity must not carry a double-seeding match id
     await expect(
@@ -175,7 +184,7 @@ describe('Double seeding schema (SQLite)', () => {
         double_seeding_match_id: match.id,
         queue_position: 3,
       }),
-    ).rejects.toThrow(/CHECK/);
+    ).rejects.toThrow(/violates check constraint/);
   });
 
   it('deletes queue rows when the linked match is deleted (CASCADE)', async () => {
@@ -223,7 +232,7 @@ describe('Double seeding schema (SQLite)', () => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         template_type: 'bogus' as any,
       }),
-    ).rejects.toThrow(/CHECK/);
+    ).rejects.toThrow(/violates check constraint/);
   });
 
   it('rejects invalid double_seeding_matches statuses', async () => {
@@ -239,6 +248,6 @@ describe('Double seeding schema (SQLite)', () => {
         team1_id: team.id,
         status: 'bogus',
       }),
-    ).rejects.toThrow(/CHECK/);
+    ).rejects.toThrow(/violates check constraint/);
   });
 });

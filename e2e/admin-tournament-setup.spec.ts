@@ -1,16 +1,14 @@
 import { test, expect } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import { sign } from 'cookie-signature';
-import crypto from 'crypto';
-import path from 'path';
+import { closeE2eDb, e2eDb } from './helpers/db';
+import {
+  deleteSession,
+  seedAdminSession,
+  setSessionCookie,
+} from './helpers/session';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
-
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
-const SESSION_DB_PATH = path.join(__dirname, '..', 'database', 'sessions.db');
-const SESSION_SECRET = 'colosseum-secret-key-change-in-production';
 
 const ADMIN_EMAIL = 'e2e-admin@kipr.org';
 const ADMIN_NAME = 'E2E Admin';
@@ -30,76 +28,15 @@ const ACCESS_CODE = `e2e-setup-${Date.now()}`;
 /*  Shared state                                                      */
 /* ------------------------------------------------------------------ */
 
-let userId: number;
-let sessionId: string;
-let signedCookie: string;
+let admin: Awaited<ReturnType<typeof seedAdminSession>>;
 let createdEventId: number | null = null;
-
-/* ------------------------------------------------------------------ */
-/*  Helper: inject admin session into SQLite                          */
-/* ------------------------------------------------------------------ */
-
-function createAdminSession() {
-  const db = new SQLite(DB_PATH);
-  db.pragma('journal_mode = WAL');
-  db.pragma('busy_timeout = 5000');
-
-  const result = db
-    .prepare(
-      `INSERT INTO users (google_id, email, name, is_admin)
-       VALUES (?, ?, ?, 1)`,
-    )
-    .run(GOOGLE_ID, ADMIN_EMAIL, ADMIN_NAME);
-  userId = Number(result.lastInsertRowid);
-  db.close();
-
-  sessionId = crypto.randomBytes(24).toString('hex');
-  const sessionData = {
-    cookie: {
-      originalMaxAge: 7 * 24 * 60 * 60 * 1000,
-      expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      secure: false,
-      httpOnly: true,
-      path: '/',
-      sameSite: 'lax',
-    },
-    passport: { user: userId },
-  };
-
-  const sessDb = new SQLite(SESSION_DB_PATH);
-  sessDb.pragma('journal_mode = WAL');
-  sessDb.pragma('busy_timeout = 5000');
-
-  sessDb
-    .prepare(
-      `INSERT INTO sessions (sid, sess, expires)
-       VALUES (?, ?, ?)`,
-    )
-    .run(
-      sessionId,
-      JSON.stringify(sessionData),
-      Date.now() + 7 * 24 * 60 * 60 * 1000,
-    );
-  sessDb.close();
-
-  signedCookie = 's:' + sign(sessionId, SESSION_SECRET);
-}
 
 /* ------------------------------------------------------------------ */
 /*  Helper: set admin session cookie on page context                  */
 /* ------------------------------------------------------------------ */
 
 async function loginAsAdmin(page: import('@playwright/test').Page) {
-  await page.context().addCookies([
-    {
-      name: 'connect.sid',
-      value: signedCookie,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-    },
-  ]);
+  await setSessionCookie(page, admin.signedCookie);
 }
 
 /* ------------------------------------------------------------------ */
@@ -109,44 +46,42 @@ async function loginAsAdmin(page: import('@playwright/test').Page) {
 test.describe('Admin Tournament Setup E2E', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeAll(() => {
-    createAdminSession();
+  test.beforeAll(async () => {
+    admin = await seedAdminSession({
+      email: ADMIN_EMAIL,
+      name: ADMIN_NAME,
+      googleId: GOOGLE_ID,
+    });
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
     if (createdEventId) {
-      db.prepare(
-        'DELETE FROM event_scoresheet_templates WHERE event_id = ?',
-      ).run(createdEventId);
-      db.prepare(
+      await db.run(
         'DELETE FROM scoresheet_templates WHERE id IN (SELECT template_id FROM event_scoresheet_templates WHERE event_id = ?)',
-      ).run(createdEventId);
+        [createdEventId],
+      );
+      await db.run(
+        'DELETE FROM event_scoresheet_templates WHERE event_id = ?',
+        [createdEventId],
+      );
     }
 
     // Clean up scoresheet templates by name (in case the join-based delete didn't catch them)
-    db.prepare('DELETE FROM scoresheet_templates WHERE name = ?').run(
+    await db.run('DELETE FROM scoresheet_templates WHERE name = ?', [
       SCORESHEET_NAME,
-    );
+    ]);
 
     if (createdEventId) {
-      db.prepare(
-        'DELETE FROM event_scoresheet_templates WHERE event_id = ?',
-      ).run(createdEventId);
-      db.prepare('DELETE FROM teams WHERE event_id = ?').run(createdEventId);
-      db.prepare('DELETE FROM events WHERE id = ?').run(createdEventId);
+      await db.run('DELETE FROM teams WHERE event_id = ?', [createdEventId]);
+      await db.run('DELETE FROM events WHERE id = ?', [createdEventId]);
     }
 
-    db.prepare('DELETE FROM users WHERE id = ?').run(userId);
-    db.close();
+    await deleteSession(admin.sid);
+    await db.run('DELETE FROM users WHERE id = ?', [admin.adminUserId]);
 
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-    sessDb.prepare('DELETE FROM sessions WHERE sid = ?').run(sessionId);
-    sessDb.close();
+    await closeE2eDb();
   });
 
   /* ── 1. Create Event ────────────────────────────────────────────── */
@@ -163,7 +98,9 @@ test.describe('Admin Tournament Setup E2E', () => {
     await createEventButton.click();
 
     const modal = page.locator('.modal.show');
-    await expect(modal.getByRole('heading', { name: 'Create New Event' })).toBeVisible();
+    await expect(
+      modal.getByRole('heading', { name: 'Create New Event' }),
+    ).toBeVisible();
 
     await modal.locator('#event-name').fill(EVENT_NAME);
     await modal.locator('#event-description').fill('E2E test event');
@@ -173,9 +110,9 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     // Modal closes and event appears in the page (table or selected card)
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
-    await expect(
-      page.locator('strong', { hasText: EVENT_NAME }),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.locator('strong', { hasText: EVENT_NAME })).toBeVisible({
+      timeout: 5_000,
+    });
 
     // Capture the event ID from the URL for cleanup
     const url = page.url();
@@ -184,13 +121,11 @@ test.describe('Admin Tournament Setup E2E', () => {
       createdEventId = Number(match[1]);
     } else {
       // Fall back to DB lookup
-      const db = new SQLite(DB_PATH);
-      db.pragma('busy_timeout = 5000');
-      const row = db
-        .prepare('SELECT id FROM events WHERE name = ?')
-        .get(EVENT_NAME) as { id: number } | undefined;
+      const row = await e2eDb().get<{ id: number }>(
+        'SELECT id FROM events WHERE name = ?',
+        [EVENT_NAME],
+      );
       if (row) createdEventId = row.id;
-      db.close();
     }
 
     expect(createdEventId).toBeTruthy();
@@ -204,8 +139,8 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     await expect(page.getByText('Currently Selected')).toBeVisible();
 
-    const storedId = await page.evaluate(
-      () => localStorage.getItem('colosseum_selected_event_id'),
+    const storedId = await page.evaluate(() =>
+      localStorage.getItem('colosseum_selected_event_id'),
     );
     expect(storedId).toBe(String(createdEventId));
   });
@@ -291,9 +226,9 @@ test.describe('Admin Tournament Setup E2E', () => {
     await page.goto(`/admin/events/${createdEventId}?view=teams`);
 
     // Wait for teams to load
-    await expect(
-      page.getByText(`${1 + BULK_TEAMS.length} teams`),
-    ).toBeVisible({ timeout: 5_000 });
+    await expect(page.getByText(`${1 + BULK_TEAMS.length} teams`)).toBeVisible({
+      timeout: 5_000,
+    });
 
     await page.getByRole('button', { name: 'Bulk Check-In' }).click();
 
@@ -317,7 +252,9 @@ test.describe('Admin Tournament Setup E2E', () => {
     ).toBeVisible({ timeout: 5_000 });
 
     // All teams should now show "Checked In" status
-    const checkedInBadges = page.locator('.team-status-badge.status-checked-in');
+    const checkedInBadges = page.locator(
+      '.team-status-badge.status-checked-in',
+    );
     await expect(checkedInBadges).toHaveCount(totalTeams);
   });
 
@@ -327,7 +264,9 @@ test.describe('Admin Tournament Setup E2E', () => {
     await loginAsAdmin(page);
     await page.goto(`/admin/events/${createdEventId}?view=scoresheets`);
 
-    await expect(page.getByRole('heading', { name: 'Score Sheets' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Score Sheets' }),
+    ).toBeVisible();
 
     // Click the Create button in the event-scoped section
     const eventSection = page.locator('.card').filter({
@@ -339,9 +278,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     // Choose "Paste JSON Manually"
     const choiceModal = page.locator('.modal.show');
-    await expect(
-      choiceModal.getByText('Paste JSON Manually'),
-    ).toBeVisible();
+    await expect(choiceModal.getByText('Paste JSON Manually')).toBeVisible();
     await choiceModal.getByText('Paste JSON Manually').click();
 
     // Template editor modal

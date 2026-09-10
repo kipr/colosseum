@@ -481,19 +481,19 @@ describe('Brackets Entry & Game Generation', () => {
       // Create destination games
       const winnerDest = await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, status)
-         VALUES (?, 3, 'Winners Final', 2, 'winners', 'pending')`,
+         VALUES (?, 3, 'Winners Final', 2, 'winners', 'pending') RETURNING id`,
         [bracket.id],
       );
       const loserDest = await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, status)
-         VALUES (?, 4, 'Redemption R1', 1, 'losers', 'pending')`,
+         VALUES (?, 4, 'Redemption R1', 1, 'losers', 'pending') RETURNING id`,
         [bracket.id],
       );
 
       // Create source game with both winner and loser advancement
       await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, team1_id, team2_id, winner_id, loser_id, status, winner_advances_to_id, winner_slot, loser_advances_to_id, loser_slot)
-         VALUES (?, 1, 'Winners R1', 1, 'winners', ?, ?, ?, ?, 'completed', ?, 'team1', ?, 'team1')`,
+         VALUES (?, 1, 'Winners R1', 1, 'winners', ?, ?, ?, ?, 'completed', ?, 'team1', ?, 'team1') RETURNING id`,
         [
           bracket.id,
           t1.id,

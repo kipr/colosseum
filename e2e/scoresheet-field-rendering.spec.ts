@@ -1,12 +1,10 @@
 import { test, expect } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import path from 'path';
+import { closeE2eDb, e2eDb } from './helpers/db';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                         */
 /* ------------------------------------------------------------------ */
 
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
 const ACCESS_CODE = 'e2e-field-render-code';
 const EVENT_NAME = 'E2E Field Rendering Event';
 const TEMPLATE_NAME = 'E2E All Field Types';
@@ -122,51 +120,45 @@ async function enterAsJudge(page: import('@playwright/test').Page) {
 test.describe('Scoresheet Field Rendering', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.beforeAll(async () => {
+    const db = e2eDb();
 
-    const ev = db
-      .prepare(
-        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-       VALUES (?, 'active', 1, 'manual')`,
-      )
-      .run(EVENT_NAME);
-    eventId = Number(ev.lastInsertRowid);
+    const ev = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+       VALUES (?, 'active', 1, 'manual') RETURNING id`,
+      [EVENT_NAME],
+    );
+    eventId = Number(ev.lastID);
 
     const schema = buildAllFieldTypesSchema();
-    const tpl = db
-      .prepare(
-        `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E field rendering test', ?, ?, 1)`,
-      )
-      .run(TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE);
-    templateId = Number(tpl.lastInsertRowid);
+    const tpl = await db.run(
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'E2E field rendering test', ?, ?, TRUE) RETURNING id`,
+      [TEMPLATE_NAME, JSON.stringify(schema), ACCESS_CODE],
+    );
+    templateId = Number(tpl.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
-       VALUES (?, ?, 'seeding')`,
-    ).run(eventId, templateId);
-
-    db.close();
+       VALUES (?, ?, 'seeding') RETURNING id`,
+      [eventId, templateId],
+    );
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
-    db.prepare('DELETE FROM score_submissions WHERE template_id = ?').run(
+    await db.run('DELETE FROM score_submissions WHERE template_id = ?', [
       templateId,
-    );
-    db.prepare(
+    ]);
+    await db.run(
       'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
-    ).run(templateId);
-    db.prepare('DELETE FROM scoresheet_templates WHERE id = ?').run(templateId);
-    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
+      [templateId],
+    );
+    await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [templateId]);
+    await db.run('DELETE FROM events WHERE id = ?', [eventId]);
 
-    db.close();
+    await closeE2eDb();
   });
 
   /* ── All field types render simultaneously ─────────────────────── */
@@ -320,12 +312,12 @@ test.describe('Scoresheet Field Rendering', () => {
 
     // Defined options
     await expect(divisionSelect.locator('option')).toHaveCount(4);
-    await expect(
-      divisionSelect.locator('option[value="junior"]'),
-    ).toHaveText('Junior');
-    await expect(
-      divisionSelect.locator('option[value="senior"]'),
-    ).toHaveText('Senior');
+    await expect(divisionSelect.locator('option[value="junior"]')).toHaveText(
+      'Junior',
+    );
+    await expect(divisionSelect.locator('option[value="senior"]')).toHaveText(
+      'Senior',
+    );
     await expect(divisionSelect.locator('option[value="pro"]')).toHaveText(
       'Professional',
     );
@@ -517,53 +509,47 @@ test.describe('Scoresheet Field Default Values', () => {
   let defaultsEventId: number;
   let defaultsTemplateId: number;
 
-  test.beforeAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.beforeAll(async () => {
+    const db = e2eDb();
 
-    const ev = db
-      .prepare(
-        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-       VALUES (?, 'active', 1, 'manual')`,
-      )
-      .run(DEFAULTS_EVENT_NAME);
-    defaultsEventId = Number(ev.lastInsertRowid);
+    const ev = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+       VALUES (?, 'active', 1, 'manual') RETURNING id`,
+      [DEFAULTS_EVENT_NAME],
+    );
+    defaultsEventId = Number(ev.lastID);
 
     const schema = buildDefaultValuesSchema();
-    const tpl = db
-      .prepare(
-        `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
-       VALUES (?, 'E2E default values test', ?, ?, 1)`,
-      )
-      .run(DEFAULTS_TEMPLATE_NAME, JSON.stringify(schema), DEFAULTS_ACCESS_CODE);
-    defaultsTemplateId = Number(tpl.lastInsertRowid);
+    const tpl = await db.run(
+      `INSERT INTO scoresheet_templates (name, description, schema, access_code, is_active)
+       VALUES (?, 'E2E default values test', ?, ?, TRUE) RETURNING id`,
+      [DEFAULTS_TEMPLATE_NAME, JSON.stringify(schema), DEFAULTS_ACCESS_CODE],
+    );
+    defaultsTemplateId = Number(tpl.lastID);
 
-    db.prepare(
+    await db.run(
       `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type)
-       VALUES (?, ?, 'seeding')`,
-    ).run(defaultsEventId, defaultsTemplateId);
-
-    db.close();
+       VALUES (?, ?, 'seeding') RETURNING id`,
+      [defaultsEventId, defaultsTemplateId],
+    );
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
-    db.prepare('DELETE FROM score_submissions WHERE template_id = ?').run(
+    await db.run('DELETE FROM score_submissions WHERE template_id = ?', [
       defaultsTemplateId,
-    );
-    db.prepare(
+    ]);
+    await db.run(
       'DELETE FROM event_scoresheet_templates WHERE template_id = ?',
-    ).run(defaultsTemplateId);
-    db.prepare('DELETE FROM scoresheet_templates WHERE id = ?').run(
-      defaultsTemplateId,
+      [defaultsTemplateId],
     );
-    db.prepare('DELETE FROM events WHERE id = ?').run(defaultsEventId);
+    await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [
+      defaultsTemplateId,
+    ]);
+    await db.run('DELETE FROM events WHERE id = ?', [defaultsEventId]);
 
-    db.close();
+    await closeE2eDb();
   });
 
   test('renders typed defaultValue into interactive controls', async ({

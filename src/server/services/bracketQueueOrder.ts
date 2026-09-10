@@ -34,7 +34,7 @@ export function compareBracketQueueOrder(
   const rightDenominator = 2 * right.bracket_size - 2;
 
   // Cross multiplication avoids floating-point differences between the
-  // JavaScript merger and the SQLite/PostgreSQL ORDER BY expression.
+  // JavaScript merger and the PostgreSQL ORDER BY expression.
   const progressComparison =
     (leftOrder - 1) * rightDenominator - (rightOrder - 1) * leftDenominator;
 

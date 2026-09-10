@@ -1,8 +1,8 @@
- {
+{
   "name": "colosseum-dev",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
+  "service": "app",
+  "workspaceFolder": "/workspaces/colosseum",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -15,9 +15,12 @@
     "source=${localEnv:HOME}/.config/codex,target=/home/node/.codex,type=bind,consistency=cached",
     "source=${localEnv:HOME}/.serena,target=/home/node/.serena,type=bind,consistency=cached"
   ],
-  "workspaceFolder": "/workspaces/colosseum",
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/colosseum,type=bind,consistency=cached",
-  "forwardPorts": [3000, 5173],
-  "runArgs": ["--security-opt", "label=disable"],
-  "remoteUser": "node"
+  "forwardPorts": [3000, 5173, 3001, 5174, 5432],
+  "remoteUser": "node",
+  "containerEnv": {
+    "DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum",
+    "TEST_DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum_test"
+  },
+  "postCreateCommand": "npm ci",
+  "postStartCommand": "sh -c 'until pg_isready -h postgres -U colosseum -d colosseum; do sleep 1; done'"
 }

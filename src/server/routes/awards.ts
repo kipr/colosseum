@@ -135,7 +135,7 @@ router.post(
       }
       const db = await getDatabase();
       const result = await db.run(
-        'INSERT INTO award_templates (name, description, award_type) VALUES (?, ?, ?)',
+        'INSERT INTO award_templates (name, description, award_type) VALUES (?, ?, ?) RETURNING id',
         [String(name).trim(), description ?? null, resolvedType],
       );
       const created = await db.get(
@@ -601,7 +601,7 @@ router.post(
 
       const result = await db.run(
         `INSERT INTO event_awards (event_id, template_award_id, name, description, award_type, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           eventId,
           template_award_id ?? null,
@@ -784,7 +784,7 @@ router.post(
       await db.transaction(async (tx) => {
         for (const tid of uniqueIds) {
           await tx.run(
-            'INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?)',
+            'INSERT INTO event_award_recipients (event_award_id, team_id) VALUES (?, ?) RETURNING id',
             [id, tid],
           );
         }
@@ -897,7 +897,7 @@ router.post(
 
       const result = await db.run(
         `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
-         VALUES (?, ?, ?)`,
+         VALUES (?, ?, ?) RETURNING id`,
         [id, trimmedName, resolvedTeamId],
       );
 

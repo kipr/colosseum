@@ -61,7 +61,7 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, 0)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, FALSE) RETURNING id`,
         [bracket.id, team1.id],
       );
       await seedBracketGame(testDb.db, {
@@ -93,7 +93,7 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, 0, 3, 0.75, 0.75)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, FALSE, 3, 0.75, 0.75) RETURNING id`,
         [bracket.id, team.id],
       );
 
@@ -167,11 +167,11 @@ describe('Brackets CRUD & Game Management', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, 0, 2, 0.75, 0.75)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, FALSE, 2, 0.75, 0.75) RETURNING id`,
         [bracket.id, team.id],
       );
       await testDb.db.run(
-        `INSERT INTO double_seeding_rankings (team_id, raw_double_seed_score) VALUES (?, ?)`,
+        `INSERT INTO double_seeding_rankings (team_id, raw_double_seed_score) VALUES (?, ?) RETURNING id`,
         [team.id, 0.5],
       );
 
@@ -300,7 +300,7 @@ describe('Brackets CRUD & Game Management', () => {
         team_name: 'Assigned',
       });
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, 0)`,
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, 1, FALSE) RETURNING id`,
         [bracket.id, team.id],
       );
 
@@ -935,7 +935,7 @@ describe('Brackets CRUD & Game Management', () => {
 
       await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, team1_id, team2_id, winner_id, status, winner_advances_to_id, winner_slot)
-         VALUES (?, 1, 'Semi', 1, 'winners', ?, ?, ?, 'completed', ?, 'team1')`,
+         VALUES (?, 1, 'Semi', 1, 'winners', ?, ?, ?, 'completed', ?, 'team1') RETURNING id`,
         [bracket.id, t1.id, t2.id, t1.id, finalGame.id],
       );
       const semiGame = await testDb.db.get(
@@ -1010,7 +1010,7 @@ describe('Brackets CRUD & Game Management', () => {
 
       await testDb.db.run(
         `INSERT INTO bracket_games (bracket_id, game_number, round_name, round_number, bracket_side, team1_id, team2_id, status, winner_advances_to_id, winner_slot)
-         VALUES (?, 1, 'Semi', 1, 'winners', ?, ?, 'ready', ?, 'team2')`,
+         VALUES (?, 1, 'Semi', 1, 'winners', ?, ?, 'ready', ?, 'team2') RETURNING id`,
         [bracket.id, t1.id, t2.id, finalGame.id],
       );
       const semiGame = await testDb.db.get(

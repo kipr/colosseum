@@ -17,93 +17,104 @@ describe('Schema Constraints', () => {
 
   describe('bracket play-order schema', () => {
     it('creates play_order columns and the bracket-game order index', async () => {
-      const templateColumn = await testDb.db.get<{ name: string }>(
-        `SELECT name FROM pragma_table_info('bracket_templates')
-         WHERE name = 'play_order'`,
+      const templateColumn = await testDb.db.get<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = 'bracket_templates'
+           AND column_name = 'play_order'`,
       );
-      const gameColumn = await testDb.db.get<{ name: string }>(
-        `SELECT name FROM pragma_table_info('bracket_games')
-         WHERE name = 'play_order'`,
+      const gameColumn = await testDb.db.get<{ column_name: string }>(
+        `SELECT column_name FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = 'bracket_games'
+           AND column_name = 'play_order'`,
       );
-      const index = await testDb.db.get<{ name: string }>(
-        `SELECT name FROM sqlite_master
-         WHERE type = 'index' AND name = 'idx_bracket_games_play_order'`,
+      const index = await testDb.db.get<{ indexname: string }>(
+        `SELECT indexname FROM pg_indexes
+         WHERE schemaname = current_schema()
+           AND indexname = 'idx_bracket_games_play_order'`,
       );
 
-      expect(templateColumn?.name).toBe('play_order');
-      expect(gameColumn?.name).toBe('play_order');
-      expect(index?.name).toBe('idx_bracket_games_play_order');
+      expect(templateColumn?.column_name).toBe('play_order');
+      expect(gameColumn?.column_name).toBe('play_order');
+      expect(index?.indexname).toBe('idx_bracket_games_play_order');
     });
   });
 
   describe('bracket special-result schema', () => {
     it('creates result metadata with standard defaults and enum checks', async () => {
-      const submissionColumns = await testDb.db.all<{
-        name: string;
-        dflt_value: string | null;
-      }>(`SELECT name, dflt_value FROM pragma_table_info('score_submissions')`);
-      const gameColumns = await testDb.db.all<{
-        name: string;
-        dflt_value: string | null;
-      }>(`SELECT name, dflt_value FROM pragma_table_info('bracket_games')`);
+      const columnsOf = (table: string) =>
+        testDb.db.all<{
+          column_name: string;
+          column_default: string | null;
+        }>(
+          `SELECT column_name, column_default FROM information_schema.columns
+           WHERE table_schema = current_schema() AND table_name = ?`,
+          [table],
+        );
+
+      const submissionColumns = await columnsOf('score_submissions');
+      const gameColumns = await columnsOf('bracket_games');
 
       expect(submissionColumns).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            name: 'result_type',
-            dflt_value: "'standard'",
+            column_name: 'result_type',
+            column_default: "'standard'::text",
           }),
-          expect.objectContaining({ name: 'disqualified_team_id' }),
-          expect.objectContaining({ name: 'result_note' }),
+          expect.objectContaining({ column_name: 'disqualified_team_id' }),
+          expect.objectContaining({ column_name: 'result_note' }),
         ]),
       );
       expect(gameColumns).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            name: 'result_type',
-            dflt_value: "'standard'",
+            column_name: 'result_type',
+            column_default: "'standard'::text",
           }),
-          expect.objectContaining({ name: 'disqualified_team_id' }),
+          expect.objectContaining({ column_name: 'disqualified_team_id' }),
         ]),
       );
 
       const event = await testDb.db.run(
-        `INSERT INTO events (name) VALUES ('Special Result Event')`,
+        `INSERT INTO events (name) VALUES ('Special Result Event') RETURNING id`,
       );
       const bracket = await testDb.db.run(
-        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, 'Main', 4)`,
+        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, 'Main', 4) RETURNING id`,
         [event.lastID],
       );
       await expect(
         testDb.db.run(
           `INSERT INTO bracket_games (bracket_id, game_number, result_type)
-           VALUES (?, 1, 'invalid')`,
+           VALUES (?, 1, 'invalid') RETURNING id`,
           [bracket.lastID],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
   });
 
   describe('event rest configuration schema', () => {
     it('creates min_rest_minutes with a default and non-negative check', async () => {
       const column = await testDb.db.get<{
-        name: string;
-        notnull: number;
-        dflt_value: string;
+        column_name: string;
+        is_nullable: string;
+        column_default: string;
       }>(
-        `SELECT name, "notnull", dflt_value
-         FROM pragma_table_info('events')
-         WHERE name = 'min_rest_minutes'`,
+        `SELECT column_name, is_nullable, column_default
+         FROM information_schema.columns
+         WHERE table_schema = current_schema()
+           AND table_name = 'events'
+           AND column_name = 'min_rest_minutes'`,
       );
 
       expect(column).toMatchObject({
-        name: 'min_rest_minutes',
-        notnull: 1,
-        dflt_value: '3',
+        column_name: 'min_rest_minutes',
+        is_nullable: 'NO',
+        column_default: '3',
       });
 
       const event = await testDb.db.run(
-        `INSERT INTO events (name) VALUES ('Default Rest Event')`,
+        `INSERT INTO events (name) VALUES ('Default Rest Event') RETURNING id`,
       );
       const row = await testDb.db.get<{ min_rest_minutes: number }>(
         'SELECT min_rest_minutes FROM events WHERE id = ?',
@@ -113,9 +124,9 @@ describe('Schema Constraints', () => {
 
       await expect(
         testDb.db.run(
-          `INSERT INTO events (name, min_rest_minutes) VALUES ('Bad Rest Event', -1)`,
+          `INSERT INTO events (name, min_rest_minutes) VALUES ('Bad Rest Event', -1) RETURNING id`,
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
   });
 
@@ -123,44 +134,44 @@ describe('Schema Constraints', () => {
     it('should enforce UNIQUE(event_id, team_number)', async () => {
       // Create an event first
       const eventResult = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Test Event', 'setup'],
       );
       const eventId = eventResult.lastID!;
 
       // Insert first team
       await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 100, 'Team Alpha'],
       );
 
       // Try to insert duplicate team_number for same event - should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [eventId, 100, 'Team Beta'],
         ),
-      ).rejects.toThrow(/UNIQUE constraint failed/);
+      ).rejects.toThrow(/violates unique constraint/);
     });
 
     it('should allow same team_number in different events', async () => {
       // Create two events
       const event1 = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Event 1', 'setup'],
       );
       const event2 = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Event 2', 'setup'],
       );
 
       // Same team_number in different events should be allowed
       await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [event1.lastID, 100, 'Team in Event 1'],
       );
       await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [event2.lastID, 100, 'Team in Event 2'],
       );
 
@@ -171,40 +182,40 @@ describe('Schema Constraints', () => {
 
     it('should enforce CHECK(team_number > 0)', async () => {
       const eventResult = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Test Event', 'setup'],
       );
 
       // team_number = 0 should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [eventResult.lastID, 0, 'Invalid Team'],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
 
       // Negative team_number should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [eventResult.lastID, -1, 'Invalid Team'],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
 
     it('should enforce CHECK on status values', async () => {
       const eventResult = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Test Event', 'setup'],
       );
 
       // Invalid status should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO teams (event_id, team_number, team_name, status) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name, status) VALUES (?, ?, ?, ?) RETURNING id`,
           [eventResult.lastID, 1, 'Team', 'invalid_status'],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
 
       // Valid statuses should work
       for (const status of [
@@ -214,7 +225,7 @@ describe('Schema Constraints', () => {
         'withdrawn',
       ]) {
         await testDb.db.run(
-          `INSERT INTO teams (event_id, team_number, team_name, status) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name, status) VALUES (?, ?, ?, ?) RETURNING id`,
           [
             eventResult.lastID,
             Math.floor(Math.random() * 10000) + 1,
@@ -234,48 +245,48 @@ describe('Schema Constraints', () => {
     beforeEach(async () => {
       // Create event, bracket, and team for testing
       const eventResult = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Test Event', 'setup'],
       );
       eventId = eventResult.lastID!;
 
       const bracketResult = await testDb.db.run(
-        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?)`,
+        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 'Test Bracket', 8],
       );
       bracketId = bracketResult.lastID!;
 
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 100, 'Test Team'],
       );
       teamId = teamResult.lastID!;
     });
 
     it('should enforce CHECK: bye requires null team_id', async () => {
-      // is_bye=1 with team_id should fail
+      // is_bye=true with team_id should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?)`,
-          [bracketId, teamId, 1, 1],
+          `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?) RETURNING id`,
+          [bracketId, teamId, 1, true],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
 
     it('should enforce CHECK: non-bye requires team_id', async () => {
-      // is_bye=0 with null team_id should fail
+      // is_bye=false with null team_id should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?)`,
-          [bracketId, null, 1, 0],
+          `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?) RETURNING id`,
+          [bracketId, null, 1, false],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
 
-    it('should allow valid bye entry (is_bye=1, team_id=null)', async () => {
+    it('should allow valid bye entry (is_bye=true, team_id=null)', async () => {
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?)`,
-        [bracketId, null, 1, 1],
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?) RETURNING id`,
+        [bracketId, null, 1, true],
       );
 
       const entry = await testDb.db.get(
@@ -283,14 +294,14 @@ describe('Schema Constraints', () => {
         [bracketId],
       );
       expect(entry).toBeDefined();
-      expect(entry.is_bye).toBe(1);
+      expect(entry.is_bye).toBe(true);
       expect(entry.team_id).toBeNull();
     });
 
-    it('should allow valid team entry (is_bye=0, team_id set)', async () => {
+    it('should allow valid team entry (is_bye=false, team_id set)', async () => {
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?)`,
-        [bracketId, teamId, 1, 0],
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?) RETURNING id`,
+        [bracketId, teamId, 1, false],
       );
 
       const entry = await testDb.db.get(
@@ -298,29 +309,29 @@ describe('Schema Constraints', () => {
         [bracketId],
       );
       expect(entry).toBeDefined();
-      expect(entry.is_bye).toBe(0);
+      expect(entry.is_bye).toBe(false);
       expect(entry.team_id).toBe(teamId);
     });
 
     it('should enforce UNIQUE(bracket_id, seed_position)', async () => {
       await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?)`,
-        [bracketId, teamId, 1, 0],
+        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?) RETURNING id`,
+        [bracketId, teamId, 1, false],
       );
 
       // Create another team
       const team2Result = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 200, 'Team 2'],
       );
 
       // Same seed_position in same bracket should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?)`,
-          [bracketId, team2Result.lastID, 1, 0],
+          `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye) VALUES (?, ?, ?, ?) RETURNING id`,
+          [bracketId, team2Result.lastID, 1, false],
         ),
-      ).rejects.toThrow(/UNIQUE constraint failed/);
+      ).rejects.toThrow(/violates unique constraint/);
     });
   });
 
@@ -332,25 +343,25 @@ describe('Schema Constraints', () => {
 
     beforeEach(async () => {
       const eventResult = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Test Event', 'setup'],
       );
       eventId = eventResult.lastID!;
 
       const bracketResult = await testDb.db.run(
-        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?)`,
+        `INSERT INTO brackets (event_id, name, bracket_size) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 'Test Bracket', 8],
       );
       bracketId = bracketResult.lastID!;
 
       const teamResult = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 100, 'Test Team'],
       );
       teamId = teamResult.lastID!;
 
       const gameResult = await testDb.db.run(
-        `INSERT INTO bracket_games (bracket_id, game_number) VALUES (?, ?)`,
+        `INSERT INTO bracket_games (bracket_id, game_number) VALUES (?, ?) RETURNING id`,
         [bracketId, 1],
       );
       gameId = gameResult.lastID!;
@@ -361,10 +372,10 @@ describe('Schema Constraints', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO game_queue (event_id, queue_type, queue_position, bracket_game_id, seeding_team_id, seeding_round)
-           VALUES (?, 'bracket', 1, NULL, NULL, NULL)`,
+           VALUES (?, 'bracket', 1, NULL, NULL, NULL) RETURNING id`,
           [eventId],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
 
     it('should enforce CHECK: seeding queue requires seeding_team_id and seeding_round', async () => {
@@ -372,25 +383,25 @@ describe('Schema Constraints', () => {
       await expect(
         testDb.db.run(
           `INSERT INTO game_queue (event_id, queue_type, queue_position, bracket_game_id, seeding_team_id, seeding_round)
-           VALUES (?, 'seeding', 1, NULL, NULL, 1)`,
+           VALUES (?, 'seeding', 1, NULL, NULL, 1) RETURNING id`,
           [eventId],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
 
       // queue_type='seeding' without seeding_round should fail
       await expect(
         testDb.db.run(
           `INSERT INTO game_queue (event_id, queue_type, queue_position, bracket_game_id, seeding_team_id, seeding_round)
-           VALUES (?, 'seeding', 1, NULL, ?, NULL)`,
+           VALUES (?, 'seeding', 1, NULL, ?, NULL) RETURNING id`,
           [eventId, teamId],
         ),
-      ).rejects.toThrow(/CHECK constraint failed/);
+      ).rejects.toThrow(/violates check constraint/);
     });
 
     it('should allow valid bracket queue entry', async () => {
       await testDb.db.run(
         `INSERT INTO game_queue (event_id, queue_type, queue_position, bracket_game_id, seeding_team_id, seeding_round)
-         VALUES (?, 'bracket', 1, ?, NULL, NULL)`,
+         VALUES (?, 'bracket', 1, ?, NULL, NULL) RETURNING id`,
         [eventId, gameId],
       );
 
@@ -405,7 +416,7 @@ describe('Schema Constraints', () => {
     it('should allow valid seeding queue entry', async () => {
       await testDb.db.run(
         `INSERT INTO game_queue (event_id, queue_type, queue_position, bracket_game_id, seeding_team_id, seeding_round)
-         VALUES (?, 'seeding', 1, NULL, ?, 2)`,
+         VALUES (?, 'seeding', 1, NULL, ?, 2) RETURNING id`,
         [eventId, teamId],
       );
 
@@ -420,7 +431,7 @@ describe('Schema Constraints', () => {
 
     it('stores nullable queue presence references and clears them when a team is deleted', async () => {
       const team2Result = await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventId, 200, 'Second Team'],
       );
       await testDb.db.run(
@@ -431,7 +442,7 @@ describe('Schema Constraints', () => {
         `INSERT INTO game_queue (
            event_id, queue_type, queue_position, bracket_game_id,
            present_team1_id, present_team2_id
-         ) VALUES (?, 'bracket', 1, ?, ?, ?)`,
+         ) VALUES (?, 'bracket', 1, ?, ?, ?) RETURNING id`,
         [eventId, gameId, teamId, team2Result.lastID],
       );
 
@@ -454,18 +465,18 @@ describe('Schema Constraints', () => {
     it('should enforce CHECK on status values', async () => {
       // Invalid status should fail
       await expect(
-        testDb.db.run(`INSERT INTO events (name, status) VALUES (?, ?)`, [
-          'Test Event',
-          'invalid_status',
-        ]),
-      ).rejects.toThrow(/CHECK constraint failed/);
+        testDb.db.run(
+          `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
+          ['Test Event', 'invalid_status'],
+        ),
+      ).rejects.toThrow(/violates check constraint/);
 
       // Valid statuses should work
       for (const status of ['setup', 'active', 'complete', 'archived']) {
-        await testDb.db.run(`INSERT INTO events (name, status) VALUES (?, ?)`, [
-          `Event ${status}`,
-          status,
-        ]);
+        await testDb.db.run(
+          `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
+          [`Event ${status}`, status],
+        );
       }
 
       const events = await testDb.db.all(`SELECT * FROM events`);
@@ -478,20 +489,20 @@ describe('Schema Constraints', () => {
       // Insert team with non-existent event_id should fail
       await expect(
         testDb.db.run(
-          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+          `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
           [99999, 1, 'Orphan Team'],
         ),
-      ).rejects.toThrow(/FOREIGN KEY constraint failed/);
+      ).rejects.toThrow(/violates foreign key constraint/);
     });
 
     it('should cascade delete teams when event is deleted', async () => {
       const eventResult = await testDb.db.run(
-        `INSERT INTO events (name, status) VALUES (?, ?)`,
+        `INSERT INTO events (name, status) VALUES (?, ?) RETURNING id`,
         ['Test Event', 'setup'],
       );
 
       await testDb.db.run(
-        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
         [eventResult.lastID, 1, 'Test Team'],
       );
 

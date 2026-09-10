@@ -839,7 +839,7 @@ describe('API Score Submit Routes', () => {
           });
           await testDb.db.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, 1, 0), (?, ?, 2, 0), (?, ?, 3, 0)`,
+             VALUES (?, ?, 1, FALSE), (?, ?, 2, FALSE), (?, ?, 3, FALSE) RETURNING id`,
             [
               bracketA.id,
               alpha1.id,
@@ -892,12 +892,12 @@ describe('API Score Submit Routes', () => {
           });
           await testDb.db.run(
             `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
-             VALUES (?, ?, 1, 0), (?, ?, 2, 0)`,
+             VALUES (?, ?, 1, FALSE), (?, ?, 2, FALSE) RETURNING id`,
             [bracketB.id, beta1.id, bracketB.id, beta2.id],
           );
           await testDb.db.run(
             `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank)
-             VALUES (?, ?, ?), (?, ?, ?)`,
+             VALUES (?, ?, ?), (?, ?, ?) RETURNING id`,
             [beta1.id, 100, 1, beta2.id, 90, 2],
           );
           const betaFinal = await seedBracketGame(testDb.db, {
@@ -1163,7 +1163,7 @@ describe('API Score Submit Routes', () => {
 
           await testDb.db.run(
             `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-             VALUES (?, ?, ?, CURRENT_TIMESTAMP)`,
+             VALUES (?, ?, ?, CURRENT_TIMESTAMP) RETURNING id`,
             [team.id, 1, 99],
           );
 

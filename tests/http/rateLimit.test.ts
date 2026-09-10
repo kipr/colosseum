@@ -89,6 +89,21 @@ describe('Rate Limiting', () => {
       expect(res.headers.has('ratelimit-reset')).toBe(true);
     });
 
+    it('skips limiting when COLOSSEUM_DISABLE_RATE_LIMIT is set', async () => {
+      process.env.COLOSSEUM_DISABLE_RATE_LIMIT = '1';
+      try {
+        for (let i = 0; i < 31; i++) {
+          await http.post(`${baseUrl}/api/scores/submit`, {});
+        }
+        const stillOpen = await http.post(`${baseUrl}/api/scores/submit`, {
+          scoreData: { points: 1 },
+        });
+        expect(stillOpen.status).not.toBe(429);
+      } finally {
+        delete process.env.COLOSSEUM_DISABLE_RATE_LIMIT;
+      }
+    });
+
     it('resets counters via resetAllRateLimiters', async () => {
       for (let i = 0; i < 30; i++) {
         await http.post(`${baseUrl}/api/scores/submit`, {});

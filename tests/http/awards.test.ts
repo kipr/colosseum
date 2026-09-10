@@ -576,10 +576,13 @@ describe('Awards API', () => {
         name: 'Outstanding Programming',
       });
 
-      const res = await http.post(`${baseUrl}/awards/event-awards/${award.id}/individual-recipients`, {
-        name: 'Ada Lovelace',
-        team_id: team.id,
-      });
+      const res = await http.post(
+        `${baseUrl}/awards/event-awards/${award.id}/individual-recipients`,
+        {
+          name: 'Ada Lovelace',
+          team_id: team.id,
+        },
+      );
       expect(res.status).toBe(201);
       const body = res.json as Record<string, unknown>;
       expect(body.id).toBeDefined();
@@ -791,9 +794,9 @@ describe('Awards API', () => {
       );
       expect(res.status).toBe(200);
 
-      const listRes = await http.get<
-        { individual_recipients: unknown[] }[]
-      >(`${baseUrl}/awards/event/${event.id}`);
+      const listRes = await http.get<{ individual_recipients: unknown[] }[]>(
+        `${baseUrl}/awards/event/${event.id}`,
+      );
       expect(listRes.json[0].individual_recipients).toEqual([]);
     });
 
@@ -1014,7 +1017,9 @@ describe('Awards API', () => {
       expect(res.json.manual[0].individual_recipients[0].team_name).toBe(
         'Winners',
       );
-      expect(res.json.manual[0].individual_recipients[0].display_name).toBeNull();
+      expect(
+        res.json.manual[0].individual_recipients[0].display_name,
+      ).toBeNull();
       expect(res.json.manual[0].individual_recipients[0]).not.toHaveProperty(
         'id',
       );
@@ -1149,15 +1154,15 @@ describe('Awards API', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
         [t1.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5) RETURNING id`,
         [t2.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1) RETURNING id`,
         [t3.id],
       );
 
@@ -1182,9 +1187,9 @@ describe('Awards API', () => {
           bracket_id, team_id, seed_position, is_bye,
           final_rank, bracket_raw_score, weighted_bracket_raw_score
         ) VALUES
-          (?, ?, 1, 0, 1, 1, 100),
-          (?, ?, 2, 0, 2, 0.5, 50),
-          (?, ?, 3, 0, 3, 0.33, 10)`,
+          (?, ?, 1, FALSE, 1, 1, 100),
+          (?, ?, 2, FALSE, 2, 0.5, 50),
+          (?, ?, 3, FALSE, 3, 0.33, 10) RETURNING id`,
         [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
       );
 
@@ -1250,7 +1255,7 @@ describe('Awards API', () => {
       }
       for (let i = 0; i < teams.length; i++) {
         await testDb.db.run(
-          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?) RETURNING id`,
           [teams[i].id, 90 - i * 10, i + 1, 10 - i],
         );
         await seedDocumentationScore(testDb.db, {
@@ -1262,7 +1267,7 @@ describe('Awards API', () => {
           `INSERT INTO bracket_entries (
             bracket_id, team_id, seed_position, is_bye,
             final_rank, bracket_raw_score, weighted_bracket_raw_score
-          ) VALUES (?, ?, ?, 0, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, FALSE, ?, ?, ?) RETURNING id`,
           [bracket.id, teams[i].id, i + 1, i + 1, 1 - i * 0.1, 100 - i * 10],
         );
       }
@@ -1270,7 +1275,7 @@ describe('Awards API', () => {
       await testDb.db.run(
         `INSERT INTO event_automatic_award_settings
            (event_id, de_top_n, per_bracket_overall_top_n, seeding_top_n)
-         VALUES (?, 2, 0, 4)`,
+         VALUES (?, 2, 0, 4) RETURNING id`,
         [event.id],
       );
 
@@ -1300,9 +1305,9 @@ describe('Awards API', () => {
         1, 2,
       ]);
       expect(res.json.automatic.perBracketOverall).toEqual([]);
-      expect(res.json.automatic.seeding!.placements.map((p) => p.place)).toEqual(
-        [1, 2, 3, 4],
-      );
+      expect(
+        res.json.automatic.seeding!.placements.map((p) => p.place),
+      ).toEqual([1, 2, 3, 4]);
     });
   });
 
@@ -1315,7 +1320,7 @@ describe('Awards API', () => {
         team_name: 'Only',
       });
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
         [t1.id],
       );
 
@@ -1389,15 +1394,15 @@ describe('Awards API', () => {
       });
 
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 80, 1, 10) RETURNING id`,
         [t1.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 70, 2, 5) RETURNING id`,
         [t2.id],
       );
       await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1)`,
+        `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, 60, 3, 1) RETURNING id`,
         [t3.id],
       );
 
@@ -1422,9 +1427,9 @@ describe('Awards API', () => {
           bracket_id, team_id, seed_position, is_bye,
           final_rank, bracket_raw_score, weighted_bracket_raw_score
         ) VALUES
-          (?, ?, 1, 0, 1, 1, 100),
-          (?, ?, 2, 0, 2, 0.5, 50),
-          (?, ?, 3, 0, 3, 0.33, 10)`,
+          (?, ?, 1, FALSE, 1, 1, 100),
+          (?, ?, 2, FALSE, 2, 0.5, 50),
+          (?, ?, 3, FALSE, 3, 0.33, 10) RETURNING id`,
         [bracket.id, t1.id, bracket.id, t2.id, bracket.id, t3.id],
       );
 
@@ -1482,9 +1487,7 @@ describe('Awards API', () => {
         `${baseUrl}/awards/event/${event.id}`,
       );
       const deAward = listRes.json.find((a) => a.name.includes('DE —'));
-      const seedingAward = listRes.json.find((a) =>
-        a.name.includes('Seeding'),
-      );
+      const seedingAward = listRes.json.find((a) => a.name.includes('Seeding'));
       expect(deAward?.award_type).toBe('trophy');
       expect(seedingAward?.award_type).toBe('certificate');
     });
@@ -1580,12 +1583,15 @@ describe('Awards API', () => {
         team_number: 1,
         team_name: 'Solo',
       });
-      const res = await http.post(`${baseUrl}/awards/event/${event.id}/automatic`, {
-        de_top_n: 5,
-        per_bracket_overall_top_n: 0,
-        seeding_top_n: 0,
-        acknowledge_warnings: true,
-      });
+      const res = await http.post(
+        `${baseUrl}/awards/event/${event.id}/automatic`,
+        {
+          de_top_n: 5,
+          per_bracket_overall_top_n: 0,
+          seeding_top_n: 0,
+          acknowledge_warnings: true,
+        },
+      );
       expect(res.status).toBe(400);
     });
 
@@ -1605,7 +1611,7 @@ describe('Awards API', () => {
         });
         teams.push(t);
         await testDb.db.run(
-          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?)`,
+          `INSERT INTO seeding_rankings (team_id, seed_average, seed_rank, raw_seed_score) VALUES (?, ?, ?, ?) RETURNING id`,
           [t.id, 100 - n, n, 10],
         );
         await seedDocumentationScore(testDb.db, {
@@ -1617,7 +1623,7 @@ describe('Awards API', () => {
           `INSERT INTO bracket_entries (
             bracket_id, team_id, seed_position, is_bye,
             final_rank, bracket_raw_score, weighted_bracket_raw_score
-          ) VALUES (?, ?, ?, 0, ?, 1, 10)`,
+          ) VALUES (?, ?, ?, FALSE, ?, 1, 10) RETURNING id`,
           [bracket.id, t.id, n, n],
         );
       }

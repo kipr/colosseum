@@ -88,7 +88,7 @@ describe('Public Events API (GET /events/public, GET /events/:id/public)', () =>
       expect(event).toHaveProperty('id');
       expect(event).toHaveProperty('name', 'Public Event');
       expect(event).toHaveProperty('status', 'active');
-      expect(event).toHaveProperty('event_date', '2026-03-01');
+      expect(event).toHaveProperty('event_date', '2026-03-01T00:00:00.000Z');
       expect(event).toHaveProperty('location', 'Test Arena');
       expect(event).toHaveProperty('seeding_rounds', 4);
 

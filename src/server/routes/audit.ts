@@ -111,7 +111,7 @@ export async function createAuditEntry(
 
   const result = await db.run(
     `INSERT INTO audit_log (event_id, user_id, action, entity_type, entity_id, old_value, new_value, ip_address)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [
       params.event_id ?? null,
       auditUserId,

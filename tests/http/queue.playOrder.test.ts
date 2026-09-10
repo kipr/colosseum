@@ -70,8 +70,8 @@ describe('Bracket queue play order', () => {
       bracket_size: 16,
     });
     const canonicalGameNumbers = [
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 10, 14, 11, 15, 12, 16, 17, 19, 18,
-      20, 25, 26, 21, 22, 23, 24, 28, 27, 29, 30, 31,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 13, 10, 14, 11, 15, 12, 16, 17, 19, 18, 20, 25,
+      26, 21, 22, 23, 24, 28, 27, 29, 30, 31,
     ];
 
     for (const [index, gameNumber] of canonicalGameNumbers.entries()) {

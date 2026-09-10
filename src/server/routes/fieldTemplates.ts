@@ -71,7 +71,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     const db = await getDatabase();
     const result = await db.run(
       `INSERT INTO scoresheet_field_templates (name, description, fields_json, created_by)
-       VALUES (?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?) RETURNING id`,
       [name, description || null, JSON.stringify(fields), req.user.id],
     );
 

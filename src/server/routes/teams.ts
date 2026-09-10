@@ -1,6 +1,11 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import {
+  isCheckConstraintError,
+  isForeignKeyConstraintError,
+  isUniqueConstraintError,
+} from '../database/constraintErrors';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { isEventArchived } from '../utils/eventVisibility';
@@ -78,7 +83,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const result = await db.run(
       `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
-       VALUES (?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?) RETURNING id`,
       [
         event_id,
         team_number,
@@ -109,16 +114,15 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     res.status(201).json(team);
   } catch (error) {
     console.error('Error creating team:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('UNIQUE constraint failed')) {
+    if (isUniqueConstraintError(error)) {
       return res
         .status(409)
         .json({ error: 'Team number already exists for this event' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid team_number or status' });
     }
-    if (errMsg.includes('FOREIGN KEY constraint failed')) {
+    if (isForeignKeyConstraintError(error)) {
       return res.status(400).json({ error: 'Event does not exist' });
     }
     res.status(500).json({ error: 'Failed to create team' });
@@ -215,7 +219,7 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
           for (const team of teamsToInsert) {
             const insertResult = await tx.run(
               `INSERT INTO teams (event_id, team_number, team_name, display_name, status)
-               VALUES (?, ?, ?, ?, ?)`,
+               VALUES (?, ?, ?, ?, ?) RETURNING id`,
               [
                 event_id,
                 team.team_number,
@@ -313,13 +317,12 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     res.json(team);
   } catch (error) {
     console.error('Error updating team:', error);
-    const errMsg = (error as Error).message || '';
-    if (errMsg.includes('UNIQUE constraint failed')) {
+    if (isUniqueConstraintError(error)) {
       return res
         .status(409)
         .json({ error: 'Team number already exists for this event' });
     }
-    if (errMsg.includes('CHECK constraint failed')) {
+    if (isCheckConstraintError(error)) {
       return res.status(400).json({ error: 'Invalid team_number or status' });
     }
     res.status(500).json({ error: 'Failed to update team' });

@@ -1,52 +1,63 @@
-import SQLite from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  createSqliteDatabase,
-  type Database,
-  type DatabaseResult,
-  type Transaction,
+import type {
+  Database,
+  DatabaseResult,
+  Transaction,
 } from '../../../src/server/database/connection';
 import { runSchema } from '../../../src/server/database/schema';
 import { queueSchema } from '../../../src/server/database/schema/queue';
 import type { SchemaModule } from '../../../src/server/database/schema/types';
+import { createMinimalTestDb, type TestDb } from '../../sql/helpers/testDb';
 
 const noop: DatabaseResult = { lastID: 0, changes: 0 };
 
-function sqliteModule(
-  sqlite: SchemaModule['sqlite'],
+function schemaModule(
+  fields: Omit<SchemaModule, 'name'>,
   name = 'test',
 ): SchemaModule {
-  return {
-    name,
-    postgres: {},
-    sqlite,
-  };
+  return { name, ...fields };
+}
+
+async function columnNames(
+  db: Database,
+  table: string,
+  columns: string[],
+): Promise<string[]> {
+  const placeholders = columns.map(() => '?').join(', ');
+  const rows = await db.all<{ column_name: string }>(
+    `SELECT column_name
+     FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = ?
+       AND column_name IN (${placeholders})
+     ORDER BY column_name`,
+    [table, ...columns],
+  );
+  return rows.map((row) => row.column_name);
 }
 
 describe('schema runner column additions', () => {
-  let sqlite: SQLite.Database | undefined;
+  let testDb: TestDb | undefined;
 
   afterEach(() => {
-    sqlite?.close();
-    sqlite = undefined;
+    testDb?.close();
+    testDb = undefined;
   });
 
-  it('adds a missing SQLite column before indexes and remains idempotent', async () => {
-    sqlite = new SQLite(':memory:');
-    const db = createSqliteDatabase(sqlite);
+  it('adds a missing column before indexes and remains idempotent', async () => {
+    testDb = await createMinimalTestDb();
+    const db = testDb.db;
     const createTable = `
       CREATE TABLE IF NOT EXISTS migration_test (
-        id INTEGER PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         name TEXT NOT NULL
       )
     `;
 
-    await runSchema(db, 'sqlite', [
-      sqliteModule({ tables: [createTable] }, 'baseline'),
-    ]);
-    await db.run('INSERT INTO migration_test (name) VALUES (?)', ['existing']);
+    await runSchema(db, [schemaModule({ tables: [createTable] }, 'baseline')]);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['existing']);
 
-    const upgraded = sqliteModule(
+    const upgraded = schemaModule(
       {
         tables: [createTable],
         columns: [
@@ -63,7 +74,7 @@ describe('schema runner column additions', () => {
       'upgraded',
     );
 
-    await runSchema(db, 'sqlite', [upgraded]);
+    await runSchema(db, [upgraded]);
 
     const existing = await db.get<{ priority: number }>(
       'SELECT priority FROM migration_test WHERE name = ?',
@@ -71,34 +82,33 @@ describe('schema runner column additions', () => {
     );
     expect(existing?.priority).toBe(10);
 
-    await db.run('INSERT INTO migration_test (name) VALUES (?)', ['new']);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['new']);
     const inserted = await db.get<{ priority: number }>(
       'SELECT priority FROM migration_test WHERE name = ?',
       ['new'],
     );
     expect(inserted?.priority).toBe(10);
 
-    const index = await db.get<{ name: string }>(
-      `SELECT name FROM sqlite_master
-       WHERE type = 'index' AND name = 'idx_migration_test_priority'`,
+    const index = await db.get<{ indexname: string }>(
+      `SELECT indexname FROM pg_indexes
+       WHERE schemaname = current_schema()
+         AND indexname = 'idx_migration_test_priority'`,
     );
-    expect(index?.name).toBe('idx_migration_test_priority');
+    expect(index?.indexname).toBe('idx_migration_test_priority');
 
-    await expect(runSchema(db, 'sqlite', [upgraded])).resolves.toBeUndefined();
-    const columns = await db.all<{ name: string }>(
-      'SELECT name FROM pragma_table_info(?) WHERE name = ?',
-      ['migration_test', 'priority'],
-    );
-    expect(columns).toHaveLength(1);
+    await expect(runSchema(db, [upgraded])).resolves.toBeUndefined();
+    expect(await columnNames(db, 'migration_test', ['priority'])).toEqual([
+      'priority',
+    ]);
   });
 
   it('skips a declared addition when a fresh table already has the column', async () => {
-    sqlite = new SQLite(':memory:');
-    const db = createSqliteDatabase(sqlite);
-    const module = sqliteModule({
+    testDb = await createMinimalTestDb();
+    const db = testDb.db;
+    const module = schemaModule({
       tables: [
         `CREATE TABLE fresh_test (
-          id INTEGER PRIMARY KEY,
+          id SERIAL PRIMARY KEY,
           priority INTEGER NOT NULL DEFAULT 10
         )`,
       ],
@@ -111,29 +121,25 @@ describe('schema runner column additions', () => {
       ],
     });
 
-    await expect(runSchema(db, 'sqlite', [module])).resolves.toBeUndefined();
-    const columns = await db.all<{ name: string }>(
-      'SELECT name FROM pragma_table_info(?) WHERE name = ?',
-      ['fresh_test', 'priority'],
-    );
-    expect(columns).toHaveLength(1);
+    await expect(runSchema(db, [module])).resolves.toBeUndefined();
+    expect(await columnNames(db, 'fresh_test', ['priority'])).toEqual([
+      'priority',
+    ]);
   });
 
   it('rolls back a column addition when a later schema phase fails', async () => {
-    sqlite = new SQLite(':memory:');
-    const db = createSqliteDatabase(sqlite);
-    const createTable = 'CREATE TABLE rollback_test (id INTEGER PRIMARY KEY)';
+    testDb = await createMinimalTestDb();
+    const db = testDb.db;
+    const createTable = 'CREATE TABLE rollback_test (id SERIAL PRIMARY KEY)';
 
-    await runSchema(db, 'sqlite', [
-      sqliteModule({ tables: [createTable] }, 'baseline'),
-    ]);
+    await runSchema(db, [schemaModule({ tables: [createTable] }, 'baseline')]);
 
     await expect(
-      runSchema(db, 'sqlite', [
-        sqliteModule(
+      runSchema(db, [
+        schemaModule(
           {
             tables: [
-              'CREATE TABLE IF NOT EXISTS rollback_test (id INTEGER PRIMARY KEY)',
+              'CREATE TABLE IF NOT EXISTS rollback_test (id SERIAL PRIMARY KEY)',
             ],
             columns: [
               {
@@ -149,42 +155,35 @@ describe('schema runner column additions', () => {
       ]),
     ).rejects.toThrow();
 
-    const column = await db.get(
-      'SELECT 1 FROM pragma_table_info(?) WHERE name = ?',
-      ['rollback_test', 'temporary_value'],
-    );
-    expect(column).toBeUndefined();
+    expect(
+      await columnNames(db, 'rollback_test', ['temporary_value']),
+    ).toEqual([]);
   });
 
   it('upgrades legacy queue rows with nullable presence columns idempotently', async () => {
-    sqlite = new SQLite(':memory:');
-    const db = createSqliteDatabase(sqlite);
+    testDb = await createMinimalTestDb();
+    const db = testDb.db;
     await db.exec(`
-      CREATE TABLE teams (id INTEGER PRIMARY KEY);
+      CREATE TABLE teams (id SERIAL PRIMARY KEY);
       CREATE TABLE game_queue (
-        id INTEGER PRIMARY KEY,
+        id SERIAL PRIMARY KEY,
         event_id INTEGER NOT NULL,
         status TEXT NOT NULL DEFAULT 'queued',
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
       INSERT INTO game_queue (id, event_id) VALUES (1, 10);
     `);
-    const presenceOnly = sqliteModule({ columns: queueSchema.sqlite.columns });
+    const presenceOnly = schemaModule({ columns: queueSchema.columns });
 
-    await runSchema(db, 'sqlite', [presenceOnly]);
-    await expect(
-      runSchema(db, 'sqlite', [presenceOnly]),
-    ).resolves.toBeUndefined();
+    await runSchema(db, [presenceOnly]);
+    await expect(runSchema(db, [presenceOnly])).resolves.toBeUndefined();
 
-    const columns = await db.all<{ name: string }>(
-      `SELECT name FROM pragma_table_info('game_queue')
-       WHERE name IN ('present_team1_id', 'present_team2_id')
-       ORDER BY name`,
-    );
-    expect(columns.map((column) => column.name)).toEqual([
-      'present_team1_id',
-      'present_team2_id',
-    ]);
+    expect(
+      await columnNames(db, 'game_queue', [
+        'present_team1_id',
+        'present_team2_id',
+      ]),
+    ).toEqual(['present_team1_id', 'present_team2_id']);
     const row = await db.get<{
       present_team1_id: number | null;
       present_team2_id: number | null;
@@ -238,21 +237,18 @@ function createRecordingDatabase(columnAlreadyExists: boolean): {
 function postgresMigrationModule(): SchemaModule {
   return {
     name: 'postgres-migration',
-    postgres: {
-      tables: ['CREATE TABLE migration_test (id INTEGER PRIMARY KEY)'],
-      columns: [
-        {
-          table: 'migration_test',
-          column: 'priority',
-          definition: 'INTEGER NOT NULL DEFAULT 10',
-        },
-      ],
-      constraints: ['ALTER TABLE migration_test ADD CHECK (priority > 0)'],
-      indexes: [
-        'CREATE INDEX idx_migration_priority ON migration_test(priority)',
-      ],
-    },
-    sqlite: {},
+    tables: ['CREATE TABLE migration_test (id INTEGER PRIMARY KEY)'],
+    columns: [
+      {
+        table: 'migration_test',
+        column: 'priority',
+        definition: 'INTEGER NOT NULL DEFAULT 10',
+      },
+    ],
+    constraints: ['ALTER TABLE migration_test ADD CHECK (priority > 0)'],
+    indexes: [
+      'CREATE INDEX idx_migration_priority ON migration_test(priority)',
+    ],
   };
 }
 
@@ -260,7 +256,7 @@ describe('PostgreSQL schema runner column additions', () => {
   it('checks information_schema and adds a missing column in phase order', async () => {
     const { db, operations } = createRecordingDatabase(false);
 
-    await runSchema(db, 'postgres', [postgresMigrationModule()]);
+    await runSchema(db, [postgresMigrationModule()]);
 
     expect(operations.map(({ kind }) => kind)).toEqual([
       'exec',
@@ -282,7 +278,7 @@ describe('PostgreSQL schema runner column additions', () => {
   it('does not alter PostgreSQL when the column already exists', async () => {
     const { db, operations } = createRecordingDatabase(true);
 
-    await runSchema(db, 'postgres', [postgresMigrationModule()]);
+    await runSchema(db, [postgresMigrationModule()]);
 
     expect(operations.some(({ sql }) => sql.includes('ADD COLUMN'))).toBe(
       false,

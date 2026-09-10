@@ -1,12 +1,10 @@
 import { test, expect, type Page, type BrowserContext } from '@playwright/test';
-import SQLite from 'better-sqlite3';
-import crypto from 'crypto';
-import path from 'path';
-
-const DB_PATH = path.join(__dirname, '..', 'database', 'colosseum.db');
-const SESSION_DB_PATH = path.join(__dirname, '..', 'database', 'sessions.db');
-const SESSION_SECRET =
-  process.env.SESSION_SECRET || 'colosseum-secret-key-change-in-production';
+import { closeE2eDb, e2eDb } from './helpers/db';
+import {
+  deleteSession,
+  seedAdminSession,
+  setSessionCookie,
+} from './helpers/session';
 
 const EVENT_NAME = `E2E Admin Queue Mgmt ${Date.now()}`;
 const TEAM_A_NAME = 'E2E QMgmt Alpha';
@@ -20,30 +18,10 @@ const ADMIN_NAME = 'E2E Queue Mgmt Admin';
 let eventId: number;
 let teamAId: number;
 let teamBId: number;
-let adminUserId: number;
-let sessionId: string;
-
-function signSessionId(sid: string, secret: string): string {
-  const signature = crypto
-    .createHmac('sha256', secret)
-    .update(sid)
-    .digest('base64')
-    .replace(/=+$/, '');
-  return `s:${sid}.${signature}`;
-}
+let admin: Awaited<ReturnType<typeof seedAdminSession>>;
 
 async function setAdminCookie(context: BrowserContext) {
-  const signedSid = signSessionId(sessionId, SESSION_SECRET);
-  await context.addCookies([
-    {
-      name: 'connect.sid',
-      value: signedSid,
-      domain: 'localhost',
-      path: '/',
-      httpOnly: true,
-      sameSite: 'Lax',
-    },
-  ]);
+  await setSessionCookie(context, admin.signedCookie);
 }
 
 /** Avoid queueSyncLimiter (10 req/min) during heavy filter/refetch interactions. */
@@ -65,43 +43,32 @@ function seedingRow(page: Page, teamName: string, round: number) {
 test.describe('Admin queue management', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test.beforeAll(() => {
-    sessionId = `e2e-qmgmt-${Date.now()}`;
+  test.beforeAll(async () => {
+    const db = e2eDb();
 
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+    const ev = await db.run(
+      `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
+       VALUES (?, 'active', 3, 'manual') RETURNING id`,
+      [EVENT_NAME],
+    );
+    eventId = Number(ev.lastID);
 
-    const ev = db
-      .prepare(
-        `INSERT INTO events (name, status, seeding_rounds, score_accept_mode)
-         VALUES (?, 'active', 3, 'manual')`,
-      )
-      .run(EVENT_NAME);
-    eventId = Number(ev.lastInsertRowid);
+    const tmA = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
+      [eventId, TEAM_A_NUMBER, TEAM_A_NAME],
+    );
+    teamAId = Number(tmA.lastID);
 
-    const tmA = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(eventId, TEAM_A_NUMBER, TEAM_A_NAME);
-    teamAId = Number(tmA.lastInsertRowid);
-
-    const tmB = db
-      .prepare(
-        `INSERT INTO teams (event_id, team_number, team_name, status)
-         VALUES (?, ?, ?, 'checked_in')`,
-      )
-      .run(eventId, TEAM_B_NUMBER, TEAM_B_NAME);
-    teamBId = Number(tmB.lastInsertRowid);
+    const tmB = await db.run(
+      `INSERT INTO teams (event_id, team_number, team_name, status)
+       VALUES (?, ?, ?, 'checked_in') RETURNING id`,
+      [eventId, TEAM_B_NUMBER, TEAM_B_NAME],
+    );
+    teamBId = Number(tmB.lastID);
 
     // The queue is materialized as every team x configured seeding round.
     // Keep A R1 and A R2 adjacent in queue order for the reorder assertions.
-    const insertQueueItem = db.prepare(
-      `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
-       VALUES (?, ?, ?, 'seeding', ?, 'queued')`,
-    );
     const queueItems = [
       [teamAId, 1],
       [teamAId, 2],
@@ -110,69 +77,35 @@ test.describe('Admin queue management', () => {
       [teamAId, 3],
       [teamBId, 3],
     ];
-    queueItems.forEach(([teamId, round], index) => {
-      insertQueueItem.run(eventId, teamId, round, index + 1);
-    });
+    for (const [index, [teamId, round]] of queueItems.entries()) {
+      await db.run(
+        `INSERT INTO game_queue (event_id, seeding_team_id, seeding_round, queue_type, queue_position, status)
+         VALUES (?, ?, ?, 'seeding', ?, 'queued') RETURNING id`,
+        [eventId, teamId, round, index + 1],
+      );
+    }
 
     // A prior round outside the configured queue range supplies recent-play
     // history without being materialized as another queue row.
-    db.prepare(
+    await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, scored_at)
-       VALUES (?, 99, 42, CURRENT_TIMESTAMP)`,
-    ).run(teamAId);
+       VALUES (?, 99, 42, CURRENT_TIMESTAMP) RETURNING id`,
+      [teamAId],
+    );
 
-    const usr = db
-      .prepare(
-        `INSERT INTO users (google_id, email, name, is_admin)
-         VALUES (?, ?, ?, 1)`,
-      )
-      .run(`e2e-qmgmt-${Date.now()}`, ADMIN_EMAIL, ADMIN_NAME);
-    adminUserId = Number(usr.lastInsertRowid);
-
-    db.close();
-
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-
-    const sessData = JSON.stringify({
-      cookie: {
-        originalMaxAge: 604800000,
-        expires: new Date(Date.now() + 604800000).toISOString(),
-        secure: false,
-        httpOnly: true,
-        sameSite: 'lax',
-        path: '/',
-      },
-      passport: {
-        user: adminUserId,
-      },
-    });
-
-    sessDb
-      .prepare(
-        `INSERT OR REPLACE INTO sessions (sid, sess, expires)
-         VALUES (?, ?, ?)`,
-      )
-      .run(sessionId, sessData, Date.now() + 604800000);
-    sessDb.close();
+    admin = await seedAdminSession({ email: ADMIN_EMAIL, name: ADMIN_NAME });
   });
 
-  test.afterAll(() => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+  test.afterAll(async () => {
+    const db = e2eDb();
 
-    db.prepare('DELETE FROM game_queue WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM teams WHERE event_id = ?').run(eventId);
-    db.prepare('DELETE FROM events WHERE id = ?').run(eventId);
-    db.prepare('DELETE FROM users WHERE id = ?').run(adminUserId);
+    await db.run('DELETE FROM game_queue WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM teams WHERE event_id = ?', [eventId]);
+    await db.run('DELETE FROM events WHERE id = ?', [eventId]);
+    await deleteSession(admin.sid);
+    await db.run('DELETE FROM users WHERE id = ?', [admin.adminUserId]);
 
-    db.close();
-
-    const sessDb = new SQLite(SESSION_DB_PATH);
-    sessDb.pragma('busy_timeout = 5000');
-    sessDb.prepare('DELETE FROM sessions WHERE sid = ?').run(sessionId);
-    sessDb.close();
+    await closeE2eDb();
   });
 
   test('queue tab lists seeded items and summary count', async ({
@@ -358,59 +291,55 @@ test.describe('Admin queue management', () => {
   test('paired matches track each team presence and retain the single-team flow', async ({
     browser,
   }) => {
-    const db = new SQLite(DB_PATH);
-    db.pragma('journal_mode = WAL');
-    db.pragma('busy_timeout = 5000');
+    const db = e2eDb();
 
-    const bracket = db
-      .prepare(
-        `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status)
-         VALUES (?, 'E2E Presence Bracket', 2, 2, 'in_progress')`,
-      )
-      .run(eventId);
-    const game = db
-      .prepare(
-        `INSERT INTO bracket_games
-           (bracket_id, game_number, play_order, round_name, round_number,
-            bracket_side, team1_id, team2_id, status)
-         VALUES (?, 91, 91, 'Presence Final', 1, 'finals', ?, ?, 'ready')`,
-      )
-      .run(Number(bracket.lastInsertRowid), teamAId, teamBId);
-    db.prepare(
+    const bracket = await db.run(
+      `INSERT INTO brackets (event_id, name, bracket_size, actual_team_count, status)
+       VALUES (?, 'E2E Presence Bracket', 2, 2, 'in_progress') RETURNING id`,
+      [eventId],
+    );
+    const game = await db.run(
+      `INSERT INTO bracket_games
+         (bracket_id, game_number, play_order, round_name, round_number,
+          bracket_side, team1_id, team2_id, status)
+       VALUES (?, 91, 91, 'Presence Final', 1, 'finals', ?, ?, 'ready') RETURNING id`,
+      [Number(bracket.lastID), teamAId, teamBId],
+    );
+    await db.run(
       `INSERT INTO game_queue
          (event_id, bracket_game_id, queue_type, queue_position, status,
           called_at)
-       VALUES (?, ?, 'bracket', 20, 'called', CURRENT_TIMESTAMP)`,
-    ).run(eventId, Number(game.lastInsertRowid));
+       VALUES (?, ?, 'bracket', 20, 'called', CURRENT_TIMESTAMP) RETURNING id`,
+      [eventId, Number(game.lastID)],
+    );
 
-    const pairedDoubleSeeding = db
-      .prepare(
-        `INSERT INTO double_seeding_matches
-           (event_id, round_number, match_number, team1_id, team2_id, status)
-         VALUES (?, 90, 1, ?, ?, 'ready')`,
-      )
-      .run(eventId, teamAId, teamBId);
-    db.prepare(
+    const pairedDoubleSeeding = await db.run(
+      `INSERT INTO double_seeding_matches
+         (event_id, round_number, match_number, team1_id, team2_id, status)
+       VALUES (?, 90, 1, ?, ?, 'ready') RETURNING id`,
+      [eventId, teamAId, teamBId],
+    );
+    await db.run(
       `INSERT INTO game_queue
          (event_id, double_seeding_match_id, queue_type, queue_position,
           status, called_at)
-       VALUES (?, ?, 'double_seeding', 21, 'called', CURRENT_TIMESTAMP)`,
-    ).run(eventId, Number(pairedDoubleSeeding.lastInsertRowid));
+       VALUES (?, ?, 'double_seeding', 21, 'called', CURRENT_TIMESTAMP) RETURNING id`,
+      [eventId, Number(pairedDoubleSeeding.lastID)],
+    );
 
-    const soloDoubleSeeding = db
-      .prepare(
-        `INSERT INTO double_seeding_matches
-           (event_id, round_number, match_number, team1_id, team2_id, status)
-         VALUES (?, 91, 1, ?, NULL, 'ready')`,
-      )
-      .run(eventId, teamAId);
-    db.prepare(
+    const soloDoubleSeeding = await db.run(
+      `INSERT INTO double_seeding_matches
+         (event_id, round_number, match_number, team1_id, team2_id, status)
+       VALUES (?, 91, 1, ?, NULL, 'ready') RETURNING id`,
+      [eventId, teamAId],
+    );
+    await db.run(
       `INSERT INTO game_queue
          (event_id, double_seeding_match_id, queue_type, queue_position,
           status, called_at)
-       VALUES (?, ?, 'double_seeding', 22, 'called', CURRENT_TIMESTAMP)`,
-    ).run(eventId, Number(soloDoubleSeeding.lastInsertRowid));
-    db.close();
+       VALUES (?, ?, 'double_seeding', 22, 'called', CURRENT_TIMESTAMP) RETURNING id`,
+      [eventId, Number(soloDoubleSeeding.lastID)],
+    );
 
     const context = await browser.newContext({
       viewport: { width: 600, height: 900 },

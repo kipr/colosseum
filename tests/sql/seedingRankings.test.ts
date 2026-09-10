@@ -16,7 +16,7 @@ describe('Seeding Rankings Calculation', () => {
     __setTestDatabaseAdapter(testDb.db);
 
     const eventResult = await testDb.db.run(
-      `INSERT INTO events (name, status, seeding_rounds) VALUES (?, ?, ?)`,
+      `INSERT INTO events (name, status, seeding_rounds) VALUES (?, ?, ?) RETURNING id`,
       ['Test Event', 'setup', 3],
     );
     eventId = eventResult.lastID!;
@@ -32,7 +32,7 @@ describe('Seeding Rankings Calculation', () => {
    */
   async function createTeam(teamNumber: number): Promise<number> {
     const result = await testDb.db.run(
-      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?)`,
+      `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id`,
       [eventId, teamNumber, `Team ${teamNumber}`],
     );
     return result.lastID!;
@@ -47,7 +47,7 @@ describe('Seeding Rankings Calculation', () => {
     score: number | null,
   ): Promise<void> {
     await testDb.db.run(
-      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?)`,
+      `INSERT INTO seeding_scores (team_id, round_number, score) VALUES (?, ?, ?) RETURNING id`,
       [teamId, roundNumber, score],
     );
   }

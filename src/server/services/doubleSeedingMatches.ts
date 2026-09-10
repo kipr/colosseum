@@ -199,7 +199,7 @@ async function insertDoubleSeedingPairs(
     await tx.run(
       `INSERT INTO double_seeding_matches
          (event_id, round_number, match_number, team1_id, team2_id, status)
-       VALUES (?, ?, ?, ?, ?, 'ready')`,
+       VALUES (?, ?, ?, ?, ?, 'ready') RETURNING id`,
       [eventId, pair.round, pair.matchNumber, pair.team1Id, pair.team2Id],
     );
   }
