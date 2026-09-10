@@ -1142,9 +1142,9 @@ describe('Event-Scoped Scores Routes', () => {
     let reviewer: { id: number };
 
     beforeEach(async () => {
-      reviewer = await seedUser(testDb.db, { is_admin: false });
+      reviewer = await seedUser(testDb.db, { is_admin: true });
       const app = createTestApp({
-        user: { id: reviewer.id, is_admin: false },
+        user: { id: reviewer.id, is_admin: true },
       });
       app.use('/scores', scoresRoutes);
       server = await startServer(app);

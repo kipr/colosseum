@@ -736,6 +736,13 @@ describe('Brackets CRUD & Game Management', () => {
       expect(games[0].team1_number).toBe(1);
     });
 
+    it('returns 404 when the bracket belongs to an archived event', async () => {
+      const event = await seedEvent(testDb.db, { status: 'archived' });
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const res = await http.get(`${baseUrl}/brackets/${bracket.id}/games`);
+      expect(res.status).toBe(404);
+    });
+
     it('returns empty array when no games exist', async () => {
       const event = await seedEvent(testDb.db);
       const bracket = await seedBracket(testDb.db, { event_id: event.id });

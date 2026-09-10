@@ -2,6 +2,8 @@ import express from 'express';
 import { randomUUID } from 'crypto';
 import {
   requireAuth,
+  requireAdmin,
+  isAdminUser,
   AuthRequest,
   JUDGE_SESSION_TTL_MS,
 } from '../middleware/auth';
@@ -11,7 +13,9 @@ import {
   formatSchemaValidationError,
   validateScoresheetSchema,
 } from '../../shared/scoresheetSchema';
+import { composeRouters } from './composeRouters';
 
+const publicRouter = express.Router();
 const router = express.Router();
 
 function inferTemplateType(
@@ -35,7 +39,7 @@ function inferTemplateType(
 
 // Get all scoresheet templates (public - for judges, without access codes)
 // Returns only templates linked to events with status setup/active; includes event metadata for grouping
-router.get(
+publicRouter.get(
   '/templates',
   async (req: express.Request, res: express.Response) => {
     try {
@@ -89,7 +93,7 @@ router.get(
 // Optional eventId: when present, returns only templates linked to that event
 router.get(
   '/templates/admin',
-  requireAuth,
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const db = await getDatabase();
@@ -136,7 +140,7 @@ router.get(
 );
 
 // Verify access code and get template (public - for judges)
-router.post(
+publicRouter.post(
   '/templates/:id/verify',
   accessCodeLimiter,
   async (req: express.Request, res: express.Response) => {
@@ -202,7 +206,8 @@ router.post(
   },
 );
 
-// Get a specific template with full schema (authenticated - for admin preview)
+// Get a specific template with full schema (authenticated - for admin preview).
+// Access codes are only included for admins so staff preview cannot leak them.
 router.get(
   '/templates/:id',
   requireAuth,
@@ -210,8 +215,12 @@ router.get(
     try {
       const { id } = req.params;
       const db = await getDatabase();
+      const columns = isAdminUser(req)
+        ? 'id, name, description, schema, access_code, created_by, is_active, created_at, updated_at'
+        : 'id, name, description, schema, created_by, is_active, created_at, updated_at';
       const template = await db.get(
-        'SELECT * FROM scoresheet_templates WHERE id = ? AND is_active IS TRUE',
+        `SELECT ${columns}
+         FROM scoresheet_templates WHERE id = ? AND is_active IS TRUE`,
         [id],
       );
 
@@ -232,7 +241,7 @@ router.get(
 // Create a new template
 router.post(
   '/templates',
-  requireAuth,
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { name, description, schema, accessCode, eventId } = req.body;
@@ -285,11 +294,15 @@ router.post(
 // Update a template
 router.put(
   '/templates/:id',
-  requireAuth,
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
       const { name, description, schema, accessCode, eventId } = req.body;
+      const nextAccessCode =
+        typeof accessCode === 'string' && accessCode.trim() !== ''
+          ? accessCode.trim()
+          : null;
 
       if (schema !== undefined) {
         const schemaValidation = validateScoresheetSchema(schema);
@@ -305,9 +318,11 @@ router.put(
       await db.transaction(async (tx) => {
         await tx.run(
           `UPDATE scoresheet_templates 
-         SET name = ?, description = ?, schema = ?, access_code = ?, updated_at = CURRENT_TIMESTAMP
+         SET name = ?, description = ?, schema = ?,
+             access_code = COALESCE(?, access_code),
+             updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`,
-          [name, description, JSON.stringify(schema), accessCode, id],
+          [name, description, JSON.stringify(schema), nextAccessCode, id],
         );
 
         await tx.run(
@@ -341,7 +356,7 @@ router.put(
 // Delete a template
 router.delete(
   '/templates/:id',
-  requireAuth,
+  requireAdmin,
   async (req: AuthRequest, res: express.Response) => {
     try {
       const { id } = req.params;
@@ -357,4 +372,4 @@ router.delete(
   },
 );
 
-export default router;
+export default composeRouters(publicRouter, router);

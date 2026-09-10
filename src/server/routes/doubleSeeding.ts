@@ -1,5 +1,5 @@
 import express, { Request, Response } from 'express';
-import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
+import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import {
   appendDoubleSeedingRounds,
@@ -8,12 +8,18 @@ import {
   hasDoubleSeedingResults,
 } from '../services/doubleSeedingMatches';
 import { recalculateDoubleSeedingRankings } from '../services/doubleSeedingRankings';
-import { isEventArchived } from '../utils/eventVisibility';
+import {
+  isEventArchived,
+  isExistingTeamEventArchived,
+} from '../utils/eventVisibility';
 import { createAuditEntry } from './audit';
 import { toAuditJson } from '../utils/auditJson';
 import { markQueueDirty } from '../services/queueVersion';
+import { composeRouters } from './composeRouters';
 
+const publicRouter = express.Router();
 const router = express.Router();
+router.use(requireAdmin);
 
 const MATCHES_SELECT = `
   SELECT dsm.*,
@@ -25,32 +31,34 @@ const MATCHES_SELECT = `
 `;
 
 // GET /double-seeding/matches/event/:eventId - Matches for event (public; blocked for archived events)
-router.get('/matches/event/:eventId', async (req: Request, res: Response) => {
-  try {
-    const { eventId } = req.params;
-    if (await isEventArchived(eventId)) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-    const db = await getDatabase();
+publicRouter.get(
+  '/matches/event/:eventId',
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      if (await isEventArchived(eventId)) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const db = await getDatabase();
 
-    const matches = await db.all(
-      `${MATCHES_SELECT}
+      const matches = await db.all(
+        `${MATCHES_SELECT}
        WHERE dsm.event_id = ?
        ORDER BY dsm.round_number ASC, dsm.match_number ASC`,
-      [eventId],
-    );
+        [eventId],
+      );
 
-    res.json(matches);
-  } catch (error) {
-    console.error('Error fetching double-seeding matches:', error);
-    res.status(500).json({ error: 'Failed to fetch double-seeding matches' });
-  }
-});
+      res.json(matches);
+    } catch (error) {
+      console.error('Error fetching double-seeding matches:', error);
+      res.status(500).json({ error: 'Failed to fetch double-seeding matches' });
+    }
+  },
+);
 
 // POST /double-seeding/matches/generate/:eventId - Generate randomized matches (admin only)
 router.post(
   '/matches/generate/:eventId',
-  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
@@ -223,7 +231,6 @@ router.post(
 // DELETE /double-seeding/matches/event/:eventId - Delete all matches for event (admin only)
 router.delete(
   '/matches/event/:eventId',
-  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
@@ -284,7 +291,6 @@ router.delete(
 // DELETE /double-seeding/matches/event/:eventId/round/:roundNumber - Delete the trailing unsubmitted round (admin only)
 router.delete(
   '/matches/event/:eventId/round/:roundNumber',
-  requireAdmin,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId, roundNumber } = req.params;
@@ -337,79 +343,92 @@ router.delete(
 );
 
 // GET /double-seeding/scores/event/:eventId - Accepted scores for event (public; blocked for archived events)
-router.get('/scores/event/:eventId', async (req: Request, res: Response) => {
-  try {
-    const { eventId } = req.params;
-    if (await isEventArchived(eventId)) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-    const db = await getDatabase();
+publicRouter.get(
+  '/scores/event/:eventId',
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      if (await isEventArchived(eventId)) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const db = await getDatabase();
 
-    const scores = await db.all(
-      `SELECT dss.*, t.team_number, t.team_name, t.display_name,
+      const scores = await db.all(
+        `SELECT dss.*, t.team_number, t.team_name, t.display_name,
               dsm.match_number
        FROM double_seeding_scores dss
        JOIN teams t ON dss.team_id = t.id
        LEFT JOIN double_seeding_matches dsm ON dss.match_id = dsm.id
        WHERE dss.event_id = ?
        ORDER BY t.team_number ASC, dss.round_number ASC`,
-      [eventId],
-    );
+        [eventId],
+      );
 
-    res.json(scores);
-  } catch (error) {
-    console.error('Error fetching double-seeding scores:', error);
-    res.status(500).json({ error: 'Failed to fetch double-seeding scores' });
-  }
-});
+      res.json(scores);
+    } catch (error) {
+      console.error('Error fetching double-seeding scores:', error);
+      res.status(500).json({ error: 'Failed to fetch double-seeding scores' });
+    }
+  },
+);
 
 // GET /double-seeding/scores/team/:teamId - Scores for team (public for judges)
-router.get('/scores/team/:teamId', async (req: Request, res: Response) => {
-  try {
-    const { teamId } = req.params;
-    const db = await getDatabase();
+publicRouter.get(
+  '/scores/team/:teamId',
+  async (req: Request, res: Response) => {
+    try {
+      const { teamId } = req.params;
+      if (await isExistingTeamEventArchived(teamId)) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const db = await getDatabase();
 
-    const scores = await db.all(
-      'SELECT * FROM double_seeding_scores WHERE team_id = ? ORDER BY round_number ASC',
-      [teamId],
-    );
+      const scores = await db.all(
+        'SELECT * FROM double_seeding_scores WHERE team_id = ? ORDER BY round_number ASC',
+        [teamId],
+      );
 
-    res.json(scores);
-  } catch (error) {
-    console.error('Error fetching double-seeding scores:', error);
-    res.status(500).json({ error: 'Failed to fetch double-seeding scores' });
-  }
-});
+      res.json(scores);
+    } catch (error) {
+      console.error('Error fetching double-seeding scores:', error);
+      res.status(500).json({ error: 'Failed to fetch double-seeding scores' });
+    }
+  },
+);
 
 // GET /double-seeding/rankings/event/:eventId - Rankings for event (public; blocked for archived events)
-router.get('/rankings/event/:eventId', async (req: Request, res: Response) => {
-  try {
-    const { eventId } = req.params;
-    if (await isEventArchived(eventId)) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-    const db = await getDatabase();
+publicRouter.get(
+  '/rankings/event/:eventId',
+  async (req: Request, res: Response) => {
+    try {
+      const { eventId } = req.params;
+      if (await isEventArchived(eventId)) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+      const db = await getDatabase();
 
-    const rankings = await db.all(
-      `SELECT dsr.*, t.team_number, t.team_name, t.display_name
+      const rankings = await db.all(
+        `SELECT dsr.*, t.team_number, t.team_name, t.display_name
        FROM double_seeding_rankings dsr
        JOIN teams t ON dsr.team_id = t.id
        WHERE t.event_id = ?
        ORDER BY dsr.seed_rank ASC NULLS LAST`,
-      [eventId],
-    );
+        [eventId],
+      );
 
-    res.json(rankings);
-  } catch (error) {
-    console.error('Error fetching double-seeding rankings:', error);
-    res.status(500).json({ error: 'Failed to fetch double-seeding rankings' });
-  }
-});
+      res.json(rankings);
+    } catch (error) {
+      console.error('Error fetching double-seeding rankings:', error);
+      res
+        .status(500)
+        .json({ error: 'Failed to fetch double-seeding rankings' });
+    }
+  },
+);
 
 // POST /double-seeding/rankings/recalculate/:eventId - Recalculate rankings (admin only)
 router.post(
   '/rankings/recalculate/:eventId',
-  requireAuth,
   async (req: AuthRequest, res: Response) => {
     try {
       const { eventId } = req.params;
@@ -445,4 +464,4 @@ router.post(
   },
 );
 
-export default router;
+export default composeRouters(publicRouter, router);

@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
+import { composeRouters } from './composeRouters';
 import { getDatabase } from '../database/connection';
 import { isCheckConstraintError } from '../database/constraintErrors';
 import {
@@ -14,7 +15,10 @@ import { markQueueDirty } from '../services/queueVersion';
 const PUBLIC_EVENT_FIELDS =
   'id, name, status, event_date, location, seeding_rounds, double_seeding_rounds, spectator_results_released';
 
-const router = express.Router();
+const publicRouter = express.Router();
+const staffRouter = express.Router();
+const adminRouter = express.Router();
+adminRouter.use(requireAdmin);
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = [
@@ -31,7 +35,7 @@ const ALLOWED_UPDATE_FIELDS = [
 ];
 
 // GET /events - List all events
-router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
+staffRouter.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
   try {
     const db = await getDatabase();
     const { status } = req.query;
@@ -64,7 +68,7 @@ function toPublicEvent(row: Record<string, unknown>) {
 }
 
 // GET /events/public - List non-archived events (public, for spectators)
-router.get('/public', async (req: Request, res: Response) => {
+publicRouter.get('/public', async (req: Request, res: Response) => {
   try {
     const db = await getDatabase();
     const events = await db.all(
@@ -81,7 +85,7 @@ router.get('/public', async (req: Request, res: Response) => {
 });
 
 // GET /events/:id/public - Get single event public info (public, for spectators)
-router.get('/:id/public', async (req: Request, res: Response) => {
+publicRouter.get('/:id/public', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     if (await isEventArchived(id)) {
@@ -104,7 +108,7 @@ router.get('/:id/public', async (req: Request, res: Response) => {
 });
 
 // GET /events/:id/overall - Admin overall scores (single request, auth required)
-router.get(
+staffRouter.get(
   '/:id/overall',
   requireAuth,
   async (req: AuthRequest, res: Response) => {
@@ -129,7 +133,7 @@ router.get(
 );
 
 // GET /events/:id/overall/public - Public overall scores (released completed events only)
-router.get(
+publicRouter.get(
   '/:id/overall/public',
   publicExpensiveReadLimiter,
   async (req: Request, res: Response) => {
@@ -150,26 +154,30 @@ router.get(
 );
 
 // GET /events/:id - Get single event
-router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
+staffRouter.get(
+  '/:id',
+  requireAuth,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { id } = req.params;
+      const db = await getDatabase();
 
-    const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+      const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
 
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      res.json(event);
+    } catch (error) {
+      console.error('Error fetching event:', error);
+      res.status(500).json({ error: 'Failed to fetch event' });
     }
-
-    res.json(event);
-  } catch (error) {
-    console.error('Error fetching event:', error);
-    res.status(500).json({ error: 'Failed to fetch event' });
-  }
-});
+  },
+);
 
 // POST /events - Create event (admin only)
-router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
+adminRouter.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const {
       name,
@@ -224,7 +232,7 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
 });
 
 // PATCH /events/:id - Update event (partial, admin only)
-router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
+adminRouter.patch('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -288,7 +296,7 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
 });
 
 // DELETE /events/:id - Delete event (admin only)
-router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
+adminRouter.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
@@ -303,4 +311,4 @@ router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   }
 });
 
-export default router;
+export default composeRouters(publicRouter, staffRouter, adminRouter);
