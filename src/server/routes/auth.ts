@@ -1,28 +1,13 @@
 import express, { Request, Response } from 'express';
 import passport from 'passport';
 import { oauthLimiter } from '../middleware/rateLimit';
-import { getValidAccessToken } from '../services/tokenRefresh';
 
 const router = express.Router();
 
 // Initiate Google OAuth
-// Note: accessType and prompt must be passed exactly as Google expects
 router.get('/google', oauthLimiter, (req, res, next) => {
   passport.authenticate('google', {
-    scope: [
-      'profile',
-      'email',
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/spreadsheets',
-    ],
-    // These ensure we get a refresh token that lasts longer
-    accessType: 'offline',
-    prompt: 'consent', // Forces re-consent to ensure we get a fresh refresh token
-    includeGrantedScopes: true,
-  } as passport.AuthenticateOptions & {
-    accessType?: string;
-    prompt?: string;
-    includeGrantedScopes?: boolean;
+    scope: ['profile', 'email'],
   })(req, res, next);
 });
 
@@ -170,34 +155,6 @@ router.get('/user', (req: Request, res: Response) => {
     });
   } else {
     res.status(401).json({ error: 'Not authenticated' });
-  }
-});
-
-// Check if current user's tokens are valid (for admin notification)
-router.get('/check-tokens', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const user = req.user as { id: number };
-
-  try {
-    // Try to get a valid token - this will refresh if needed
-    await getValidAccessToken(user.id);
-
-    res.json({
-      valid: true,
-      message: 'Tokens are valid',
-    });
-  } catch (error: unknown) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
-    console.error('Token check failed:', errorMessage);
-    res.json({
-      valid: false,
-      message: errorMessage,
-      needsReauth: true,
-    });
   }
 });
 

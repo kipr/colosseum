@@ -6,6 +6,7 @@ import type {
 } from '../../../src/server/database/connection';
 import { runSchema } from '../../../src/server/database/schema';
 import { queueSchema } from '../../../src/server/database/schema/queue';
+import { usersSchema } from '../../../src/server/database/schema/users';
 import type { SchemaModule } from '../../../src/server/database/schema/types';
 import { createMinimalTestDb, type TestDb } from '../../sql/helpers/testDb';
 
@@ -55,7 +56,9 @@ describe('schema runner column additions', () => {
     `;
 
     await runSchema(db, [schemaModule({ tables: [createTable] }, 'baseline')]);
-    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['existing']);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', [
+      'existing',
+    ]);
 
     const upgraded = schemaModule(
       {
@@ -82,7 +85,9 @@ describe('schema runner column additions', () => {
     );
     expect(existing?.priority).toBe(10);
 
-    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['new']);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', [
+      'new',
+    ]);
     const inserted = await db.get<{ priority: number }>(
       'SELECT priority FROM migration_test WHERE name = ?',
       ['new'],
@@ -155,9 +160,9 @@ describe('schema runner column additions', () => {
       ]),
     ).rejects.toThrow();
 
-    expect(
-      await columnNames(db, 'rollback_test', ['temporary_value']),
-    ).toEqual([]);
+    expect(await columnNames(db, 'rollback_test', ['temporary_value'])).toEqual(
+      [],
+    );
   });
 
   it('upgrades legacy queue rows with nullable presence columns idempotently', async () => {
@@ -191,6 +196,68 @@ describe('schema runner column additions', () => {
       'SELECT present_team1_id, present_team2_id FROM game_queue WHERE id = 1',
     );
     expect(row).toEqual({ present_team1_id: null, present_team2_id: null });
+  });
+});
+
+describe('schema runner column removals', () => {
+  let testDb: TestDb | undefined;
+
+  afterEach(() => {
+    testDb?.close();
+    testDb = undefined;
+  });
+
+  it('purges legacy OAuth tokens while preserving users and remains idempotent', async () => {
+    testDb = await createMinimalTestDb();
+    const db = testDb.db;
+    await db.exec(`
+      CREATE TABLE users (
+        id SERIAL PRIMARY KEY,
+        google_id TEXT UNIQUE NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT,
+        access_token TEXT,
+        refresh_token TEXT,
+        token_expires_at BIGINT,
+        is_admin BOOLEAN DEFAULT FALSE,
+        last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO users (
+        google_id,
+        email,
+        access_token,
+        refresh_token,
+        token_expires_at,
+        is_admin
+      ) VALUES (
+        'legacy-google-id',
+        'admin@example.com',
+        'access-secret',
+        'refresh-secret',
+        1893456000000,
+        TRUE
+      );
+    `);
+
+    await runSchema(db, [usersSchema]);
+    await expect(runSchema(db, [usersSchema])).resolves.toBeUndefined();
+
+    expect(
+      await columnNames(db, 'users', [
+        'access_token',
+        'refresh_token',
+        'token_expires_at',
+      ]),
+    ).toEqual([]);
+    expect(
+      await db.get('SELECT google_id, email, is_admin FROM users WHERE id = 1'),
+    ).toEqual({
+      google_id: 'legacy-google-id',
+      email: 'admin@example.com',
+      is_admin: true,
+    });
   });
 });
 

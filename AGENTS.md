@@ -17,7 +17,8 @@ Colosseum is a tournament management and scoring platform (React 19 + Express 5 
 
 ### Key caveats
 
-- **PostgreSQL via Docker Compose is required.** Cursor Cloud must have Compose. Do not fall back to SQLite. Start it with `npm run db:up && npm run db:wait` before `npm run dev`, `npm run test:run`, or `npm run test:e2e`.
+- **PostgreSQL via Docker Compose is required.** Cursor Cloud outside the devcontainer must have Compose. Do not fall back to SQLite. Start it with `npm run db:up && npm run db:wait` before `npm run dev`, `npm run test:run`, or `npm run test:e2e`.
+- **Inside the devcontainer, do not run Docker or `npm run db:up` / `npm run db:wait`.** The devcontainer Compose configuration starts PostgreSQL as a sibling service before the app container and waits for it in `postStartCommand`; the Docker CLI may intentionally be unavailable inside the app container. Use the injected `DATABASE_URL` / `TEST_DATABASE_URL` (host `postgres`) and run the dev or test command directly. If connectivity is uncertain, check it without Docker using `pg_isready -h postgres -U colosseum -d colosseum`.
 - Copy `.env.example` to `.env` before starting the server: `cp .env.example .env`. `DATABASE_URL` (app) and `TEST_DATABASE_URL` (Vitest + Playwright) are required. Unset `DATABASE_URL` does not open SQLite; the server fails fast with a `db:up` hint.
 - If Postgres is unreachable and config came from `DATABASE_URL`, the server wraps the error with `npm run db:up && npm run db:wait`. Production uses `DB_HOST` or `CLOUD_SQL_CONNECTION_NAME` with `DB_USER` / `DB_PASSWORD` / `DB_NAME` instead of `DATABASE_URL`; `NODE_ENV=production` is not a dialect signal.
 - `npm run dev` starts the Express and Vite processes together; the Vite client waits for the Express health endpoint to become available before starting. Vite runs with `strictPort`, so a taken port is an error rather than a silent move to the next one — that keeps the dev stack from landing on the e2e suite's port.
@@ -32,5 +33,5 @@ Colosseum is a tournament management and scoring platform (React 19 + Express 5 
 - **Lint**: `npm run lint` (ESLint) and `npm run pretty` (Prettier check)
 - **Test**: `npm run test:run` (all tests, single run) or `npm test` (watch mode)
 - **Build**: `npm run build` (cleans, then builds client + server)
-- **Dev**: `npm run db:up && npm run db:wait && npm run dev` (starts both servers concurrently)
+- **Dev**: outside the devcontainer, `npm run db:up && npm run db:wait && npm run dev`; inside it, run `npm run dev` directly (starts both servers concurrently)
 - **Verify all**: `npm run pretty && npm run lint && npm run test:run && npm run build`

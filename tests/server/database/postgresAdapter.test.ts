@@ -249,19 +249,12 @@ describe('PostgresAdapter', () => {
       expect(row?.created_at).toBeInstanceOf(Date);
     });
 
-    it('returns BIGINT columns and COUNT(*) as strings', async () => {
+    it('returns COUNT(*) as a string', async () => {
       await testDb.db.run(
-        `INSERT INTO users (google_id, email, name, token_expires_at)
-         VALUES (?, ?, ?, ?) RETURNING id`,
-        ['g-1', 'a@example.com', 'A', 1893456000000],
+        `INSERT INTO users (google_id, email, name)
+         VALUES (?, ?, ?) RETURNING id`,
+        ['g-1', 'a@example.com', 'A'],
       );
-
-      const user = await testDb.db.get<{ token_expires_at: string }>(
-        'SELECT token_expires_at FROM users WHERE google_id = ?',
-        ['g-1'],
-      );
-      expect(typeof user?.token_expires_at).toBe('string');
-      expect(Number(user?.token_expires_at)).toBe(1893456000000);
 
       const counted = await testDb.db.get<{ count: string }>(
         'SELECT COUNT(*) AS count FROM users',

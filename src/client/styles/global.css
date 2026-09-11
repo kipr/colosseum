@@ -343,25 +343,6 @@ th {
   }
 }
 
-/* Drive Location Selector */
-.drive-location-item {
-  padding: 1rem 1.5rem;
-  border-bottom: 1px solid var(--border-color);
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  transition: background-color 0.2s;
-}
-
-.drive-location-item:hover {
-  background-color: var(--bg-color);
-}
-
-.drive-location-item:last-child {
-  border-bottom: none;
-}
-
 /* Status Badges */
 .badge {
   display: inline-block;

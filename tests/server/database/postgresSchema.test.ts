@@ -113,6 +113,15 @@ describe('Postgres schema', () => {
     });
   });
 
+  describe('users', () => {
+    it('does not store Google OAuth credentials', async () => {
+      const userColumns = await columnNames('users');
+      expect(userColumns).not.toContain('access_token');
+      expect(userColumns).not.toContain('refresh_token');
+      expect(userColumns).not.toContain('token_expires_at');
+    });
+  });
+
   describe('events', () => {
     it('has the public-result and score-accept columns', async () => {
       const cols = await columns('events');
