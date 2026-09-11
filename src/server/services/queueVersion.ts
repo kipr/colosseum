@@ -1,4 +1,4 @@
-import type { Database } from '../database/connection';
+import type { DbExecutor } from '../database/connection';
 import { isForeignKeyConstraintError } from '../database/constraintErrors';
 
 /**
@@ -21,7 +21,7 @@ export interface QueueVersionState {
 }
 
 export async function getQueueVersionState(
-  db: Database,
+  db: DbExecutor,
   eventId: number,
 ): Promise<QueueVersionState> {
   const row = await db.get<{ version: number; dirty: number }>(
@@ -36,7 +36,7 @@ export async function getQueueVersionState(
 
 /** Increment the event's queue version. Call after any direct queue change. */
 export async function bumpQueueVersion(
-  db: Database,
+  db: DbExecutor,
   eventId: number,
 ): Promise<void> {
   try {
@@ -58,7 +58,7 @@ export async function bumpQueueVersion(
  * (score accepts, bracket/team/match changes).
  */
 export async function markQueueDirty(
-  db: Database,
+  db: DbExecutor,
   eventId: number,
 ): Promise<void> {
   try {
@@ -78,7 +78,7 @@ export async function markQueueDirty(
  * the flag stays set and the next read syncs again.
  */
 export async function clearQueueDirty(
-  db: Database,
+  db: DbExecutor,
   eventId: number,
   expectedVersion: number,
 ): Promise<void> {

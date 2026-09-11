@@ -127,18 +127,10 @@ export interface DatabaseResult {
 }
 
 /**
- * Transaction interface for use inside Database.transaction() callbacks.
- * Methods are async to match the PostgreSQL client.
+ * Query methods shared by pool connections and open transactions.
+ * Pass this type to helpers that must run on either a `Database` or a `Transaction`.
  */
-export interface Transaction {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  run(sql: string, params?: any[]): Promise<DatabaseResult>;
-  exec(sql: string): Promise<void>;
-}
-
-export interface Database {
+export interface DbExecutor {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   get<T = any>(sql: string, params?: any[]): Promise<T | undefined>;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -146,6 +138,15 @@ export interface Database {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   run(sql: string, params?: any[]): Promise<DatabaseResult>;
   exec(sql: string): Promise<void>;
+}
+
+/**
+ * Transaction interface for use inside Database.transaction() callbacks.
+ * Methods are async to match the PostgreSQL client.
+ */
+export type Transaction = DbExecutor;
+
+export interface Database extends DbExecutor {
   /**
    * Execute a function inside a database transaction.
    * The callback receives a Transaction object with async methods.
@@ -153,6 +154,11 @@ export interface Database {
    * If the callback returns successfully, the transaction is committed.
    */
   transaction<T>(fn: (tx: Transaction) => Promise<T>): Promise<T>;
+}
+
+/** True when `db` can open its own transaction (pool adapter, not an open tx). */
+export function isDatabase(db: DbExecutor): db is Database {
+  return typeof (db as Database).transaction === 'function';
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -268,6 +274,16 @@ class PostgresAdapter implements Database {
             params ? normalizeParams(params) : params,
           );
           return result.rows[0];
+        },
+        all: async <R = any>( // eslint-disable-line @typescript-eslint/no-explicit-any
+          sql: string,
+          params?: any[], // eslint-disable-line @typescript-eslint/no-explicit-any
+        ): Promise<R[]> => {
+          const result = await client.query(
+            convertSql(sql),
+            params ? normalizeParams(params) : params,
+          );
+          return result.rows;
         },
         run: async (
           sql: string,

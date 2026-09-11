@@ -1,4 +1,4 @@
-import { Database } from '../database/connection';
+import type { DbExecutor } from '../database/connection';
 
 /**
  * Result of a bye resolution pass.
@@ -51,7 +51,7 @@ interface EntryRow {
  * @returns Statistics about what was resolved
  */
 export async function resolveBracketByes(
-  db: Database,
+  db: DbExecutor,
   bracketId: number,
 ): Promise<ByeResolutionResult> {
   const result: ByeResolutionResult = {
@@ -325,7 +325,7 @@ function resolveSource(
  * @param gamesById - Map of game ids to game rows (for slot assignment)
  */
 async function markGameAsBye(
-  db: Database,
+  db: DbExecutor,
   game: GameRow,
   winnerId: number,
   gamesById: Map<number, GameRow>,
