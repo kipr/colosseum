@@ -82,6 +82,38 @@
   color: #1e40af;
 }
 
+.spectator-events-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.spectator-events-status p {
+  margin: 0;
+}
+
+.spectator-events-refresh-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.spectator-events-refresh-warning p {
+  margin: 0;
+}
+
+[data-theme='dark'] .spectator-events-refresh-warning {
+  background: #78350f;
+  color: #fde68a;
+}
+
 [data-theme='dark'] .spectator-event-card-badge {
   background: #1e3a8a;
   color: #93c5fd;

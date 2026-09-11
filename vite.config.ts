@@ -25,7 +25,12 @@ const createProxyConfig = (target: string) => ({
   },
 });
 
-export default defineConfig({
+const clientAliases = {
+  '@': path.resolve(__dirname, './src/client'),
+  '@shared': path.resolve(__dirname, './src/shared'),
+};
+
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   root: 'src/client',
   publicDir: '../../static',
@@ -46,7 +51,16 @@ export default defineConfig({
     // stack's Vite (or the reverse), so a taken port has to be an error.
     strictPort: true,
     proxy: {
-      '^/api/.*': createProxyConfig(apiTarget),
+      '^/api/.*': {
+        ...createProxyConfig(apiTarget),
+        // Vite serves `src/client` at `/`, so `src/client/api/*.ts` is `/api/*.ts`.
+        // Do not proxy those modules to Express.
+        bypass(req: { url?: string }) {
+          if (req.url && /\.(tsx?|jsx?|mjs|css|map)(\?|$)/.test(req.url)) {
+            return req.url;
+          }
+        },
+      },
       '^/auth/.*': createProxyConfig(apiTarget),
       '^/scoresheet/.*': createProxyConfig(apiTarget),
       '^/field-templates.*': createProxyConfig(apiTarget),
@@ -66,8 +80,15 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src/client'),
-      '@shared': path.resolve(__dirname, './src/shared'),
+      ...clientAliases,
+      ...(command === 'build'
+        ? {
+            '@tanstack/react-query-devtools': path.resolve(
+              __dirname,
+              './src/client/queries/reactQueryDevtoolsStub.tsx',
+            ),
+          }
+        : {}),
     },
   },
-});
+}));

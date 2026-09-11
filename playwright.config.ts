@@ -65,6 +65,9 @@ export default defineConfig({
       timeout: 30_000,
       env: {
         COLOSSEUM_API_URL: API_URL,
+        // Query Devtools' floating button intercepts Playwright clicks
+        // (e.g. judge-chat "Send message"). Keep them for `npm run dev`.
+        VITE_QUERY_DEVTOOLS: 'false',
       },
     },
   ],

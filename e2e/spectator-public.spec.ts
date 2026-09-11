@@ -396,6 +396,49 @@ test.describe('Spectator Public Views & Release Gating', () => {
     ).toBeVisible();
   });
 
+  test('spectator events page recovers after an initial load failure', async ({
+    page,
+  }) => {
+    let fail = true;
+    await page.route('**/events/public', async (route) => {
+      if (fail) {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'Failed to fetch events' }),
+        });
+        return;
+      }
+      await route.continue();
+    });
+
+    try {
+      await page.goto('/spectator');
+      await expect(page.getByText('Unable to load events.')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+      await expect(
+        page.getByText('No events are currently available.'),
+      ).toHaveCount(0);
+
+      fail = false;
+      await page.getByRole('button', { name: 'Retry' }).click();
+
+      const activeCard = page.locator('.spectator-event-card', {
+        hasText: ACTIVE_EVENT_NAME,
+      });
+      const releasedCard = page.locator('.spectator-event-card', {
+        hasText: RELEASED_EVENT_NAME,
+      });
+      await expect(activeCard).toBeVisible();
+      await expect(releasedCard).toBeVisible();
+      await expect(
+        releasedCard.locator('.spectator-event-card-badge'),
+      ).toHaveText('Final results available');
+    } finally {
+      await page.unroute('**/events/public');
+    }
+  });
+
   test('navbar Colosseum title does not navigate away from spectator event view', async ({
     page,
   }) => {
@@ -658,6 +701,46 @@ test.describe('Spectator Public Views & Release Gating', () => {
     await expect(page.locator('.spectator-events-header h2')).toHaveText(
       'Spectator',
     );
+  });
+
+  test('returning from event detail reuses cached spectator events', async ({
+    page,
+  }) => {
+    await page.goto('/spectator');
+
+    const activeCard = page.locator('.spectator-event-card', {
+      hasText: ACTIVE_EVENT_NAME,
+    });
+    await expect(activeCard).toBeVisible();
+    await expect(
+      page.locator('.spectator-event-card', { hasText: RELEASED_EVENT_NAME }),
+    ).toBeVisible();
+
+    await activeCard.click();
+    await page.waitForURL(
+      new RegExp(`/spectator/events/${activeEventId}\\?view=seeding`),
+    );
+    await expect(
+      page.getByRole('heading', { name: ACTIVE_EVENT_NAME }),
+    ).toBeVisible();
+
+    await page.locator('.spectator-back-btn').click();
+    await page.waitForURL(/\/spectator$/);
+
+    await expect(page.getByText('Loading events...')).toHaveCount(0);
+    await expect(
+      page.locator('.spectator-event-card', { hasText: ACTIVE_EVENT_NAME }),
+    ).toBeVisible();
+    await expect(
+      page.locator('.spectator-event-card', {
+        hasText: RELEASED_EVENT_NAME,
+      }),
+    ).toBeVisible();
+    await expect(
+      page
+        .locator('.spectator-event-card', { hasText: RELEASED_EVENT_NAME })
+        .locator('.spectator-event-card-badge'),
+    ).toHaveText('Final results available');
   });
 
   /* ── 13. Verify release gating at API level ──────────────────────── */

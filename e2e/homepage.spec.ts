@@ -10,11 +10,20 @@ test.describe('Homepage', () => {
     await page.goto('/');
     await expect(page.locator('.app-loading')).toHaveCount(0);
 
-    await expect(page.getByRole('heading', { name: 'Welcome to Colosseum' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Welcome to Colosseum' }),
+    ).toBeVisible();
+    await expect(page.locator('.tsqd-parent-container')).toHaveCount(0);
 
-    await expect(page.getByRole('heading', { name: 'Judge / Scorer' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Administrator' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Spectator' })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Judge / Scorer' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Administrator' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Spectator' }),
+    ).toBeVisible();
   });
 
   test('judge card navigates to /judge', async ({ page }) => {
