@@ -1,3 +1,5 @@
+import { compileScoresheetFormulas } from './scoresheetFormulaProgram';
+
 /**
  * Official scoresheet template schema types and defaultValue validation.
  */
@@ -85,7 +87,25 @@ export interface WinnerSelectField extends ScoresheetFieldBase {
   defaultValue?: never;
 }
 
+export type DerivedOutputKey =
+  | 'sortedEquivalent'
+  | 'unsortedEquivalent'
+  | 'subtotal';
+export type RepeatableGroupDerived =
+  | {
+      type: 'botballCubeStacks';
+      sortedValue: number;
+      unsortedValue: number;
+      outputs?: Partial<Record<DerivedOutputKey, string>>;
+    }
+  | {
+      type: 'botballStartBoxCubes';
+      outputs?: Partial<Record<'subtotal', string>>;
+    };
+
 export interface RepeatableGroupField extends ScoresheetFieldBase {
+  derived?: RepeatableGroupDerived;
+  pruneBlankRows?: boolean;
   type: 'repeatableGroup';
   fields?: ScoresheetField[];
   minRows?: number;
@@ -394,6 +414,15 @@ export function validateScoresheetFields(
     errors.push(...validateFieldNode(field, path));
   });
 
+  const compilation = compileScoresheetFormulas(fields);
+  if (!compilation.ok) {
+    errors.push(
+      ...compilation.errors.map(
+        (error) =>
+          `fields[${error.field ?? '?'}]: ${error.message}${error.offset === undefined ? '' : ` (offset ${error.offset})`} [${error.code}]`,
+      ),
+    );
+  }
   return { ok: errors.length === 0, errors };
 }
 

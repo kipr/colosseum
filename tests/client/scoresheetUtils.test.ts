@@ -621,8 +621,16 @@ describe('scoresheetUtils', () => {
 
   describe('calculateScoresheetValues', () => {
     it('returns an empty object when fields are missing or empty', () => {
-      expect(calculateScoresheetValues(undefined, { a: 1 })).toEqual({});
-      expect(calculateScoresheetValues([], { a: 1 })).toEqual({});
+      expect(calculateScoresheetValues(undefined, { a: 1 })).toEqual({
+        ok: true,
+        values: {},
+        errors: [],
+      });
+      expect(calculateScoresheetValues([], { a: 1 })).toEqual({
+        ok: true,
+        values: {},
+        errors: [],
+      });
     });
 
     it('evaluates arithmetic formulas from form data', () => {
@@ -635,7 +643,7 @@ describe('scoresheetUtils', () => {
           ],
           { a: 10, b: 5 },
         ),
-      ).toEqual({ total: 15 });
+      ).toEqual({ ok: true, values: { total: 15 }, errors: [] });
     });
 
     it('lets later calculated fields read earlier calculated values', () => {
@@ -648,7 +656,11 @@ describe('scoresheetUtils', () => {
           ],
           { a: 4 },
         ),
-      ).toEqual({ subtotal: 8, grand_total: 9 });
+      ).toEqual({
+        ok: true,
+        values: { subtotal: 8, grand_total: 9 },
+        errors: [],
+      });
     });
 
     it('includes repeatable-group derived outputs in formulas', () => {
@@ -671,10 +683,10 @@ describe('scoresheetUtils', () => {
             bonus: 10,
           },
         ),
-      ).toEqual({ grand_total: 100 });
+      ).toEqual({ ok: true, values: { grand_total: 100 }, errors: [] });
     });
 
-    it('quotes values for fieldId === string comparisons', () => {
+    it('preserves string values for strict comparisons', () => {
       expect(
         calculateScoresheetValues(
           [
@@ -687,7 +699,7 @@ describe('scoresheetUtils', () => {
           ],
           { color: 'red' },
         ),
-      ).toEqual({ points: 10 });
+      ).toEqual({ ok: true, values: { points: 10 }, errors: [] });
     });
 
     it('treats booleans as 1/0 and empty values as 0', () => {
@@ -705,16 +717,20 @@ describe('scoresheetUtils', () => {
           ],
           { flag: true, blank: '' },
         ),
-      ).toEqual({ total: 1 });
+      ).toEqual({ ok: true, values: { total: 1 }, errors: [] });
     });
 
-    it('returns 0 for invalid formulas', () => {
+    it('returns diagnostics for invalid formulas', () => {
       expect(
         calculateScoresheetValues(
           [{ id: 'total', type: 'calculated', formula: 'a +' }],
           { a: 1 },
         ),
-      ).toEqual({ total: 0 });
+      ).toMatchObject({
+        ok: false,
+        values: {},
+        errors: [{ field: 'total', code: 'EXPECTED_EXPRESSION' }],
+      });
     });
   });
 });

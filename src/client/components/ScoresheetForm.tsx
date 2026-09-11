@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   BracketGameOption,
   buildRepeatableGroupDerivedScoreEntries,
@@ -31,6 +31,8 @@ import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
 import JudgeChatDrawer from './judgeChat/JudgeChatDrawer';
+import { compileScoresheetFormulas } from '../../shared/scoresheetFormulaProgram';
+import FormulaErrors from './FormulaErrors';
 
 interface ScoresheetFormProps {
   template: any;
@@ -109,9 +111,15 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const [dynamicData, setDynamicData] = useState<Record<string, any[]>>({});
   const [bracketGames, setBracketGames] = useState<BracketGameOption[]>([]);
   const [teamsData, setTeamsData] = useState<any[]>([]); // Teams lookup for head-to-head
-  const [calculatedValues, setCalculatedValues] = useState<
-    Record<string, number>
-  >({});
+  const compilation = useMemo(
+    () => compileScoresheetFormulas(schema.fields),
+    [schema.fields],
+  );
+  const calculation = useMemo(
+    () => calculateScoresheetValues(schema.fields, formData, compilation),
+    [schema.fields, formData, compilation],
+  );
+  const calculatedValues = calculation.values;
   const [notification, setNotification] = useState<{
     message: string;
     type: 'success' | 'error';
@@ -181,15 +189,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     ) {
       setFormData(getInitialFormData());
       setTouchedFields({});
-      setCalculatedValues({});
       showNotification('Form has been reset', 'success');
     }
   };
-
-  // Recalculate all formulas when form data changes
-  useEffect(() => {
-    calculateAllFormulas();
-  }, [formData]);
 
   useEffect(() => {
     // Load dynamic dropdown data (skip team_number when using queue)
@@ -754,12 +756,20 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     return field.placeholder || '0';
   };
 
-  const calculateAllFormulas = () => {
-    setCalculatedValues(calculateScoresheetValues(schema.fields, formData));
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const submission = calculateScoresheetValues(
+      schema.fields,
+      formData,
+      compilation,
+    );
+    if (!submission.ok) {
+      showNotification(
+        'Correct the formula errors before submitting.',
+        'error',
+      );
+      return;
+    }
 
     // Validate winner selection for head-to-head
     if (isHeadToHead && resultType !== 'disqualification' && !formData.winner) {
@@ -826,10 +836,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     const scoreData: Record<string, any> = {};
-    const submitCalculatedValues = calculateScoresheetValues(
-      schema.fields,
-      formData,
-    );
+    const submitCalculatedValues = submission.values;
     const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
       schema.fields,
       formData,
@@ -1231,8 +1238,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   );
 
   const renderWinnerSelect = (field: any) => {
-    const teamATotal = calculatedValues['team_a_total'] || 0;
-    const teamBTotal = calculatedValues['team_b_total'] || 0;
+    const teamATotal = calculatedValues['team_a_total'] ?? 'Unavailable';
+    const teamBTotal = calculatedValues['team_b_total'] ?? 'Unavailable';
     const teamAName = formData.team_a_name || 'Team A';
     const teamBName = formData.team_b_name || 'Team B';
     const teamANumber = formData.team_a_number || '';
@@ -1311,7 +1318,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     if (field.type === 'calculated') {
-      const calcValue = calculatedValues[field.id] || 0;
+      const calcValue = calculatedValues[field.id] ?? 'Unavailable';
       const className = field.isGrandTotal
         ? 'grand-total-field'
         : field.isTotal
@@ -1328,6 +1335,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             {field.label}
           </label>
           <div className="calculated-value">{calcValue}</div>
+          <FormulaErrors
+            errors={calculation.errors.filter(
+              (error) => error.field === field.id,
+            )}
+          />
         </div>
       );
     }
@@ -1608,6 +1620,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         className="scoresheet-form"
         noValidate={isHeadToHead && resultType !== 'standard'}
       >
+        <FormulaErrors errors={calculation.errors} summary />
         {/* Title row: Reset | title | Event Staff */}
         <div
           style={{
@@ -1809,7 +1822,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         />
 
         <div className="scoresheet-footer">
-          <button type="submit" className="btn btn-primary btn-large">
+          <button
+            type="submit"
+            className="btn btn-primary btn-large"
+            disabled={!calculation.ok}
+          >
             {isHeadToHead
               ? resultType === 'standard'
                 ? 'Submit Winner'

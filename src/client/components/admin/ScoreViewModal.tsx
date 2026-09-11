@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -27,6 +27,8 @@ import {
 import TeamInitialsFields from '../TeamInitialsFields';
 import ScoresheetFieldControl from '../ScoresheetFieldControl';
 import RepeatableGroupTable from '../RepeatableGroupTable';
+import { compileScoresheetFormulas } from '../../../shared/scoresheetFormulaProgram';
+import FormulaErrors from '../FormulaErrors';
 
 interface ScoreViewModalProps {
   score: any;
@@ -41,9 +43,20 @@ export default function ScoreViewModal({
 }: ScoreViewModalProps) {
   const [template, setTemplate] = useState<any>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
-  const [calculatedValues, setCalculatedValues] = useState<
-    Record<string, number>
-  >({});
+  const isReadOnly = score.status !== 'pending';
+  const fields = template?.schema?.fields;
+  const compilation = useMemo(
+    () => compileScoresheetFormulas(fields),
+    [fields],
+  );
+  const calculation = useMemo(
+    () =>
+      isReadOnly
+        ? { ok: true, values: {} as Record<string, number>, errors: [] }
+        : calculateScoresheetValues(fields, formData, compilation),
+    [fields, formData, compilation, isReadOnly],
+  );
+  const calculatedValues = calculation.values;
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resultType, setResultType] = useState<BracketResultType>(
@@ -53,7 +66,6 @@ export default function ScoreViewModal({
     score.disqualified_team_id ?? null,
   );
   const [resultNote, setResultNote] = useState(score.result_note ?? '');
-  const isReadOnly = score.status !== 'pending';
   const eventScoreType: EventScoreType | null =
     score.score_type === 'seeding' ||
     score.score_type === 'bracket' ||
@@ -76,12 +88,6 @@ export default function ScoreViewModal({
     loadTemplate();
     initializeFormData();
   }, []);
-
-  useEffect(() => {
-    if (template) {
-      calculateAllFormulas();
-    }
-  }, [formData, template]);
 
   const loadTemplate = async () => {
     try {
@@ -111,12 +117,6 @@ export default function ScoreViewModal({
       },
     );
     setFormData(data);
-  };
-
-  const calculateAllFormulas = () => {
-    setCalculatedValues(
-      calculateScoresheetValues(template?.schema?.fields, formData),
-    );
   };
 
   const handleDisqualifiedTeamChange = (teamId: number | null) => {
@@ -195,6 +195,15 @@ export default function ScoreViewModal({
       }
     }
 
+    const saveCalculation = calculateScoresheetValues(
+      fields,
+      formData,
+      compilation,
+    );
+    if (!template || !saveCalculation.ok) {
+      alert('Correct the formula errors before saving.');
+      return;
+    }
     setSaving(true);
     try {
       // Build updated score data with labels and types preserved
@@ -203,10 +212,7 @@ export default function ScoreViewModal({
       const fieldsById = new Map<string, any>(
         (template?.schema?.fields || []).map((field: any) => [field.id, field]),
       );
-      const saveCalculatedValues = calculateScoresheetValues(
-        template?.schema?.fields,
-        formData,
-      );
+      const saveCalculatedValues = saveCalculation.values;
       const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
         template?.schema?.fields || [],
         formData,
@@ -239,9 +245,13 @@ export default function ScoreViewModal({
 
       // Update calculated values
       Object.entries(saveCalculatedValues).forEach(([fieldId, value]) => {
-        if (updatedScoreData[fieldId]) {
-          updatedScoreData[fieldId].value = value;
-        }
+        const field = fieldsById.get(fieldId);
+        updatedScoreData[fieldId] = {
+          ...updatedScoreData[fieldId],
+          label: field?.label,
+          type: 'calculated',
+          value,
+        };
       });
 
       Object.assign(
@@ -301,10 +311,9 @@ export default function ScoreViewModal({
     }
 
     if (field.type === 'calculated') {
-      const calcValue =
-        calculatedValues[field.id] !== undefined
-          ? calculatedValues[field.id]
-          : score.score_data[field.id]?.value || 0;
+      const calcValue = isReadOnly
+        ? (score.score_data[field.id]?.value ?? 'Unavailable')
+        : (calculatedValues[field.id] ?? 'Unavailable');
       const className = field.isGrandTotal
         ? 'grand-total-field'
         : field.isTotal
@@ -321,6 +330,13 @@ export default function ScoreViewModal({
             {field.label}
           </label>
           <div className="calculated-value">{calcValue}</div>
+          {!isReadOnly && (
+            <FormulaErrors
+              errors={calculation.errors.filter(
+                (error) => error.field === field.id,
+              )}
+            />
+          )}
         </div>
       );
     }
@@ -662,6 +678,7 @@ export default function ScoreViewModal({
           &times;
         </span>
 
+        {!isReadOnly && <FormulaErrors errors={calculation.errors} summary />}
         <div className="score-view-header">
           <h3>{isReadOnly ? 'View Score' : 'Edit Score'}</h3>
           <div className="score-view-meta">
@@ -851,7 +868,7 @@ export default function ScoreViewModal({
             <button
               className="btn btn-primary"
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !template || !calculation.ok}
             >
               {saving ? 'Saving...' : 'Save Changes'}
             </button>

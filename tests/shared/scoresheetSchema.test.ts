@@ -113,7 +113,7 @@ describe('scoresheetSchema defaultValue validation', () => {
 
   it('rejects defaults on calculated, header, and winner-select fields', () => {
     const result = validateScoresheetFields([
-      { id: 'total', type: 'calculated', formula: 'a+b', defaultValue: 0 },
+      { id: 'total', type: 'calculated', formula: '1+2', defaultValue: 0 },
       { type: 'section_header', label: 'A', defaultValue: 'x' },
       { type: 'group_header', label: 'B', defaultValue: 'y' },
       { id: 'winner', type: 'winner-select', defaultValue: 'a' },

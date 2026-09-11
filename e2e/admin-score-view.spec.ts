@@ -147,6 +147,121 @@ test.describe('Admin score view template lookup', () => {
     await closeE2eDb();
   });
 
+  test('blocks invalid recalculation, guards saving, and replaces stale totals after recovery', async ({
+    page,
+  }) => {
+    const db = e2eDb();
+    const row = await db.get<{ schema: string }>(
+      'SELECT schema FROM scoresheet_templates WHERE id = ?',
+      [templateId],
+    );
+    const original = row!.schema;
+    const schema = JSON.parse(original);
+    schema.fields.find((field: { id: string }) => field.id === 'driver').type =
+      'text';
+    await db.run('UPDATE scoresheet_templates SET schema = ? WHERE id = ?', [
+      JSON.stringify(schema),
+      templateId,
+    ]);
+    try {
+      await setSessionCookie(page, admin.signedCookie);
+      await page.goto(`/admin/events/${eventId}?view=scoring`);
+      await page.getByRole('button', { name: 'View Details' }).click();
+      const modal = page.locator('.modal.show');
+      const input = modal
+        .locator('.score-field', { hasText: 'Driver' })
+        .locator('input');
+      const save = modal.getByRole('button', { name: 'Save Changes' });
+      await input.fill('bad');
+      await modal
+        .getByPlaceholder('Initials of team representative')
+        .fill('AB');
+      await expect(save).toBeDisabled();
+      await expect(modal.getByRole('alert')).toContainText('finite number');
+      await expect(
+        modal.locator('.grand-total-field .calculated-value'),
+      ).toHaveText('Unavailable');
+      let saves = 0;
+      await page.route('**/scores/*', async (route) => {
+        if (route.request().method() !== 'PUT') {
+          await route.continue();
+          return;
+        }
+        saves++;
+        expect(route.request().postDataJSON().scoreData.grand_total.value).toBe(
+          46,
+        );
+        await route.fulfill({ json: { success: true } });
+      });
+      // Removing disabled exercises the independent handler check.
+      page.once('dialog', (dialog) => dialog.accept());
+      await save.evaluate((button) => button.removeAttribute('disabled'));
+      await save.click();
+      expect(saves).toBe(0);
+      await expect(modal).toBeVisible();
+      await input.fill('6');
+      await expect(save).toBeEnabled();
+      await expect(
+        modal.locator('.grand-total-field .calculated-value'),
+      ).toHaveText('46');
+      await save.click();
+      await expect(modal).toHaveCount(0);
+      expect(saves).toBe(1);
+    } finally {
+      await db.run('UPDATE scoresheet_templates SET schema = ? WHERE id = ?', [
+        original,
+        templateId,
+      ]);
+    }
+  });
+
+  test('keeps historical totals viewable when the current formula is invalid', async ({
+    page,
+  }) => {
+    const db = e2eDb();
+    const row = await db.get<{ schema: string }>(
+      'SELECT schema FROM scoresheet_templates WHERE id = ?',
+      [templateId],
+    );
+    const schema = JSON.parse(row!.schema);
+    schema.fields.find(
+      (field: { id: string }) => field.id === 'grand_total',
+    ).formula = 'unknown+';
+    await db.run('UPDATE scoresheet_templates SET schema = ? WHERE id = ?', [
+      JSON.stringify(schema),
+      templateId,
+    ]);
+    await db.run(
+      "UPDATE score_submissions SET status = 'accepted' WHERE template_id = ?",
+      [templateId],
+    );
+    try {
+      await setSessionCookie(page, admin.signedCookie);
+      await page.goto(`/admin/events/${eventId}?view=scoring`);
+      await page.getByRole('button', { name: 'View', exact: true }).click();
+      const modal = page.locator('.modal.show');
+      await expect(
+        modal.getByRole('heading', { name: 'View Score' }),
+      ).toBeVisible();
+      await expect(
+        modal.locator('.grand-total-field .calculated-value'),
+      ).toHaveText('95');
+      await expect(modal.getByRole('alert')).toHaveCount(0);
+      await expect(
+        modal.getByRole('button', { name: 'Save Changes' }),
+      ).toHaveCount(0);
+    } finally {
+      await db.run('UPDATE scoresheet_templates SET schema = ? WHERE id = ?', [
+        row!.schema,
+        templateId,
+      ]);
+      await db.run(
+        "UPDATE score_submissions SET status = 'pending' WHERE template_id = ?",
+        [templateId],
+      );
+    }
+  });
+
   test('opens a score from a complete event using the existing template', async ({
     page,
   }) => {

@@ -33,11 +33,36 @@ describe('Field Templates - additional coverage', () => {
   });
 
   describe('PUT /field-templates/:id', () => {
+    it('rejects invalid formulas on both create and update with structured errors', async () => {
+      const created = await http.post(`${server.baseUrl}/field-templates`, {
+        name: 'Valid',
+        fields: [{ id: 'a', type: 'number' }],
+      });
+      expect(created.status).toBe(200);
+      const id = (created.json as { id: number }).id;
+      const body = {
+        name: 'Invalid',
+        fields: [{ id: 'total', type: 'calculated', formula: 'unknown+1' }],
+      };
+      for (const res of [
+        await http.post(`${server.baseUrl}/field-templates`, body),
+        await http.put(`${server.baseUrl}/field-templates/${id}`, body),
+      ]) {
+        expect(res.status).toBe(400);
+        expect(res.json).toMatchObject({
+          error: expect.any(String),
+          errors: expect.arrayContaining([
+            expect.stringContaining('UNKNOWN_REFERENCE'),
+          ]),
+        });
+      }
+    });
+
     it('updates an existing field template', async () => {
       // Create
       const createRes = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'Original',
-        fields: [{ name: 'field1', type: 'number' }],
+        fields: [{ id: 'field1', type: 'number' }],
       });
       expect(createRes.status).toBe(200);
       const created = createRes.json as { id: number };
@@ -47,7 +72,7 @@ describe('Field Templates - additional coverage', () => {
         `${server.baseUrl}/field-templates/${created.id}`,
         {
           name: 'Updated',
-          fields: [{ name: 'field1', type: 'text' }],
+          fields: [{ id: 'field1', type: 'text' }],
         },
       );
       expect(updateRes.status).toBe(200);
@@ -74,7 +99,7 @@ describe('Field Templates - additional coverage', () => {
     it('deletes a field template', async () => {
       const createRes = await http.post(`${server.baseUrl}/field-templates`, {
         name: 'To Delete',
-        fields: [{ name: 'f1' }],
+        fields: [{ id: 'f1', type: 'number' }],
       });
       const created = createRes.json as { id: number };
 

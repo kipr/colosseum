@@ -1,0 +1,61 @@
+Colosseum score formula language
+===============================
+expression      := conditional ;
+conditional     := logical_or [ "?" conditional ":" conditional ] ;
+logical_or      := comparison { "||" comparison } ;
+comparison      := additive [ (">" | "<" | "===") additive ] ;
+additive        := multiplicative { "+" multiplicative } ;
+multiplicative  := primary { "*" primary } ;
+primary         := number | string | identifier | "(" expression ")" ;
+number          := digit { digit } [ "." digit { digit } ] ;
+identifier      := letter { letter | digit | "_" } ;
+letter          := "A" ... "Z" | "a" ... "z" ;
+digit           := "0" ... "9" ;
+string          := "'" { text_character | "\\'" | "\\\\" } "'" ;
+text_character  := any character other than single quote or backslash ;
+
+Whitespace is optional between tokens. Identifiers are case-sensitive ASCII.
+Quoted text can contain whitespace, operators, and delimiters; only escaped
+single quotes and escaped backslashes are supported. There are no boolean
+literals: booleans enter through fields or comparison results. A name such as
+true refers to a declared field, not a JavaScript keyword.
+
+Precedence, strongest first: parentheses, multiplication, addition,
+comparison (<, >, === at the same precedence), logical OR, conditional.
+Binary operations associate left; conditionals associate right.
+Comparison chains such as a < b < c are rejected. Parenthesize explicitly.
+The entire input must be consumed. No unary signs, subtraction, division,
+exponents, function calls, property access, assignment, arrays, comments,
+interpolation, or other JavaScript syntax is supported.
+
+Limits: 1,024 UTF-16 code units per formula; maximum AST depth 64 (a leaf
+has depth 1, including every constructed arithmetic operator); maximum
+syntactic depth 64 (top-level expression is depth 1, each parenthesis or
+nested conditional branch adds 1). Numeric literals must be finite.
+Decimals require digits before and after the dot: 0.5, not .5 or 1.
+
+Value rules
+-----------
+Values are numbers, strings, or booleans. Arithmetic + and * and relational
+comparisons < and > convert operands numerically: finite numeric strings
+are accepted, booleans become 1/0, empty or whitespace-only strings become
+zero. Nonblank nonnumeric text and nonfinite results cause diagnostics.
+Addition never concatenates. Calculated field outputs must convert to a
+finite number. Overflow and invalid conversions never become zero.
+=== compares the original primitive types and values without coercion.
+Conditions interpret numeric strings numerically ('0' is false), empty
+strings as false, and other nonnumeric text as true. || short-circuits and
+returns the selected operand. A conditional evaluates only its selected
+branch. These evaluation rules do not remove static dependencies.
+
+Examples
+--------
+a + b * 2                    // addition after multiplication
+a === '1' ? 100 : 0          // string button selection
+(a > 0 ? a : 0) + 5
+multiplier || 1              // default a zero multiplier to one
+a ? b ? 1 : 2 : 3            // a ? (b ? 1 : 2) : 3
+label === 'it\'s +1' ? 2 : 0 // operators inside strings are text
+
+Comments above annotate examples; comments are not valid formula syntax.
+See formula-engine.md for dependencies, diagnostics, auditing, and rollout.

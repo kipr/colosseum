@@ -9,13 +9,17 @@ test.describe('Portable scoresheet default values', () => {
   let htmlUrl: string;
 
   test.beforeAll(() => {
-    const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-defaults-e2e-'));
+    const tempDir = mkdtempSync(
+      path.join(os.tmpdir(), 'portable-defaults-e2e-'),
+    );
     const outputPath = path.join(tempDir, 'defaults.html');
 
     execFileSync(
       'node',
       [
-        'tools/portable-scoresheet/export-html.mjs',
+        '-r',
+        'ts-node/register',
+        'tools/portable-scoresheet/export-html.ts',
         '--input',
         'templates/test-default-values.json',
         '--output',
