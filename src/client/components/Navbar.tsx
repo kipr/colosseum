@@ -123,7 +123,7 @@ export default function Navbar() {
                 <button className="nav-item btn-secondary" onClick={logout}>
                   Logout
                 </button>
-                <span className="user-info">{user.name}</span>
+                <span className="user-info">{user.name ?? user.email}</span>
               </>
             ) : (
               isHome && (

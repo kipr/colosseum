@@ -78,12 +78,12 @@ function resolveView(searchView: string | null): AdminView {
 }
 
 export default function Admin() {
-  const { user, loading } = useAuth();
+  const { user, loading, serverAvailable, checkAuth } = useAuth();
   const {
     selectedEvent,
-    events,
     loading: eventsLoading,
-    selectEventById,
+    error: eventsError,
+    refreshEvents,
   } = useEvent();
   const navigate = useNavigate();
   const { eventId: eventIdParam, bracketId: bracketIdParam } = useParams<{
@@ -95,28 +95,6 @@ export default function Admin() {
   const activeTab: AdminView = bracketIdParam
     ? 'brackets'
     : resolveView(searchParams.get('view'));
-
-  // Sync URL eventId to EventContext once events have loaded
-  useEffect(() => {
-    if (eventsLoading || events.length === 0) return;
-
-    if (eventIdParam) {
-      const id = Number(eventIdParam);
-      const exists = events.find((e) => e.id === id);
-      if (exists) {
-        if (selectedEvent?.id !== id) selectEventById(id);
-      } else {
-        navigate(adminEventsPath('events'), { replace: true });
-      }
-    }
-  }, [
-    eventIdParam,
-    events,
-    eventsLoading,
-    selectedEvent?.id,
-    selectEventById,
-    navigate,
-  ]);
 
   // Keep localStorage in sync as a fallback for next visit
   useEffect(() => {
@@ -137,10 +115,10 @@ export default function Admin() {
   );
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (!loading && !user && serverAvailable) {
       navigate('/');
     }
-  }, [user, loading, navigate]);
+  }, [user, loading, serverAvailable, navigate]);
 
   if (loading || eventsLoading) {
     return (
@@ -148,13 +126,40 @@ export default function Admin() {
         <Navbar />
         <main className="container">
           <p>Loading...</p>
+          {!serverAvailable ? (
+            <p className="lookup-status-banner">
+              Unable to reach the server. Retrying...
+            </p>
+          ) : null}
         </main>
       </div>
     );
   }
 
   if (!user) {
-    return null;
+    return (
+      <div className="app">
+        <Navbar />
+        <main className="container">
+          <div className="lookup-status-banner" role="alert">
+            <p>
+              {serverAvailable
+                ? 'Unable to verify your session.'
+                : 'Unable to reach the server.'}
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                void checkAuth();
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -189,6 +194,38 @@ export default function Admin() {
                 </div>
               )}
             </div>
+            {!serverAvailable ? (
+              <div className="lookup-status-banner" role="status">
+                <p>
+                  Unable to reach the server. Your session data is still shown.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    void checkAuth();
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
+            {eventsError ? (
+              <div className="lookup-status-banner" role="status">
+                <p>
+                  Couldn&apos;t refresh events. Showing previously loaded data.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => {
+                    void refreshEvents();
+                  }}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : null}
 
             <Suspense
               fallback={

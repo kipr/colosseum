@@ -7,20 +7,25 @@ import './Home.css';
 export default function Home() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { user, loading } = useAuth();
+  const { user, loading, serverAvailable, checkAuth } = useAuth();
+  const loggedInHandoff = searchParams.get('logged_in') === '1';
 
   // Handle redirect after OAuth login
   useEffect(() => {
-    if (searchParams.get('logged_in') === '1' && !loading) {
-      // Clear the query param from URL
-      window.history.replaceState({}, '', '/');
-
-      if (user) {
-        // User is logged in, redirect to admin
-        navigate('/admin/events', { replace: true });
-      }
+    if (!loggedInHandoff || loading) {
+      return;
     }
-  }, [searchParams, user, loading, navigate]);
+
+    if (user) {
+      window.history.replaceState({}, '', '/');
+      navigate('/admin/events', { replace: true });
+      return;
+    }
+
+    if (serverAvailable) {
+      window.history.replaceState({}, '', '/');
+    }
+  }, [loggedInHandoff, user, loading, serverAvailable, navigate]);
 
   const handleJudgeClick = () => {
     navigate('/judge');
@@ -45,6 +50,24 @@ export default function Home() {
     <div className="app">
       <Navbar />
       <main className="container">
+        {loggedInHandoff && !loading && !user && !serverAvailable ? (
+          <div className="lookup-status-banner" role="alert">
+            <p>
+              {serverAvailable
+                ? 'Unable to verify your session after login.'
+                : 'Unable to reach the server after login.'}
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => {
+                void checkAuth();
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
         <div className="hero">
           <h2>Welcome to Colosseum</h2>
           <p>A powerful tournament scoring and management platform</p>
