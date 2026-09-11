@@ -1,7 +1,9 @@
 # Botball 2026 Cube Stack Scoring Rules
 
-These notes capture the clarified cube stack rules for the planned 2026 GCER scoresheet update.
-They are implementation notes only; the current scoring templates have not yet been changed to use repeatable stack rows.
+These notes capture the clarified cube stack rules used by the 2026 GCER
+scoresheet. The repeatable-row implementation is live in
+`templates/botball-gcer-2026-scoring-fields.json`; the generic UI and derived
+scoring code live in `src/client/components/` and `src/client/scoring/`.
 
 ## Stack Definition
 
@@ -42,23 +44,28 @@ A lone brown cube counts as eight unsorted cubes.
 - A stack containing both red and green cubes is unsorted.
 - A stack containing multiple sortable colors is fully unsorted, but still scores as unsorted cube equivalents. For example, one small red cube and one small green cube count as two unsorted cubes.
 
-## Planned Repeatable Stack Implementation
+## Repeatable Stack Implementation
 
-Implement this as a generic scoresheet capability with an isolated Botball scoring helper:
+The implementation uses a generic scoresheet capability with an isolated
+Botball scoring helper:
 
-1. Add a reusable `repeatableGroup` field type to scoresheet schemas.
-2. Use one `repeatableGroup` per cube-stack scoring area, such as `Internal Loading Dock Stacks` and `External Loading Dock Stacks`.
-3. Keep the scoring area in the schema because cube stack point values differ by area.
-4. Store each physical stack as one row. The judge enters the exact cube colors and sizes present in that stack.
-5. Automatically append a new blank row when the last row has any cube value.
-6. Ignore or prune fully blank rows during calculation and submission.
-7. Derive sorted cube equivalents, unsorted cube equivalents, per-row status, and subtotal from the row contents.
-8. Store the raw stack rows and per-row derived metadata on the repeatable group submission entry so admin review can see exactly what the judge entered.
-9. Also publish derived totals as normal top-level score fields so existing formulas, totals, rankings, and admin review flows can keep consuming field IDs such as `side_a_ild_sorted_cubes`, `side_a_ild_unsorted_cubes`, and `side_a_ild_subtotal`.
-10. Replace the current manual cube and pallet fields for the affected Botball cube-stack areas. Do not keep the old `*_pallets_mult` fields beside the repeatable stack group unless final rules confirm an additional area multiplier independent of per-stack pallet state.
-11. All template updates should take place in the new `templates/botball-gcer-2026-scoring-fields.json`.
+1. Scoresheet schemas support a reusable `repeatableGroup` field type.
+2. Each cube-stack scoring area uses its own repeatable group.
+3. Each physical stack is stored as one row with explicit cube colors, sizes,
+   and pallet presence.
+4. The UI appends a blank row when the final row receives a cube value.
+5. Fully blank rows are ignored during calculation and pruned on submission.
+6. The derived helper calculates sorted and unsorted cube equivalents,
+   per-row status, and subtotals.
+7. Submissions retain raw rows plus derived row metadata for admin review.
+8. Configured derived totals are published as top-level score entries so
+   formulas can reference IDs such as `side_a_ild_sorted_cubes`,
+   `side_a_ild_unsorted_cubes`, and `side_a_ild_subtotal`.
+9. Area-specific point values stay in the template schema.
 
-The `repeatableGroup` field should remain generic. Botball-specific logic should live in a pure helper, tentatively `scoreBotballCubeStacks`, so the color, size, brown wildcard, and all-or-nothing sorting rules are easy to test outside React.
+The `repeatableGroup` field remains generic. Botball-specific logic lives in the
+pure `scoreBotballCubeStacks` helper so color, size, brown-wildcard, and
+all-or-nothing sorting rules can be tested outside React.
 
 Use `has_pallet` for each row because pallet presence is a binary property of the physical stack. Use explicit color and size field IDs (`small_yellow`, `large_brown`) so submitted data is unambiguous and matches the helper contract.
 
@@ -199,7 +206,7 @@ Helper behavior:
 - Fully unsorted stacks still score at the unsorted cube value; they are not worth zero.
 - Empty rows do not contribute to sorted or unsorted equivalents.
 
-Suggested helper contract:
+The helper's conceptual contract is:
 
 ```typescript
 export interface BotballCubeStackRow {

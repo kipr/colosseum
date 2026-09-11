@@ -1,6 +1,13 @@
 # Bracket Queue Order — Design and Implementation Plan
 
-Status: proposed, not yet implemented.
+> [!WARNING]
+> Historical implementation plan. Canonical bracket play order, proportional
+> queue interleaving, backfill support, and rest warnings are implemented.
+> Consult `src/server/services/bracketQueueOrder.ts`,
+> `src/server/services/bracketTemplates.ts`, and
+> `src/server/services/teamRest.ts` for current behavior.
+
+Original status: proposed, not yet implemented.
 
 This document covers three related changes to how bracket matches reach the queue:
 

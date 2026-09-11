@@ -1,3 +1,10 @@
+# Legacy SQLite Schema Proposal
+
+> [!WARNING]
+> Historical design record only. Colosseum now requires PostgreSQL, and the
+> authoritative schema lives in `src/server/database/schema/`. See
+> [Database Architecture](../DATABASE.md) for the current structure.
+
 I want to transition from google sheets to a full DB backend. The first step is a SQLite schema to replace the sheets functionality. Here is the important functionality the google sheets fulfilled:
 
 **List participating teams. Columns**:

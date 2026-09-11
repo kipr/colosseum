@@ -27,7 +27,11 @@ The input JSON can be one of:
 1. Full template object:
 
 ```json
-{ "name": "...", "description": "...", "schema": { "title": "...", "layout": "two-column", "fields": [] } }
+{
+  "name": "...",
+  "description": "...",
+  "schema": { "title": "...", "layout": "two-column", "fields": [] }
+}
 ```
 
 2. Bare schema object:
@@ -63,6 +67,7 @@ Portable scoresheets honor the same `defaultValue` rules as the main app:
 
 - `mode === "head-to-head"`
 - `winner-select` fields
+- `repeatableGroup` fields (including Botball-derived repeatable groups)
 - `dataSource.type === "db"`
 - `dataSource.type === "bracket"`
 - `scoreDestination === "db"`

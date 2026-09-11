@@ -2,7 +2,7 @@
 
 Judge scoresheets, pending-score edits, and newly exported portable sheets use
 one parser, dependency compiler, and AST evaluator. The language and coercion
-rules are specified in [formula_grammer.txt](formula_grammer.txt). There is no
+rules are specified in [formula-grammar.txt](formula-grammar.txt). There is no
 JavaScript evaluation fallback.
 
 Compilation parses each formula once per effective schema. References resolve
@@ -31,9 +31,9 @@ handlers. Template and field-template writes use the existing HTTP 400
 `error`/`errors` response. Schema markers with no fields remain valid.
 
 Accepted/rejected scores remain viewable with their original saved totals.
-Pending-score edits recalculate against the current template and require
-valid formulas to save. Existing records are not migrated or rewritten.
-Server-side recomputation of submitted scores is outside this change.
+Pending-score edits recalculate against the current template and require valid
+formulas to save. Existing records are not migrated or rewritten. The server
+does not currently recompute submitted formulas independently.
 
 ## Portable sheets
 
@@ -47,10 +47,10 @@ Repeatable-group portable export remains unsupported.
 ## Read-only rollout audit
 
 Run `npx ts-node tools/audit-score-formulas.ts` to audit repository fixtures.
-Before rollout, set `DATABASE_URL` for the deployment being audited and run
+To audit a deployment database, set its `DATABASE_URL` and run
 `npx ts-node tools/audit-score-formulas.ts --database`. The audit reads complete
 templates and field-template arrays inside a read-only transaction, reports
 invalid template IDs/names and diagnostics as JSON lines, and exits nonzero
 if any are invalid. It imports no server initialization or migrations and
 never rewrites templates or historical scores. Correct reported templates
-explicitly before rollout; rerun the audit against the deployment database.
+explicitly before deploying schema or formula changes, then rerun the audit.

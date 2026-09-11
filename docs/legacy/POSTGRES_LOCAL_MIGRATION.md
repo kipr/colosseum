@@ -1,5 +1,10 @@
 # Local PostgreSQL Migration — Design and Implementation Plan
 
+> [!WARNING]
+> Historical migration record. The migration is complete: PostgreSQL 18 is the
+> only supported database for local development, tests, and production. See
+> [Database Architecture](../DATABASE.md) for current guidance.
+
 Status: Phases 0–4 implemented (1a Vitest + CI, 1b local Playwright, 2 Postgres-only local default, 3 SQLite dialect deleted, 4 adapter magic reduced). Work in numbered phases; each phase should be a mergeable PR.
 
 Replace local SQLite with a Docker Compose PostgreSQL 18 server so local Node, the devcontainer, Vitest, and local Playwright all use the same dialect as production (Cloud SQL Postgres 18). The long-term goal is one schema, one query dialect, and no adapter translation that only exists to paper over SQLite.

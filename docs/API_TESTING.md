@@ -1,779 +1,214 @@
-# Tournament API Testing Guide
+# API Testing Guide
 
-This document provides curl commands to test all new tournament management endpoints.
+This guide covers the current Express API. Route source files in
+`src/server/routes/` and the HTTP tests in `tests/http/` are authoritative for
+request and response details.
 
-## Prerequisites
-
-1. Start the server: `npm run dev`
-2. Get an auth cookie by logging in through the browser and copying it from DevTools
-3. Replace `COOKIE_VALUE` below with your actual session cookie
+## Start the API
 
 ```bash
-# Set your auth cookie (get this from browser DevTools after logging in)
-export COOKIE="connect.sid=COOKIE_VALUE"
+cp .env.example .env
+npm install
+npm run db:up && npm run db:wait
+npm run dev:server
 ```
 
-## Events API
-
-### List all events (auth required)
+The API listens on `http://localhost:3000`. Confirm it without creating a
+database session:
 
 ```bash
-curl -X GET http://localhost:3000/events \
-  -H "Cookie: $COOKIE"
+export API_BASE=http://localhost:3000
+curl "$API_BASE/health"
 ```
 
-### Create an event (auth required)
+The health response has the shape
+`{"status":"ok","timestamp":"<ISO timestamp>"}`.
+
+## Access levels
+
+- **Public**: no cookie required. Archived events are hidden, and final results
+  endpoints return 404 until results are released for a completed event.
+- **Judge**: verify a scoresheet access code to create a 12-hour session scoped
+  to that template and its linked events. Judges can submit scores and use
+  their own event-chat thread.
+- **Staff**: any authenticated Google account accepted by the deployment.
+- **Admin**: an authenticated user whose database row has `is_admin = true`.
+
+Google OAuth is the normal way to create a staff/admin session. For manual API
+testing, log in through the browser and copy the complete `connect.sid` cookie
+from DevTools:
 
 ```bash
-curl -X POST http://localhost:3000/events \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
+export AUTH_COOKIE='connect.sid=COOKIE_VALUE'
+curl -H "Cookie: $AUTH_COOKIE" "$API_BASE/auth/user"
+```
+
+Do not commit cookies, access codes, or cookie-jar files.
+
+## Basic smoke sequence
+
+List spectator-visible events:
+
+```bash
+curl "$API_BASE/events/public"
+```
+
+Create an event as an admin:
+
+```bash
+curl -X POST "$API_BASE/events" \
+  -H 'Content-Type: application/json' \
+  -H "Cookie: $AUTH_COOKIE" \
   -d '{
     "name": "2026 Botball Fall Regional - Austin",
-    "description": "Annual Botball competition",
+    "description": "API smoke-test event",
     "event_date": "2026-10-15",
     "location": "Austin, TX",
-    "seeding_rounds": 3
+    "seeding_rounds": 3,
+    "min_rest_minutes": 3,
+    "score_accept_mode": "manual"
   }'
 ```
 
-### Get single event (auth required)
+Use the returned event ID in later requests. Create teams as authenticated
+staff:
 
 ```bash
-curl -X GET http://localhost:3000/events/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Update event (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/events/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "status": "active",
-    "location": "Austin Convention Center"
-  }'
-```
-
-### Delete event (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/events/1 \
-  -H "Cookie: $COOKIE"
-```
-
-## Teams API
-
-### List teams for event (public)
-
-```bash
-curl -X GET http://localhost:3000/teams/event/1
-```
-
-### Get single team (public)
-
-```bash
-curl -X GET http://localhost:3000/teams/1
-```
-
-### Create team (auth required)
-
-```bash
-curl -X POST http://localhost:3000/teams \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "team_number": 859,
-    "team_name": "ACES Robotics"
-  }'
-```
-
-### Bulk create teams (auth required)
-
-```bash
-curl -X POST http://localhost:3000/teams/bulk \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "teams": [
-      {"team_number": 101, "team_name": "Robot Warriors"},
-      {"team_number": 102, "team_name": "Mech Masters"},
-      {"team_number": 103, "team_name": "Circuit Breakers"}
+export EVENT_ID=1
+curl -X POST "$API_BASE/teams/bulk" \
+  -H 'Content-Type: application/json' \
+  -H "Cookie: $AUTH_COOKIE" \
+  -d "{
+    \"event_id\": $EVENT_ID,
+    \"teams\": [
+      {\"team_number\": 101, \"team_name\": \"Robot Warriors\"},
+      {\"team_number\": 102, \"team_name\": \"Mech Masters\"}
     ]
-  }'
+  }"
 ```
 
-### Update team (auth required)
+Read teams and the queue without authentication:
 
 ```bash
-curl -X PATCH http://localhost:3000/teams/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "status": "checked_in"
-  }'
+curl "$API_BASE/teams/event/$EVENT_ID"
+curl "$API_BASE/queue/event/$EVENT_ID?sync=1"
 ```
 
-### Check in team (auth required)
+The explicit `sync=1` queue repair is rate-limited. Normal polling should omit
+it and send the previous response's `ETag` in `If-None-Match`; an unchanged
+queue returns 304.
+
+## Judge-session smoke test
+
+First find an active template linked to a setup or active event, then verify its
+access code while saving the returned session cookie:
 
 ```bash
-curl -X PATCH http://localhost:3000/teams/1/check-in \
-  -H "Cookie: $COOKIE"
+curl "$API_BASE/scoresheet/templates"
+
+export TEMPLATE_ID=1
+curl -c judge.cookies -X POST \
+  "$API_BASE/scoresheet/templates/$TEMPLATE_ID/verify" \
+  -H 'Content-Type: application/json' \
+  -d '{"accessCode":"ACCESS_CODE"}'
 ```
 
-### Undo Check-in (auth required)
-
-Set status back to `registered` (automatically clears `checked_in_at` timestamp):
-
-```bash
-curl -X PATCH http://localhost:3000/teams/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "status": "registered"
-  }'
-```
-
-### Bulk check in teams (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/teams/event/1/check-in/bulk \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "team_numbers": [101, 102, 103]
-  }'
-```
-
-Response: `{ "updated": 3 }` or `{ "updated": 2, "not_found": [103] }` if some teams don't exist.
-
-### Delete team (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/teams/1 \
-  -H "Cookie: $COOKIE"
-```
-
-## Seeding API
-
-### Get scores for team (public)
-
-```bash
-curl -X GET http://localhost:3000/seeding/scores/team/1
-```
-
-### Get all scores for event (public)
-
-```bash
-curl -X GET http://localhost:3000/seeding/scores/event/1
-```
-
-### Submit seeding score (public - for judges)
-
-```bash
-curl -X POST http://localhost:3000/seeding/scores \
-  -H "Content-Type: application/json" \
-  -d '{
-    "team_id": 1,
-    "round_number": 1,
-    "score": 150
-  }'
-```
-
-### Update seeding score (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/seeding/scores/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "score": 175
-  }'
-```
-
-### Delete seeding score (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/seeding/scores/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Get rankings for event (public)
-
-```bash
-curl -X GET http://localhost:3000/seeding/rankings/event/1
-```
-
-### Recalculate rankings (auth required)
-
-```bash
-curl -X POST http://localhost:3000/seeding/rankings/recalculate/1 \
-  -H "Cookie: $COOKIE"
-```
-
-## Brackets API
-
-### List brackets for event (public)
-
-```bash
-curl -X GET http://localhost:3000/brackets/event/1
-```
-
-### Get bracket with entries and games (public)
-
-```bash
-curl -X GET http://localhost:3000/brackets/1
-```
-
-### Create bracket (auth required)
-
-```bash
-curl -X POST http://localhost:3000/brackets \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "name": "Main Bracket",
-    "bracket_size": 8
-  }'
-```
-
-### Update bracket (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/brackets/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "status": "in_progress"
-  }'
-```
-
-### Delete bracket (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/brackets/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Add entry to bracket (auth required)
-
-```bash
-curl -X POST http://localhost:3000/brackets/1/entries \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "team_id": 1,
-    "seed_position": 1
-  }'
-```
-
-### Add bye entry to bracket (auth required)
-
-```bash
-curl -X POST http://localhost:3000/brackets/1/entries \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "seed_position": 8,
-    "is_bye": true
-  }'
-```
-
-### Remove entry from bracket (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/brackets/1/entries/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Get games for bracket (public)
-
-```bash
-curl -X GET http://localhost:3000/brackets/1/games
-```
-
-### Create game in bracket (auth required)
-
-```bash
-curl -X POST http://localhost:3000/brackets/1/games \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "game_number": 1,
-    "round_name": "Winners R1",
-    "round_number": 1,
-    "bracket_side": "winners",
-    "team1_source": "seed:1",
-    "team2_source": "seed:8"
-  }'
-```
-
-### Update game (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/brackets/games/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "team1_score": 150,
-    "team2_score": 120,
-    "winner_id": 1,
-    "loser_id": 2,
-    "status": "completed"
-  }'
-```
-
-### Advance winner (auth required)
-
-```bash
-curl -X POST http://localhost:3000/brackets/games/1/advance \
-  -H "Cookie: $COOKIE"
-```
-
-### Get bracket templates (public)
-
-```bash
-curl -X GET http://localhost:3000/brackets/templates
-```
-
-### Get bracket templates for size (public)
-
-```bash
-curl -X GET "http://localhost:3000/brackets/templates?bracket_size=8"
-```
-
-### Create bracket template (auth required)
-
-```bash
-curl -X POST http://localhost:3000/brackets/templates \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "bracket_size": 8,
-    "game_number": 1,
-    "round_name": "Winners R1",
-    "round_number": 1,
-    "bracket_side": "winners",
-    "team1_source": "seed:1",
-    "team2_source": "seed:8",
-    "winner_advances_to": 5,
-    "loser_advances_to": 9,
-    "winner_slot": "team1"
-  }'
-```
-
-## Game Queue API
-
-### Get queue for event (public)
-
-```bash
-curl -X GET http://localhost:3000/queue/event/1
-```
-
-### Get queue filtered by status (public)
-
-```bash
-curl -X GET "http://localhost:3000/queue/event/1?status=queued"
-```
-
-### Add seeding item to queue (auth required)
-
-```bash
-curl -X POST http://localhost:3000/queue \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "queue_type": "seeding",
-    "seeding_team_id": 1,
-    "seeding_round": 1
-  }'
-```
-
-### Add bracket game to queue (auth required)
-
-```bash
-curl -X POST http://localhost:3000/queue \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "queue_type": "bracket",
-    "bracket_game_id": 1
-  }'
-```
-
-### Update queue item status (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/queue/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "status": "in_progress",
-    "table_number": 1
-  }'
-```
-
-### Call team/game (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/queue/1/call \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "table_number": 2
-  }'
-```
-
-### Uncall team (auth required)
-
-Reset status to `queued` (automatically clears `called_at` timestamp):
-
-```bash
-curl -X PATCH http://localhost:3000/queue/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "status": "queued"
-  }'
-```
-
-### Remove from queue (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/queue/1 \
-  -H "Cookie: $COOKIE"
-```
-
-## Audit API
-
-### Get audit log for event (auth required)
-
-```bash
-curl -X GET http://localhost:3000/audit/event/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Get audit log with filters (auth required)
-
-```bash
-curl -X GET "http://localhost:3000/audit/event/1?action=score_submitted&limit=10" \
-  -H "Cookie: $COOKIE"
-```
-
-### Get audit log for entity (auth required)
-
-```bash
-curl -X GET http://localhost:3000/audit/entity/team/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Create audit entry (auth required)
-
-```bash
-curl -X POST http://localhost:3000/audit \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "action": "team_added",
-    "entity_type": "team",
-    "entity_id": 1,
-    "new_value": {"team_number": 859, "team_name": "ACES Robotics"}
-  }'
-```
-
-## Documentation Scores API
-
-All endpoints require admin auth.
-
-### Get categories for event (auth required)
-
-```bash
-curl -X GET http://localhost:3000/documentation-scores/categories/event/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Create category (auth required)
-
-```bash
-curl -X POST http://localhost:3000/documentation-scores/categories \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "ordinal": 1,
-    "name": "Code Quality",
-    "weight": 1.0,
-    "max_score": 20
-  }'
-```
-
-### Update category (auth required)
-
-```bash
-curl -X PATCH http://localhost:3000/documentation-scores/categories/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "name": "Updated Name",
-    "max_score": 25
-  }'
-```
-
-### Delete category (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/documentation-scores/categories/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Get documentation scores for event (auth required)
-
-```bash
-curl -X GET http://localhost:3000/documentation-scores/event/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Get documentation score for team (auth required)
-
-```bash
-curl -X GET http://localhost:3000/documentation-scores/team/1 \
-  -H "Cookie: $COOKIE"
-```
-
-### Upsert team documentation score (auth required)
-
-Creates or updates sub-scores for a team. `overall_score` is computed server-side as `sum((score/max_score)*weight)`.
-
-```bash
-curl -X PUT http://localhost:3000/documentation-scores/event/1/team/1 \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "sub_scores": [
-      {"category_id": 1, "score": 15},
-      {"category_id": 2, "score": 18}
-    ]
-  }'
-```
-
-### Delete team documentation score (auth required)
-
-```bash
-curl -X DELETE http://localhost:3000/documentation-scores/event/1/team/1 \
-  -H "Cookie: $COOKIE"
-```
-
-## PostgreSQL Verification Queries
-
-Run these in `psql` to verify the curl commands worked:
+Submit with `-b judge.cookies` to `POST /api/scores/submit`. The payload must
+match the verified template and include:
+
+- `templateId`, `eventId`, `scoreType`, and `scoreData`;
+- a team selection for seeding, `bracket_game_id` for bracket scoring, or
+  `double_seeding_match_id` for double seeding; and
+- the required team-initial fields for the match type.
+
+Because score data is template-dependent, use the browser or the focused
+examples in `tests/http/apiScoresSubmit.test.ts` when constructing this request.
+
+## Route catalog
+
+### Public routes
+
+| Area             | Routes                                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Health           | `GET /health`                                                                                                                                                                        |
+| Authentication   | `GET /auth/google`, `GET /auth/google/callback`, `GET /auth/access-denied`, `GET /auth/user`, `GET /auth/logout`                                                                     |
+| Events           | `GET /events/public`, `GET /events/:id/public`, `GET /events/:id/overall/public`                                                                                                     |
+| Teams            | `GET /teams/event/:eventId`, `GET /teams/:id`                                                                                                                                        |
+| Seeding          | `GET /seeding/scores/team/:teamId`, `GET /seeding/scores/event/:eventId`, `GET /seeding/rankings/event/:eventId`                                                                     |
+| Double seeding   | `GET /double-seeding/matches/event/:eventId`, `GET /double-seeding/scores/event/:eventId`, `GET /double-seeding/scores/team/:teamId`, `GET /double-seeding/rankings/event/:eventId`  |
+| Brackets         | `GET /brackets/event/:eventId`, `GET /brackets/event/:eventId/games`, `GET /brackets/templates`, `GET /brackets/:id`, `GET /brackets/:id/games`, `GET /brackets/:id/rankings/public` |
+| Queue            | `GET /queue/event/:eventId`                                                                                                                                                          |
+| Scoresheets      | `GET /scoresheet/templates`, `POST /scoresheet/templates/:id/verify`                                                                                                                 |
+| Released results | `GET /documentation-scores/event/:eventId/public`, `GET /awards/event/:eventId/public`                                                                                               |
+
+### Judge or admin routes
+
+| Area             | Routes                                                                      |
+| ---------------- | --------------------------------------------------------------------------- |
+| Score submission | `POST /api/scores/submit`                                                   |
+| Judge chat       | `GET /chat/events/:eventId/messages`, `POST /chat/events/:eventId/messages` |
+
+### Authenticated staff routes
+
+| Area               | Routes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Authentication     | `GET /auth/check-tokens`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Events             | `GET /events`, `GET /events/:id`, `GET /events/:id/overall`                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Teams              | `POST /teams`, `POST /teams/bulk`, `PATCH /teams/:id`, `PATCH /teams/:id/check-in`, `PATCH /teams/event/:eventId/check-in/bulk`, `DELETE /teams/:id`                                                                                                                                                                                                                                                                                                                                                          |
+| Brackets           | `GET /brackets/event/:eventId/assigned-teams`, `GET /brackets/:id/rankings`, `POST /brackets`, `PATCH /brackets/:id`, `DELETE /brackets/:id`, `POST /brackets/:id/rankings/calculate`, `POST /brackets/:id/entries`, `DELETE /brackets/:bracketId/entries/:entryId`, `POST /brackets/:id/entries/generate`, `POST /brackets/:id/games`, `PATCH /brackets/games/:id`, `POST /brackets/games/:id/advance`, `POST /brackets/:id/games/generate`, `POST /brackets/:id/advance-winner`, `POST /brackets/templates` |
+| Queue              | `POST /queue`, `POST /queue/populate-from-bracket`, `POST /queue/populate-from-seeding`, `PATCH /queue/:id/presence`, `PATCH /queue/:id`, `PATCH /queue/:id/call`, `DELETE /queue/:id`                                                                                                                                                                                                                                                                                                                        |
+| Field templates    | `GET /field-templates`, `GET /field-templates/:id`, `POST /field-templates`, `PUT /field-templates/:id`, `DELETE /field-templates/:id`                                                                                                                                                                                                                                                                                                                                                                        |
+| Audit              | `GET /audit/event/:eventId`, `GET /audit/entity/:type/:id`                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Personal history   | `GET /api/scores/history`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Scoresheet preview | `GET /scoresheet/templates/:id`                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+### Admin-only routes
+
+| Area                  | Routes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Admin users           | `GET /api/admin/users`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| Events                | `POST /events`, `PATCH /events/:id`, `DELETE /events/:id`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Scoresheets           | `GET /scoresheet/templates/admin`, `POST /scoresheet/templates`, `PUT /scoresheet/templates/:id`, `DELETE /scoresheet/templates/:id`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Seeding writes        | `POST /seeding/scores`, `PATCH /seeding/scores/:id`, `DELETE /seeding/scores/:id`, `POST /seeding/rankings/recalculate/:eventId`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Double-seeding writes | `POST /double-seeding/matches/generate/:eventId`, `DELETE /double-seeding/matches/event/:eventId`, `DELETE /double-seeding/matches/event/:eventId/round/:roundNumber`, `POST /double-seeding/rankings/recalculate/:eventId`                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Score review          | `GET /scores/by-event/:eventId`, `POST /scores/event/:eventId/accept/bulk`, `POST /scores/:id/accept-event`, `POST /scores/:id/revert-event`, `POST /scores/:id/reject`, `POST /scores/:id/revert`, `PUT /scores/:id`, `DELETE /scores/:id`                                                                                                                                                                                                                                                                                                                                                                                          |
+| Documentation scoring | `GET /documentation-scores/global-categories`, `GET /documentation-scores/categories/event/:eventId`, `POST /documentation-scores/categories`, `PATCH /documentation-scores/categories/:id`, `DELETE /documentation-scores/categories/:id`, `GET /documentation-scores/event/:eventId`, `GET /documentation-scores/team/:teamId`, `PUT /documentation-scores/event/:eventId/team/:teamId`, `DELETE /documentation-scores/event/:eventId/team/:teamId`                                                                                                                                                                                |
+| Awards                | `GET /awards/templates`, `POST /awards/templates`, `PATCH /awards/templates/:id`, `DELETE /awards/templates/:id`, `GET /awards/event/:eventId`, `GET /awards/event/:eventId/automatic/preview`, `POST /awards/event/:eventId/automatic`, `GET /awards/event/:eventId/team-award-counts`, `POST /awards/event/:eventId`, `PATCH /awards/event-awards/:id`, `DELETE /awards/event-awards/:id`, `POST /awards/event-awards/:id/recipients`, `DELETE /awards/event-awards/:awardId/recipients/:teamId`, `POST /awards/event-awards/:id/individual-recipients`, `DELETE /awards/event-awards/:awardId/individual-recipients/:recipientId` |
+| Chat administration   | `GET /chat/events/:eventId/conversations`, `DELETE /chat/events/:eventId/conversations/:conversationKey`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+
+The Google OAuth entry and callback routes are public browser routes. Successful
+login depends on configured OAuth credentials and the allowed-domain policy.
+
+## Database inspection
+
+Open `psql` against the local application database:
 
 ```bash
 npm run db:psql
 ```
 
-### Verify Events
+Useful read-only checks:
 
 ```sql
-SELECT * FROM events;
-SELECT COUNT(*) as event_count FROM events;
+\dt
+SELECT id, name, status, event_date FROM events ORDER BY event_date DESC;
+SELECT id, event_id, team_number, team_name, status FROM teams ORDER BY event_id, team_number;
+SELECT id, event_id, score_type, status, created_at FROM score_submissions ORDER BY id DESC LIMIT 20;
+SELECT id, event_id, queue_type, queue_position, status FROM game_queue ORDER BY event_id, queue_position;
 ```
 
-### Verify Teams
+See [Database Architecture](DATABASE.md) for the complete table map.
 
-```sql
-SELECT * FROM teams;
-SELECT t.*, e.name as event_name FROM teams t JOIN events e ON t.event_id = e.id;
-SELECT COUNT(*) as team_count FROM teams;
-```
+## Automated verification
 
-### Verify Seeding Scores
-
-```sql
-SELECT * FROM seeding_scores;
-SELECT ss.*, t.team_number, t.team_name
-FROM seeding_scores ss
-JOIN teams t ON ss.team_id = t.id;
-```
-
-### Verify Seeding Rankings
-
-```sql
-SELECT * FROM seeding_rankings;
-SELECT sr.*, t.team_number, t.team_name
-FROM seeding_rankings sr
-JOIN teams t ON sr.team_id = t.id
-ORDER BY sr.seed_rank;
-```
-
-### Verify Brackets
-
-```sql
-SELECT * FROM brackets;
-SELECT b.*, e.name as event_name
-FROM brackets b
-JOIN events e ON b.event_id = e.id;
-```
-
-### Verify Bracket Entries
-
-```sql
-SELECT * FROM bracket_entries;
-SELECT be.*, t.team_number, t.team_name
-FROM bracket_entries be
-LEFT JOIN teams t ON be.team_id = t.id;
-
--- Bracket rankings with raw and weighted scores
-SELECT be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
-       b.weight AS bracket_weight, t.team_number, t.team_name
-FROM bracket_entries be
-JOIN brackets b ON be.bracket_id = b.id
-LEFT JOIN teams t ON be.team_id = t.id
-WHERE be.final_rank IS NOT NULL
-ORDER BY be.final_rank;
-```
-
-### Verify Bracket Games
-
-```sql
-SELECT * FROM bracket_games;
-SELECT bg.*,
-       t1.team_number as team1,
-       t2.team_number as team2,
-       w.team_number as winner
-FROM bracket_games bg
-LEFT JOIN teams t1 ON bg.team1_id = t1.id
-LEFT JOIN teams t2 ON bg.team2_id = t2.id
-LEFT JOIN teams w ON bg.winner_id = w.id;
-```
-
-### Verify Game Queue
-
-```sql
-SELECT * FROM game_queue;
-SELECT gq.*,
-       bg.game_number,
-       t.team_number as seeding_team
-FROM game_queue gq
-LEFT JOIN bracket_games bg ON gq.bracket_game_id = bg.id
-LEFT JOIN teams t ON gq.seeding_team_id = t.id
-ORDER BY gq.queue_position;
-```
-
-### Verify Bracket Templates
-
-```sql
-SELECT * FROM bracket_templates ORDER BY bracket_size, game_number;
-```
-
-### Verify Audit Log
-
-```sql
-SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 20;
-SELECT al.*, u.name as user_name
-FROM audit_log al
-LEFT JOIN users u ON al.user_id = u.id
-ORDER BY al.created_at DESC;
-```
-
-### Verify Documentation Categories
-
-```sql
-SELECT * FROM documentation_categories ORDER BY name;
-
-SELECT edc.ordinal, dc.name, dc.weight, dc.max_score, e.name as event_name
-FROM event_documentation_categories edc
-JOIN documentation_categories dc ON edc.category_id = dc.id
-JOIN events e ON edc.event_id = e.id
-ORDER BY edc.event_id, edc.ordinal;
-```
-
-### Verify Documentation Scores
-
-```sql
-SELECT * FROM documentation_scores;
-SELECT ds.*, t.team_number, t.team_name, e.name as event_name
-FROM documentation_scores ds
-JOIN teams t ON ds.team_id = t.id
-JOIN events e ON ds.event_id = e.id;
-```
-
-### Verify Documentation Sub-Scores
-
-```sql
-SELECT * FROM documentation_sub_scores;
-SELECT dss.*, dc.name as category_name, dc.max_score, dc.weight
-FROM documentation_sub_scores dss
-JOIN documentation_categories dc ON dss.category_id = dc.id;
-```
-
-## Full Test Sequence
-
-Here's a complete test sequence to verify the entire workflow:
+The supported repeatable API checks are the HTTP test suite and Playwright
+flows, not a long stateful curl script:
 
 ```bash
-# 1. Create an event
-curl -X POST http://localhost:3000/events \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{"name": "Test Tournament", "event_date": "2026-03-15"}'
-
-# 2. Bulk create teams
-curl -X POST http://localhost:3000/teams/bulk \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{
-    "event_id": 1,
-    "teams": [
-      {"team_number": 1, "team_name": "Alpha"},
-      {"team_number": 2, "team_name": "Beta"},
-      {"team_number": 3, "team_name": "Gamma"},
-      {"team_number": 4, "team_name": "Delta"}
-    ]
-  }'
-
-# 2b. Bulk check in teams
-curl -X PATCH http://localhost:3000/teams/event/1/check-in/bulk \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{"team_numbers": [1, 2, 3, 4]}'
-
-# 3. Submit seeding scores (as judge - no auth)
-curl -X POST http://localhost:3000/seeding/scores -H "Content-Type: application/json" -d '{"team_id": 1, "round_number": 1, "score": 100}'
-curl -X POST http://localhost:3000/seeding/scores -H "Content-Type: application/json" -d '{"team_id": 1, "round_number": 2, "score": 120}'
-curl -X POST http://localhost:3000/seeding/scores -H "Content-Type: application/json" -d '{"team_id": 2, "round_number": 1, "score": 110}'
-curl -X POST http://localhost:3000/seeding/scores -H "Content-Type: application/json" -d '{"team_id": 2, "round_number": 2, "score": 105}'
-
-# 4. Recalculate rankings
-curl -X POST http://localhost:3000/seeding/rankings/recalculate/1 -H "Cookie: $COOKIE"
-
-# 5. View rankings
-curl -X GET http://localhost:3000/seeding/rankings/event/1
-
-# 6. Create a bracket
-curl -X POST http://localhost:3000/brackets \
-  -H "Content-Type: application/json" \
-  -H "Cookie: $COOKIE" \
-  -d '{"event_id": 1, "name": "Main Bracket", "bracket_size": 4}'
-
-# 7. Add entries
-curl -X POST http://localhost:3000/brackets/1/entries -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d '{"team_id": 1, "seed_position": 1}'
-curl -X POST http://localhost:3000/brackets/1/entries -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d '{"team_id": 2, "seed_position": 2}'
-
-# 8. Add seeding to queue
-curl -X POST http://localhost:3000/queue -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d '{"event_id": 1, "queue_type": "seeding", "seeding_team_id": 3, "seeding_round": 1}'
-
-# 9. View queue
-curl -X GET http://localhost:3000/queue/event/1
-
-# 10. Documentation scores (optional)
-curl -X POST http://localhost:3000/documentation-scores/categories -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d '{"event_id": 1, "ordinal": 1, "name": "Code Quality", "weight": 1, "max_score": 20}'
-curl -X PUT http://localhost:3000/documentation-scores/event/1/team/1 -H "Content-Type: application/json" -H "Cookie: $COOKIE" -d '{"sub_scores": [{"category_id": 1, "score": 15}]}'
-curl -X GET http://localhost:3000/documentation-scores/event/1
+npm run db:up && npm run db:wait
+npm run test:run
+npm run test:e2e
 ```
+
+Vitest uses per-worker schemas in `colosseum_test`; Playwright uses that
+database's `public` schema. They do not modify the local `colosseum` database.

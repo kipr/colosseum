@@ -1,20 +1,23 @@
 # Colosseum - Tournament Scoring Platform
 
-A web-based tournament management and scoring platform with event-centric workflows, supporting seeding rounds, double-elimination brackets, game queues, and customizable score sheet templates.
+A web-based tournament management and scoring platform with event-centric workflows, supporting seeding and double-seeding rounds, double-elimination brackets, game queues, documentation scoring, awards, and customizable score sheet templates.
 
 ## Features
 
 - **Event Management** - Create and manage tournament events with statuses (setup, active, complete, archived)
 - **Team Management** - Register teams, bulk import, check-in workflows, and status tracking
 - **Seeding Rounds** - Multi-round seeding with automatic ranking calculation (top 2 of 3 scores)
+- **Double Seeding** - Randomized paired or solo matches with independent rankings and spectator views
 - **Double Elimination Brackets** - Generate brackets (4-64 teams), automatic seeding from rankings, bye handling, and winner advancement
-- **Game Queue** - Ordered queue system for seeding rounds and bracket games with table assignments
+- **Game Queue** - Ordered queue for seeding, double-seeding, and bracket games with table assignments, per-team arrival tracking, and rest warnings
 - **Customizable Score Sheets** - Template-driven scoring with text, number, dropdown, button, checkbox, and repeatable group field types
 - **Score Review System** - Admins can accept, reject, or edit submitted scores with full audit trail
 - **Access Codes** - Judges access scoresheets via secure access codes (no login required)
+- **Judge Chat** - Event-scoped judge-to-admin conversations
+- **Documentation and Awards** - Weighted documentation scoring, manual awards, and automatic placements
 - **Google OAuth Authentication** - Secure admin login with Google accounts
 - **Modern UI** - Responsive React interface with dark mode support
-- **Public Views** - Public event listings and bracket/seeding displays
+- **Public Views** - Public event listings, live competition views, released standings, and awards
 
 ## Supported Field Types
 
@@ -26,15 +29,19 @@ Score sheet templates support the following field types:
 - **Buttons** - Multiple choice with visual button selection
 - **Checkbox** - Boolean (true/false) values
 - **Repeatable Group** - Repeatable rows of sub-fields (for example, per-stack cube entry)
+- **Calculated** - Read-only totals evaluated by the shared formula engine
+- **Section/Group Headers** - Layout-only labels for organizing a sheet
+- **Winner Select** - Match-winner selection for head-to-head sheets
 
 See [Template Schema Guide](docs/TEMPLATE_SCHEMA_GUIDE.md) for detailed schema documentation.
+Formula syntax is documented in [Formula Engine](docs/formula-engine.md).
 
 > **Note:** Templates that include `repeatableGroup` fields are not portable yet. They cannot be exported with the [portable scoresheet tool](tools/portable-scoresheet/README.md) until portable exporter support for this field type is added.
 
 ## Prerequisites
 
 - Node.js 24 LTS and npm 11
-- Google Cloud Platform account with OAuth 2.0 credentials (for admin authentication)
+- Google Cloud Platform account with OAuth 2.0 credentials (only for admin authentication)
 - Docker Engine + Compose (required; local PostgreSQL 18)
 
 ## Setup Instructions
@@ -48,6 +55,9 @@ npm install
 
 ### 2. Configure Google OAuth
 
+This step is optional when you only need public/spectator pages or judge-facing
+access-code scoring. It is required for the admin interface.
+
 1. Go to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
 3. Create OAuth 2.0 credentials:
@@ -55,6 +65,10 @@ npm install
    - Application type: Web application
    - Authorized redirect URIs: `http://localhost:3000/auth/google/callback`
 4. Copy the Client ID and Client Secret
+
+By default, only `@kipr.org` addresses may log in. Set
+`ALLOWED_EMAIL_DOMAINS=` to allow any domain, or provide a comma-separated list
+of allowed domains.
 
 ### 3. Environment Configuration
 
@@ -171,10 +185,12 @@ A typical tournament follows this workflow:
 2. **Register Teams** - Add teams individually or via bulk import
 3. **Check In Teams** - Mark teams as checked in on competition day
 4. **Run Seeding Rounds** - Queue seeding rounds, judges score via access codes, admin reviews scores
-5. **Calculate Rankings** - System computes rankings from top 2 of 3 seeding scores
-6. **Generate Brackets** - Create double-elimination brackets seeded from rankings
-7. **Run Bracket Games** - Queue bracket games, judges score, admin reviews, winners advance automatically
-8. **Complete Event** - Archive the event when the tournament concludes
+5. **Run Double Seeding (optional)** - Generate paired matches, queue them, and review scores
+6. **Calculate Rankings** - System computes seeding and optional double-seeding rankings
+7. **Generate Brackets** - Create double-elimination brackets seeded from rankings
+8. **Run Bracket Games** - Queue bracket games, judges score, admin reviews, winners advance automatically
+9. **Score Documentation and Assign Awards** - Enter weighted documentation scores and prepare recipients
+10. **Complete and Release** - Complete the event, release spectator results when ready, then archive it
 
 ### For Judges
 
@@ -190,10 +206,12 @@ A typical tournament follows this workflow:
 2. **Create an Event** in the Events tab
 3. **Add Teams** in the Teams tab (single or bulk import)
 4. **Configure Score Sheets** in the Score Sheets tab
-5. **Manage Seeding** - View scores, calculate rankings in the Seeding tab
-6. **Create Brackets** - Generate brackets from seeding in the Brackets tab
-7. **Manage Queue** - Populate and order the game queue in the Queue tab
-8. **Review Scores** - Accept, reject, or edit scores in the Scoring tab
+5. **Manage Seeding** - View scores and rankings in the Seeding tab
+6. **Manage Double Seeding** - Generate configured rounds when the event uses them
+7. **Create Brackets** - Generate brackets from seeding in the Brackets tab
+8. **Manage Queue** - Call teams, confirm arrivals, and assign tables in the Queue tab
+9. **Review Scores** - Accept, reject, or edit scores in the Scoring tab
+10. **Finish the Event** - Enter documentation scores, assign awards, and release final results
 
 ## Project Structure
 
@@ -212,31 +230,34 @@ colosseum/
 │   │   ├── utils/                 # Utility functions
 │   │   ├── App.tsx                # Main React app with routing
 │   │   └── main.tsx               # React entry point
-│   └── server/                    # Express backend
-│       ├── config/                # OAuth and API configuration
-│       ├── database/              # Database connection and schema initialization
-│       ├── middleware/            # Authentication middleware
-│       ├── routes/                # API route handlers
-│       │   ├── auth.ts            # Authentication routes
-│       │   ├── events.ts          # Event CRUD
-│       │   ├── teams.ts           # Team management
-│       │   ├── seeding.ts         # Seeding scores and rankings
-│       │   ├── brackets.ts        # Bracket management
-│       │   ├── queue.ts           # Game queue
-│       │   ├── scores.ts          # Score review/approval
-│       │   ├── scoresheet.ts      # Template management
-│       │   ├── audit.ts           # Audit log
-│       │   └── api.ts             # Score submission (judge-facing)
-│       ├── services/              # Business logic
-│       │   ├── seedingRankings.ts  # Seeding calculation
-│       │   ├── bracketTemplates.ts # Bracket structure generation
-│       │   ├── bracketByeResolver.ts # Bye handling
-│       │   └── scoreAccept.ts      # Score acceptance logic
-│       ├── session/               # Session store
-│       └── server.ts              # Express server setup
+│   ├── server/                    # Express backend
+│   │   ├── config/                # OAuth and API configuration
+│   │   ├── database/              # Database connection and schema initialization
+│   │   ├── middleware/            # Authentication middleware
+│   │   ├── routes/                # API route handlers
+│   │   │   ├── auth.ts            # Authentication routes
+│   │   │   ├── events.ts          # Event CRUD
+│   │   │   ├── teams.ts           # Team management
+│   │   │   ├── seeding.ts         # Seeding scores and rankings
+│   │   │   ├── brackets.ts        # Bracket management
+│   │   │   ├── queue.ts           # Game queue
+│   │   │   ├── scores.ts          # Score review/approval
+│   │   │   ├── scoresheet.ts      # Template management
+│   │   │   ├── audit.ts           # Audit log
+│   │   │   └── api.ts             # Score submission (judge-facing)
+│   │   ├── services/              # Business logic
+│   │   │   ├── seedingRankings.ts  # Seeding calculation
+│   │   │   ├── bracketTemplates.ts # Bracket structure generation
+│   │   │   ├── bracketByeResolver.ts # Bye handling
+│   │   │   └── scoreAccept.ts      # Score acceptance logic
+│   │   └── server.ts              # Express server setup
+│   └── shared/                    # Shared schema, formula, award, and parsing logic
 ├── docs/                          # Documentation
+│   ├── README.md                   # Documentation index
+│   ├── DATABASE.md                # Current PostgreSQL architecture
 │   ├── TEMPLATE_SCHEMA_GUIDE.md   # Score sheet template schema reference
-│   └── API_TESTING.md             # API testing guide with curl examples
+│   ├── API_TESTING.md             # API smoke tests and route catalog
+│   └── legacy/                    # Superseded designs and completed plans
 ├── templates/                     # Example score sheet templates
 ├── tests/                         # Unit & integration tests (Vitest)
 ├── e2e/                           # End-to-end tests (Playwright)
@@ -256,17 +277,22 @@ colosseum/
 
 The application uses PostgreSQL with the following tables:
 
-### Core Tables
+### Core configuration
 
 - **users** - User accounts and OAuth tokens
 - **events** - Tournament events with status tracking
 - **teams** - Participating teams per event with check-in status
 - **scoresheet_templates** - Score sheet template definitions
+- **scoresheet_field_templates** - Reusable groups of score fields
+- **event_scoresheet_templates** - Event-to-template assignments
 
 ### Seeding
 
 - **seeding_scores** - Individual round scores per team
 - **seeding_rankings** - Computed rankings (seed average, rank, normalized score)
+- **double_seeding_matches** - Paired and solo double-seeding matches
+- **double_seeding_scores** - Per-team double-seeding results
+- **double_seeding_rankings** - Double-seeding averages, ranks, and normalized scores
 
 ### Brackets
 
@@ -279,90 +305,37 @@ The application uses PostgreSQL with the following tables:
 
 - **score_submissions** - Submitted scores with review status
 - **score_details** - Field-by-field score breakdown
-- **event_scoresheet_templates** - Links templates to events for seeding/bracket scoring
+
+### Documentation and awards
+
+- **documentation_categories** / **event_documentation_categories** - Global categories and event assignments
+- **documentation_scores** / **documentation_sub_scores** - Weighted team documentation results
+- **award_templates** / **event_awards** - Award catalog and event awards
+- **event_award_recipients** / **event_award_individual_recipients** - Team and individual recipients
+- **event_automatic_award_settings** - Automatic placement configuration
 
 ### Operations
 
 - **game_queue** - Ordered queue of games ready for judging
+- **queue_versions** - Queue synchronization and ETag version state
 - **audit_log** - Change tracking for accountability
+- **judge_chat_messages** - Event-scoped judge/admin messages
+- **active_sessions** - Application session-token records
+- **session** - PostgreSQL-backed Express sessions
 
-## API Endpoints
+See [Database Architecture](docs/DATABASE.md) for the authoritative module and
+table map. The executable schema lives in `src/server/database/schema/`.
 
-### Authentication
+## API
 
-- `GET /auth/google` - Initiate Google OAuth
-- `GET /auth/google/callback` - OAuth callback
-- `GET /auth/user` - Get current user
-- `GET /auth/logout` - Logout
+The API covers authentication, events, teams, seeding, double seeding,
+brackets, queue management, score review, scoresheets, documentation scoring,
+awards, audit history, and judge chat. Public reads, judge sessions,
+authenticated routes, and admin-only routes have different access rules.
 
-### Events
-
-- `GET /events` - List all events
-- `GET /events/:id` - Get event details
-- `POST /events` - Create event
-- `PATCH /events/:id` - Update event
-- `DELETE /events/:id` - Delete event
-
-### Teams
-
-- `GET /teams/event/:eventId` - List teams for event
-- `GET /teams/:id` - Get team details
-- `POST /teams` - Create team
-- `POST /teams/bulk` - Bulk create teams
-- `PATCH /teams/:id` - Update team
-- `PATCH /teams/:id/check-in` - Check in team
-- `DELETE /teams/:id` - Delete team
-
-### Seeding
-
-- `GET /seeding/scores/event/:eventId` - Get all scores for event
-- `GET /seeding/scores/team/:teamId` - Get scores for team
-- `POST /seeding/scores` - Submit seeding score
-- `PATCH /seeding/scores/:id` - Update score
-- `DELETE /seeding/scores/:id` - Delete score
-- `GET /seeding/rankings/event/:eventId` - Get rankings
-- `POST /seeding/rankings/recalculate/:eventId` - Recalculate rankings
-
-### Brackets
-
-- `GET /brackets/event/:eventId` - List brackets for event
-- `GET /brackets/:id` - Get bracket with entries and games
-- `POST /brackets` - Create bracket
-- `PATCH /brackets/:id` - Update bracket
-- `DELETE /brackets/:id` - Delete bracket
-- `POST /brackets/:id/entries` - Add entry
-- `POST /brackets/:id/entries/generate` - Generate entries from seeding
-- `GET /brackets/:id/games` - Get games
-- `POST /brackets/:id/games` - Create game
-- `PATCH /brackets/games/:id` - Update game
-- `POST /brackets/games/:id/advance` - Advance winner
-
-### Queue
-
-- `GET /queue/event/:eventId` - Get queue for event
-- `POST /queue` - Add item to queue
-- `PATCH /queue/:id` - Update queue item
-- `PATCH /queue/:id/call` - Call team/game
-- `DELETE /queue/:id` - Remove from queue
-
-### Scoring
-
-- `POST /api/scores/submit` - Submit a score (judge-facing)
-- `GET /scores/by-event/:eventId` - Get scores for event (admin)
-- `POST /scores/:id/accept-event` - Accept score (event-scoped)
-- `POST /scores/:id/revert-event` - Revert acceptance
-
-### Templates
-
-- `GET /scoresheet/templates` - List all templates
-- `GET /scoresheet/templates/:id` - Get template details
-- `POST /scoresheet/templates` - Create template
-- `PUT /scoresheet/templates/:id` - Update template
-
-### Audit
-
-- `GET /audit/event/:eventId` - Get audit log for event
-- `GET /audit/entity/:type/:id` - Get audit log for entity
+See [API Testing Guide](docs/API_TESTING.md) for startup instructions, curl
+examples, and the current route catalog. Route handlers in
+`src/server/routes/` remain authoritative.
 
 ## Working on the app
 
@@ -482,15 +455,15 @@ Public and abuse-prone API endpoints are protected by `express-rate-limit` with 
 
 ### Current Limits
 
-| Limiter | Endpoints | Window | Limit | Key |
-|---|---|---|---|---|
-| `oauthLimiter` | `GET /auth/google` | 15 min | 20 | IP |
-| `scoreSubmitLimiter` | `POST /api/scores/submit` | 1 min | 30 | IP |
-| `accessCodeLimiter` | `POST /scoresheet/templates/:id/verify` | 15 min | 10 | IP + template id |
-| `chatWriteLimiter` | `POST /chat/events/:eventId/messages` | 1 min | 15 | IP |
-| `chatReadLimiter` | `GET /chat/events/:eventId/messages` | 1 min | 120 | IP |
-| `queueSyncLimiter` | `GET /queue/event/:eventId` (sync=1 only) | 1 min | 60 | IP |
-| `publicExpensiveReadLimiter` | `GET /events/:id/overall/public`, `GET /documentation-scores/event/:eventId/public` | 1 min | 30 | IP |
+| Limiter                      | Endpoints                                                   | Window | Limit | Key                     |
+| ---------------------------- | ----------------------------------------------------------- | ------ | ----- | ----------------------- |
+| `oauthLimiter`               | `GET /auth/google`                                          | 15 min | 20    | IP                      |
+| `scoreSubmitLimiter`         | `POST /api/scores/submit`                                   | 1 min  | 30    | IP                      |
+| `accessCodeLimiter`          | `POST /scoresheet/templates/:id/verify`                     | 15 min | 10    | IP + template id        |
+| `chatWriteLimiter`           | `POST /chat/events/:eventId/messages`                       | 1 min  | 15    | IP                      |
+| `chatReadLimiter`            | `GET /chat/events/:eventId/messages`                        | 1 min  | 120   | IP                      |
+| `queueSyncLimiter`           | `GET /queue/event/:eventId` (sync=1 only)                   | 1 min  | 120   | IP + event + queue type |
+| `publicExpensiveReadLimiter` | Released overall, documentation, and award result endpoints | 1 min  | 30    | IP                      |
 
 ### Storage Constraints
 

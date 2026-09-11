@@ -1,5 +1,9 @@
 # Double Seeding Implementation Plan
 
+> [!WARNING]
+> Historical implementation plan. Double seeding is implemented; consult the
+> current route, service, schema, client, and test files for live behavior.
+
 ## Summary
 
 Add a new first-class match type named `double_seeding`.

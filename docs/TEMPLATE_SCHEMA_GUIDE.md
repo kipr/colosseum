@@ -8,11 +8,25 @@ A template schema is a JSON object with a `fields` array containing field defini
 
 ```json
 {
-  "fields": [
-    // Field definitions here
-  ]
+  "fields": []
 }
 ```
+
+Common schema-level properties are:
+
+| Property              | Purpose                                                                  |
+| --------------------- | ------------------------------------------------------------------------ |
+| `title`               | Heading displayed on the scoresheet                                      |
+| `description`         | Optional instructions shown with the sheet                               |
+| `layout`              | Use `"two-column"` for the standard competition layout                   |
+| `mode`                | Use `"head-to-head"` for two-team bracket scoring                        |
+| `scoreKind`           | Set to `"double_seeding"` for double-seeding templates                   |
+| `requireTeamInitials` | Requires team-representative initials even outside an event-scoped sheet |
+| `fields`              | Ordered array of field definitions                                       |
+
+Event-scoped seeding, bracket, and double-seeding submissions always require
+the appropriate team initials. The client adds those certification fields when
+needed; they do not need to be duplicated in every template.
 
 ## Field Types
 
@@ -143,6 +157,99 @@ Boolean (true/false) field.
 - `id`, `label`, `type`, `description`: Same as above
 - `checkboxLabel` (optional): Text shown next to checkbox
 - `defaultValue` (optional): Boolean initial checked state
+
+### 6. Calculated Field
+
+Read-only numeric output calculated from editable fields, declared derived
+outputs, or other calculated fields.
+
+```json
+{
+  "id": "grand_total",
+  "label": "Grand Total",
+  "type": "calculated",
+  "formula": "base_score + bonus * 2",
+  "isGrandTotal": true
+}
+```
+
+Calculated fields may reference fields declared later in the schema. Unknown
+references, duplicate producers, cycles, parse errors, and non-finite results
+are rejected or surfaced as formula diagnostics. A calculated field without a
+`formula` must have a repeatable-group derived output with the same ID.
+
+See [Formula Engine](formula-engine.md) and
+[Formula Grammar](formula-grammar.txt) for the supported language. Formulas are
+not JavaScript.
+
+### 7. Section and Group Headers
+
+Headers organize the rendered sheet and do not produce submitted values.
+
+```json
+{
+  "id": "side_a_header",
+  "label": "SIDE A",
+  "type": "section_header",
+  "column": "left"
+}
+```
+
+Use `section_header` for major divisions and `group_header` for labels within a
+section. Neither type accepts `defaultValue`.
+
+### 8. Winner Select
+
+Head-to-head sheets use `winner-select` to record which participant won:
+
+```json
+{
+  "id": "winner",
+  "label": "Winner",
+  "type": "winner-select",
+  "required": true,
+  "options": [
+    { "value": "team_a", "label": "Team A Wins" },
+    { "value": "team_b", "label": "Team B Wins" }
+  ]
+}
+```
+
+Use this with schema `mode: "head-to-head"`. It is not supported by the
+portable scoresheet exporter.
+
+### 9. Repeatable Group
+
+A repeatable group renders rows of child controls. Child controls may be text,
+number, dropdown, buttons, or checkbox fields.
+
+```json
+{
+  "id": "items",
+  "label": "Scored Items",
+  "type": "repeatableGroup",
+  "rowLabel": "Item",
+  "minRows": 1,
+  "autoAppendBlankRow": true,
+  "pruneBlankRows": true,
+  "fields": [
+    { "id": "count", "label": "Count", "type": "number", "min": 0 },
+    { "id": "notes", "label": "Notes", "type": "text" }
+  ]
+}
+```
+
+- `minRows` controls the initial/minimum row count.
+- `autoAppendBlankRow` adds a row when the last row becomes meaningful.
+- `pruneBlankRows` removes empty rows from submitted data.
+- `defaultValue` may provide an array of initial row objects.
+- `derived` may select an application-provided scorer and map its outputs to
+  top-level formula inputs. Current derived scorers are
+  `botballCubeStacks` and `botballStartBoxCubes`.
+
+See [Botball 2026 Cube Stack Rules](BOTBALL_2026_CUBE_STACK_RULES.md) and
+`templates/test-repeatable-group-fields.json` for complete derived examples.
+Repeatable groups are not supported by the portable scoresheet exporter.
 
 ## Complete Example Templates
 
@@ -344,14 +451,14 @@ Interactive fields may include an optional `defaultValue` that pre-fills the con
 
 Accepted shapes:
 
-| Field type | `defaultValue` type | Extra rules |
-| --- | --- | --- |
-| `text` | `string` | — |
-| `number` | finite `number` | Must respect `min` / `max` when set |
-| `dropdown` | `string` \| `number` \| `boolean` | Must match an `options[].value` when options are static |
-| `buttons` | `string` \| `number` \| `boolean` | Must match an `options[].value` |
-| `checkbox` | `boolean` | — |
-| `repeatableGroup` | array of row objects | Each cell is validated against the child field type |
+| Field type        | `defaultValue` type               | Extra rules                                             |
+| ----------------- | --------------------------------- | ------------------------------------------------------- |
+| `text`            | `string`                          | —                                                       |
+| `number`          | finite `number`                   | Must respect `min` / `max` when set                     |
+| `dropdown`        | `string` \| `number` \| `boolean` | Must match an `options[].value` when options are static |
+| `buttons`         | `string` \| `number` \| `boolean` | Must match an `options[].value`                         |
+| `checkbox`        | `boolean`                         | —                                                       |
+| `repeatableGroup` | array of row objects              | Each cell is validated against the child field type     |
 
 `defaultValue` is **not** allowed on `calculated`, `section_header`, `group_header`, or `winner-select` fields.
 
@@ -368,9 +475,7 @@ The legacy `startValue` property is no longer supported and will be rejected.
     { "id": "count", "label": "Count", "type": "number", "min": 0, "max": 5 },
     { "id": "notes", "label": "Notes", "type": "text" }
   ],
-  "defaultValue": [
-    { "count": 1, "notes": "Starter row" }
-  ]
+  "defaultValue": [{ "count": 1, "notes": "Starter row" }]
 }
 ```
 
@@ -412,5 +517,11 @@ When creating or updating templates (and when exporting portable HTML), the syst
 - `defaultValue` entries match the field type rules above
 - Option-based defaults match declared options
 - `startValue` is rejected (use `defaultValue`)
+- Formula syntax, references, producer IDs, and dependency cycles
+
+The main application accepts schema markers used by event and bracket flows.
+The portable exporter applies stricter feature checks; see
+[Portable Scoresheet Export](../tools/portable-scoresheet/README.md) before
+assuming an application template can be exported.
 
 Invalid schemas are rejected with an actionable error message.
