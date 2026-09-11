@@ -4,6 +4,7 @@ import {
   getBracketSourceEventId,
   isEventScopedBracketSource,
 } from '../scoresheetUtils';
+import { listEventBrackets } from '../../api/brackets';
 import '../Modal.css';
 
 interface TemplateEditorModalProps {
@@ -65,11 +66,7 @@ export default function TemplateEditorModal({
 
   const loadBrackets = async () => {
     try {
-      const response = await fetch(`/brackets/event/${eventId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load brackets');
-      const data = await response.json();
+      const data = await listEventBrackets(eventId);
       setBrackets(data);
     } catch (error) {
       console.error('Error loading brackets:', error);

@@ -20,7 +20,9 @@ const SeedingTab = lazy(() => import('../components/admin/SeedingTab'));
 const DoubleSeedingTab = lazy(
   () => import('../components/admin/DoubleSeedingTab'),
 );
-const BracketsTab = lazy(() => import('../components/admin/BracketsTab'));
+const BracketsTab = lazy(
+  () => import('../components/admin/brackets/BracketsTab'),
+);
 const QueueTab = lazy(() => import('../components/admin/QueueTab'));
 const JudgeChatTab = lazy(() => import('../components/admin/JudgeChatTab'));
 const DocumentationTab = lazy(

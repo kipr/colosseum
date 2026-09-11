@@ -33,6 +33,7 @@ import JudgeChatButton from './judgeChat/JudgeChatButton';
 import JudgeChatDrawer from './judgeChat/JudgeChatDrawer';
 import { compileScoresheetFormulas } from '../../shared/scoresheetFormulaProgram';
 import FormulaErrors from './FormulaErrors';
+import { listBracketGames, listEventBracketGames } from '../api/brackets';
 
 interface ScoresheetFormProps {
   template: any;
@@ -270,21 +271,13 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         isEventScopedBracket &&
         bracketSourceEventId
       ) {
-        const response = await fetch(
-          `/brackets/event/${bracketSourceEventId}/games?eligible=scoreable`,
-          { credentials: 'include' },
+        const { games: dbGames, etag } = await listEventBracketGames(
+          bracketSourceEventId,
+          { eligible: 'scoreable' },
         );
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Failed to load bracket games from DB:', errorData);
-          return;
-        }
-        // Version-based ETag: skip re-render when nothing changed.
-        const etag = response.headers.get('ETag');
         if (etag && etag === lastBracketEtagRef.current) return;
         lastBracketEtagRef.current = etag;
-        const dbGames = await response.json();
-        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
+        const mapped: BracketGameOption[] = dbGames.map((g) => {
           const team1 =
             g.team1_id != null && (g.team1_number != null || g.team1_name)
               ? {
@@ -316,17 +309,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         });
         setBracketGames(mapped);
       } else if (bracketSource.type === 'db' && bracketSource.bracketId) {
-        const response = await fetch(
-          `/brackets/${bracketSource.bracketId}/games`,
-          { credentials: 'include' },
-        );
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Failed to load bracket games from DB:', errorData);
-          return;
-        }
-        const dbGames = await response.json();
-        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
+        const dbGames = await listBracketGames(bracketSource.bracketId);
+        const mapped: BracketGameOption[] = dbGames.map((g) => {
           const team1 =
             g.team1_id != null && (g.team1_number != null || g.team1_name)
               ? {

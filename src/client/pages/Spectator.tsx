@@ -23,6 +23,11 @@ import type {
   BracketEntryWithRank,
   BracketSide,
 } from '../types/brackets';
+import {
+  getBracket,
+  getPublicRankings,
+  listEventBrackets,
+} from '../api/brackets';
 import type {
   DocCategoryDisplay,
   DocScoreDisplay,
@@ -331,9 +336,7 @@ export default function Spectator() {
     }
     (async () => {
       try {
-        const res = await fetch(`/brackets/event/${selectedEventId}`);
-        if (!res.ok) throw new Error('Failed to fetch brackets');
-        const data: Bracket[] = await res.json();
+        const data = await listEventBrackets(selectedEventId);
         setBrackets(data);
       } catch (error) {
         console.error('Error loading brackets:', error);
@@ -349,9 +352,7 @@ export default function Spectator() {
     }
     setBracketLoading(true);
     try {
-      const res = await fetch(`/brackets/${selectedBracketId}`);
-      if (!res.ok) throw new Error('Failed to fetch bracket');
-      const data = await res.json();
+      const data = await getBracket(selectedBracketId);
       setBracketGames(data.games ?? []);
     } catch (error) {
       console.error('Error loading bracket games:', error);
@@ -427,10 +428,8 @@ export default function Spectator() {
     )
       return;
     setBracketRankingsLoading(true);
-    fetch(`/brackets/${selectedBracketId}/rankings/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
+    getPublicRankings(selectedBracketId)
+      .then((data) => {
         setBracketRankings(data.entries);
         setBracketRankingsWeight(data.weight);
         setBracketRankingsLoadedForId(selectedBracketId);

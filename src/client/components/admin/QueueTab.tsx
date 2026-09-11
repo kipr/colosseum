@@ -4,6 +4,7 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatCalledAt } from '../../utils/dateUtils';
+import { listBracketGames, listEventBrackets } from '../../api/brackets';
 import {
   describeRestDuration,
   formatRestDuration,
@@ -332,11 +333,7 @@ export default function QueueTab() {
 
     setBrackets([]);
     try {
-      const response = await fetch(`/brackets/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch brackets');
-      const data: Bracket[] = await response.json();
+      const data = await listEventBrackets(selectedEventId);
       setBrackets(data);
     } catch (error) {
       console.error('Error fetching brackets:', error);
@@ -365,15 +362,22 @@ export default function QueueTab() {
   // Fetch bracket games for add bracket modal
   const fetchBracketGames = useCallback(async (bracketId: number) => {
     try {
-      const response = await fetch(`/brackets/${bracketId}/games`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch bracket games');
-      const data: BracketGame[] = await response.json();
-      // Filter to games with both teams assigned
-      const eligibleGames = data.filter(
-        (g) => g.team1_id && g.team2_id && g.status !== 'completed',
-      );
+      const data = await listBracketGames(bracketId);
+      const eligibleGames = data
+        .filter((g) => g.team1_id && g.team2_id && g.status !== 'completed')
+        .map((g) => ({
+          id: g.id,
+          game_number: g.game_number,
+          round_name: g.round_name,
+          bracket_side: g.bracket_side,
+          team1_id: g.team1_id,
+          team2_id: g.team2_id,
+          team1_number: g.team1_number ?? null,
+          team1_name: g.team1_name ?? null,
+          team2_number: g.team2_number ?? null,
+          team2_name: g.team2_name ?? null,
+          status: g.status,
+        }));
       setBracketGames(eligibleGames);
       if (eligibleGames.length > 0) {
         setSelectedGameId(eligibleGames[0].id);
