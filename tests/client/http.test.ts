@@ -201,6 +201,47 @@ describe('requestJson', () => {
     );
   });
 
+  it('preserves cancellation while reading an error body', async () => {
+    const abortError = new DOMException(
+      'This operation was aborted',
+      'AbortError',
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 503,
+          headers: new Headers({ 'Content-Type': 'application/json' }),
+          text: () => Promise.reject(abortError),
+        } as Response),
+      ),
+    );
+
+    const error = await requestJson('/events/public').catch((err) => err);
+    expect(error).toBe(abortError);
+    expect(error).not.toBeInstanceOf(ApiError);
+  });
+
+  it('uses a fallback message when the error body cannot be read', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          text: () => Promise.reject(new TypeError('Failed to read')),
+        } as Response),
+      ),
+    );
+
+    await expect(requestJson('/events/public')).rejects.toMatchObject({
+      status: 500,
+      message: 'Request failed (500)',
+    });
+  });
+
   it('preserves cancellation instead of wrapping it as an API error', async () => {
     const controller = new AbortController();
     vi.stubGlobal(
@@ -249,6 +290,28 @@ describe('requestVoid', () => {
       vi.fn(() => Promise.resolve(new Response(null, { status: 204 }))),
     );
     await expect(requestVoid('/events/1')).resolves.toBeUndefined();
+  });
+
+  it('preserves cancellation while reading an error body', async () => {
+    const abortError = new DOMException(
+      'This operation was aborted',
+      'AbortError',
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({
+          ok: false,
+          status: 500,
+          headers: new Headers(),
+          text: () => Promise.reject(abortError),
+        } as Response),
+      ),
+    );
+
+    const error = await requestVoid('/events/1').catch((err) => err);
+    expect(error).toBe(abortError);
+    expect(error).not.toBeInstanceOf(ApiError);
   });
 
   it('throws ApiError for unsuccessful responses', async () => {

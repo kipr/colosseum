@@ -92,7 +92,8 @@ async function createApiError(response: Response): Promise<ApiError> {
   let text = '';
   try {
     text = await response.text();
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) throw error;
     text = '';
   }
   const message =
