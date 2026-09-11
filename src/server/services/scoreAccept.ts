@@ -6,6 +6,10 @@ import { resolveBracketByes } from './bracketByeResolver';
 import { recalculateSeedingRankings } from './seedingRankings';
 import { recalculateDoubleSeedingRankings } from './doubleSeedingRankings';
 import { bumpQueueVersion, markQueueDirty } from './queueVersion';
+import {
+  DOUBLE_SEEDING_SCORE_LOCK_CLASS,
+  lockEventAdvisory,
+} from './eventAdvisoryLock';
 import type { BracketResultType } from '../../shared/bracketResult';
 
 /**
@@ -336,67 +340,84 @@ export async function acceptEventScore(
   const auditAction =
     reviewedBy === null ? 'score_auto_accepted' : 'score_accepted';
 
-  try {
-    return await db.transaction(async (tx) => {
-      const score = await tx.get(
-        'SELECT * FROM score_submissions WHERE id = ? FOR UPDATE',
-        [id],
-      );
-      if (!score) {
-        return { ok: false, status: 404, error: 'Score submission not found' };
-      }
+  // force=true retries unique-constraint races so the override can delete the
+  // newly committed conflicting row instead of returning 409.
+  const attempts = force ? 3 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await db.transaction(async (tx) => {
+        const score = await tx.get(
+          'SELECT * FROM score_submissions WHERE id = ? FOR UPDATE',
+          [id],
+        );
+        if (!score) {
+          return {
+            ok: false,
+            status: 404,
+            error: 'Score submission not found',
+          };
+        }
 
-      if (!score.event_id) {
+        if (!score.event_id) {
+          return {
+            ok: false,
+            status: 400,
+            error:
+              'This score is not event-scoped. Use the standard accept endpoint.',
+          };
+        }
+
+        if (score.status === 'accepted') {
+          return { ok: false, status: 400, error: 'Score is already accepted' };
+        }
+
+        const scoreData = JSON.parse(score.score_data);
+        const scoreType = score.score_type;
+        const ctx: AcceptScoreContext = {
+          score,
+          scoreData,
+          id,
+          force,
+          reviewedBy,
+          ipAddress,
+          auditAction,
+        };
+
+        if (scoreType === 'seeding') {
+          return acceptSeedingScore(tx, ctx);
+        }
+        if (scoreType === 'bracket') {
+          return acceptBracketScore(tx, ctx);
+        }
+        if (scoreType === 'double_seeding') {
+          return acceptDoubleSeedingScore(tx, ctx);
+        }
+
         return {
           ok: false,
           status: 400,
-          error:
-            'This score is not event-scoped. Use the standard accept endpoint.',
+          error: `Unknown score_type: ${scoreType}. Expected 'seeding', 'bracket', or 'double_seeding'.`,
+        };
+      });
+    } catch (error) {
+      if (!isDoubleSeedingUniqueConflict(error)) {
+        throw error;
+      }
+      if (!force || attempt === attempts - 1) {
+        return {
+          ok: false,
+          status: 409,
+          error: DOUBLE_SEEDING_CONFLICT_ERROR,
         };
       }
-
-      if (score.status === 'accepted') {
-        return { ok: false, status: 400, error: 'Score is already accepted' };
-      }
-
-      const scoreData = JSON.parse(score.score_data);
-      const scoreType = score.score_type;
-      const ctx: AcceptScoreContext = {
-        score,
-        scoreData,
-        id,
-        force,
-        reviewedBy,
-        ipAddress,
-        auditAction,
-      };
-
-      if (scoreType === 'seeding') {
-        return acceptSeedingScore(tx, ctx);
-      }
-      if (scoreType === 'bracket') {
-        return acceptBracketScore(tx, ctx);
-      }
-      if (scoreType === 'double_seeding') {
-        return acceptDoubleSeedingScore(tx, ctx);
-      }
-
-      return {
-        ok: false,
-        status: 400,
-        error: `Unknown score_type: ${scoreType}. Expected 'seeding', 'bracket', or 'double_seeding'.`,
-      };
-    });
-  } catch (error) {
-    if (isDoubleSeedingUniqueConflict(error)) {
-      return {
-        ok: false,
-        status: 409,
-        error: DOUBLE_SEEDING_CONFLICT_ERROR,
-      };
     }
-    throw error;
   }
+
+  return {
+    ok: false,
+    status: 409,
+    error: DOUBLE_SEEDING_CONFLICT_ERROR,
+  };
 }
 
 async function acceptSeedingScore(
@@ -788,11 +809,24 @@ async function acceptDoubleSeedingScore(
     ctx.scoreData.team2_score?.value ??
     null;
 
-  // Conflict detection: existing score rows for this match, or for any
-  // participating team in the same round (possibly from another match).
   const participatingTeamIds = [match.team1_id, match.team2_id].filter(
     (t): t is number => t != null,
   );
+
+  // Serialize accepts that can collide on (event_id, team_id, round_number)
+  // across different matches. Distinct match-row locks do not cover that.
+  await lockEventAdvisory(
+    tx,
+    DOUBLE_SEEDING_SCORE_LOCK_CLASS,
+    ctx.score.event_id,
+  );
+  participatingTeamIds.sort((a, b) => a - b);
+  for (const teamId of participatingTeamIds) {
+    await tx.get('SELECT id FROM teams WHERE id = ? FOR UPDATE', [teamId]);
+  }
+
+  // Conflict detection: existing score rows for this match, or for any
+  // participating team in the same round (possibly from another match).
   const teamPlaceholders = participatingTeamIds.map(() => '?').join(',');
   const conflicts = await tx.all(
     `SELECT * FROM double_seeding_scores

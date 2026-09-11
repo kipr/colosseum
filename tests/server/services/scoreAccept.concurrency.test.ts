@@ -530,4 +530,245 @@ describe('acceptEventScore concurrency', () => {
     );
     expect(queue).toHaveLength(1);
   });
+
+  it('ranks every team when concurrent seeding accepts have no queue rows', async () => {
+    const admin = await seedUser(testDb.db, { is_admin: true });
+    const event = await seedEvent(testDb.db);
+    const teamA = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+      team_name: 'Alpha',
+    });
+    const teamB = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 2,
+      team_name: 'Beta',
+    });
+    const template = await seedScoresheetTemplate(testDb.db);
+    const first = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        team_id: { value: teamA.id },
+        round: { value: 1 },
+        grand_total: { value: 120 },
+      }),
+      event_id: event.id,
+      score_type: 'seeding',
+    });
+    const second = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        team_id: { value: teamB.id },
+        round: { value: 1 },
+        grand_total: { value: 80 },
+      }),
+      event_id: event.id,
+      score_type: 'seeding',
+    });
+
+    const results = await Promise.all([
+      acceptEventScore({
+        db: testDb.db,
+        submissionId: first.id,
+        force: false,
+        reviewedBy: admin.id,
+        ipAddress: null,
+      }),
+      acceptEventScore({
+        db: testDb.db,
+        submissionId: second.id,
+        force: false,
+        reviewedBy: admin.id,
+        ipAddress: null,
+      }),
+    ]);
+
+    expect(results.every((result) => result.ok)).toBe(true);
+
+    const rankings = await testDb.db.all<{
+      team_id: number;
+      seed_rank: number | null;
+    }>('SELECT team_id, seed_rank FROM seeding_rankings ORDER BY team_id');
+    expect(rankings).toHaveLength(2);
+    expect(rankings.every((row) => row.seed_rank != null)).toBe(true);
+    const ranks = rankings.map((row) => row.seed_rank).sort((a, b) => a! - b!);
+    expect(ranks).toEqual([1, 2]);
+  });
+
+  it('overrides a cross-match unique race when double-seeding force=true', async () => {
+    const admin = await seedUser(testDb.db, { is_admin: true });
+    const event = await seedEvent(testDb.db, { double_seeding_rounds: 5 });
+    const team1 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    const team2 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 2,
+    });
+    const team3 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 3,
+    });
+    const matchA = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 2,
+      match_number: 1,
+      team1_id: team1.id,
+      team2_id: team2.id,
+    });
+    const matchB = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 2,
+      match_number: 2,
+      team1_id: team1.id,
+      team2_id: team3.id,
+    });
+    const template = await seedScoresheetTemplate(testDb.db);
+    const first = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        team_a_total: { value: 50 },
+        team_b_total: { value: 40 },
+        team_a_id: { value: team1.id },
+        team_b_id: { value: team2.id },
+        round: { value: 2 },
+      }),
+      event_id: event.id,
+      score_type: 'double_seeding',
+      double_seeding_match_id: matchA.id,
+    });
+    const second = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        team_a_total: { value: 90 },
+        team_b_total: { value: 10 },
+        team_a_id: { value: team1.id },
+        team_b_id: { value: team3.id },
+        round: { value: 2 },
+      }),
+      event_id: event.id,
+      score_type: 'double_seeding',
+      double_seeding_match_id: matchB.id,
+    });
+
+    const results = await Promise.all([
+      acceptEventScore({
+        db: testDb.db,
+        submissionId: first.id,
+        force: true,
+        reviewedBy: admin.id,
+        ipAddress: null,
+      }),
+      acceptEventScore({
+        db: testDb.db,
+        submissionId: second.id,
+        force: true,
+        reviewedBy: admin.id,
+        ipAddress: null,
+      }),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(2);
+    expect(results.filter((result) => !result.ok)).toHaveLength(0);
+
+    const team1Scores = await testDb.db.all<{
+      match_id: number;
+      score: number;
+      score_submission_id: number;
+    }>(
+      `SELECT match_id, score, score_submission_id
+       FROM double_seeding_scores
+       WHERE event_id = ? AND team_id = ? AND round_number = ?`,
+      [event.id, team1.id, 2],
+    );
+    expect(team1Scores).toHaveLength(1);
+    expect([first.id, second.id]).toContain(team1Scores[0].score_submission_id);
+  });
+
+  it('ranks every team when concurrent double-seeding accepts have no queue rows', async () => {
+    const admin = await seedUser(testDb.db, { is_admin: true });
+    const event = await seedEvent(testDb.db, { double_seeding_rounds: 5 });
+    const team1 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    const team2 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 2,
+    });
+    const team3 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 3,
+    });
+    const team4 = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 4,
+    });
+    const matchA = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 1,
+      match_number: 1,
+      team1_id: team1.id,
+      team2_id: team2.id,
+    });
+    const matchB = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 1,
+      match_number: 2,
+      team1_id: team3.id,
+      team2_id: team4.id,
+    });
+    const template = await seedScoresheetTemplate(testDb.db);
+    const first = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        team_a_total: { value: 70 },
+        team_b_total: { value: 60 },
+        team_a_id: { value: team1.id },
+        team_b_id: { value: team2.id },
+        round: { value: 1 },
+      }),
+      event_id: event.id,
+      score_type: 'double_seeding',
+      double_seeding_match_id: matchA.id,
+    });
+    const second = await seedScoreSubmission(testDb.db, {
+      template_id: template.id,
+      score_data: JSON.stringify({
+        team_a_total: { value: 55 },
+        team_b_total: { value: 45 },
+        team_a_id: { value: team3.id },
+        team_b_id: { value: team4.id },
+        round: { value: 1 },
+      }),
+      event_id: event.id,
+      score_type: 'double_seeding',
+      double_seeding_match_id: matchB.id,
+    });
+
+    const results = await Promise.all([
+      acceptEventScore({
+        db: testDb.db,
+        submissionId: first.id,
+        force: false,
+        reviewedBy: admin.id,
+        ipAddress: null,
+      }),
+      acceptEventScore({
+        db: testDb.db,
+        submissionId: second.id,
+        force: false,
+        reviewedBy: admin.id,
+        ipAddress: null,
+      }),
+    ]);
+
+    expect(results.every((result) => result.ok)).toBe(true);
+
+    const rankings = await testDb.db.all<{ seed_rank: number | null }>(
+      'SELECT seed_rank FROM double_seeding_rankings WHERE seed_rank IS NOT NULL',
+    );
+    expect(rankings).toHaveLength(4);
+  });
 });

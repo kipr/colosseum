@@ -14,11 +14,11 @@
  * Internal tiebreaker for tied averages: the team's lowest score (higher wins).
  */
 
+import { getDatabase, type DbExecutor } from '../database/connection';
 import {
-  getDatabase,
-  isDatabase,
-  type DbExecutor,
-} from '../database/connection';
+  DOUBLE_SEEDING_RANKING_LOCK_CLASS,
+  withEventAdvisoryLock,
+} from './eventAdvisoryLock';
 import { usesLegacyRawScoreFormula } from './rawScoreFormula';
 
 interface RankingData {
@@ -33,7 +33,19 @@ export async function recalculateDoubleSeedingRankings(
 ): Promise<{ teamsRanked: number; teamsUnranked: number }> {
   const conn = db ?? (await getDatabase());
 
-  const teams = await conn.all<{ id: number }>(
+  return withEventAdvisoryLock(
+    conn,
+    DOUBLE_SEEDING_RANKING_LOCK_CLASS,
+    eventId,
+    (tx) => computeDoubleSeedingRankings(eventId, tx),
+  );
+}
+
+async function computeDoubleSeedingRankings(
+  eventId: number,
+  tx: DbExecutor,
+): Promise<{ teamsRanked: number; teamsUnranked: number }> {
+  const teams = await tx.all<{ id: number }>(
     'SELECT id FROM teams WHERE event_id = ?',
     [eventId],
   );
@@ -42,7 +54,7 @@ export async function recalculateDoubleSeedingRankings(
     return { teamsRanked: 0, teamsUnranked: 0 };
   }
 
-  const scoreRows = await conn.all<{ team_id: number; score: number }>(
+  const scoreRows = await tx.all<{ team_id: number; score: number }>(
     `SELECT team_id, score FROM double_seeding_scores
      WHERE event_id = ? AND score IS NOT NULL`,
     [eventId],
@@ -64,7 +76,6 @@ export async function recalculateDoubleSeedingRankings(
     return { teamId: team.id, seedAverage, tiebreaker };
   });
 
-  // Sort by average DESC, then lowest-score tiebreaker DESC; unranked last.
   rankings.sort((a, b) => {
     if (a.seedAverage === null && b.seedAverage === null) return 0;
     if (a.seedAverage === null) return 1;
@@ -80,7 +91,7 @@ export async function recalculateDoubleSeedingRankings(
     rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
   const n = teams.length;
 
-  const legacy = await usesLegacyRawScoreFormula(eventId, conn);
+  const legacy = await usesLegacyRawScoreFormula(eventId, tx);
   let denominator = maxAverage;
   if (!legacy) {
     const maxSingleRound =
@@ -88,36 +99,28 @@ export async function recalculateDoubleSeedingRankings(
     denominator = maxSingleRound || 1;
   }
 
-  const writeRankings = async (tx: DbExecutor) => {
-    for (let i = 0; i < rankings.length; i++) {
-      const r = rankings[i];
-      const seedRank = r.seedAverage !== null ? i + 1 : null;
+  for (let i = 0; i < rankings.length; i++) {
+    const r = rankings[i];
+    const seedRank = r.seedAverage !== null ? i + 1 : null;
 
-      let rawScore: number | null = null;
-      if (r.seedAverage !== null && seedRank !== null && n > 0) {
-        const rankComponent = (2 / 3) * ((n - seedRank + 1) / n);
-        const scoreComponent = (1 / 3) * (r.seedAverage / denominator);
-        rawScore = rankComponent + scoreComponent;
-      }
-
-      await tx.run(
-        `INSERT INTO double_seeding_rankings (team_id, seed_average, seed_rank, raw_double_seed_score, tiebreaker_value)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(team_id) DO UPDATE SET
-           seed_average = excluded.seed_average,
-           seed_rank = excluded.seed_rank,
-           raw_double_seed_score = excluded.raw_double_seed_score,
-           tiebreaker_value = excluded.tiebreaker_value
-         RETURNING id`,
-        [r.teamId, r.seedAverage, seedRank, rawScore, r.tiebreaker],
-      );
+    let rawScore: number | null = null;
+    if (r.seedAverage !== null && seedRank !== null && n > 0) {
+      const rankComponent = (2 / 3) * ((n - seedRank + 1) / n);
+      const scoreComponent = (1 / 3) * (r.seedAverage / denominator);
+      rawScore = rankComponent + scoreComponent;
     }
-  };
 
-  if (isDatabase(conn)) {
-    await conn.transaction(writeRankings);
-  } else {
-    await writeRankings(conn);
+    await tx.run(
+      `INSERT INTO double_seeding_rankings (team_id, seed_average, seed_rank, raw_double_seed_score, tiebreaker_value)
+       VALUES (?, ?, ?, ?, ?)
+       ON CONFLICT(team_id) DO UPDATE SET
+         seed_average = excluded.seed_average,
+         seed_rank = excluded.seed_rank,
+         raw_double_seed_score = excluded.raw_double_seed_score,
+         tiebreaker_value = excluded.tiebreaker_value
+       RETURNING id`,
+      [r.teamId, r.seedAverage, seedRank, rawScore, r.tiebreaker],
+    );
   }
 
   const teamsRanked = rankings.filter((r) => r.seedAverage !== null).length;
