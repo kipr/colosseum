@@ -7,9 +7,10 @@ import './styles/global.css';
 
 const queryClient = createQueryClient();
 
-const QueryDevtools = import.meta.env.DEV
-  ? lazy(() => import('./queries/QueryDevtools'))
-  : () => null;
+const QueryDevtools =
+  import.meta.env.DEV && import.meta.env.VITE_QUERY_DEVTOOLS !== 'false'
+    ? lazy(() => import('./queries/QueryDevtools'))
+    : () => null;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
