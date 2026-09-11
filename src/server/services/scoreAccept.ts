@@ -2,6 +2,7 @@ import type { Database, DbExecutor, Transaction } from '../database/connection';
 import { isUniqueConstraintError } from '../database/constraintErrors';
 import { createAuditEntry } from '../routes/audit';
 import { toAuditJson } from '../utils/auditJson';
+import { applySlotUpdates } from './bracketAdvance';
 import { resolveBracketByes } from './bracketByeResolver';
 import { recalculateSeedingRankings } from './seedingRankings';
 import { recalculateDoubleSeedingRankings } from './doubleSeedingRankings';
@@ -655,13 +656,7 @@ async function acceptBracketScore(
     ],
   );
 
-  for (const update of updates) {
-    const column = update.slot === 'team1' ? 'team1_id' : 'team2_id';
-    await tx.run(`UPDATE bracket_games SET ${column} = ? WHERE id = ?`, [
-      update.teamId,
-      update.gameId,
-    ]);
-  }
+  await applySlotUpdates(tx, updates);
 
   await tx.run(
     `UPDATE score_submissions
