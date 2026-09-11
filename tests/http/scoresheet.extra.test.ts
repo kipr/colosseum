@@ -266,6 +266,41 @@ describe('Scoresheet Routes – extra coverage', () => {
   });
 
   describe('POST /scoresheet/templates', () => {
+    it.each(['missing+1', '1+', 'total+1'])(
+      'rejects invalid formulas on create and update: %s',
+      async (formula) => {
+        const schema = {
+          fields: [{ id: 'total', type: 'calculated', formula }],
+        };
+        const created = await seedScoresheetTemplate(testDb.db, {
+          schema: JSON.stringify({ fields: [] }),
+          created_by: userId,
+        });
+        for (const res of [
+          await http.post(`${baseUrl}/scoresheet/templates`, {
+            name: 'Invalid formula',
+            accessCode: 'formula',
+            schema,
+          }),
+          await http.put(`${baseUrl}/scoresheet/templates/${created.id}`, {
+            name: 'Invalid formula',
+            schema,
+          }),
+        ]) {
+          expect(res.status).toBe(400);
+          expect(res.json).toMatchObject({
+            error: expect.any(String),
+            errors: expect.arrayContaining([expect.stringContaining('total')]),
+          });
+        }
+        const saved = await testDb.db.get<{ schema: string }>(
+          'SELECT schema FROM scoresheet_templates WHERE id = ?',
+          [created.id],
+        );
+        expect(JSON.parse(saved!.schema)).toEqual({ fields: [] });
+      },
+    );
+
     it('returns 400 when required fields missing', async () => {
       const res = await http.post(`${baseUrl}/scoresheet/templates`, {
         name: 'No Schema',
@@ -413,15 +448,15 @@ describe('Scoresheet Routes – extra coverage', () => {
         `${baseUrl}/scoresheet/templates/${template.id}`,
         {
           name: 'Updated',
-          schema: { fields: ['x'] },
+          schema: { fields: [{ id: 'x', type: 'number' }] },
           accessCode: 'new',
           eventId: event.id,
         },
       );
       expect(res.status).toBe(200);
-      const body = res.json as { name: string; schema: { fields: string[] } };
+      const body = res.json as { name: string; schema: { fields: unknown[] } };
       expect(body.name).toBe('Updated');
-      expect(body.schema).toEqual({ fields: ['x'] });
+      expect(body.schema).toEqual({ fields: [{ id: 'x', type: 'number' }] });
 
       const link = await testDb.db.get(
         'SELECT * FROM event_scoresheet_templates WHERE template_id = ?',

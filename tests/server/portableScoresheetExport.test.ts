@@ -8,7 +8,9 @@ function runExporter(inputPath: string, outputPath: string) {
   return execFileSync(
     'node',
     [
-      'tools/portable-scoresheet/export-html.mjs',
+      '-r',
+      'ts-node/register',
+      'tools/portable-scoresheet/export-html.ts',
       '--input',
       inputPath,
       '--output',
@@ -23,6 +25,46 @@ function runExporter(inputPath: string, outputPath: string) {
 }
 
 describe('portable scoresheet exporter', () => {
+  it('embeds local reference images and safely quotes closing script text', () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), 'portable-assets-'));
+    const input = path.join(dir, 'input.json');
+    const output = path.join(dir, 'sheet.html');
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"></svg>';
+    writeFileSync(path.join(dir, 'reference.svg'), svg);
+    writeFileSync(
+      input,
+      JSON.stringify({
+        title: '</script><script>throw 1</script>',
+        gameAreasImage: 'reference.svg',
+        fields: [],
+      }),
+    );
+    runExporter(input, output);
+    const html = readFileSync(output, 'utf8');
+    expect(html).toContain(
+      `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`,
+    );
+    expect(html).not.toContain('</script><script>throw 1</script>');
+  });
+
+  it.each(['missing+1', '1+', 'total+1'])(
+    'rejects invalid formulas before export: %s',
+    (formula) => {
+      const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-formula-'));
+      const input = path.join(tempDir, 'input.json');
+      writeFileSync(
+        input,
+        JSON.stringify({
+          fields: [{ id: 'total', type: 'calculated', formula }],
+        }),
+      );
+      expect(() =>
+        runExporter(input, path.join(tempDir, 'sheet.html')),
+      ).toThrow(/total/);
+    },
+  );
+
   it('produces a single HTML file with inline assets and embedded schema data', () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-scoresheet-'));
     const outputPath = path.join(tempDir, 'simple.html');
@@ -32,6 +74,8 @@ describe('portable scoresheet exporter', () => {
     const html = readFileSync(outputPath, 'utf8');
 
     expect(html).toContain('<style>');
+    expect(html).not.toMatch(/\b(?:eval|Function)\s*\(/);
+    expect(html).not.toMatch(/<script[^>]+src=/);
     expect(html).toContain(
       '<script id="portable-template-data" type="application/json">',
     );

@@ -1,3 +1,6 @@
+import { compileScoresheetFormulas } from '../../src/shared/scoresheetFormulaProgram';
+import { calculateScoresheetValues } from '../../src/client/components/scoresheetUtils';
+
 (function portableScoresheetRuntime() {
   const templateNode = document.getElementById('portable-template-data');
   const appNode = document.getElementById('app');
@@ -10,6 +13,11 @@
   const template = parsed || {};
   const schema = template.schema || {};
   const fields = Array.isArray(schema.fields) ? schema.fields : [];
+
+  const compilation = compileScoresheetFormulas(fields);
+  const diagnosticsNode = document.createElement('div');
+  diagnosticsNode.setAttribute('role', 'alert');
+  let downloadButton;
 
   const storageKey = `portable-scoresheet::${schema.title || template.name || 'sheet'}`;
 
@@ -35,9 +43,6 @@
       return field.defaultValue;
     }
     if (field.type === 'checkbox') return false;
-    if (field.type === 'buttons') {
-      return field.options?.[0]?.value ?? '';
-    }
     return '';
   }
 
@@ -67,63 +72,32 @@
 
   function persistDraft() {
     try {
-      localStorage.setItem(storageKey, JSON.stringify({ values: state.values }));
+      localStorage.setItem(
+        storageKey,
+        JSON.stringify({ values: state.values }),
+      );
     } catch (error) {
       console.warn('Unable to persist draft data:', error);
     }
   }
 
-  function evaluateFormula(formula, calculatedValues = state.calculated) {
-    let expression = formula;
-    const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-    const uniqueFieldIds = Array.from(new Set(fieldIds));
-
-    uniqueFieldIds.forEach((fieldId) => {
-      let value = 0;
-
-      if (calculatedValues[fieldId] !== undefined) {
-        value = calculatedValues[fieldId];
-      } else if (state.values[fieldId] !== undefined && state.values[fieldId] !== '') {
-        value = state.values[fieldId];
-      }
-
-      let replacement;
-      if (formula.includes(`${fieldId} ===`)) {
-        replacement = `'${String(value)}'`;
-      } else if (typeof value === 'boolean') {
-        replacement = value ? '1' : '0';
-      } else if (typeof value === 'string') {
-        replacement = String(Number(value) || 0);
-      } else {
-        replacement = String(Number(value) || 0);
-      }
-
-      expression = expression.replace(new RegExp(`\\b${fieldId}\\b`, 'g'), replacement);
-    });
-
-    try {
-      const result = Function(`"use strict"; return (${expression});`)();
-      return Number(result) || 0;
-    } catch (error) {
-      console.warn('Formula evaluation error:', formula, error);
-      return 0;
-    }
-  }
-
   function recalculate() {
-    const nextCalculated = {};
-
-    fields.forEach((field) => {
-      if (field.type === 'calculated' && field.formula) {
-        nextCalculated[field.id] = evaluateFormula(field.formula, nextCalculated);
-      }
-    });
-
-    state.calculated = nextCalculated;
-
+    const result = calculateScoresheetValues(fields, state.values, compilation);
+    state.calculated = result.values;
     calculatedElements.forEach((element, fieldId) => {
-      element.textContent = String(nextCalculated[fieldId] || 0);
+      const errors = result.errors.filter((error) => error.field === fieldId);
+      element.textContent = String(result.values[fieldId] ?? 'Unavailable');
+      element.title = errors.map((error) => error.message).join(' ');
+      if (errors.length) element.textContent += `: ${element.title}`;
     });
+    diagnosticsNode.textContent = result.errors
+      .map(
+        (error) =>
+          `${error.field || 'Formula'}: ${error.message}${error.offset === undefined ? '' : ` (offset ${error.offset})`}`,
+      )
+      .join('\n');
+    if (downloadButton) downloadButton.disabled = !result.ok;
+    return result.ok;
   }
 
   function syncInputsFromState() {
@@ -133,8 +107,8 @@
       if (meta.kind === 'checkbox') {
         meta.node.checked = Boolean(value);
       } else if (meta.kind === 'buttons') {
-        meta.nodes.forEach((button) => {
-          button.classList.toggle('active', button.dataset.value === String(value));
+        meta.nodes.forEach(({ button, optionValue }) => {
+          button.classList.toggle('active', optionValue === value);
         });
       } else {
         meta.node.value = value == null ? '' : String(value);
@@ -170,7 +144,9 @@
     label.className = 'field-label';
     label.htmlFor = `field-${field.id}`;
     label.innerHTML = `${escapeHtml(field.label || field.id || '')}${
-      field.suffix ? ` <span class="field-suffix">${escapeHtml(field.suffix)}</span>` : ''
+      field.suffix
+        ? ` <span class="field-suffix">${escapeHtml(field.suffix)}</span>`
+        : ''
     }`;
     wrapper.appendChild(label);
 
@@ -202,11 +178,11 @@
         button.dataset.value = String(option.value ?? '');
         button.textContent = option.label ?? String(option.value ?? '');
         button.addEventListener('click', () => {
-          setFieldValue(field, button.dataset.value || '');
+          setFieldValue(field, option.value ?? '');
           syncInputsFromState();
         });
         group.appendChild(button);
-        nodes.push(button);
+        nodes.push({ button, optionValue: option.value });
       });
 
       inputElements.set(field.id, { kind: 'buttons', nodes });
@@ -275,9 +251,12 @@
     input.type = field.type === 'number' ? 'number' : 'text';
 
     if (field.placeholder) input.placeholder = field.placeholder;
-    if (field.min != null && field.type === 'number') input.min = String(field.min);
-    if (field.max != null && field.type === 'number') input.max = String(field.max);
-    if (field.step != null && field.type === 'number') input.step = String(field.step);
+    if (field.min != null && field.type === 'number')
+      input.min = String(field.min);
+    if (field.max != null && field.type === 'number')
+      input.max = String(field.max);
+    if (field.step != null && field.type === 'number')
+      input.step = String(field.step);
 
     input.addEventListener('input', () => {
       setFieldValue(field, input.value);
@@ -330,10 +309,11 @@
       recalculate();
     });
 
-    const downloadButton = document.createElement('button');
+    downloadButton = document.createElement('button');
     downloadButton.type = 'button';
     downloadButton.textContent = 'Download JSON';
     downloadButton.addEventListener('click', () => {
+      if (!recalculate()) return;
       const payload = {
         exportedAt: new Date().toISOString(),
         templateName: template.name || schema.title || 'Portable Scoresheet',
@@ -354,6 +334,7 @@
 
     controls.append(resetButton, downloadButton);
     root.appendChild(controls);
+    root.appendChild(diagnosticsNode);
 
     const container = document.createElement('section');
     container.className = 'fields-layout';

@@ -46,7 +46,7 @@ The input JSON can be one of:
 - `two-column` layout
 - Formula recalculation
 - Reset button (restores each field to its schema `defaultValue`, or the type empty default when omitted)
-- Optional `gameAreasImage`
+- Optional `gameAreasImage` (data URL, HTTP(S) URL, or file path relative to the input JSON; embedded at export time for offline use)
 - Draft autosave in `localStorage`
 - Download entered/calculated values as JSON
 
@@ -57,7 +57,7 @@ Portable scoresheets honor the same `defaultValue` rules as the main app:
 - Values are applied on first load and again when **Reset** is clicked
 - Typed defaults are validated at export time (wrong types, out-of-range numbers, and unknown option values fail the export)
 - `startValue` is rejected
-- When `defaultValue` is omitted: checkbox → `false`, buttons → first option, other inputs → empty
+- When `defaultValue` is omitted: checkbox → `false`, other inputs (including buttons) → empty
 
 ## V1 Rejected Features (fail-fast)
 
@@ -74,3 +74,12 @@ Portable scoresheets honor the same `defaultValue` rules as the main app:
 - Output HTML is fully inlined (no external CSS/JS files required).
 - The page is designed to make zero network requests.
 - If users clear browser site data, local draft data will be removed.
+
+## Formula engine
+
+The exporter validates syntax and dependencies before writing HTML and bundles
+the shared AST engine using Vite. Formula errors appear beside affected totals
+and in an accessible summary, and block JSON download. Draft saving and reset
+remain available. Numeric conversion, strict equality, and dependency ordering
+match the app; see [the formula documentation](../../docs/formula-engine.md).
+Previously exported HTML must be regenerated to receive the shared engine.

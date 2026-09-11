@@ -1,10 +1,20 @@
 #!/usr/bin/env node
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import {
+  validateScoresheetSchema,
+  type ScoresheetSchema,
+  type ScoresheetField,
+} from '../../src/shared/scoresheetSchema';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+interface PortableTemplate {
+  name: string;
+  description: string;
+  schema: ScoresheetSchema;
+}
+function isObject(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
 
 const SUPPORTED_FIELD_TYPES = new Set([
   'text',
@@ -17,7 +27,7 @@ const SUPPORTED_FIELD_TYPES = new Set([
   'group_header',
 ]);
 
-function parseArgs(argv) {
+function parseArgs(argv: string[]) {
   const args = { input: '', output: '' };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -35,7 +45,7 @@ function parseArgs(argv) {
   return args;
 }
 
-function normalizeInput(rawInput) {
+function normalizeInput(rawInput: unknown): PortableTemplate {
   if (Array.isArray(rawInput)) {
     return {
       name: 'Portable Scoresheet',
@@ -48,18 +58,20 @@ function normalizeInput(rawInput) {
     };
   }
 
-  if (rawInput?.schema && typeof rawInput.schema === 'object') {
+  if (isObject(rawInput) && isObject(rawInput.schema)) {
     return {
-      name: rawInput.name || rawInput.schema.title || 'Portable Scoresheet',
-      description: rawInput.description || '',
+      name: String(
+        rawInput.name || rawInput.schema.title || 'Portable Scoresheet',
+      ),
+      description: String(rawInput.description || ''),
       schema: rawInput.schema,
     };
   }
 
-  if (rawInput?.fields && typeof rawInput === 'object') {
+  if (isObject(rawInput) && Array.isArray(rawInput.fields)) {
     return {
-      name: rawInput.name || rawInput.title || 'Portable Scoresheet',
-      description: rawInput.description || '',
+      name: String(rawInput.name || rawInput.title || 'Portable Scoresheet'),
+      description: String(rawInput.description || ''),
       schema: rawInput,
     };
   }
@@ -69,8 +81,8 @@ function normalizeInput(rawInput) {
   );
 }
 
-function validateSchema(template) {
-  const errors = [];
+function validateSchema(template: PortableTemplate) {
+  const errors: string[] = [];
   const schema = template.schema;
 
   if (!schema || typeof schema !== 'object') {
@@ -104,6 +116,7 @@ function validateSchema(template) {
   }
 
   for (const field of schema.fields) {
+    if (!field || typeof field !== 'object') continue;
     if (!SUPPORTED_FIELD_TYPES.has(field.type)) {
       errors.push(
         `Unsupported field type "${field.type}" for field "${field.id || '(missing id)'}".`,
@@ -123,8 +136,8 @@ function validateSchema(template) {
     }
 
     if (
-      field.dataSource?.type === 'db' ||
-      field.dataSource?.type === 'bracket'
+      field.type === 'dropdown' &&
+      (field.dataSource?.type === 'db' || field.dataSource?.type === 'bracket')
     ) {
       errors.push(
         `Unsupported dataSource.type "${field.dataSource.type}" on field "${field.id}".`,
@@ -136,120 +149,13 @@ function validateSchema(template) {
         'Queue-specific field "game_queue_id" is unsupported in portable V1.',
       );
     }
-
-    errors.push(...validateFieldDefaultValue(field));
   }
 
+  errors.push(...validateScoresheetSchema(schema).errors);
   return errors;
 }
 
-function fieldLabel(field) {
-  return field.id || field.label || field.type || '(unknown field)';
-}
-
-function optionMatches(optionValue, defaultValue) {
-  return Object.is(optionValue, defaultValue);
-}
-
-function validateFieldDefaultValue(field, path = '') {
-  const errors = [];
-  const label = path || `field "${fieldLabel(field)}"`;
-
-  if (
-    field &&
-    Object.prototype.hasOwnProperty.call(field, 'startValue') &&
-    field.startValue !== undefined
-  ) {
-    errors.push(
-      `${label}: "startValue" is no longer supported; use "defaultValue" instead.`,
-    );
-  }
-
-  if (!field || field.defaultValue === undefined) {
-    return errors;
-  }
-
-  const { type, defaultValue } = field;
-
-  if (
-    type === 'calculated' ||
-    type === 'section_header' ||
-    type === 'group_header' ||
-    type === 'winner-select'
-  ) {
-    errors.push(
-      `${label}: field type "${type}" does not support defaultValue.`,
-    );
-    return errors;
-  }
-
-  switch (type) {
-    case 'text':
-      if (typeof defaultValue !== 'string') {
-        errors.push(`${label}: defaultValue must be a string for text fields.`);
-      }
-      break;
-    case 'number':
-      if (typeof defaultValue !== 'number' || !Number.isFinite(defaultValue)) {
-        errors.push(
-          `${label}: defaultValue must be a finite number for number fields.`,
-        );
-        break;
-      }
-      if (typeof field.min === 'number' && defaultValue < field.min) {
-        errors.push(
-          `${label}: defaultValue ${defaultValue} is below min ${field.min}.`,
-        );
-      }
-      if (typeof field.max === 'number' && defaultValue > field.max) {
-        errors.push(
-          `${label}: defaultValue ${defaultValue} is above max ${field.max}.`,
-        );
-      }
-      break;
-    case 'checkbox':
-      if (typeof defaultValue !== 'boolean') {
-        errors.push(
-          `${label}: defaultValue must be a boolean for checkbox fields.`,
-        );
-      }
-      break;
-    case 'dropdown':
-    case 'buttons': {
-      const primitiveOk =
-        typeof defaultValue === 'string' ||
-        typeof defaultValue === 'number' ||
-        typeof defaultValue === 'boolean';
-      if (!primitiveOk) {
-        errors.push(
-          `${label}: defaultValue must be a string, number, or boolean for ${type} fields.`,
-        );
-        break;
-      }
-      if (Array.isArray(field.options)) {
-        const match = field.options.some((opt) =>
-          optionMatches(opt?.value, defaultValue),
-        );
-        if (!match) {
-          errors.push(
-            `${label}: defaultValue must match one of the declared options.`,
-          );
-        }
-      } else if (type === 'buttons') {
-        errors.push(
-          `${label}: buttons fields with defaultValue require an options array.`,
-        );
-      }
-      break;
-    }
-    default:
-      break;
-  }
-
-  return errors;
-}
-
-function injectTeamInitialsFields(fields) {
+function injectTeamInitialsFields(fields: ScoresheetField[] | undefined) {
   const next = Array.isArray(fields) ? [...fields] : [];
   const ids = new Set(next.map((field) => field?.id).filter(Boolean));
   if (ids.has('side_a_team_initials') || ids.has('team_a_team_initials')) {
@@ -266,7 +172,7 @@ function injectTeamInitialsFields(fields) {
   return next;
 }
 
-function normalizeSchemaShape(template) {
+function normalizeSchemaShape(template: PortableTemplate) {
   const schema = template.schema;
   const fields =
     schema.requireTeamInitials === true
@@ -287,25 +193,94 @@ function normalizeSchemaShape(template) {
   };
 }
 
-function escapeForScriptTag(json) {
+function escapeForScriptTag(json: string) {
   return json.replace(/<\//g, '<\\/');
 }
 
-async function buildHtml({ normalizedTemplate }) {
-  const [runtimeJs, stylesCss, templateHtml] = await Promise.all([
-    readFile(path.join(__dirname, 'runtime.js'), 'utf8'),
+async function inlineGameAreasImage(
+  value: unknown,
+  inputPath: string,
+): Promise<string | null> {
+  if (!value) return null;
+  if (typeof value !== 'string')
+    throw new Error('gameAreasImage must be an image URL or file path.');
+  if (value.startsWith('data:image/')) return value;
+  let bytes: Buffer;
+  let mime: string;
+  if (/^https?:\/\//.test(value)) {
+    const response = await fetch(value, { signal: AbortSignal.timeout(15000) });
+    if (!response.ok)
+      throw new Error(
+        `Could not embed gameAreasImage (HTTP ${response.status}).`,
+      );
+    mime = response.headers.get('content-type')?.split(';')[0] ?? '';
+    if (!mime.startsWith('image/'))
+      throw new Error('gameAreasImage URL must return an image.');
+    bytes = Buffer.from(await response.arrayBuffer());
+  } else {
+    const imagePath = path.resolve(path.dirname(inputPath), value);
+    const types: Record<string, string> = {
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.svg': 'image/svg+xml',
+      '.avif': 'image/avif',
+    };
+    mime = types[path.extname(imagePath).toLowerCase()];
+    if (!mime)
+      throw new Error(
+        'Unsupported gameAreasImage extension. Use PNG, JPEG, GIF, WebP, SVG, or AVIF.',
+      );
+    bytes = await readFile(imagePath);
+  }
+  return `data:${mime};base64,${bytes.toString('base64')}`;
+}
+
+async function buildHtml({
+  normalizedTemplate,
+}: {
+  normalizedTemplate: ReturnType<typeof normalizeSchemaShape>;
+}) {
+  const { build } = await import('vite');
+  const [bundle, stylesCss, templateHtml] = await Promise.all([
+    build({
+      configFile: false,
+      logLevel: 'silent',
+      build: {
+        write: false,
+        minify: false,
+        target: 'es2020',
+        lib: {
+          entry: path.join(__dirname, 'runtime.js'),
+          name: 'PortableScoresheet',
+          formats: ['iife'],
+        },
+      },
+    }),
     readFile(path.join(__dirname, 'styles.css'), 'utf8'),
     readFile(path.join(__dirname, 'template.html'), 'utf8'),
   ]);
 
+  const bundles = Array.isArray(bundle) ? bundle : [bundle];
+  const runtimeJs = bundles
+    .flatMap((result) => {
+      if (!('output' in result))
+        throw new Error('Unexpected runtime bundle output.');
+      return result.output
+        .filter((chunk) => chunk.type === 'chunk')
+        .map((chunk) => chunk.code);
+    })
+    .join('\n');
   const schemaJson = escapeForScriptTag(
     JSON.stringify(normalizedTemplate, null, 2),
   );
 
   return templateHtml
-    .replace('/*__INLINE_STYLES__*/', stylesCss)
-    .replace('//__INLINE_RUNTIME__', runtimeJs)
-    .replace('__EMBEDDED_TEMPLATE_JSON__', schemaJson);
+    .replace('/*__INLINE_STYLES__*/', () => stylesCss)
+    .replace('//__INLINE_RUNTIME__', () => escapeForScriptTag(runtimeJs))
+    .replace('__EMBEDDED_TEMPLATE_JSON__', () => schemaJson);
 }
 
 async function main() {
@@ -315,6 +290,15 @@ async function main() {
     const rawInput = JSON.parse(rawJson);
 
     const template = normalizeInput(rawInput);
+    if (
+      template.schema.requireTeamInitials === true &&
+      Array.isArray(template.schema.fields)
+    ) {
+      template.schema = {
+        ...template.schema,
+        fields: injectTeamInitialsFields(template.schema.fields),
+      };
+    }
     const validationErrors = validateSchema(template);
 
     if (validationErrors.length > 0) {
@@ -325,6 +309,10 @@ async function main() {
     }
 
     const normalizedTemplate = normalizeSchemaShape(template);
+    normalizedTemplate.schema.gameAreasImage = await inlineGameAreasImage(
+      template.schema.gameAreasImage,
+      input,
+    );
     const html = await buildHtml({ normalizedTemplate });
 
     await mkdir(path.dirname(output), { recursive: true });
@@ -341,4 +329,4 @@ async function main() {
   }
 }
 
-await main();
+void main();

@@ -2,6 +2,21 @@
 import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
 import { scoreBotballStartBoxCubes } from '../scoring/botballStartBoxCubes';
 import { getBlankFieldValue } from '../../shared/scoresheetSchema';
+import type {
+  ScoresheetField,
+  RepeatableGroupField,
+  DerivedOutputKey,
+} from '../../shared/scoresheetSchema';
+import { compileScoresheetFormulas } from '../../shared/scoresheetFormulaProgram';
+import {
+  evaluateFormulaProgram,
+  isFormulaValue,
+  type FormulaCompilationResult,
+  type FormulaProgramResult,
+  type FormulaValue,
+} from '../../shared/scoreFormulaEval';
+import type { BotballCubeStackResult } from '../scoring/botballCubeStacks';
+import type { BotballStartBoxCubeResult } from '../scoring/botballStartBoxCubes';
 import { stripTeamInitialsFields } from '../../shared/teamInitials';
 
 export interface BracketTeamDisplay {
@@ -233,7 +248,14 @@ function repeatableGroupRowsEqual(left: any, right: any): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-export function calculateRepeatableGroupDerived(field: any, rows: any[]): any {
+export type RepeatableGroupDerivedResult =
+  | BotballCubeStackResult
+  | BotballStartBoxCubeResult;
+
+export function calculateRepeatableGroupDerived(
+  field: RepeatableGroupField,
+  rows: Record<string, unknown>[],
+): RepeatableGroupDerivedResult | undefined {
   if (field?.derived?.type === 'botballCubeStacks') {
     return scoreBotballCubeStacks(rows, {
       sortedValue: field.derived.sortedValue,
@@ -262,17 +284,18 @@ export function calculateRepeatableGroupDerivedRows(
 }
 
 export function calculateRepeatableGroupDerivedValues(
-  fields: any[],
-  formData: Record<string, any>,
+  fields: ScoresheetField[],
+  formData: Record<string, unknown>,
 ): {
-  derivedByFieldId: Record<string, any>;
+  derivedByFieldId: Record<string, RepeatableGroupDerivedResult>;
   outputs: Record<string, number>;
 } {
-  const derivedByFieldId: Record<string, any> = {};
-  const outputs: Record<string, number> = {};
+  const derivedByFieldId: Record<string, RepeatableGroupDerivedResult> =
+    Object.create(null);
+  const outputs: Record<string, number> = Object.create(null);
 
   fields.forEach((field) => {
-    if (field?.type !== 'repeatableGroup' || !field.derived) {
+    if (field?.type !== 'repeatableGroup' || !field.derived || !field.id) {
       return;
     }
 
@@ -290,99 +313,46 @@ export function calculateRepeatableGroupDerivedValues(
 
     derivedByFieldId[field.id] = derived;
 
-    const configuredOutputs = field.derived.outputs || {};
-    ['sortedEquivalent', 'unsortedEquivalent', 'subtotal'].forEach(
-      (outputKey) => {
-        const outputFieldId = configuredOutputs[outputKey];
-        if (outputFieldId) {
-          outputs[outputFieldId] = Number(derived[outputKey]) || 0;
-        }
-      },
-    );
+    const configuredOutputs: Partial<Record<DerivedOutputKey, string>> =
+      field.derived.outputs || {};
+    const outputKeys: DerivedOutputKey[] = [
+      'sortedEquivalent',
+      'unsortedEquivalent',
+      'subtotal',
+    ];
+    outputKeys.forEach((outputKey) => {
+      const outputFieldId = configuredOutputs[outputKey];
+      if (outputFieldId) {
+        if (outputKey === 'subtotal') outputs[outputFieldId] = derived.subtotal;
+        else if ('sortedEquivalent' in derived)
+          outputs[outputFieldId] = derived[outputKey];
+      }
+    });
   });
 
   return { derivedByFieldId, outputs };
 }
 
-function evaluateFormula(
-  formula: string,
-  data: Record<string, any>,
-  calculated: Record<string, number>,
-): number {
-  let expression = formula;
-  const fieldIds = formula.match(/[a-z_][a-z0-9_]*/gi) || [];
-  const uniqueFieldIds = Array.from(new Set(fieldIds));
-
-  uniqueFieldIds.forEach((fieldId) => {
-    let value: any = 0;
-
-    if (calculated[fieldId] !== undefined) {
-      value = calculated[fieldId];
-    } else if (data[fieldId] !== undefined && data[fieldId] !== '') {
-      value = data[fieldId];
-    }
-
-    let replacement: string;
-
-    if (formula.includes(`${fieldId} ===`)) {
-      replacement = `'${String(value)}'`;
-    } else if (typeof value === 'string') {
-      replacement = String(Number(value) || 0);
-    } else if (typeof value === 'boolean') {
-      replacement = value ? '1' : '0';
-    } else {
-      replacement = String(Number(value) || 0);
-    }
-
-    const regex = new RegExp(`\\b${fieldId}\\b`, 'g');
-    expression = expression.replace(regex, replacement);
-  });
-
-  try {
-    // Formula strings are authored in the scoresheet template, not user input.
-    const result = eval(expression);
-    return Number(result) || 0;
-  } catch (error) {
-    console.error(
-      'Formula evaluation error:',
-      error,
-      'Formula:',
-      formula,
-      'Expression:',
-      expression,
-    );
-    return 0;
-  }
-}
-
+/** Compile once per effective schema in consumers, then pass it on every evaluation. */
 export function calculateScoresheetValues(
-  fields: any[] | undefined,
-  data: Record<string, any>,
-): Record<string, number> {
-  if (!fields?.length) {
-    return {};
+  fields: ScoresheetField[] | undefined,
+  data: Record<string, unknown>,
+  compilation: FormulaCompilationResult = compileScoresheetFormulas(fields),
+): FormulaProgramResult {
+  if (!compilation.ok)
+    return { ok: false, values: {}, errors: compilation.errors };
+  const { outputs } = calculateRepeatableGroupDerivedValues(fields ?? [], data);
+  const bindings: Record<string, FormulaValue> = Object.create(null);
+  for (const input of compilation.program.inputs) {
+    const source = input.kind === 'derived' ? outputs : data;
+    if (!Object.prototype.hasOwnProperty.call(source, input.id)) continue;
+    const value = source[input.id];
+    if (value === undefined || value === null) continue;
+    // Nonprimitive data cannot enter the language. NaN causes a diagnostic if
+    // referenced; missing editable inputs alone use the engine's zero default.
+    bindings[input.id] = isFormulaValue(value) ? value : NaN;
   }
-
-  const calculated: Record<string, number> = {};
-  const { outputs } = calculateRepeatableGroupDerivedValues(fields, data);
-  const formulaData = { ...data, ...outputs };
-
-  fields.forEach((field: any) => {
-    if (field.type === 'calculated' && field.formula) {
-      try {
-        calculated[field.id] = evaluateFormula(
-          field.formula,
-          formulaData,
-          calculated,
-        );
-      } catch (error) {
-        console.error(`Error calculating ${field.id}:`, error);
-        calculated[field.id] = 0;
-      }
-    }
-  });
-
-  return calculated;
+  return evaluateFormulaProgram(compilation.program, bindings);
 }
 
 export function buildRepeatableGroupDerivedOutputScoreEntries(
@@ -413,6 +383,8 @@ export function buildRepeatableGroupDerivedOutputScoreEntries(
     const schemaField = fields.find(
       (candidate) => candidate.id === outputFieldId,
     );
+    if (schemaField?.type === 'calculated' && schemaField.formula !== undefined)
+      return;
     entries[outputFieldId] = {
       label: schemaField?.label ?? defaults.label,
       type: schemaField?.type ?? defaults.type,
