@@ -201,6 +201,7 @@ test.describe('Admin navigation and session', () => {
     });
     await expect(page).toHaveURL(/\/admin\/events/);
     failLookup = false;
+    await page.unroute('**/auth/user');
     await page.getByRole('button', { name: 'Retry' }).click();
     await expect(
       page.getByRole('button', { name: '+ Create New Event' }),

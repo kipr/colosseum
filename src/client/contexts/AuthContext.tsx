@@ -124,9 +124,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const lookupFailed =
     query.failureCount > 0 || query.isError || query.failureReason != null;
   const serverAvailable = !lookupFailed;
+  const confirmedSignedOut = query.isSuccess && query.data === null;
+  const terminalLookupFailure =
+    query.isError && !query.isFetching && query.data === undefined;
   const loading =
     transitioning ||
-    (user == null && query.data === undefined && !query.isError);
+    (user == null && !confirmedSignedOut && !terminalLookupFailure);
 
   const value = useMemo(
     () => ({
