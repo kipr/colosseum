@@ -1,4 +1,9 @@
-import type { ColumnAddition, SchemaDatabase, SchemaModule } from './types';
+import type {
+  ColumnAddition,
+  ColumnRemoval,
+  SchemaDatabase,
+  SchemaModule,
+} from './types';
 
 type SchemaExecutor = Pick<SchemaDatabase, 'exec' | 'get'>;
 
@@ -39,6 +44,17 @@ async function addMissingColumns(
 
     await db.exec(
       `ALTER TABLE ${quoteIdentifier(addition.table)} ADD COLUMN ${quoteIdentifier(addition.column)} ${addition.definition}`,
+    );
+  }
+}
+
+async function removeObsoleteColumns(
+  db: SchemaExecutor,
+  removals: readonly ColumnRemoval[] = [],
+): Promise<void> {
+  for (const removal of removals) {
+    await db.exec(
+      `ALTER TABLE ${quoteIdentifier(removal.table)} DROP COLUMN IF EXISTS ${quoteIdentifier(removal.column)}`,
     );
   }
 }
@@ -89,6 +105,10 @@ export async function runSchema(
 
     for (const module of modules) {
       await addMissingColumns(tx, module.columns);
+    }
+
+    for (const module of modules) {
+      await removeObsoleteColumns(tx, module.columnRemovals);
     }
 
     for (const module of modules) {

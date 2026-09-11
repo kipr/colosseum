@@ -231,7 +231,7 @@ colosseum/
 │   │   ├── App.tsx                # Main React app with routing
 │   │   └── main.tsx               # React entry point
 │   ├── server/                    # Express backend
-│   │   ├── config/                # OAuth and API configuration
+│   │   ├── config/                # OAuth configuration
 │   │   ├── database/              # Database connection and schema initialization
 │   │   ├── middleware/            # Authentication middleware
 │   │   ├── routes/                # API route handlers
@@ -279,7 +279,7 @@ The application uses PostgreSQL with the following tables:
 
 ### Core configuration
 
-- **users** - User accounts and OAuth tokens
+- **users** - Google-authenticated admin user accounts
 - **events** - Tournament events with status tracking
 - **teams** - Participating teams per event with check-in status
 - **scoresheet_templates** - Score sheet template definitions
