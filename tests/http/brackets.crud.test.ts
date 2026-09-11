@@ -1,6 +1,5 @@
 /**
  * HTTP route tests for bracket CRUD, entries, games, and winner advancement.
- * Targets the large uncovered portions of src/server/routes/brackets.ts.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
