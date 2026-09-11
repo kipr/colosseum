@@ -51,7 +51,16 @@ export default defineConfig(({ command }) => ({
     // stack's Vite (or the reverse), so a taken port has to be an error.
     strictPort: true,
     proxy: {
-      '^/api/.*': createProxyConfig(apiTarget),
+      '^/api/.*': {
+        ...createProxyConfig(apiTarget),
+        // Vite serves `src/client` at `/`, so `src/client/api/*.ts` is `/api/*.ts`.
+        // Do not proxy those modules to Express.
+        bypass(req: { url?: string }) {
+          if (req.url && /\.(tsx?|jsx?|mjs|css|map)(\?|$)/.test(req.url)) {
+            return req.url;
+          }
+        },
+      },
       '^/auth/.*': createProxyConfig(apiTarget),
       '^/scoresheet/.*': createProxyConfig(apiTarget),
       '^/field-templates.*': createProxyConfig(apiTarget),
