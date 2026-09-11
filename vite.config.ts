@@ -25,7 +25,12 @@ const createProxyConfig = (target: string) => ({
   },
 });
 
-export default defineConfig({
+const clientAliases = {
+  '@': path.resolve(__dirname, './src/client'),
+  '@shared': path.resolve(__dirname, './src/shared'),
+};
+
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   root: 'src/client',
   publicDir: '../../static',
@@ -66,8 +71,15 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src/client'),
-      '@shared': path.resolve(__dirname, './src/shared'),
+      ...clientAliases,
+      ...(command === 'build'
+        ? {
+            '@tanstack/react-query-devtools': path.resolve(
+              __dirname,
+              './src/client/queries/reactQueryDevtoolsStub.tsx',
+            ),
+          }
+        : {}),
     },
   },
-});
+}));

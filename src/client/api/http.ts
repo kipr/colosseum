@@ -4,12 +4,9 @@ export class ApiError extends Error {
 
   constructor(
     message: string,
-    options: { status: number; retryAfterMs?: number; cause?: unknown },
+    options: { status: number; retryAfterMs?: number },
   ) {
-    super(
-      message,
-      options.cause !== undefined ? { cause: options.cause } : undefined,
-    );
+    super(message);
     this.name = 'ApiError';
     this.status = options.status;
     this.retryAfterMs = options.retryAfterMs;
@@ -17,11 +14,8 @@ export class ApiError extends Error {
 }
 
 export class ApiParseError extends Error {
-  constructor(
-    message = 'Invalid JSON response',
-    options?: { cause?: unknown },
-  ) {
-    super(message, options);
+  constructor(message = 'Invalid JSON response') {
+    super(message);
     this.name = 'ApiParseError';
   }
 }
@@ -132,7 +126,7 @@ async function parseJsonBody<T>(response: Response): Promise<T> {
     text = await response.text();
   } catch (error) {
     if (isAbortError(error)) throw error;
-    throw new ApiParseError('Invalid JSON response', { cause: error });
+    throw new ApiParseError('Invalid JSON response');
   }
 
   if (text.trim() === '') {
@@ -141,8 +135,8 @@ async function parseJsonBody<T>(response: Response): Promise<T> {
 
   try {
     return JSON.parse(text) as T;
-  } catch (error) {
-    throw new ApiParseError('Invalid JSON response', { cause: error });
+  } catch {
+    throw new ApiParseError('Invalid JSON response');
   }
 }
 
