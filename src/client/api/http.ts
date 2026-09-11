@@ -1,0 +1,173 @@
+export class ApiError extends Error {
+  readonly status: number;
+  readonly retryAfterMs: number | undefined;
+
+  constructor(
+    message: string,
+    options: { status: number; retryAfterMs?: number; cause?: unknown },
+  ) {
+    super(
+      message,
+      options.cause !== undefined ? { cause: options.cause } : undefined,
+    );
+    this.name = 'ApiError';
+    this.status = options.status;
+    this.retryAfterMs = options.retryAfterMs;
+  }
+}
+
+export class ApiParseError extends Error {
+  constructor(
+    message = 'Invalid JSON response',
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+    this.name = 'ApiParseError';
+  }
+}
+
+const FALLBACK_ERROR_MESSAGE = 'Request failed';
+
+export function parseRetryAfterHeader(
+  value: string | null,
+): number | undefined {
+  if (value == null) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^\d+$/.test(trimmed)) {
+    return Number.parseInt(trimmed, 10) * 1000;
+  }
+  const timestamp = Date.parse(trimmed);
+  if (Number.isNaN(timestamp)) return undefined;
+  return Math.max(0, timestamp - Date.now());
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AbortError';
+}
+
+function headersWithDefaults(init?: HeadersInit): Headers {
+  const headers = new Headers(init);
+  if (!headers.has('Accept')) {
+    headers.set('Accept', 'application/json');
+  }
+  return headers;
+}
+
+function messageFromErrorBody(
+  text: string,
+  contentType: string,
+): string | undefined {
+  const trimmed = text.trim();
+  if (!trimmed) return undefined;
+
+  const looksHtml =
+    contentType.includes('text/html') ||
+    trimmed.startsWith('<!') ||
+    trimmed.startsWith('<html') ||
+    trimmed.startsWith('<HTML');
+  if (looksHtml) return undefined;
+
+  const looksJson =
+    contentType.includes('application/json') ||
+    trimmed.startsWith('{') ||
+    trimmed.startsWith('[');
+  if (!looksJson) return undefined;
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    if (!parsed || typeof parsed !== 'object') return undefined;
+    const record = parsed as Record<string, unknown>;
+    if (typeof record.error === 'string' && record.error.trim()) {
+      return record.error.trim();
+    }
+    if (typeof record.message === 'string' && record.message.trim()) {
+      return record.message.trim();
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
+async function createApiError(response: Response): Promise<ApiError> {
+  const retryAfterMs = parseRetryAfterHeader(
+    response.headers.get('Retry-After'),
+  );
+  const contentType = response.headers.get('Content-Type') ?? '';
+  let text = '';
+  try {
+    text = await response.text();
+  } catch {
+    text = '';
+  }
+  const message =
+    messageFromErrorBody(text, contentType) ??
+    `${FALLBACK_ERROR_MESSAGE} (${response.status})`;
+  return new ApiError(message, {
+    status: response.status,
+    retryAfterMs,
+  });
+}
+
+async function fetchWithDefaults(
+  url: string,
+  options: RequestInit = {},
+): Promise<Response> {
+  try {
+    return await fetch(url, {
+      ...options,
+      credentials: options.credentials ?? 'include',
+      headers: headersWithDefaults(options.headers),
+    });
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw error;
+  }
+}
+
+async function parseJsonBody<T>(response: Response): Promise<T> {
+  let text = '';
+  try {
+    text = await response.text();
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+    throw new ApiParseError('Invalid JSON response', { cause: error });
+  }
+
+  if (text.trim() === '') {
+    throw new ApiParseError('Empty JSON response');
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    throw new ApiParseError('Invalid JSON response', { cause: error });
+  }
+}
+
+export async function requestJson<T>(
+  url: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const response = await fetchWithDefaults(url, options);
+  if (!response.ok) {
+    throw await createApiError(response);
+  }
+  return parseJsonBody<T>(response);
+}
+
+export async function requestVoid(
+  url: string,
+  options: RequestInit = {},
+): Promise<void> {
+  const response = await fetchWithDefaults(url, options);
+  if (!response.ok) {
+    throw await createApiError(response);
+  }
+  try {
+    await response.arrayBuffer();
+  } catch (error) {
+    if (isAbortError(error)) throw error;
+  }
+}

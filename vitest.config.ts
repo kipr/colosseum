@@ -38,8 +38,9 @@ export default defineConfig({
 
     globalSetup: ['./tests/globalSetup.ts'],
 
-    // Include SQL tests from tests/ directory (keeps them out of server tsc build)
-    include: ['tests/**/*.test.ts'],
+    // Include SQL tests from tests/ directory (keeps them out of server tsc build).
+    // React Query tests use `.test.tsx` with a per-file `@vitest-environment jsdom`.
+    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
 
     // Global test timeout
     testTimeout: 10000,
