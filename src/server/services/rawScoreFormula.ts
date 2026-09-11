@@ -7,7 +7,7 @@
  * preserving already-published scores bit-for-bit.
  */
 
-import { getDatabase } from '../database/connection';
+import { getDatabase, type DbExecutor } from '../database/connection';
 
 /**
  * Events with created_at strictly before this timestamp keep the legacy
@@ -23,9 +23,10 @@ export const RAW_SCORE_FORMULA_V2_CUTOFF = '2026-07-27 00:00:00';
  */
 export async function usesLegacyRawScoreFormula(
   eventId: number,
+  db?: DbExecutor,
 ): Promise<boolean> {
-  const db = await getDatabase();
-  const row = await db.get<{ legacy: number | string }>(
+  const conn = db ?? (await getDatabase());
+  const row = await conn.get<{ legacy: number | string }>(
     `SELECT COUNT(*) AS legacy FROM events
      WHERE id = ? AND (created_at IS NULL OR created_at < ?)`,
     [eventId, RAW_SCORE_FORMULA_V2_CUTOFF],

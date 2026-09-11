@@ -14,7 +14,11 @@
  * Internal tiebreaker for tied averages: the team's lowest score (higher wins).
  */
 
-import { getDatabase } from '../database/connection';
+import {
+  getDatabase,
+  isDatabase,
+  type DbExecutor,
+} from '../database/connection';
 import { usesLegacyRawScoreFormula } from './rawScoreFormula';
 
 interface RankingData {
@@ -25,10 +29,11 @@ interface RankingData {
 
 export async function recalculateDoubleSeedingRankings(
   eventId: number,
+  db?: DbExecutor,
 ): Promise<{ teamsRanked: number; teamsUnranked: number }> {
-  const db = await getDatabase();
+  const conn = db ?? (await getDatabase());
 
-  const teams = await db.all<{ id: number }>(
+  const teams = await conn.all<{ id: number }>(
     'SELECT id FROM teams WHERE event_id = ?',
     [eventId],
   );
@@ -37,7 +42,7 @@ export async function recalculateDoubleSeedingRankings(
     return { teamsRanked: 0, teamsUnranked: 0 };
   }
 
-  const scoreRows = await db.all<{ team_id: number; score: number }>(
+  const scoreRows = await conn.all<{ team_id: number; score: number }>(
     `SELECT team_id, score FROM double_seeding_scores
      WHERE event_id = ? AND score IS NOT NULL`,
     [eventId],
@@ -75,7 +80,7 @@ export async function recalculateDoubleSeedingRankings(
     rankings.find((r) => r.seedAverage !== null)?.seedAverage || 1;
   const n = teams.length;
 
-  const legacy = await usesLegacyRawScoreFormula(eventId);
+  const legacy = await usesLegacyRawScoreFormula(eventId, conn);
   let denominator = maxAverage;
   if (!legacy) {
     const maxSingleRound =
@@ -83,7 +88,7 @@ export async function recalculateDoubleSeedingRankings(
     denominator = maxSingleRound || 1;
   }
 
-  await db.transaction(async (tx) => {
+  const writeRankings = async (tx: DbExecutor) => {
     for (let i = 0; i < rankings.length; i++) {
       const r = rankings[i];
       const seedRank = r.seedAverage !== null ? i + 1 : null;
@@ -107,7 +112,13 @@ export async function recalculateDoubleSeedingRankings(
         [r.teamId, r.seedAverage, seedRank, rawScore, r.tiebreaker],
       );
     }
-  });
+  };
+
+  if (isDatabase(conn)) {
+    await conn.transaction(writeRankings);
+  } else {
+    await writeRankings(conn);
+  }
 
   const teamsRanked = rankings.filter((r) => r.seedAverage !== null).length;
   const teamsUnranked = rankings.length - teamsRanked;

@@ -1,6 +1,6 @@
 import express, { Response } from 'express';
 import { requireAdmin, AuthRequest } from '../middleware/auth';
-import { getDatabase, Database } from '../database/connection';
+import { getDatabase, type DbExecutor } from '../database/connection';
 
 const router = express.Router();
 router.use(requireAdmin);
@@ -81,7 +81,7 @@ router.get('/entity/:type/:id', async (req: AuthRequest, res: Response) => {
 
 // Helper function to create audit entries (used internally by other routes)
 export async function createAuditEntry(
-  db: Database,
+  db: DbExecutor,
   params: {
     event_id?: number | null;
     user_id?: number | null;

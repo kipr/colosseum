@@ -198,6 +198,27 @@ describe('PostgresAdapter', () => {
       ).rejects.toThrow(/violates unique constraint/);
     });
 
+    it('runs all() on the transaction connection', async () => {
+      const eventId = await seedEventId();
+      await testDb.db.run(
+        'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id',
+        [eventId, 1, 'A'],
+      );
+
+      const names = await testDb.db.transaction(async (tx) => {
+        await tx.run(
+          'INSERT INTO teams (event_id, team_number, team_name) VALUES (?, ?, ?) RETURNING id',
+          [eventId, 2, 'B'],
+        );
+        return tx.all<{ team_name: string }>(
+          'SELECT team_name FROM teams WHERE event_id = ? ORDER BY team_number',
+          [eventId],
+        );
+      });
+
+      expect(names.map((row) => row.team_name)).toEqual(['A', 'B']);
+    });
+
     it('keeps a transaction usable after inserting into an id-less table', async () => {
       const eventId = await seedEventId();
 

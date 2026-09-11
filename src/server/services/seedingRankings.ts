@@ -13,7 +13,11 @@
  *                  max tournament seed average
  */
 
-import { getDatabase } from '../database/connection';
+import {
+  getDatabase,
+  isDatabase,
+  type DbExecutor,
+} from '../database/connection';
 import { usesLegacyRawScoreFormula } from './rawScoreFormula';
 
 interface RankingData {
@@ -27,15 +31,18 @@ interface RankingData {
  * Algorithm: Average of top 2 of 3 scores, with tiebreaker.
  *
  * @param eventId - The event to recalculate rankings for
+ * @param db - Optional executor; pass an open transaction so reads/writes see
+ *   uncommitted accept state. Defaults to the process database adapter.
  * @returns Object with recalculated rankings count
  */
 export async function recalculateSeedingRankings(
   eventId: number,
+  db?: DbExecutor,
 ): Promise<{ teamsRanked: number; teamsUnranked: number }> {
-  const db = await getDatabase();
+  const conn = db ?? (await getDatabase());
 
   // Get all teams for this event
-  const teams = await db.all('SELECT id FROM teams WHERE event_id = ?', [
+  const teams = await conn.all('SELECT id FROM teams WHERE event_id = ?', [
     eventId,
   ]);
 
@@ -47,7 +54,7 @@ export async function recalculateSeedingRankings(
   const rankings: RankingData[] = [];
 
   for (const team of teams) {
-    const scores = await db.all(
+    const scores = await conn.all(
       'SELECT score FROM seeding_scores WHERE team_id = ? AND score IS NOT NULL ORDER BY score DESC',
       [team.id],
     );
@@ -88,10 +95,10 @@ export async function recalculateSeedingRankings(
   const rankedTeams = rankings.filter((r) => r.seedAverage !== null);
   const n = rankedTeams.length;
 
-  const legacy = await usesLegacyRawScoreFormula(eventId);
+  const legacy = await usesLegacyRawScoreFormula(eventId, conn);
   let denominator = maxAverage;
   if (!legacy) {
-    const maxRow = await db.get<{ max_score: number | null }>(
+    const maxRow = await conn.get<{ max_score: number | null }>(
       `SELECT MAX(ss.score) AS max_score
        FROM seeding_scores ss
        JOIN teams t ON ss.team_id = t.id
@@ -101,8 +108,7 @@ export async function recalculateSeedingRankings(
     denominator = maxRow?.max_score || 1;
   }
 
-  // Update rankings in database using a single transaction
-  await db.transaction(async (tx) => {
+  const writeRankings = async (tx: DbExecutor) => {
     for (let i = 0; i < rankings.length; i++) {
       const r = rankings[i];
       const seedRank = r.seedAverage !== null ? i + 1 : null;
@@ -127,7 +133,13 @@ export async function recalculateSeedingRankings(
         [r.teamId, r.seedAverage, seedRank, rawSeedScore, r.tiebreaker],
       );
     }
-  });
+  };
+
+  if (isDatabase(conn)) {
+    await conn.transaction(writeRankings);
+  } else {
+    await writeRankings(conn);
+  }
 
   const teamsRanked = rankings.filter((r) => r.seedAverage !== null).length;
   const teamsUnranked = rankings.filter((r) => r.seedAverage === null).length;
