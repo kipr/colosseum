@@ -1,6 +1,27 @@
-import { requestJson } from './http';
+import { requestJson, requestVoid } from './http';
 import type { Event } from '../utils/eventStatus';
 import type { PublicEvent } from './types';
+
+export interface OverallRow {
+  team_id: number;
+  team_number: number;
+  team_name: string;
+  doc_score: number;
+  raw_seed_score: number;
+  raw_double_seed_score: number;
+  weighted_de_score: number;
+  total: number;
+}
+
+export function getOverallScores(eventId: number, signal?: AbortSignal) {
+  return requestJson<OverallRow[]>(`/events/${eventId}/overall`, { signal });
+}
+
+export function getPublicOverallScores(eventId: number, signal?: AbortSignal) {
+  return requestJson<OverallRow[]>(`/events/${eventId}/overall/public`, {
+    signal,
+  });
+}
 
 export function getPublicEvents({
   signal,
@@ -13,8 +34,6 @@ export function getEvents({ signal }: { signal?: AbortSignal } = {}): Promise<
 > {
   return requestJson<Event[]>('/events', { signal });
 }
-
-import { requestVoid } from './http';
 
 export type EventInput = Partial<
   Pick<

@@ -43,6 +43,10 @@ export function adminEventKey(
   return [...adminScopeKey(userId), 'event', Number(eventId)] as const;
 }
 
+export function publicEventKey(eventId: number | string) {
+  return ['public', 'event', Number(eventId)] as const;
+}
+
 export const publicTemplatesKey = ['public', 'templates'] as const;
 export const teamsKey = (userId: number, eventId: number) =>
   [...adminEventKey(userId, eventId), 'teams'] as const;
@@ -52,3 +56,33 @@ export const templateDetailKey = (userId: number, templateId: number) =>
   [...adminScopeKey(userId), 'template', Number(templateId)] as const;
 export const fieldTemplatesKey = (userId: number) =>
   [...adminScopeKey(userId), 'field-templates'] as const;
+export const seedingKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'seeding'] as const;
+export const doubleSeedingKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'double-seeding'] as const;
+export const overallKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'overall'] as const;
+export const bracketsKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'brackets'] as const;
+export const bracketKey = (
+  userId: number,
+  eventId: number,
+  bracketId: number,
+) => [...adminEventKey(userId, eventId), 'bracket', Number(bracketId)] as const;
+export const assignedTeamsKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'assigned-teams'] as const;
+export const documentationKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'documentation'] as const;
+export const globalDocCategoriesKey = (userId: number) =>
+  [...adminScopeKey(userId), 'documentation-global-categories'] as const;
+export const awardsKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'awards'] as const;
+export const awardTemplatesKey = (userId: number) =>
+  [...adminScopeKey(userId), 'award-templates'] as const;
+export const auditKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'audit'] as const;
+export const auditEntityKey = (
+  userId: number,
+  entityType: string,
+  entityId: number,
+) => [...adminScopeKey(userId), 'audit-entity', entityType, entityId] as const;

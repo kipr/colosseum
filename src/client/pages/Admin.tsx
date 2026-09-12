@@ -1,5 +1,6 @@
 import { useEffect, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
@@ -10,6 +11,7 @@ import {
   adminEventPath,
   adminEventsPath,
 } from '../utils/routes';
+import { adminEventsKey } from '../queries/keys';
 import './Admin.css';
 
 const EventsTab = lazy(() => import('../components/admin/EventsTab'));
@@ -79,11 +81,11 @@ function resolveView(searchView: string | null): AdminView {
 
 export default function Admin() {
   const { user, loading, serverAvailable, checkAuth } = useAuth();
+  const queryClient = useQueryClient();
   const {
     selectedEvent,
     loading: eventsLoading,
     error: eventsError,
-    refreshEvents,
   } = useEvent();
   const navigate = useNavigate();
   const { eventId: eventIdParam, bracketId: bracketIdParam } = useParams<{
@@ -219,7 +221,11 @@ export default function Admin() {
                   type="button"
                   className="btn btn-secondary"
                   onClick={() => {
-                    void refreshEvents();
+                    if (user) {
+                      void queryClient.invalidateQueries({
+                        queryKey: adminEventsKey(user.id),
+                      });
+                    }
                   }}
                 >
                   Retry

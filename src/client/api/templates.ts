@@ -3,7 +3,6 @@ import type {
   ScoresheetField,
   ScoresheetSchema,
 } from '../../shared/scoresheetSchema';
-import type { Bracket } from '../types/brackets';
 
 export interface TemplateSummary {
   id: number;
@@ -63,9 +62,6 @@ export async function getFieldTemplates(
   } catch {
     throw new ApiParseError('Invalid field-template JSON');
   }
-}
-export function getTemplateBrackets(eventId: number, signal?: AbortSignal) {
-  return requestJson<Bracket[]>(`/brackets/event/${eventId}`, { signal });
 }
 export function saveTemplate({
   templateId,

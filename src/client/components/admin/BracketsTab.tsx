@@ -1,13 +1,9 @@
-import React, {
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-  useMemo,
-} from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useAuth } from '../../contexts/AuthContext';
 import { useEvent } from '../../contexts/EventContext';
 import {
   adminEventPath,
@@ -15,13 +11,23 @@ import {
   isBracketDetailView,
   type BracketDetailView as BracketDetailViewType,
 } from '../../utils/routes';
+import { Bracket, BracketStatus, STATUS_LABELS } from '../../types/brackets';
+import type { AssignedTeam } from '../../api/brackets';
+import type { Team } from '../../api/teams';
+import type { SeedingRanking } from '../../api/seeding';
+import type { DoubleSeedingRanking } from '../../api/doubleSeeding';
+import { ApiError } from '../../api/http';
+import { teamsQueryOptions } from '../../queries/teams';
+import { seedingRankingsQueryOptions } from '../../queries/seeding';
+import { doubleSeedingRankingsQueryOptions } from '../../queries/doubleSeeding';
 import {
-  Bracket,
-  BracketDetail,
-  BracketEntryWithRank,
-  BracketStatus,
-  STATUS_LABELS,
-} from '../../types/brackets';
+  assignedTeamsQueryOptions,
+  bracketQueryOptions,
+  bracketRankingsQueryOptions,
+  bracketsQueryOptions,
+  useBracketMutations,
+} from '../../queries/brackets';
+import QueryFeedback, { queryData } from '../QueryFeedback';
 import BracketListTable from '../bracket/BracketListTable';
 import BracketDetailView from '../bracket/BracketDetailView';
 import { UnifiedTable } from '../table';
@@ -36,37 +42,10 @@ interface BracketFormData {
   weight: string;
 }
 
-interface CreateModalTeam {
-  id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-interface CreateModalRanking {
-  team_id: number;
-  seed_average: number | null;
-  seed_rank: number | null;
-}
-
-interface CreateModalDoubleSeedingRanking {
-  team_id: number;
-  seed_average: number | null;
-  seed_rank: number | null;
-}
-
-interface AssignedTeam {
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  bracket_id: number;
-  bracket_name: string;
-}
-
 interface BracketCreateMatrixRow {
-  team: CreateModalTeam;
-  ranking: CreateModalRanking | undefined;
-  doubleSeedingRanking: CreateModalDoubleSeedingRanking | undefined;
+  team: Team;
+  ranking: SeedingRanking | undefined;
+  doubleSeedingRanking: DoubleSeedingRanking | undefined;
   assigned: AssignedTeam | undefined;
   hasOverlap: boolean;
 }
@@ -78,6 +57,11 @@ function nextPowerOfTwo(n: number): number {
 }
 
 const BRACKET_SIZES = [4, 8, 16, 32, 64];
+const EMPTY_BRACKETS: Bracket[] = [];
+const EMPTY_TEAMS: Team[] = [];
+const EMPTY_RANKINGS: SeedingRanking[] = [];
+const EMPTY_DS_RANKINGS: DoubleSeedingRanking[] = [];
+const EMPTY_ASSIGNED: AssignedTeam[] = [];
 
 const defaultFormData: BracketFormData = {
   name: '',
@@ -88,376 +72,216 @@ const defaultFormData: BracketFormData = {
 
 export default function BracketsTab() {
   const { selectedEvent } = useEvent();
+  const { user, loading: authLoading } = useAuth();
   const selectedEventId = selectedEvent?.id ?? null;
   const doubleSeedingEnabled = (selectedEvent?.double_seeding_rounds ?? 0) > 0;
   const navigate = useNavigate();
   const { bracketId: bracketIdParam } = useParams<{ bracketId?: string }>();
   const [searchParams] = useSearchParams();
-  const [brackets, setBrackets] = useState<Bracket[]>([]);
-  const [loading, setLoading] = useState(false);
+  const userId = user?.id ?? 0;
+  const enabled = Boolean(user && !authLoading && selectedEventId);
+  const { create, update, remove, generateEntries, generateGames } =
+    useBracketMutations();
 
   const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
 
-  const setSelectedBracketId = useCallback(
-    (id: number | null) => {
-      if (id && selectedEventId) {
-        const viewParam = searchParams.get('view');
-        const view: BracketDetailViewType = isBracketDetailView(viewParam)
-          ? viewParam
-          : 'bracket';
-        navigate(adminBracketPath(selectedEventId, id, view));
-      } else if (selectedEventId) {
-        navigate(adminEventPath(selectedEventId, 'brackets'));
-      }
-    },
-    [selectedEventId, navigate, searchParams],
-  );
-  const [bracketDetail, setBracketDetail] = useState<BracketDetail | null>(
-    null,
-  );
-  const [detailLoading, setDetailLoading] = useState(false);
+  const setSelectedBracketId = (id: number | null) => {
+    if (id && selectedEventId) {
+      const viewParam = searchParams.get('view');
+      const view: BracketDetailViewType = isBracketDetailView(viewParam)
+        ? viewParam
+        : 'bracket';
+      navigate(adminBracketPath(selectedEventId, id, view));
+    } else if (selectedEventId) {
+      navigate(adminEventPath(selectedEventId, 'brackets'));
+    }
+  };
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState<BracketFormData>(defaultFormData);
-  const [saving, setSaving] = useState(false);
-
-  const [createTeams, setCreateTeams] = useState<CreateModalTeam[]>([]);
-  const [createRankings, setCreateRankings] = useState<CreateModalRanking[]>(
-    [],
-  );
-  const [createDoubleSeedingRankings, setCreateDoubleSeedingRankings] =
-    useState<CreateModalDoubleSeedingRanking[]>([]);
-  const [createAssigned, setCreateAssigned] = useState<AssignedTeam[]>([]);
-  const [createDataLoading, setCreateDataLoading] = useState(false);
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<number>>(
     new Set(),
   );
 
-  const [generatingEntries, setGeneratingEntries] = useState(false);
-  const [generatingGames, setGeneratingGames] = useState(false);
-
-  const [rankings, setRankings] = useState<BracketEntryWithRank[] | null>(null);
-  const [rankingsWeight, setRankingsWeight] = useState<number>(1);
-  const [rankingsLoading, setRankingsLoading] = useState(false);
-
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
-  const toastRef = useRef(toast);
-  toastRef.current = toast;
 
-  const fetchBrackets = useCallback(async () => {
-    if (!selectedEventId) {
-      setBrackets([]);
-      return;
-    }
+  const bracketsQuery = useQuery({
+    ...bracketsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const brackets = queryData(bracketsQuery) ?? EMPTY_BRACKETS;
+  const loading = bracketsQuery.isLoading;
 
-    setLoading(true);
-    try {
-      const response = await fetch(`/brackets/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch brackets');
-      }
-      const data: Bracket[] = await response.json();
-      setBrackets(data);
-    } catch (error) {
-      console.error('Error fetching brackets:', error);
-      toast.error('Failed to load brackets');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
-
-  const fetchBracketDetail = useCallback(
-    async (bracketId: number) => {
-      setDetailLoading(true);
-      try {
-        const [detailRes, rankingsRes] = await Promise.all([
-          fetch(`/brackets/${bracketId}`, { credentials: 'include' }),
-          fetch(`/brackets/${bracketId}/rankings`, { credentials: 'include' }),
-        ]);
-        if (!detailRes.ok) {
-          if (detailRes.status === 404 && selectedEventId) {
-            navigate(adminEventPath(selectedEventId, 'brackets'), {
-              replace: true,
-            });
-            return;
-          }
-          throw new Error('Failed to fetch bracket details');
-        }
-        const data: BracketDetail = await detailRes.json();
-        if (rankingsRes.ok) {
-          const rankingsBody = (await rankingsRes.json()) as {
-            weight: number;
-            entries: BracketEntryWithRank[];
-          };
-          data.rankings = rankingsBody.entries;
-          setRankings(rankingsBody.entries);
-          setRankingsWeight(rankingsBody.weight);
-        } else {
-          setRankings(null);
-        }
-        setBracketDetail(data);
-      } catch (error) {
-        console.error('Error fetching bracket detail:', error);
-        toast.error('Failed to load bracket details');
-      } finally {
-        setDetailLoading(false);
-      }
-    },
-    [selectedEventId, navigate],
-  );
+  const detailQuery = useQuery({
+    ...bracketQueryOptions(
+      userId,
+      selectedEventId ?? 0,
+      selectedBracketId ?? 0,
+    ),
+    enabled: enabled && selectedBracketId != null,
+  });
+  const rankingsQuery = useQuery({
+    ...bracketRankingsQueryOptions(
+      userId,
+      selectedEventId ?? 0,
+      selectedBracketId ?? 0,
+    ),
+    enabled: enabled && selectedBracketId != null,
+  });
+  const bracketDetail = queryData(detailQuery);
+  const rankings = queryData(rankingsQuery)?.entries ?? null;
+  const rankingsWeight = queryData(rankingsQuery)?.weight ?? 1;
+  const detailLoading = detailQuery.isLoading;
+  const rankingsLoading = rankingsQuery.isFetching;
 
   useEffect(() => {
-    fetchBrackets();
-    setBracketDetail(null);
-  }, [fetchBrackets]);
+    if (
+      selectedEventId &&
+      selectedBracketId != null &&
+      detailQuery.isError &&
+      detailQuery.error instanceof ApiError &&
+      detailQuery.error.status === 404
+    ) {
+      navigate(adminEventPath(selectedEventId, 'brackets'), { replace: true });
+    }
+  }, [
+    detailQuery.error,
+    detailQuery.isError,
+    navigate,
+    selectedBracketId,
+    selectedEventId,
+  ]);
+
+  const createEnabled = enabled && showCreateModal;
+  const createTeamsQuery = useQuery({
+    ...teamsQueryOptions(userId, selectedEventId ?? 0),
+    enabled: createEnabled,
+  });
+  const createRankingsQuery = useQuery({
+    ...seedingRankingsQueryOptions(userId, selectedEventId ?? 0),
+    enabled: createEnabled,
+  });
+  const createDsRankingsQuery = useQuery({
+    ...doubleSeedingRankingsQueryOptions(userId, selectedEventId ?? 0),
+    enabled: createEnabled && doubleSeedingEnabled,
+  });
+  const createAssignedQuery = useQuery({
+    ...assignedTeamsQueryOptions(userId, selectedEventId ?? 0),
+    enabled: createEnabled,
+  });
+  const createTeams = queryData(createTeamsQuery) ?? EMPTY_TEAMS;
+  const createRankings = queryData(createRankingsQuery) ?? EMPTY_RANKINGS;
+  const createDoubleSeedingRankings = doubleSeedingEnabled
+    ? (queryData(createDsRankingsQuery) ?? EMPTY_DS_RANKINGS)
+    : EMPTY_DS_RANKINGS;
+  const createAssigned = queryData(createAssignedQuery) ?? EMPTY_ASSIGNED;
+  const createDataLoading =
+    createTeamsQuery.isLoading ||
+    createRankingsQuery.isLoading ||
+    (doubleSeedingEnabled && createDsRankingsQuery.isLoading) ||
+    createAssignedQuery.isLoading;
 
   useEffect(() => {
-    if (selectedBracketId) {
-      fetchBracketDetail(selectedBracketId);
-    } else {
-      setBracketDetail(null);
-      setRankings(null);
-    }
-  }, [selectedBracketId, fetchBracketDetail]);
-
-  const fetchRankings = useCallback(async (bracketId: number) => {
-    setRankingsLoading(true);
-    try {
-      await fetch(`/brackets/${bracketId}/rankings/calculate`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      const res = await fetch(`/brackets/${bracketId}/rankings`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch rankings');
-      const body = (await res.json()) as {
-        weight: number;
-        entries: BracketEntryWithRank[];
-      };
-      setRankings(body.entries);
-      setRankingsWeight(body.weight);
-    } catch (error) {
-      console.error('Error fetching bracket rankings:', error);
-      toastRef.current.error('Failed to load rankings');
-    } finally {
-      setRankingsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!showCreateModal || !selectedEventId) {
-      return;
-    }
-    let cancelled = false;
-    setCreateDataLoading(true);
-    setSelectedTeamIds(new Set());
-    Promise.all([
-      fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
-      fetch(`/seeding/rankings/event/${selectedEventId}`, {
-        credentials: 'include',
-      }),
-      doubleSeedingEnabled
-        ? fetch(`/double-seeding/rankings/event/${selectedEventId}`, {
-            credentials: 'include',
-          })
-        : null,
-      fetch(`/brackets/event/${selectedEventId}/assigned-teams`, {
-        credentials: 'include',
-      }),
-    ])
-      .then(async ([teamsRes, rankingsRes, dsRankingsRes, assignedRes]) => {
-        if (cancelled) return;
-        if (!teamsRes.ok) throw new Error('Failed to fetch teams');
-        if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
-        if (dsRankingsRes && !dsRankingsRes.ok)
-          throw new Error('Failed to fetch double-seeding rankings');
-        if (!assignedRes.ok) throw new Error('Failed to fetch assigned teams');
-        const [teams, rankings, dsRankings, assigned] = await Promise.all([
-          teamsRes.json(),
-          rankingsRes.json(),
-          dsRankingsRes?.json() ?? [],
-          assignedRes.json(),
-        ]);
-        if (cancelled) return;
-        setCreateTeams(teams);
-        setCreateRankings(rankings);
-        setCreateDoubleSeedingRankings(dsRankings);
-        setCreateAssigned(assigned);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          console.error('Error loading create modal data:', err);
-          toast.error(
-            err instanceof Error ? err.message : 'Failed to load teams',
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setCreateDataLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [showCreateModal, selectedEventId, doubleSeedingEnabled]);
+    if (showCreateModal) setSelectedTeamIds(new Set());
+  }, [showCreateModal, selectedEventId]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedEventId) return;
-
+    if (!selectedEventId || !user) return;
     if (!formData.name.trim()) {
       toast.error('Bracket name is required');
       return;
     }
-
     const teamIds = Array.from(selectedTeamIds);
     if (teamIds.length === 0) {
       toast.error('Select at least one team for the bracket');
       return;
     }
-
-    setSaving(true);
     try {
-      const response = await fetch('/brackets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          event_id: selectedEventId,
-          name: formData.name.trim(),
-          team_ids: teamIds,
-          weight: formData.weight ? parseFloat(formData.weight) : undefined,
-        }),
+      const data = await create.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        event_id: selectedEventId,
+        name: formData.name.trim(),
+        team_ids: teamIds,
+        weight: formData.weight ? parseFloat(formData.weight) : undefined,
       });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        if (response.status === 409 && data.conflicts?.length) {
-          const names = data.conflicts
-            .map(
-              (c: { team_name: string; bracket_name: string }) =>
-                `${c.team_name} (in ${c.bracket_name})`,
-            )
-            .join(', ');
-          throw new Error(
-            `Teams already in another bracket: ${names}. Remove them from selection.`,
-          );
-        }
-        throw new Error(data.error || 'Failed to create bracket');
-      }
-
       toast.success('Bracket created!');
       setShowCreateModal(false);
       setFormData(defaultFormData);
       setSelectedTeamIds(new Set());
-      await fetchBrackets();
-      if (data.id) {
-        setSelectedBracketId(data.id);
-      }
+      if (data.id) setSelectedBracketId(data.id);
     } catch (error) {
-      console.error('Error creating bracket:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to create bracket',
       );
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!bracketDetail) return;
-
+    if (!bracketDetail || !user || !selectedEventId) return;
     if (!formData.name.trim()) {
       toast.error('Bracket name is required');
       return;
     }
-
-    setSaving(true);
+    const body: {
+      name: string;
+      bracket_size: number;
+      actual_team_count?: number | null;
+      weight?: number;
+    } = {
+      name: formData.name.trim(),
+      bracket_size: formData.bracket_size,
+    };
+    if (formData.actual_team_count) {
+      const count = parseInt(formData.actual_team_count, 10);
+      if (!isNaN(count) && count > 0) body.actual_team_count = count;
+    } else {
+      body.actual_team_count = null;
+    }
+    if (formData.weight) {
+      const w = parseFloat(formData.weight);
+      if (!isNaN(w) && w > 0 && w <= 1) body.weight = w;
+    }
     try {
-      const body: Record<string, unknown> = {
-        name: formData.name.trim(),
-        bracket_size: formData.bracket_size,
-      };
-
-      if (formData.actual_team_count) {
-        const count = parseInt(formData.actual_team_count, 10);
-        if (!isNaN(count) && count > 0) {
-          body.actual_team_count = count;
-        }
-      } else {
-        body.actual_team_count = null;
-      }
-
-      if (formData.weight) {
-        const w = parseFloat(formData.weight);
-        if (!isNaN(w) && w > 0 && w <= 1) {
-          body.weight = w;
-        }
-      }
-
-      const response = await fetch(`/brackets/${bracketDetail.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
+      await update.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        bracketId: bracketDetail.id,
+        data: body,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update bracket');
-      }
-
       toast.success('Bracket updated!');
       setShowEditModal(false);
-      await fetchBrackets();
-      await fetchBracketDetail(bracketDetail.id);
     } catch (error) {
-      console.error('Error updating bracket:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to update bracket',
       );
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleDelete = async (bracket: Bracket) => {
+    if (!user || !selectedEventId) return;
     const confirmed = await confirm({
       title: 'Delete Bracket',
       message: `Are you sure you want to delete "${bracket.name}"? This will remove all entries and games. This cannot be undone.`,
       confirmText: 'Delete',
       confirmStyle: 'danger',
     });
-
     if (!confirmed) return;
-
     try {
-      const response = await fetch(`/brackets/${bracket.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
+      await remove.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        bracketId: bracket.id,
       });
-
-      if (!response.ok && response.status !== 204) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete bracket');
-      }
-
       toast.success('Bracket deleted');
       if (selectedBracketId === bracket.id) {
-        if (selectedEventId) {
-          navigate(adminEventPath(selectedEventId, 'brackets'));
-        }
-        setBracketDetail(null);
+        navigate(adminEventPath(selectedEventId, 'brackets'));
       }
-      await fetchBrackets();
     } catch (error) {
-      console.error('Error deleting bracket:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to delete bracket',
       );
@@ -465,8 +289,7 @@ export default function BracketsTab() {
   };
 
   const handleGenerateEntries = async () => {
-    if (!bracketDetail) return;
-
+    if (!bracketDetail || !user || !selectedEventId) return;
     const hasEntries = bracketDetail.entries.length > 0;
     if (hasEntries) {
       const confirmed = await confirm({
@@ -478,38 +301,25 @@ export default function BracketsTab() {
       });
       if (!confirmed) return;
     }
-
-    setGeneratingEntries(true);
     try {
-      const url = `/brackets/${bracketDetail.id}/entries/generate${hasEntries ? '?force=true' : ''}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
+      const data = await generateEntries.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        bracketId: bracketDetail.id,
+        force: hasEntries,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate entries');
-      }
-
-      const data = await response.json();
       toast.success(
         `Generated ${data.entriesCreated} entries (${data.byeCount} byes)`,
       );
-      await fetchBracketDetail(bracketDetail.id);
     } catch (error) {
-      console.error('Error generating entries:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to generate entries',
       );
-    } finally {
-      setGeneratingEntries(false);
     }
   };
 
   const handleGenerateGames = async () => {
-    if (!bracketDetail) return;
-
+    if (!bracketDetail || !user || !selectedEventId) return;
     const hasGames = bracketDetail.games.length > 0;
     if (hasGames) {
       const confirmed = await confirm({
@@ -521,54 +331,32 @@ export default function BracketsTab() {
       });
       if (!confirmed) return;
     }
-
-    setGeneratingGames(true);
     try {
-      const url = `/brackets/${bracketDetail.id}/games/generate${hasGames ? '?force=true' : ''}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
+      const data = await generateGames.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        bracketId: bracketDetail.id,
+        force: hasGames,
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate games');
-      }
-
-      const data = await response.json();
       toast.success(`Generated ${data.gamesCreated} games`);
-      await fetchBracketDetail(bracketDetail.id);
     } catch (error) {
-      console.error('Error generating games:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to generate games',
       );
-    } finally {
-      setGeneratingGames(false);
     }
   };
 
   const handleStatusChange = async (newStatus: BracketStatus) => {
-    if (!bracketDetail) return;
-
+    if (!bracketDetail || !user || !selectedEventId) return;
     try {
-      const response = await fetch(`/brackets/${bracketDetail.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: newStatus }),
+      await update.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        bracketId: bracketDetail.id,
+        data: { status: newStatus },
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update status');
-      }
-
       toast.success(`Bracket status updated to ${STATUS_LABELS[newStatus]}`);
-      await fetchBrackets();
-      await fetchBracketDetail(bracketDetail.id);
     } catch (error) {
-      console.error('Error updating bracket status:', error);
       toast.error(
         error instanceof Error ? error.message : 'Failed to update status',
       );
@@ -585,6 +373,8 @@ export default function BracketsTab() {
     });
     setShowEditModal(true);
   };
+
+  const saving = create.isPending || update.isPending;
 
   if (!selectedEventId) {
     return (
@@ -647,9 +437,9 @@ export default function BracketsTab() {
       <button
         className="btn btn-primary"
         onClick={handleGenerateEntries}
-        disabled={generatingEntries}
+        disabled={generateEntries.isPending}
       >
-        {generatingEntries ? 'Generating...' : 'Generate from Seeding'}
+        {generateEntries.isPending ? 'Generating...' : 'Generate from Seeding'}
       </button>
     );
   };
@@ -660,12 +450,12 @@ export default function BracketsTab() {
       <button
         className={`btn ${bracketDetail.games.length > 0 ? 'btn-danger' : 'btn-primary'}`}
         onClick={handleGenerateGames}
-        disabled={generatingGames || bracketDetail.entries.length === 0}
+        disabled={generateGames.isPending || bracketDetail.entries.length === 0}
         title={
           bracketDetail.entries.length === 0 ? 'Generate entries first' : ''
         }
       >
-        {generatingGames
+        {generateGames.isPending
           ? 'Generating...'
           : bracketDetail.games.length > 0
             ? 'Clear ALL Games and Regenerate'
@@ -856,7 +646,9 @@ export default function BracketsTab() {
           </div>
 
           <div className="card">
-            {loading ? (
+            {bracketsQuery.isError ? (
+              <QueryFeedback query={bracketsQuery} />
+            ) : loading ? (
               <p>Loading brackets...</p>
             ) : (
               <BracketListTable
@@ -872,7 +664,13 @@ export default function BracketsTab() {
       {/* Bracket Detail View */}
       {selectedBracketId && (
         <>
-          {detailLoading ? (
+          {detailQuery.isError &&
+          !(
+            detailQuery.error instanceof ApiError &&
+            detailQuery.error.status === 404
+          ) ? (
+            <QueryFeedback query={detailQuery} />
+          ) : detailLoading ? (
             <p>Loading bracket details...</p>
           ) : bracketDetail ? (
             <BracketDetailView
@@ -881,7 +679,6 @@ export default function BracketsTab() {
                 if (selectedEventId) {
                   navigate(adminEventPath(selectedEventId, 'brackets'));
                 }
-                setBracketDetail(null);
               }}
               adminActions={renderAdminActions()}
               entriesActions={renderEntriesActions()}
@@ -889,9 +686,6 @@ export default function BracketsTab() {
               rankings={rankings}
               rankingsWeight={rankingsWeight}
               rankingsLoading={rankingsLoading}
-              onRefreshRankings={() => {
-                if (selectedBracketId) fetchRankings(selectedBracketId);
-              }}
             />
           ) : (
             <p>Bracket not found.</p>

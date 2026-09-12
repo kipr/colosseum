@@ -1,29 +1,25 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { useSearchParams } from 'react-router-dom';
 import * as Diff from 'diff';
+import { useAuth } from '../../contexts/AuthContext';
 import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import { formatDateTime } from '../../utils/dateUtils';
+import type { AuditLogEntry } from '../../api/audit';
+import {
+  AUDIT_PAGE_SIZE,
+  auditHistoryQueryOptions,
+  entityHistoryQueryOptions,
+} from '../../queries/audit';
+import QueryFeedback from '../QueryFeedback';
+import { isAuthorizationError } from '../../queries/invalidation';
 import '../Modal.css';
 import './AuditTab.css';
 
-const PAGE_SIZE = 50;
-
-interface AuditLogEntry {
-  id: number;
-  event_id: number | null;
-  user_id: number | null;
-  action: string;
-  entity_type: string;
-  entity_id: number | null;
-  old_value: string | null;
-  new_value: string | null;
-  created_at: string;
-  user_name: string | null;
-  user_email: string | null;
-}
+const EMPTY_LOGS: AuditLogEntry[] = [];
 
 import type { AdminView } from '../../utils/routes';
 
@@ -67,18 +63,12 @@ const ENTITY_TYPE_TO_TAB: Record<string, AdminView> = {
 
 export default function AuditTab({ onNavigateTab }: AuditTabProps) {
   const { selectedEvent } = useEvent();
+  const { user, loading: authLoading } = useAuth();
   const selectedEventId = selectedEvent?.id ?? null;
   const toast = useToast();
-  const toastRef = useRef(toast);
-  toastRef.current = toast;
-  const fetchGenerationRef = useRef(0);
 
   const [, setSearchParams] = useSearchParams();
 
-  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [offset, setOffset] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
   const [filterAction, setFilterAction] = useState('');
   const [filterEntityType, setFilterEntityType] = useState('');
   const [appliedAction, setAppliedAction] = useState('');
@@ -115,77 +105,27 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
     newValue: string | null;
   } | null>(null);
 
-  const fetchLogs = useCallback(
-    async (append: boolean, fetchOffset?: number, signal?: AbortSignal) => {
-      if (!selectedEventId) {
-        setLogs([]);
-        return;
-      }
-
-      if (!append) {
-        fetchGenerationRef.current += 1;
-      }
-      const currentGen = fetchGenerationRef.current;
-
-      const currentOffset =
-        append && fetchOffset !== undefined ? fetchOffset : 0;
-      setLoading(true);
-      if (!append) {
-        setLogs([]);
-        setOffset(0);
-      }
-
-      try {
-        const params = new URLSearchParams();
-        params.set('limit', String(PAGE_SIZE));
-        params.set('offset', String(currentOffset));
-        if (appliedAction) params.set('action', appliedAction);
-        if (appliedEntityType) params.set('entity_type', appliedEntityType);
-
-        const url = `/audit/event/${selectedEventId}?${params.toString()}`;
-        const response = await fetch(url, {
-          credentials: 'include',
-          signal,
-        });
-        if (!response.ok) throw new Error('Failed to fetch audit log');
-        const data: AuditLogEntry[] = await response.json();
-
-        if (currentGen !== fetchGenerationRef.current) return;
-
-        if (append) {
-          setLogs((prev) => [...prev, ...data]);
-        } else {
-          setLogs(data);
-        }
-        setHasMore(data.length === PAGE_SIZE);
-        setOffset(currentOffset + data.length);
-      } catch (error) {
-        if (error instanceof Error && error.name === 'AbortError') {
-          return;
-        }
-        if (currentGen !== fetchGenerationRef.current) return;
-        console.error('Error fetching audit log:', error);
-        toastRef.current.error('Failed to load audit log');
-        if (!append) setLogs([]);
-      } finally {
-        if (currentGen === fetchGenerationRef.current && !signal?.aborted) {
-          setLoading(false);
-        }
-      }
-    },
-    [selectedEventId, appliedAction, appliedEntityType],
-  );
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchLogs(false, undefined, controller.signal);
-    return () => controller.abort();
-  }, [selectedEventId, appliedAction, appliedEntityType, fetchLogs]);
+  const historyQuery = useInfiniteQuery({
+    ...auditHistoryQueryOptions(
+      user?.id ?? 0,
+      selectedEventId ?? 0,
+      { action: appliedAction, entityType: appliedEntityType },
+      AUDIT_PAGE_SIZE,
+    ),
+    enabled: Boolean(user && !authLoading && selectedEventId),
+  });
+  const logs = isAuthorizationError(historyQuery.error)
+    ? EMPTY_LOGS
+    : (historyQuery.data?.pages.flat() ?? EMPTY_LOGS);
+  const loading = historyQuery.isLoading;
+  const loadingMore = historyQuery.isFetchingNextPage;
+  const hasMore = Boolean(historyQuery.hasNextPage);
 
   const handleLoadMore = () => {
-    const nextPage = Math.floor(offset / PAGE_SIZE) + 2;
+    if (loadingMore || !historyQuery.hasNextPage) return;
+    const nextPage = (historyQuery.data?.pages.length ?? 0) + 1;
     setUrlPage(nextPage);
-    fetchLogs(true, offset);
+    void historyQuery.fetchNextPage();
   };
 
   const handleApplyFilters = () => {
@@ -388,6 +328,23 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
       </div>
 
       <div className="card audit-table-card">
+        {historyQuery.isError ? (
+          <div className="lookup-status-banner" role="alert">
+            <p>
+              {historyQuery.data === undefined
+                ? 'Unable to load data.'
+                : 'Unable to refresh data.'}{' '}
+              {historyQuery.error.message}
+            </p>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => void historyQuery.refetch()}
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
         {loading && logs.length === 0 ? (
           <p>Loading...</p>
         ) : logs.length === 0 ? (
@@ -411,9 +368,9 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
                   type="button"
                   className="btn btn-secondary"
                   onClick={handleLoadMore}
-                  disabled={loading}
+                  disabled={loadingMore}
                 >
-                  {loading ? 'Loading...' : 'Load more'}
+                  {loadingMore ? 'Loading...' : 'Load more'}
                 </button>
               </div>
             )}
@@ -584,30 +541,14 @@ function EntityHistoryModal({
   entityId: number;
   onClose: () => void;
 }) {
-  const [logs, setLogs] = useState<AuditLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const url = `/audit/entity/${encodeURIComponent(entityType)}/${entityId}?limit=50`;
-        const response = await fetch(url, { credentials: 'include' });
-        if (!response.ok) throw new Error('Failed to fetch');
-        const data: AuditLogEntry[] = await response.json();
-        if (!cancelled) setLogs(data);
-      } catch (error) {
-        console.error('Error fetching entity audit:', error);
-        if (!cancelled) setLogs([]);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    };
-    load();
-    return () => {
-      cancelled = true;
-    };
-  }, [entityType, entityId]);
+  const { user, loading: authLoading } = useAuth();
+  const historyQuery = useQuery({
+    ...entityHistoryQueryOptions(user?.id ?? 0, entityType, entityId),
+    enabled: Boolean(user && !authLoading),
+  });
+  const logs = isAuthorizationError(historyQuery.error)
+    ? EMPTY_LOGS
+    : (historyQuery.data ?? EMPTY_LOGS);
 
   const historyColumns: UnifiedColumnDef<AuditLogEntry>[] = [
     {
@@ -653,7 +594,9 @@ function EntityHistoryModal({
         <h3>
           Audit history: {entityType} #{entityId}
         </h3>
-        {loading ? (
+        {historyQuery.isError ? (
+          <QueryFeedback query={historyQuery} />
+        ) : historyQuery.isLoading ? (
           <p>Loading...</p>
         ) : logs.length === 0 ? (
           <p style={{ color: 'var(--secondary-color)' }}>

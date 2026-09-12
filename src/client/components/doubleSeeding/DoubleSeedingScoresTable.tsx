@@ -6,34 +6,12 @@ import {
   type SeedingTableVariant,
   type Team,
 } from '../seedingScores';
+import type {
+  DoubleSeedingRanking,
+  DoubleSeedingScore,
+} from '../../api/doubleSeeding';
 
-export type { Team };
-
-export interface DoubleSeedingScore {
-  id: number;
-  event_id: number;
-  match_id: number;
-  team_id: number;
-  round_number: number;
-  side: 'team1' | 'team2';
-  score: number | null;
-  match_number: number | null;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export interface DoubleSeedingRanking {
-  id: number;
-  team_id: number;
-  seed_average: number | null;
-  seed_rank: number | null;
-  raw_double_seed_score: number | null;
-  tiebreaker_value: number | null;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
+export type { Team, DoubleSeedingScore, DoubleSeedingRanking };
 
 export type DoubleSeedingTeamRowData = SeedingTableRow;
 

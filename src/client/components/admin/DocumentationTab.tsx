@@ -1,60 +1,31 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { UnifiedTable } from '../table';
 import type { SortDirection, UnifiedColumnDef } from '../table/types';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useAuth } from '../../contexts/AuthContext';
 import { useEvent } from '../../contexts/EventContext';
+import { teamsQueryOptions } from '../../queries/teams';
+import {
+  docCategoriesQueryOptions,
+  docScoresQueryOptions,
+  globalDocCategoriesQueryOptions,
+  useDocumentationMutations,
+} from '../../queries/documentation';
+import QueryFeedback, { queryData } from '../QueryFeedback';
+import type { Team } from '../../api/teams';
+import type {
+  DocCategory,
+  DocScore,
+  GlobalDocCategory,
+} from '../../api/documentation';
 import {
   buildBulkImportSubScores,
   parseDocScoresText,
 } from './documentationBulkImport';
 import '../Modal.css';
 import './DocumentationTab.css';
-
-interface DocCategory {
-  id: number;
-  event_id: number;
-  ordinal: number;
-  name: string;
-  weight: number;
-  max_score: number;
-}
-
-interface GlobalCategory {
-  id: number;
-  name: string;
-  weight: number;
-  max_score: number;
-}
-
-interface DocSubScore {
-  category_id: number;
-  category_name: string;
-  ordinal: number;
-  max_score: number;
-  weight: number;
-  score: number;
-}
-
-interface DocScore {
-  id: number;
-  event_id: number;
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  overall_score: number | null;
-  scored_at: string | null;
-  sub_scores?: DocSubScore[];
-}
-
-interface Team {
-  id: number;
-  event_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
 
 interface CategoryFormData {
   ordinal: string;
@@ -70,17 +41,25 @@ const defaultCategoryForm: CategoryFormData = {
   max_score: '',
 };
 
+const EMPTY_CATEGORIES: DocCategory[] = [];
+const EMPTY_GLOBAL: GlobalDocCategory[] = [];
+const EMPTY_TEAMS: Team[] = [];
+const EMPTY_SCORES: DocScore[] = [];
+
 export default function DocumentationTab() {
   const { selectedEvent } = useEvent();
+  const { user, loading: authLoading } = useAuth();
   const selectedEventId = selectedEvent?.id ?? null;
-
-  const [categories, setCategories] = useState<DocCategory[]>([]);
-  const [globalCategories, setGlobalCategories] = useState<GlobalCategory[]>(
-    [],
-  );
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [scores, setScores] = useState<DocScore[]>([]);
-  const [loading, setLoading] = useState(false);
+  const userId = user?.id ?? 0;
+  const enabled = Boolean(user && !authLoading && selectedEventId);
+  const {
+    saveCategory,
+    updateCategory,
+    removeCategory,
+    saveScore,
+    clearScore,
+    bulkImport,
+  } = useDocumentationMutations();
 
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [categoryModalMode, setCategoryModalMode] = useState<'create' | 'link'>(
@@ -94,17 +73,21 @@ export default function DocumentationTab() {
   );
   const [categoryForm, setCategoryForm] =
     useState<CategoryFormData>(defaultCategoryForm);
-  const [savingCategory, setSavingCategory] = useState(false);
 
   const [inlineEdits, setInlineEdits] = useState<
     Record<number, Record<number, string>>
   >({});
-  const [savingTeamId, setSavingTeamId] = useState<number | null>(null);
+  const [draftEventId, setDraftEventId] = useState<number | null>(
+    selectedEventId,
+  );
+  if (selectedEventId !== draftEventId) {
+    setDraftEventId(selectedEventId);
+    setInlineEdits({});
+  }
 
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkText, setBulkText] = useState('');
   const [bulkImportCategoryId, setBulkImportCategoryId] = useState('');
-  const [bulkImporting, setBulkImporting] = useState(false);
   const [bulkResults, setBulkResults] = useState<{
     success: number;
     errors: { index: number; error: string }[];
@@ -113,89 +96,37 @@ export default function DocumentationTab() {
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
-  const fetchCategories = useCallback(async () => {
-    if (!selectedEventId) {
-      setCategories([]);
-      return;
-    }
-    try {
-      const res = await fetch(
-        `/documentation-scores/categories/event/${selectedEventId}`,
-        { credentials: 'include' },
-      );
-      if (!res.ok) throw new Error('Failed to fetch categories');
-      const data: DocCategory[] = await res.json();
-      setCategories(data);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load categories');
-    }
-  }, [selectedEventId]);
-
-  const fetchGlobalCategories = useCallback(async () => {
-    try {
-      const res = await fetch('/documentation-scores/global-categories', {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch global categories');
-      const data: GlobalCategory[] = await res.json();
-      setGlobalCategories(data);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load global categories');
-    }
-  }, []);
-
-  const fetchTeams = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      return;
-    }
-    try {
-      const res = await fetch(`/teams/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch teams');
-      const data: Team[] = await res.json();
-      setTeams(data);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load teams');
-    }
-  }, [selectedEventId]);
-
-  const fetchScores = useCallback(async () => {
-    if (!selectedEventId) {
-      setScores([]);
-      return;
-    }
-    try {
-      const res = await fetch(
-        `/documentation-scores/event/${selectedEventId}`,
-        { credentials: 'include' },
-      );
-      if (!res.ok) throw new Error('Failed to fetch scores');
-      const data: DocScore[] = await res.json();
-      setScores(data);
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load documentation scores');
-    }
-  }, [selectedEventId]);
-
-  const loadAll = useCallback(() => {
-    setLoading(true);
-    Promise.all([
-      fetchCategories(),
-      fetchGlobalCategories(),
-      fetchTeams(),
-      fetchScores(),
-    ]).finally(() => setLoading(false));
-  }, [fetchCategories, fetchGlobalCategories, fetchTeams, fetchScores]);
-
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  const categoriesQuery = useQuery({
+    ...docCategoriesQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const globalQuery = useQuery({
+    ...globalDocCategoriesQueryOptions(userId),
+    enabled: Boolean(user && !authLoading),
+  });
+  const teamsQuery = useQuery({
+    ...teamsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const scoresQuery = useQuery({
+    ...docScoresQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const categories = queryData(categoriesQuery) ?? EMPTY_CATEGORIES;
+  const globalCategories = queryData(globalQuery) ?? EMPTY_GLOBAL;
+  const teams = queryData(teamsQuery) ?? EMPTY_TEAMS;
+  const scores = queryData(scoresQuery) ?? EMPTY_SCORES;
+  const loading =
+    categoriesQuery.isLoading ||
+    globalQuery.isLoading ||
+    teamsQuery.isLoading ||
+    scoresQuery.isLoading;
+  const errorQuery = [
+    categoriesQuery,
+    globalQuery,
+    teamsQuery,
+    scoresQuery,
+  ].find((query) => query.isError);
 
   const scoreByTeamId = new Map(scores.map((s) => [s.team_id, s]));
   const teamByNumber = new Map(teams.map((t) => [t.team_number, t]));
@@ -244,7 +175,7 @@ export default function DocumentationTab() {
     return merged;
   }, [teams, scores, sortField, sortDirection]);
 
-  const handleSort = useCallback(
+  const handleSort = React.useCallback(
     (field: SortField) => {
       if (sortField === field) {
         setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -299,6 +230,7 @@ export default function DocumentationTab() {
 
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     const ord = parseInt(categoryForm.ordinal, 10);
 
     if (isNaN(ord) || ord < 1 || ord > 4) {
@@ -334,70 +266,46 @@ export default function DocumentationTab() {
       }
     }
 
-    setSavingCategory(true);
     try {
       if (editingCategory) {
-        const url = `/documentation-scores/categories/${editingCategory.id}?event_id=${selectedEventId}`;
-        const res = await fetch(url, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ ordinal: ord }),
+        await updateCategory.mutateAsync({
+          userId: user.id,
+          eventId: selectedEventId,
+          categoryId: editingCategory.id,
+          ordinal: ord,
         });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to save category');
-        }
         toast.success('Category updated!');
       } else if (isLink) {
-        const res = await fetch('/documentation-scores/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            event_id: selectedEventId,
-            ordinal: ord,
-            category_id: selectedGlobalCategoryId,
-          }),
+        await saveCategory.mutateAsync({
+          userId: user.id,
+          eventId: selectedEventId,
+          event_id: selectedEventId,
+          ordinal: ord,
+          category_id: selectedGlobalCategoryId ?? undefined,
         });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to link category');
-        }
         toast.success('Category linked!');
       } else if (isCreateNew) {
-        const weight = parseFloat(categoryForm.weight);
-        const maxScore = parseFloat(categoryForm.max_score);
-        const res = await fetch('/documentation-scores/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            event_id: selectedEventId,
-            ordinal: ord,
-            name: categoryForm.name.trim(),
-            weight,
-            max_score: maxScore,
-          }),
+        await saveCategory.mutateAsync({
+          userId: user.id,
+          eventId: selectedEventId,
+          event_id: selectedEventId,
+          ordinal: ord,
+          name: categoryForm.name.trim(),
+          weight: parseFloat(categoryForm.weight),
+          max_score: parseFloat(categoryForm.max_score),
         });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to create category');
-        }
         toast.success('Category created!');
       }
       handleCloseCategoryModal();
-      await fetchCategories();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to save category',
       );
-    } finally {
-      setSavingCategory(false);
     }
   };
 
   const handleDeleteCategory = async (cat: DocCategory) => {
+    if (!user) return;
     const ok = await confirm({
       title: 'Remove Category',
       message: `Remove "${cat.name}" from this event?`,
@@ -407,16 +315,12 @@ export default function DocumentationTab() {
     if (!ok) return;
 
     try {
-      const res = await fetch(
-        `/documentation-scores/categories/${cat.id}?event_id=${selectedEventId}`,
-        {
-          method: 'DELETE',
-          credentials: 'include',
-        },
-      );
-      if (!res.ok) throw new Error('Failed to remove category');
+      await removeCategory.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        categoryId: cat.id,
+      });
       toast.success('Category removed');
-      await fetchCategories();
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to remove category',
@@ -443,6 +347,7 @@ export default function DocumentationTab() {
   };
 
   const handleCellBlur = async (team: Team) => {
+    if (!user) return;
     const doc = scoreByTeamId.get(team.id);
     const edits = inlineEdits[team.id] ?? {};
 
@@ -462,34 +367,21 @@ export default function DocumentationTab() {
 
     if (sub_scores.length === 0) return;
 
-    setSavingTeamId(team.id);
     try {
-      const res = await fetch(
-        `/documentation-scores/event/${selectedEventId}/team/${team.id}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ sub_scores }),
-        },
-      );
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to save score');
-      }
-
+      await saveScore.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        teamId: team.id,
+        sub_scores,
+      });
       toast.success('Score saved!');
       setInlineEdits((prev) => {
         const next = { ...prev };
         delete next[team.id];
         return next;
       });
-      await fetchScores();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save score');
-    } finally {
-      setSavingTeamId(null);
     }
   };
 
@@ -508,6 +400,7 @@ export default function DocumentationTab() {
   };
 
   const handleClearScore = async (team: Team) => {
+    if (!user) return;
     const ok = await confirm({
       title: 'Clear Score',
       message: `Clear documentation score for team ${team.team_number}?`,
@@ -517,13 +410,12 @@ export default function DocumentationTab() {
     if (!ok) return;
 
     try {
-      const res = await fetch(
-        `/documentation-scores/event/${selectedEventId}/team/${team.id}`,
-        { method: 'DELETE', credentials: 'include' },
-      );
-      if (!res.ok) throw new Error('Failed to clear score');
+      await clearScore.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        teamId: team.id,
+      });
       toast.success('Score cleared');
-      await fetchScores();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to clear score');
     }
@@ -570,7 +462,7 @@ export default function DocumentationTab() {
           </button>
           <button
             className="btn btn-danger"
-            onClick={() => handleDeleteCategory(cat)}
+            onClick={() => void handleDeleteCategory(cat)}
             style={{ marginLeft: '0.5rem' }}
           >
             Remove
@@ -621,8 +513,10 @@ export default function DocumentationTab() {
               onChange={(e) =>
                 handleCellChange(team.id, cat.id, e.target.value)
               }
-              onBlur={() => handleCellBlur(team)}
-              disabled={savingTeamId === team.id}
+              onBlur={() => void handleCellBlur(team)}
+              disabled={
+                saveScore.isPending && saveScore.variables?.teamId === team.id
+              }
               title={`0–${cat.max_score}`}
             />
             <span className="doc-fraction">
@@ -674,7 +568,7 @@ export default function DocumentationTab() {
           doc ? (
             <button
               className="btn btn-danger"
-              onClick={() => handleClearScore(team)}
+              onClick={() => void handleClearScore(team)}
             >
               Clear
             </button>
@@ -694,68 +588,60 @@ export default function DocumentationTab() {
   );
 
   const handleBulkImport = async () => {
-    if (bulkParsed.length === 0 || !selectedEventId) return;
+    if (bulkParsed.length === 0 || !selectedEventId || !user) return;
 
-    setBulkImporting(true);
     setBulkResults(null);
-    const errors: { index: number; error: string }[] = [];
-    let success = 0;
+    const rows: {
+      teamId: number;
+      sub_scores: { category_id: number; score: number }[];
+      index: number;
+    }[] = [];
+    const localErrors: { index: number; error: string }[] = [];
 
     for (let i = 0; i < bulkParsed.length; i++) {
       const row = bulkParsed[i];
       const team = teamByNumber.get(row.team_number);
       if (!team) {
-        errors.push({ index: i, error: `Team ${row.team_number} not found` });
+        localErrors.push({
+          index: i,
+          error: `Team ${row.team_number} not found`,
+        });
         continue;
       }
-
       const existingDoc = scoreByTeamId.get(team.id);
-      const sub_scores = buildBulkImportSubScores({
-        categories: sortedCategories,
-        rowScores: row.scores,
-        selectedCategoryId: selectedBulkCategory?.id ?? null,
-        existingSubScores: existingDoc?.sub_scores?.map((subScore) => ({
-          category_id: subScore.category_id,
-          score: subScore.score,
-        })),
+      rows.push({
+        teamId: team.id,
+        index: i,
+        sub_scores: buildBulkImportSubScores({
+          categories: sortedCategories,
+          rowScores: row.scores,
+          selectedCategoryId: selectedBulkCategory?.id ?? null,
+          existingSubScores: existingDoc?.sub_scores?.map((subScore) => ({
+            category_id: subScore.category_id,
+            score: subScore.score,
+          })),
+        }),
       });
-
-      try {
-        const res = await fetch(
-          `/documentation-scores/event/${selectedEventId}/team/${team.id}`,
-          {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ sub_scores }),
-          },
-        );
-        if (!res.ok) {
-          const data = await res.json();
-          errors.push({
-            index: i,
-            error: data.error || `Team ${row.team_number}: request failed`,
-          });
-        } else {
-          success++;
-        }
-      } catch {
-        errors.push({
-          index: i,
-          error: `Team ${row.team_number}: network error`,
-        });
-      }
     }
 
+    const results = await bulkImport.mutateAsync({
+      userId: user.id,
+      eventId: selectedEventId,
+      rows,
+    });
+    const errors = [
+      ...localErrors,
+      ...results
+        .filter((row) => !row.ok)
+        .map((row) => ({
+          index: row.index,
+          error: row.error || `request failed`,
+        })),
+    ];
+    const success = results.filter((row) => row.ok).length;
     setBulkResults({ success, errors });
-    if (success > 0) {
-      toast.success(`Imported ${success} score(s)`);
-      await fetchScores();
-    }
-    if (errors.length > 0) {
-      toast.warning(`${errors.length} row(s) failed`);
-    }
-    setBulkImporting(false);
+    if (success > 0) toast.success(`Imported ${success} score(s)`);
+    if (errors.length > 0) toast.warning(`${errors.length} row(s) failed`);
   };
 
   const handleCloseBulkImport = () => {
@@ -765,8 +651,12 @@ export default function DocumentationTab() {
     setBulkResults(null);
   };
 
+  const savingCategory = saveCategory.isPending || updateCategory.isPending;
+  const bulkImporting = bulkImport.isPending;
+
   return (
     <div className="documentation-tab">
+      {errorQuery ? <QueryFeedback query={errorQuery} /> : null}
       {loading && <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>}
 
       {/* Section A: Categories */}

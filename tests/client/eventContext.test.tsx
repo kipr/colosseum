@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, screen, waitFor } from '@testing-library/react';
-import { useQuery } from '@tanstack/react-query';
-import { useState, type ReactNode } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { type ReactNode } from 'react';
 import { Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthProvider, useAuth } from '../../src/client/contexts/AuthContext';
@@ -55,15 +55,9 @@ function LocationPath() {
 }
 
 function EventProbe() {
-  const {
-    selectedEvent,
-    events,
-    loading,
-    error,
-    refreshEvents,
-    selectEventById,
-  } = useEvent();
-  const [refreshResult, setRefreshResult] = useState('');
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const { selectedEvent, events, loading, error, selectEventById } = useEvent();
   return (
     <div>
       <div data-testid="loading">{String(loading)}</div>
@@ -74,14 +68,15 @@ function EventProbe() {
       <div data-testid="events">
         {events.map((event) => event.id).join(',')}
       </div>
-      <div data-testid="refresh-result">{refreshResult}</div>
       <input aria-label="draft" defaultValue="keep-me" />
       <button
         type="button"
         onClick={() => {
-          void refreshEvents().then((next) => {
-            setRefreshResult(JSON.stringify(next.map((event) => event.id)));
-          });
+          if (user) {
+            void queryClient.invalidateQueries({
+              queryKey: adminEventsKey(user.id),
+            });
+          }
         }}
       >
         Refresh
@@ -365,7 +360,7 @@ describe('EventProvider', () => {
     );
   });
 
-  it('refreshEvents forces a request even when the cache is fresh and returns [] on failure', async () => {
+  it('invalidating the event query refetches even when the cache is fresh and keeps previous data on failure', async () => {
     let calls = 0;
     let fail = false;
     renderProviders(async (url) => {
@@ -392,9 +387,8 @@ describe('EventProvider', () => {
       screen.getByRole('button', { name: 'Refresh' }).click();
     });
     await waitFor(() =>
-      expect(screen.getByTestId('refresh-result').textContent).toBe('[]'),
+      expect(screen.getByTestId('error').textContent).not.toBe(''),
     );
-    expect(screen.getByTestId('error').textContent).not.toBe('');
     expect(screen.getByTestId('events').textContent).toBe('5');
   });
 

@@ -10,15 +10,15 @@ preferences remain local state.
 The client currently manages requests, loading and error state, effects, and
 refresh logic at the component level. The migration must preserve:
 
-| Area | Behavior to preserve |
-| --- | --- |
-| Authentication | Session lookup, backend-unavailable feedback, startup retries |
-| Event selection | Event list, URL navigation, saved selection, fallback after deletion |
-| Admin tabs | CRUD, filtered lists, pagination, imports, previews, calculated results |
-| Spectator views | Public endpoints, lazy tab loading, event-status restrictions |
+| Area              | Behavior to preserve                                                           |
+| ----------------- | ------------------------------------------------------------------------------ |
+| Authentication    | Session lookup, backend-unavailable feedback, startup retries                  |
+| Event selection   | Event list, URL navigation, saved selection, fallback after deletion           |
+| Admin tabs        | CRUD, filtered lists, pagination, imports, previews, calculated results        |
+| Spectator views   | Public endpoints, lazy tab loading, event-status restrictions                  |
 | Judge scoresheets | Access-code verification, session-stored template, dynamic options, submission |
-| Queue and scoring | Periodic refresh without replacing the page with a loading indicator |
-| Chat | Adaptive polling, older messages, conversation deletion, unread tracking |
+| Queue and scoring | Periodic refresh without replacing the page with a loading indicator           |
+| Chat              | Adaptive polling, older messages, conversation deletion, unread tracking       |
 
 Keep routes, API payloads, scoring rules, and browser-storage behavior intact.
 Do not change the backend unless a later implementation stage identifies a
@@ -81,19 +81,23 @@ Every query key must include each input that changes its response: event,
 bracket, filters, pagination, and authorization scope. For example:
 
 ```ts
-['auth', 'user']
-
-['public', 'events']
-['admin', userId, 'events']
-
-['admin', userId, 'event', eventId, 'teams']
-['public', 'event', eventId, 'overall']
-
-['admin', userId, 'event', eventId, 'scores',
-  { page, limit, status, scoreType }]
-
-['judge', sessionGeneration, 'event', eventId, 'queue',
-  { statuses, queueType }]
+['auth', 'user'][('public', 'events')][('admin', userId, 'events')][
+  ('admin', userId, 'event', eventId, 'teams')
+][('public', 'event', eventId, 'overall')][
+  ('admin',
+  userId,
+  'event',
+  eventId,
+  'scores',
+  { page, limit, status, scoreType })
+][
+  ('judge',
+  sessionGeneration,
+  'event',
+  eventId,
+  'queue',
+  { statuses, queueType })
+];
 ```
 
 Normalize IDs and unordered filter arrays before key creation. Distinguish an
@@ -111,16 +115,16 @@ session storage without adding cache persistence.
 
 Use explicit policies rather than TanStack Query defaults:
 
-| Data | Initial policy |
-| --- | --- |
-| Event metadata, teams, template lists | 30-second `staleTime`; refresh stale data on mount, focus, and reconnect |
-| Scoring inbox | 10-second polling |
-| Admin and judge queues | 10-second polling |
-| Judge bracket-game options | 10-second polling |
-| Admin user list | 30-second polling |
-| Chat | 3-second active and 15-second inactive polling |
-| Spectator results | Refresh stale data on mount, focus, and reconnect; retain lazy activation |
-| Audit history | Fetch on activation or filter change and when loading more |
+| Data                                  | Initial policy                                                            |
+| ------------------------------------- | ------------------------------------------------------------------------- |
+| Event metadata, teams, template lists | 30-second `staleTime`; refresh stale data on mount, focus, and reconnect  |
+| Scoring inbox                         | 10-second polling                                                         |
+| Admin and judge queues                | 10-second polling                                                         |
+| Judge bracket-game options            | 10-second polling                                                         |
+| Admin user list                       | 30-second polling                                                         |
+| Chat                                  | 3-second active and 15-second inactive polling                            |
+| Spectator results                     | Refresh stale data on mount, focus, and reconnect; retain lazy activation |
+| Audit history                         | Fetch on activation or filter change and when loading more                |
 
 Start with a five-minute inactive cache lifetime. Pause network polling in
 hidden tabs and refresh live views on return to visibility. Do not introduce
@@ -148,26 +152,24 @@ authentication.
 In `src/client/contexts/EventContext.tsx`, keep the selected event ID as local
 state and derive the selected event object from query data. Preserve URL
 precedence, local-storage restoration, active/setup fallback, and deletion
-behavior. Keep `refreshEvents()` temporarily as a Query-backed compatibility
-adapter until all callers migrate, then remove duplicated server-data state and
-synchronization effects.
+behavior. Event-list retries invalidate the admin events query directly.
 
 ## 6. Migrate read features
 
 Migrate public event discovery and simple read-only displays first, followed by
 admin features. The target feature groups are:
 
-| Group | Data |
-| --- | --- |
-| Events and teams | Shared lists, filtered lists, metadata, check-in data |
-| Templates | Judge/admin lists, details, field templates, wizard and preview data |
-| Seeding | Teams, scores, rankings |
-| Double seeding | Scores, rankings, matches |
-| Brackets | Lists, details, games, assigned teams, rankings |
-| Scoring | Filtered and paginated submissions, score detail |
+| Group                    | Data                                                                         |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| Events and teams         | Shared lists, filtered lists, metadata, check-in data                        |
+| Templates                | Judge/admin lists, details, field templates, wizard and preview data         |
+| Seeding                  | Teams, scores, rankings                                                      |
+| Double seeding           | Scores, rankings, matches                                                    |
+| Brackets                 | Lists, details, games, assigned teams, rankings                              |
+| Scoring                  | Filtered and paginated submissions, score detail                             |
 | Documentation and awards | Categories, scores, templates, recipients, automatic awards, overall results |
-| Audit | Filtered history, incremental loading, detail requests |
-| Admin users | User list and polling |
+| Audit                    | Filtered history, incremental loading, detail requests                       |
+| Admin users              | User list and polling                                                        |
 
 Preserve concurrent independent requests instead of creating sequential
 dependencies. Use enabled dependent queries only after required IDs are
@@ -185,19 +187,19 @@ change.
 Create domain-specific invalidation helpers instead of clearing the complete
 cache after writes.
 
-| Mutation | Cache effects |
-| --- | --- |
-| Event create, update, delete | Event lists and metadata; affected event resources and visibility-dependent public results |
-| Team edit, check-in, import, delete | Teams, queue, and affected score, ranking, bracket, and award displays |
-| Template or field-template change | Relevant lists, details, previews, and event associations |
-| Score submission | Submission lists and affected queue/game availability |
+| Mutation                               | Cache effects                                                                                                                                      |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Event create, update, delete           | Event lists and metadata; affected event resources and visibility-dependent public results                                                         |
+| Team edit, check-in, import, delete    | Teams, queue, and affected score, ranking, bracket, and award displays                                                                             |
+| Template or field-template change      | Relevant lists, details, previews, and event associations                                                                                          |
+| Score submission                       | Submission lists and affected queue/game availability                                                                                              |
 | Score acceptance, rejection, reversion | Submission detail/list; acceptance and reversion also refresh derived scores, rankings, brackets, queue, overall results, and awards as applicable |
-| Bracket lifecycle or game change | Bracket lists/details/games/rankings, assigned teams, queue, and affected derived results |
-| Documentation changes | Categories/scores, overall results, and automatic awards |
-| Award changes | Awards, recipients, and team award counts |
-| Queue changes | Affected filtered queue entries and related selection data |
-| Audited writes | Relevant audit history |
-| Chat send or delete | Conversation summary and affected message data |
+| Bracket lifecycle or game change       | Bracket lists/details/games/rankings, assigned teams, queue, and affected derived results                                                          |
+| Documentation changes                  | Categories/scores, overall results, and automatic awards                                                                                           |
+| Award changes                          | Awards, recipients, and team award counts                                                                                                          |
+| Queue changes                          | Affected filtered queue entries and related selection data                                                                                         |
+| Audited writes                         | Relevant audit history                                                                                                                             |
+| Chat send or delete                    | Conversation summary and affected message data                                                                                                     |
 
 Confirm every dependency against the server handlers during implementation.
 Capture event and resource IDs in mutation variables so a write that completes
@@ -275,15 +277,15 @@ from operating at once.
 
 Deliver the work in these reviewable stages:
 
-| Stage | Deliverable |
-| --- | --- |
-| 1 | Dependencies, provider, HTTP helper, keys, defaults, test utilities, and public event-list pilot |
-| 2 | Authentication and event context |
-| 3 | Events, teams, templates, simple admin reads and mutations |
-| 4 | Seeding, double seeding, brackets, documentation, awards, overall results, and audit |
-| 5 | Scoring, queue, judge verification, and scoresheet submission |
-| 6 | Chat |
-| 7 | Cleanup, regression checks, bundle comparison, and developer documentation |
+| Stage | Deliverable                                                                                      |
+| ----- | ------------------------------------------------------------------------------------------------ |
+| 1     | Dependencies, provider, HTTP helper, keys, defaults, test utilities, and public event-list pilot |
+| 2     | Authentication and event context                                                                 |
+| 3     | Events, teams, templates, simple admin reads and mutations                                       |
+| 4     | Seeding, double seeding, brackets, documentation, awards, overall results, and audit             |
+| 5     | Scoring, queue, judge verification, and scoresheet submission                                    |
+| 6     | Chat                                                                                             |
+| 7     | Cleanup, regression checks, bundle comparison, and developer documentation                       |
 
 Add React Testing Library and a DOM environment for hook/provider tests, scoped
 to those tests, and extend Vitest discovery to `.test.tsx`. Keep the existing
@@ -346,11 +348,6 @@ Implementation boundaries:
 - Mutation variables capture the originating user and resource scope. Cache
   effects survive component unmounting; late responses cannot recreate another
   identity's protected cache. Editor drafts survive background data changes.
-- The supporting bracket-options query deliberately uses zero stale time until
-  stage four migrates bracket writes. Reopening an editor therefore refreshes
-  bracket choices despite legacy mutations not yet invalidating Query data.
-- `refreshEvents()` remains only as the compatibility adapter for Admin's retry
-  control and DoubleSeedingTab. Remove it when those remaining callers migrate.
 
 Later stages must extend the domain invalidations as their consumers migrate:
 team changes affect queue, scoring/ranking, bracket, award, and audit views;
@@ -374,6 +371,66 @@ JavaScript totals change from 644,108 to 648,136 bytes; summed per-chunk gzip
 sizes change from 200,399 to 202,669 bytes (+2,270 bytes). Lazy JavaScript chunks
 remain split (36 before, 38 after), with no Query Devtools in the build. Review
 future consumers for reuse of these modules rather than another fetching layer.
+
+## Stage four implementation
+
+Stage four migrates seeding, double-seeding, brackets, documentation, awards,
+overall results, spectator event results, and audit onto the existing domain
+API/query modules. The review target is a net reduction in production client
+code, including the request layer, after stage three's +208 client lines.
+
+Implementation boundaries:
+
+- Independent reads stay concurrent and separately cached. There is no aggregate
+  "load tournament data" helper. Unfiltered teams reuse `teamsQueryOptions`.
+  Seeding and double-seeding ranking queries are the same options used by
+  bracket creation. Overall options live in the event query module.
+- Double-seeding generate/delete/recalculate, bracket lifecycle writes,
+  documentation category/score writes, award/recipient writes, and automatic
+  award application are mutations. Variables capture the originating user and
+  event. Generation and round deletion also invalidate event metadata.
+- One canonical bracket-list query serves bracket management and template
+  editors. Bracket detail is cached as the payload that already includes
+  entries and games; those fields are derived rather than duplicated. Rankings
+  and assigned-team lists remain separate. Ordinary ranking refresh is GET
+  (`calculateBracketRankingsIfReady` already runs there). The calculate POST
+  mutation remains only for an explicit forced recalculation.
+- Global documentation categories and award templates are user-scoped; event
+  scores, awards, and previews are event-scoped. Automatic-award settings GET
+  (no params) is distinct from a preview keyed by the complete edited settings.
+  Drafts initialize once per editing session. Multi-request imports and award
+  reorders check every response, refresh after successful writes, and report
+  individual failures.
+- Spectator reuses `publicEventsQueryOptions` and public options defined
+  alongside the authenticated domain options, with separate cache entries.
+  Restricted results are gated on current event metadata for both fetching and
+  rendering; cached finals are removed when `final_scores_available` becomes
+  false. Tabs stay lazy. There is no spectator polling.
+- Audit history uses `useInfiniteQuery` keyed by user, event, applied filters,
+  and page size, with offsets as page params. Entity history loads only while
+  its modal is open. Filter changes cancel the previous query. Load More is
+  disabled while a next page is in flight. Team and double-seeding mutations
+  invalidate audit because those handlers write audit records.
+- `refreshEvents()` is removed. Admin's event-list retry invalidates
+  `adminEventsKey` directly.
+
+Score and queue writers still bypass Query until stage five. Derived result
+queries therefore use `RESULT_STALE_TIME_MS = 0` so they refetch on mount,
+focus, and reconnect without bridging into ScoringTab or QueueTab. Lists and
+metadata use 30-second freshness and explicit domain invalidation helpers.
+
+Cache invalidation stays explicit and small: team, double-seeding, bracket,
+documentation, award, audit, and restricted-public-result helpers. There is no
+generic dependency registry, mutation factory, or CRUD framework. Global
+category/template changes invalidate user-scoped lists, not only the current
+event. Mutations await necessary refreshes without treating a later refresh
+failure as a failed write.
+
+Stage-four validation covers shared cache reuse, event/identity isolation,
+delayed writes against the originating event, partial import refresh, automatic
+preview keys, audit filter cancellation, and spectator final-result eviction.
+Browser coverage extends tournament-setup cache reuse, bracket ranking GET
+refresh, spectator release gating of cached documentation, and audit pagination.
 
 ## References
 

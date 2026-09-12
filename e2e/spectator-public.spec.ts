@@ -814,4 +814,38 @@ test.describe('Spectator Public Views & Release Gating', () => {
       );
     }
   });
+
+  test('cached documentation results disappear after release is withdrawn', async ({
+    page,
+  }) => {
+    await page.goto(`/spectator/events/${releasedEventId}?view=documentation`);
+    await expect(
+      page.locator('.spectator-tab-btn.active', { hasText: 'Documentation' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Documentation Scores' }),
+    ).toBeVisible();
+
+    await e2eDb().run(
+      'UPDATE events SET spectator_results_released = 0 WHERE id = ?',
+      [releasedEventId],
+    );
+    try {
+      await page.reload();
+      await expect(
+        page.locator('.spectator-tab-btn', { hasText: 'Seeding' }),
+      ).toBeVisible();
+      await expect(
+        page.locator('.spectator-tab-btn', { hasText: 'Documentation' }),
+      ).not.toBeVisible();
+      await expect(
+        page.getByRole('heading', { name: 'Documentation Scores' }),
+      ).not.toBeVisible();
+    } finally {
+      await e2eDb().run(
+        'UPDATE events SET spectator_results_released = 1 WHERE id = ?',
+        [releasedEventId],
+      );
+    }
+  });
 });

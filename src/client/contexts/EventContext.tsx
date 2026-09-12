@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 import { Event, isEventActive } from '../utils/eventStatus';
@@ -21,7 +21,6 @@ interface EventContextType {
   events: Event[];
   loading: boolean;
   error: string | null;
-  refreshEvents: () => Promise<Event[]>;
   setSelectedEvent: (event: Event | null) => void;
   selectEventById: (id: number | null) => void;
 }
@@ -78,7 +77,6 @@ function eventErrorMessage(error: unknown): string {
 
 export function EventProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { eventId: eventIdParam } = useParams<{ eventId?: string }>();
   const [searchParams] = useSearchParams();
@@ -88,8 +86,6 @@ export function EventProvider({ children }: { children: ReactNode }) {
     null,
   );
   const explicitNullRef = useRef(false);
-  const userIdRef = useRef<number | undefined>(user?.id);
-  userIdRef.current = user?.id;
 
   const eventsQueryEnabled = Boolean(user) && !authLoading;
   const eventsQuery = useQuery({
@@ -270,27 +266,6 @@ export function EventProvider({ children }: { children: ReactNode }) {
     user,
   ]);
 
-  const refreshEvents = useCallback(async () => {
-    if (!user) {
-      return [];
-    }
-
-    const originUserId = user.id;
-    try {
-      const data = await queryClient.fetchQuery({
-        ...adminEventsQueryOptions(originUserId),
-        staleTime: 0,
-      });
-      if (userIdRef.current !== originUserId) {
-        return [];
-      }
-      return data;
-    } catch (err) {
-      console.error('Error fetching events:', err);
-      return [];
-    }
-  }, [queryClient, user]);
-
   const awaitingEvents =
     Boolean(user) &&
     !authLoading &&
@@ -323,19 +298,10 @@ export function EventProvider({ children }: { children: ReactNode }) {
       events,
       loading,
       error,
-      refreshEvents,
       setSelectedEvent,
       selectEventById,
     }),
-    [
-      selectedEvent,
-      events,
-      loading,
-      error,
-      refreshEvents,
-      setSelectedEvent,
-      selectEventById,
-    ],
+    [selectedEvent, events, loading, error, setSelectedEvent, selectEventById],
   );
 
   return (

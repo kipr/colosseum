@@ -53,6 +53,7 @@ test.describe('Admin navigation and session', () => {
       (id): id is number => id != null,
     );
     for (const id of ids) {
+      await db.run('DELETE FROM audit_log WHERE event_id = ?', [id]);
       await db.run('DELETE FROM events WHERE id = ?', [id]);
     }
     await deleteSession(admin.sid);
@@ -215,5 +216,41 @@ test.describe('Admin navigation and session', () => {
     await expect(
       page.getByRole('button', { name: '+ Create New Event' }),
     ).toBeVisible({ timeout: 30_000 });
+  });
+
+  test('audit filters restart pagination and disable duplicate load more', async ({
+    page,
+  }) => {
+    const db = e2eDb();
+    for (let i = 0; i < 60; i += 1) {
+      await db.run(
+        `INSERT INTO audit_log (event_id, user_id, action, entity_type, entity_id, new_value)
+         VALUES (?, ?, ?, 'team', ?, ?)`,
+        [
+          deepLinkEventId,
+          admin.adminUserId,
+          i < 30 ? 'create' : 'update',
+          i + 1,
+          JSON.stringify({ i }),
+        ],
+      );
+    }
+
+    await loginAsAdmin(page);
+    await page.goto(`/admin/events/${deepLinkEventId}?view=audit`);
+    await expect(page.getByPlaceholder('Filter by action')).toBeVisible({
+      timeout: 15_000,
+    });
+    const loadMore = page.getByRole('button', { name: 'Load more' });
+    await expect(loadMore).toBeVisible();
+    await loadMore.click();
+    await expect(page).toHaveURL(/audit_page=2/);
+    await expect(loadMore).toBeEnabled();
+
+    await page.locator('.audit-filter-input').first().fill('create');
+    await page.getByRole('button', { name: 'Apply' }).click();
+    await expect(page).not.toHaveURL(/audit_page=/);
+    await expect(page.getByText('create').first()).toBeVisible();
+    await expect(page.getByText('update')).toHaveCount(0);
   });
 });

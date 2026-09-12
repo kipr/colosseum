@@ -1,18 +1,10 @@
 import { useCallback, useMemo, useState } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import type { OverallRow } from '../../api/events';
 import '../admin/DocumentationTab.css';
 
-export interface OverallRow {
-  team_id: number;
-  team_number: number;
-  team_name: string;
-  doc_score: number;
-  raw_seed_score: number;
-  raw_double_seed_score: number;
-  weighted_de_score: number;
-  total: number;
-}
+export type { OverallRow };
 
 interface OverallScoresDisplayProps {
   rows: OverallRow[];

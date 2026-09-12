@@ -9,6 +9,13 @@ import {
 import { ApiError, ApiParseError } from '../api/http';
 
 export const QUERY_GC_TIME_MS = 5 * 60 * 1000;
+export const LIST_STALE_TIME_MS = 30_000;
+/**
+ * Derived scores, rankings, and public results stay immediately stale until
+ * stage five's score and queue writers invalidate Query. That preserves
+ * refetch-on-mount without bridging into ScoringTab or QueueTab.
+ */
+export const RESULT_STALE_TIME_MS = 0;
 export const QUERY_RETRY_LIMIT = 2;
 export const QUERY_RETRY_BASE_DELAY_MS = 1_000;
 export const QUERY_RETRY_MAX_DELAY_MS = 30_000;

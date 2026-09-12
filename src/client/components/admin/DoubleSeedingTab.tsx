@@ -1,30 +1,30 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useToast } from '../Toast';
 import { useConfirm } from '../ConfirmModal';
+import { useAuth } from '../../contexts/AuthContext';
 import { useEvent } from '../../contexts/EventContext';
-import type { Team } from '../seeding/SeedingScoresTable';
+import { teamsQueryOptions } from '../../queries/teams';
+import {
+  doubleSeedingMatchesQueryOptions,
+  doubleSeedingRankingsQueryOptions,
+  doubleSeedingScoresQueryOptions,
+  useDoubleSeedingMutations,
+} from '../../queries/doubleSeeding';
+import QueryFeedback, { queryData } from '../QueryFeedback';
+import type { Team } from '../../api/teams';
 import type {
-  DoubleSeedingScore,
+  DoubleSeedingMatch,
   DoubleSeedingRanking,
-} from '../doubleSeeding/DoubleSeedingScoresTable';
+  DoubleSeedingScore,
+} from '../../api/doubleSeeding';
 import DoubleSeedingDisplay from '../doubleSeeding/DoubleSeedingDisplay';
 import './SeedingTab.css';
 
-interface DoubleSeedingMatch {
-  id: number;
-  event_id: number;
-  round_number: number;
-  match_number: number | null;
-  team1_id: number | null;
-  team2_id: number | null;
-  status: string;
-  team1_number: number | null;
-  team1_name: string | null;
-  team1_display: string | null;
-  team2_number: number | null;
-  team2_name: string | null;
-  team2_display: string | null;
-}
+const EMPTY_TEAMS: Team[] = [];
+const EMPTY_SCORES: DoubleSeedingScore[] = [];
+const EMPTY_RANKINGS: DoubleSeedingRanking[] = [];
+const EMPTY_MATCHES: DoubleSeedingMatch[] = [];
 
 function formatMatchTeam(
   teamId: number | null,
@@ -37,25 +37,51 @@ function formatMatchTeam(
 }
 
 export default function DoubleSeedingTab() {
-  const { selectedEvent, refreshEvents } = useEvent();
+  const { selectedEvent } = useEvent();
+  const { user, loading: authLoading } = useAuth();
+  const { generate, removeRound, recalculate } = useDoubleSeedingMutations();
   const selectedEventId = selectedEvent?.id ?? null;
   const configuredRounds = selectedEvent?.double_seeding_rounds ?? 0;
-
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [scores, setScores] = useState<DoubleSeedingScore[]>([]);
-  const [rankings, setRankings] = useState<DoubleSeedingRanking[]>([]);
-  const [matches, setMatches] = useState<DoubleSeedingMatch[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [deletingRound, setDeletingRound] = useState<number | null>(null);
+  const userId = user?.id ?? 0;
   const [roundsInput, setRoundsInput] = useState<number>(configuredRounds);
-
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+  const enabled = Boolean(user && !authLoading && selectedEventId);
+  const teamsQuery = useQuery({
+    ...teamsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const scoresQuery = useQuery({
+    ...doubleSeedingScoresQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const rankingsQuery = useQuery({
+    ...doubleSeedingRankingsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const matchesQuery = useQuery({
+    ...doubleSeedingMatchesQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const teams = queryData(teamsQuery) ?? EMPTY_TEAMS;
+  const scores = queryData(scoresQuery) ?? EMPTY_SCORES;
+  const rankings = queryData(rankingsQuery) ?? EMPTY_RANKINGS;
+  const matches = queryData(matchesQuery) ?? EMPTY_MATCHES;
+  const loading =
+    teamsQuery.isLoading ||
+    scoresQuery.isLoading ||
+    rankingsQuery.isLoading ||
+    matchesQuery.isLoading;
+  const errorQuery = [
+    teamsQuery,
+    scoresQuery,
+    rankingsQuery,
+    matchesQuery,
+  ].find((query) => query.isError);
 
   const effectiveRounds = useMemo(() => {
     if (configuredRounds > 0) return configuredRounds;
-    return matches.reduce((max, m) => Math.max(max, m.round_number), 0);
+    return matches.reduce((max, match) => Math.max(max, match.round_number), 0);
   }, [configuredRounds, matches]);
 
   const matchesByRound = useMemo(() => {
@@ -68,59 +94,12 @@ export default function DoubleSeedingTab() {
     return Array.from(byRound.entries()).sort((a, b) => a[0] - b[0]);
   }, [matches]);
 
-  const loadData = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      setScores([]);
-      setRankings([]);
-      setMatches([]);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [teamsRes, scoresRes, rankingsRes, matchesRes] = await Promise.all([
-        fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
-        fetch(`/double-seeding/scores/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-        fetch(`/double-seeding/rankings/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-        fetch(`/double-seeding/matches/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-      ]);
-
-      if (!teamsRes.ok) throw new Error('Failed to fetch teams');
-      if (!scoresRes.ok)
-        throw new Error('Failed to fetch double-seeding scores');
-      if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
-      if (!matchesRes.ok)
-        throw new Error('Failed to fetch double-seeding matches');
-
-      setTeams(await teamsRes.json());
-      setScores(await scoresRes.json());
-      setRankings(await rankingsRes.json());
-      setMatches(await matchesRes.json());
-    } catch (error) {
-      console.error('Error loading double-seeding data:', error);
-      toast.error('Failed to load double-seeding data');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
   useEffect(() => {
     setRoundsInput(configuredRounds);
   }, [configuredRounds]);
 
   const handleGenerate = async () => {
-    if (!selectedEventId) return;
+    if (!selectedEventId || !user) return;
 
     if (roundsInput > teams.length) {
       toast.error('Double-seeding rounds cannot exceed the number of teams');
@@ -152,39 +131,24 @@ export default function DoubleSeedingTab() {
       if (!confirmed) return;
     }
 
-    setGenerating(true);
     try {
-      const response = await fetch(
-        `/double-seeding/matches/generate/${selectedEventId}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            rounds: roundsInput,
-          }),
-        },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate matches');
-      }
+      const data = await generate.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        rounds: roundsInput,
+      });
       toast.success(
         data.message ||
           `Updated double seeding to ${data.rounds} round${data.rounds === 1 ? '' : 's'}`,
       );
-      await loadData();
-      refreshEvents();
+      setRoundsInput(data.rounds);
     } catch (error: unknown) {
-      console.error('Error generating double-seeding matches:', error);
       toast.error((error as Error).message || 'Failed to generate matches');
-    } finally {
-      setGenerating(false);
     }
   };
 
   const handleDeleteRound = async (round: number) => {
-    if (!selectedEventId) return;
+    if (!selectedEventId || !user) return;
     const confirmed = await confirm({
       title: `Remove Round ${round}`,
       message: `This will delete round ${round} if no double-seeding submissions or accepted scores exist for that round. This cannot be undone.\n\nAre you sure?`,
@@ -193,44 +157,30 @@ export default function DoubleSeedingTab() {
     });
     if (!confirmed) return;
 
-    setDeletingRound(round);
     try {
-      const response = await fetch(
-        `/double-seeding/matches/event/${selectedEventId}/round/${round}`,
-        { method: 'DELETE', credentials: 'include' },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to remove round');
-      }
+      const data = await removeRound.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        round,
+      });
       toast.success(`Removed round ${data.round}`);
-      await loadData();
-      refreshEvents();
+      setRoundsInput(data.remainingRounds);
     } catch (error: unknown) {
-      console.error('Error removing double-seeding round:', error);
       toast.error((error as Error).message || 'Failed to remove round');
-    } finally {
-      setDeletingRound(null);
     }
   };
 
   const handleRecalculate = async () => {
-    if (!selectedEventId) return;
+    if (!selectedEventId || !user) return;
     try {
-      const response = await fetch(
-        `/double-seeding/rankings/recalculate/${selectedEventId}`,
-        { method: 'POST', credentials: 'include' },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to recalculate rankings');
-      }
+      const data = await recalculate.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+      });
       toast.success(
         `Rankings recalculated (${data.teamsRanked} ranked, ${data.teamsUnranked} unranked)`,
       );
-      await loadData();
     } catch (error: unknown) {
-      console.error('Error recalculating double-seeding rankings:', error);
       toast.error((error as Error).message || 'Failed to recalculate');
     }
   };
@@ -265,7 +215,6 @@ export default function DoubleSeedingTab() {
     <div className="seeding-tab">
       <h2>Double Seeding</h2>
 
-      {/* Match generation controls */}
       <div className="card" style={{ marginBottom: '1rem' }}>
         <h3 style={{ marginTop: 0 }}>Match Generation</h3>
         <p style={{ color: 'var(--secondary-color)', fontSize: '0.9rem' }}>
@@ -305,15 +254,15 @@ export default function DoubleSeedingTab() {
           </div>
           <button
             className="btn btn-primary"
-            onClick={handleGenerate}
+            onClick={() => void handleGenerate()}
             disabled={
-              generating ||
+              generate.isPending ||
               (roundsInput > 0 && teams.length === 0) ||
               (matches.length === 0 && roundsInput === 0) ||
               (matches.length > 0 && roundsInput === effectiveRounds)
             }
           >
-            {generating
+            {generate.isPending
               ? 'Updating...'
               : roundsInput === 0
                 ? matches.length > 0
@@ -327,8 +276,8 @@ export default function DoubleSeedingTab() {
           </button>
           <button
             className="btn btn-secondary"
-            onClick={handleRecalculate}
-            disabled={effectiveRounds === 0}
+            onClick={() => void handleRecalculate()}
+            disabled={effectiveRounds === 0 || recalculate.isPending}
           >
             Recalculate Rankings
           </button>
@@ -340,6 +289,7 @@ export default function DoubleSeedingTab() {
         )}
       </div>
 
+      {errorQuery ? <QueryFeedback query={errorQuery} /> : null}
       {loading ? (
         <p>Loading double-seeding data...</p>
       ) : (
@@ -359,7 +309,6 @@ export default function DoubleSeedingTab() {
             </div>
           )}
 
-          {/* Match list grouped by round */}
           {matches.length > 0 && (
             <div className="card" style={{ marginTop: '1rem' }}>
               <h3 style={{ marginTop: 0 }}>Matches by Round</h3>
@@ -378,10 +327,14 @@ export default function DoubleSeedingTab() {
                     {round === effectiveRounds && (
                       <button
                         className="btn btn-danger"
-                        onClick={() => handleDeleteRound(round)}
-                        disabled={deletingRound === round}
+                        onClick={() => void handleDeleteRound(round)}
+                        disabled={
+                          removeRound.isPending &&
+                          removeRound.variables?.round === round
+                        }
                       >
-                        {deletingRound === round
+                        {removeRound.isPending &&
+                        removeRound.variables?.round === round
                           ? 'Removing...'
                           : 'Remove Last Round'}
                       </button>
