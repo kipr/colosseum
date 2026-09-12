@@ -12,6 +12,10 @@ export const QUERY_RETRY_MAX_DELAY_MS = 30_000;
 
 const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
 
+export function isRetryableServerStatus(status: number): boolean {
+  return RETRYABLE_STATUS.has(status);
+}
+
 export function isCancellationError(error: unknown): boolean {
   return (
     error instanceof CancelledError ||
@@ -36,7 +40,7 @@ export function shouldRetryQuery(
     return false;
   }
   if (error instanceof ApiError) {
-    if (RETRYABLE_STATUS.has(error.status)) return true;
+    if (isRetryableServerStatus(error.status)) return true;
     if (error.status === 429) return error.retryAfterMs !== undefined;
     return false;
   }

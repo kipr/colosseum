@@ -43,7 +43,7 @@ const defaultFormData: EventFormData = {
 };
 
 export default function EventsTab() {
-  const { events, refreshEvents, selectedEvent, setSelectedEvent } = useEvent();
+  const { events, refreshEvents, selectedEvent, selectEventById } = useEvent();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
@@ -63,7 +63,7 @@ export default function EventsTab() {
   };
 
   const handleSelectEvent = (event: Event | null) => {
-    setSelectedEvent(event);
+    selectEventById(event ? event.id : null);
     if (event) {
       navigate(adminEventPath(event.id, getCurrentAdminView()));
     } else {

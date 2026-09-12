@@ -1,21 +1,25 @@
 import {
   createContext,
+  useCallback,
   useContext,
-  useEffect,
-  useState,
-  ReactNode,
+  useLayoutEffect,
+  useMemo,
   useRef,
+  useState,
+  type ReactNode,
 } from 'react';
-
-interface User {
-  id: number;
-  email: string;
-  name: string;
-  isAdmin: boolean;
-}
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { SessionUser } from '../api/types';
+import { authUserQueryOptions } from '../queries/auth';
+import { authUserKey } from '../queries/keys';
+import {
+  removeAdminOnlyQueries,
+  removeAdminUserQueries,
+  removeJudgeQueries,
+} from '../queries/invalidation';
 
 interface AuthContextType {
-  user: User | null;
+  user: SessionUser | null;
   loading: boolean;
   serverAvailable: boolean;
   checkAuth: () => Promise<void>;
@@ -24,89 +28,121 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+function sameIdentity(
+  left: SessionUser | null,
+  right: SessionUser | null,
+): boolean {
+  if (left == null || right == null) {
+    return left === right;
+  }
+  return left.id === right.id;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [serverAvailable, setServerAvailable] = useState(true);
-  const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const queryClient = useQueryClient();
+  const query = useQuery(authUserQueryOptions());
 
-  const checkAuth = async (retryCount = 0): Promise<void> => {
-    try {
-      const response = await fetch('/auth/user', {
-        credentials: 'include',
-      });
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const userRef = useRef<SessionUser | null>(null);
+  const transitionGeneration = useRef(0);
 
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        setServerAvailable(true);
-      } else {
-        setUser(null);
-        setServerAvailable(true);
-      }
-      setLoading(false);
-    } catch {
-      // Server is unavailable (likely restarting)
-      setServerAvailable(false);
+  userRef.current = user;
 
-      // Only log on first failure
-      if (retryCount === 0) {
-        console.log('Backend server unavailable, will retry...');
-      }
-
-      // Retry up to 10 times with exponential backoff (covers ~30 seconds of downtime)
-      if (retryCount < 10) {
-        const delay = Math.min(1000 * Math.pow(1.5, retryCount), 5000);
-
-        // Clear any existing retry timeout
-        if (retryTimeoutRef.current) {
-          clearTimeout(retryTimeoutRef.current);
-        }
-
-        retryTimeoutRef.current = setTimeout(() => {
-          checkAuth(retryCount + 1);
-        }, delay);
-      } else {
-        console.error('Backend server not responding after multiple retries');
-        setUser(null);
-        setLoading(false);
-      }
+  useLayoutEffect(() => {
+    if (query.isError) {
+      return;
     }
-  };
+    if (query.data === undefined) {
+      return;
+    }
 
-  const logout = () => {
-    window.location.href = '/auth/logout';
-  };
+    const nextUser = query.data;
+    const previousUser = userRef.current;
 
-  useEffect(() => {
-    checkAuth();
-
-    // Cleanup retry timeout on unmount
-    return () => {
-      if (retryTimeoutRef.current) {
-        clearTimeout(retryTimeoutRef.current);
+    if (sameIdentity(previousUser, nextUser)) {
+      if (
+        previousUser &&
+        nextUser &&
+        Boolean(previousUser.isAdmin) !== Boolean(nextUser.isAdmin)
+      ) {
+        if (previousUser.isAdmin && !nextUser.isAdmin) {
+          void removeAdminOnlyQueries(queryClient, previousUser.id);
+        }
+        setUser(nextUser);
+      } else if (
+        previousUser &&
+        nextUser &&
+        (previousUser.email !== nextUser.email ||
+          previousUser.name !== nextUser.name)
+      ) {
+        setUser(nextUser);
       }
-    };
-  }, []);
+      return;
+    }
 
-  // Wrapper to match the interface (no retry count parameter)
-  const checkAuthPublic = async () => {
-    await checkAuth(0);
-  };
+    if (previousUser == null) {
+      setUser(nextUser);
+      setTransitioning(false);
+      return;
+    }
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        serverAvailable,
-        checkAuth: checkAuthPublic,
-        logout,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    const generation = ++transitionGeneration.current;
+    setTransitioning(true);
+
+    void (async () => {
+      await removeAdminUserQueries(queryClient, previousUser.id);
+      if (transitionGeneration.current !== generation) {
+        return;
+      }
+      setUser(nextUser);
+      setTransitioning(false);
+    })();
+  }, [query.data, query.dataUpdatedAt, query.isError, queryClient]);
+
+  const checkAuth = useCallback(async () => {
+    try {
+      await queryClient.refetchQueries({ queryKey: authUserKey });
+    } catch {
+      // Failure is exposed through query state and context.
+    }
+  }, [queryClient]);
+
+  const logout = useCallback(() => {
+    const currentUser = userRef.current;
+    void (async () => {
+      await queryClient.cancelQueries({ queryKey: authUserKey });
+      queryClient.setQueryData(authUserKey, null);
+      if (currentUser) {
+        await removeAdminUserQueries(queryClient, currentUser.id);
+      }
+      await removeJudgeQueries(queryClient);
+      window.location.href = '/auth/logout';
+    })();
+  }, [queryClient]);
+
+  const lookupFailed =
+    query.failureCount > 0 || query.isError || query.failureReason != null;
+  const serverAvailable = !lookupFailed;
+  const confirmedSignedOut = query.isSuccess && query.data === null;
+  const terminalLookupFailure =
+    query.isError && !query.isFetching && query.data === undefined;
+  const loading =
+    transitioning ||
+    (user == null && !confirmedSignedOut && !terminalLookupFailure);
+
+  const value = useMemo(
+    () => ({
+      user,
+      loading,
+      serverAvailable,
+      checkAuth,
+      logout,
+    }),
+    [user, loading, serverAvailable, checkAuth, logout],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
