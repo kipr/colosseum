@@ -14,10 +14,11 @@ import {
 import {
   auditKey,
   authUserKey,
+  awardsKey,
   bracketsKey,
   documentationKey,
+  doubleSeedingKey,
   overallKey,
-  seedingKey,
 } from '../../src/client/queries/keys';
 import {
   teamsQueryOptions,
@@ -54,6 +55,15 @@ vi.mock('../../src/client/contexts/AuthContext', () => ({
 }));
 vi.mock('../../src/client/components/Navbar', () => ({
   default: () => null,
+}));
+vi.mock('../../src/client/components/overall/OverallScoresDisplay', () => ({
+  default: ({ rows }: { rows: Array<{ team_name: string }> }) => (
+    <div>
+      {rows.map((row) => (
+        <span key={row.team_name}>{row.team_name}</span>
+      ))}
+    </div>
+  ),
 }));
 registerQueryTestCleanup();
 
@@ -182,8 +192,7 @@ describe('stage four queries and writes', () => {
       vi.fn(() => response.promise),
     );
     const client = clientWithUser();
-    const origin = [...seedingKey(1, 10).slice(0, 4)];
-    client.setQueryData([...origin, 'double-seeding', 'matches'], []);
+    client.setQueryData([...doubleSeedingKey(1, 10), 'matches'], []);
     client.setQueryData(overallKey(1, 10), []);
     client.setQueryData(awardsKey(1, 10), []);
     const hook = renderHook(() => useDoubleSeedingMutations(), {
@@ -203,7 +212,7 @@ describe('stage four queries and writes', () => {
       await result;
     });
     expect(
-      client.getQueryState([...origin, 'double-seeding', 'matches'])
+      client.getQueryState([...doubleSeedingKey(1, 10), 'matches'])
         ?.isInvalidated,
     ).toBe(true);
     expect(client.getQueryState(overallKey(1, 10))?.isInvalidated).toBe(true);
@@ -217,7 +226,7 @@ describe('stage four queries and writes', () => {
       'fetch',
       vi.fn((_url, options) =>
         Promise.resolve(
-          options?.method === 'POST'
+          options?.method && options.method !== 'GET'
             ? jsonResponse({ id: 1 })
             : jsonErrorResponse(500),
         ),
@@ -248,16 +257,14 @@ describe('stage four queries and writes', () => {
   });
 
   it('refreshes documentation after a partial bulk import with some successful writes', async () => {
-    let posts = 0;
     vi.stubGlobal(
       'fetch',
-      vi.fn((_url, options) => {
-        if (options?.method === 'POST') {
-          posts += 1;
+      vi.fn((url, options) => {
+        if (options?.method === 'PUT') {
           return Promise.resolve(
-            posts === 1
-              ? jsonResponse({ id: 1 })
-              : jsonErrorResponse(500, 'row failed'),
+            String(url).includes('/team/2')
+              ? jsonErrorResponse(500, 'row failed')
+              : jsonResponse({ id: 1 }),
           );
         }
         return Promise.resolve(jsonResponse([]));
@@ -354,7 +361,7 @@ describe('stage four queries and writes', () => {
       'fetch',
       vi.fn((url: string) => {
         const path = String(url);
-        if (path === '/events/public') {
+        if (path.includes('/events/public')) {
           return Promise.resolve(
             jsonResponse([{ ...event, final_scores_available: released }]),
           );
@@ -370,7 +377,18 @@ describe('stage four queries and writes', () => {
         }
         if (path.includes('/overall/public')) {
           return Promise.resolve(
-            jsonResponse([{ team_id: 1, team_name: 'Hidden Row', total: 9 }]),
+            jsonResponse([
+              {
+                team_id: 1,
+                team_number: 1,
+                team_name: 'Hidden Row',
+                doc_score: 0,
+                raw_seed_score: 0,
+                raw_double_seed_score: 0,
+                weighted_de_score: 0,
+                total: 9,
+              },
+            ]),
           );
         }
         return Promise.resolve(jsonErrorResponse(404));
@@ -386,9 +404,7 @@ describe('stage four queries and writes', () => {
         router: { initialEntries: ['/spectator/events/5?view=overall'] },
       },
     );
-    await waitFor(() =>
-      expect(screen.getByText('Hidden Row')).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText('Hidden Row')).toBeTruthy());
     expect(
       client.getQueryData(publicOverallQueryOptions(5).queryKey),
     ).toBeTruthy();
@@ -396,9 +412,7 @@ describe('stage four queries and writes', () => {
     await act(async () => {
       await client.invalidateQueries({ queryKey: ['public', 'events'] });
     });
-    await waitFor(() =>
-      expect(screen.queryByText('Hidden Row')).not.toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.queryByText('Hidden Row')).toBeNull());
     expect(
       client.getQueryData(publicOverallQueryOptions(5).queryKey),
     ).toBeUndefined();
