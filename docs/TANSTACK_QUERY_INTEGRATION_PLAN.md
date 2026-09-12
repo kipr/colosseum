@@ -417,7 +417,9 @@ Implementation boundaries:
 Score and queue writers still bypass Query until stage five. Derived result
 queries therefore use `RESULT_STALE_TIME_MS = 0` so they refetch on mount,
 focus, and reconnect without bridging into ScoringTab or QueueTab. Lists and
-metadata use 30-second freshness and explicit domain invalidation helpers.
+metadata use 30-second freshness and explicit domain invalidation helpers. API
+fetches use `cache: 'no-store'` so HTTP `max-age` on public metadata cannot hide
+a later Query refetch; `staleTime` remains the freshness policy.
 
 Cache invalidation stays explicit and small: team, double-seeding, bracket,
 documentation, award, audit, and restricted-public-result helpers. There is no
@@ -429,8 +431,27 @@ failure as a failed write.
 Stage-four validation covers shared cache reuse, event/identity isolation,
 delayed writes against the originating event, partial import refresh, automatic
 preview keys, audit filter cancellation, and spectator final-result eviction.
-Browser coverage extends tournament-setup cache reuse, bracket ranking GET
-refresh, spectator release gating of cached documentation, and audit pagination.
+Browser coverage extends tournament-setup cache reuse across seeding/overall,
+bracket ranking GET refresh without a calculate POST, spectator release gating
+of cached documentation, and audit pagination/filters.
+
+Compared with the stage-three HEAD, production client UI/context code decreases
+by 890 lines while the API/query layer adds 1,817 (net +927, excluding tests and
+this document). The review target was a net reduction including the request
+layer; the increase is typed request functions, public query options, domain
+mutations, and small invalidation helpers rather than a second fetching layer in
+components. Unfiltered `teamsQueryOptions` are shared by seeding, double-seeding,
+bracket creation, documentation, and awards. Seeding rankings are shared with
+bracket creation. `bracketsQueryOptions` is shared with the template editor.
+Public and authenticated caches stay separate even when they reuse a request
+function.
+
+Production JavaScript file count changes from 39 to 44; summed raw JS changes
+from 1,094,698 to 1,086,072 bytes (−8,626); gzip-9 totals change from 278,617 to
+282,069 bytes (+3,452). New lazy chunks cover seeding, double-seeding,
+documentation, awards, and brackets. Query Devtools remain a 0.27 kB production
+stub. Formatting, lint, both typechecks, 1,463 Vitest tests, the production
+build, and 98 Playwright tests pass.
 
 ## References
 
