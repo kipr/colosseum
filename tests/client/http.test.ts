@@ -52,6 +52,31 @@ describe('requestJson', () => {
     );
   });
 
+  it('disables HTTP caching by default', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse([]))),
+    );
+
+    await requestJson('/events/public');
+    expect(getFetchMock()).toHaveBeenCalledWith(
+      '/events/public',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
+  });
+
+  it('preserves an explicit cache mode', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse([]))),
+    );
+
+    await requestJson('/events/public', { cache: 'reload' });
+    expect(getFetchMock().mock.calls[0][1]).toEqual(
+      expect.objectContaining({ cache: 'reload' }),
+    );
+  });
+
   it('preserves an explicit credentials mode', async () => {
     vi.stubGlobal(
       'fetch',

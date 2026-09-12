@@ -818,6 +818,15 @@ test.describe('Spectator Public Views & Release Gating', () => {
   test('cached documentation results disappear after release is withdrawn', async ({
     page,
   }) => {
+    await page.addInitScript(`(() => {
+      const realNow = Date.now.bind(Date);
+      let offset = 0;
+      Date.now = () => realNow() + offset;
+      window.__colosseumAdvanceNow = (ms) => {
+        offset += ms;
+      };
+    })();`)
+
     await page.goto(`/spectator/events/${releasedEventId}?view=documentation`);
     await expect(
       page.locator('.spectator-tab-btn.active', { hasText: 'Documentation' }),
@@ -831,7 +840,21 @@ test.describe('Spectator Public Views & Release Gating', () => {
       [releasedEventId],
     );
     try {
-      await page.reload();
+      const eventsResponse = page.waitForResponse((response) => {
+        const path = new URL(response.url()).pathname;
+        return path === '/events/public' && response.ok();
+      });
+      await page.evaluate(`(() => {
+        window.__colosseumAdvanceNow(31000);
+        window.dispatchEvent(new Event('visibilitychange'));
+      })();`)
+      const payload = (await (await eventsResponse).json()) as Array<{
+        id: number;
+        final_scores_available: boolean;
+      }>;
+      const released = payload.find((event) => event.id === releasedEventId);
+      expect(released?.final_scores_available).toBe(false);
+
       await expect(
         page.locator('.spectator-tab-btn', { hasText: 'Seeding' }),
       ).toBeVisible();

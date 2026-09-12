@@ -222,7 +222,7 @@ test.describe('Admin navigation and session', () => {
     page,
   }) => {
     const db = e2eDb();
-    for (let i = 0; i < 60; i += 1) {
+    for (let i = 0; i < 110; i += 1) {
       await db.run(
         `INSERT INTO audit_log (event_id, user_id, action, entity_type, entity_id, new_value)
          VALUES (?, ?, ?, 'team', ?, ?)`,
@@ -243,14 +243,17 @@ test.describe('Admin navigation and session', () => {
     });
     const loadMore = page.getByRole('button', { name: 'Load more' });
     await expect(loadMore).toBeVisible();
+    await expect(loadMore).toBeEnabled();
     await loadMore.click();
     await expect(page).toHaveURL(/audit_page=2/);
+    await expect(loadMore).toBeVisible();
     await expect(loadMore).toBeEnabled();
 
     await page.locator('.audit-filter-input').first().fill('create');
     await page.getByRole('button', { name: 'Apply' }).click();
     await expect(page).not.toHaveURL(/audit_page=/);
-    await expect(page.getByText('create').first()).toBeVisible();
-    await expect(page.getByText('update')).toHaveCount(0);
+    await expect(page.locator('.audit-table')).toContainText('create');
+    await expect(page.locator('.audit-table')).not.toContainText('update');
+    await expect(loadMore).toHaveCount(0);
   });
 });
