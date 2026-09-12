@@ -1,5 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
+import { templateQueryOptions } from '../../queries/templates';
+import QueryFeedback, { queryData } from '../QueryFeedback';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
 import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
 import ScoresheetFieldControl from '../ScoresheetFieldControl';
@@ -16,29 +19,13 @@ export default function TemplatePreviewModal({
   templateId,
   onClose,
 }: TemplatePreviewModalProps) {
-  const [template, setTemplate] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    loadTemplate();
-  }, [templateId]);
-
-  const loadTemplate = async () => {
-    try {
-      const response = await fetch(`/scoresheet/templates/${templateId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load template');
-      const data = await response.json();
-      setTemplate(data);
-    } catch (error) {
-      console.error('Error loading template:', error);
-      alert('Failed to load template preview');
-      onClose();
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { user, loading: authLoading } = useAuth();
+  const query = useQuery({
+    ...templateQueryOptions(user?.id ?? 0, templateId, Boolean(user?.isAdmin)),
+    enabled: Boolean(user && !authLoading),
+  });
+  const template = user && !authLoading ? queryData(query) : undefined;
+  const loading = query.isLoading;
 
   const getPreviewRepeatableGroupRows = (field: any) => {
     const startingValue = getFieldDefaultValue(field);
@@ -148,6 +135,7 @@ export default function TemplatePreviewModal({
         </span>
         <div className="score-view-header">
           <h3>Template Preview</h3>
+          <QueryFeedback query={query} />
         </div>
         {loading ? (
           <p>Loading preview...</p>
@@ -162,7 +150,7 @@ export default function TemplatePreviewModal({
               )}
 
               <div className="scoresheet-header-fields">
-                {template.schema.fields
+                {(template.schema.fields ?? [])
                   .filter(
                     (f: any) =>
                       !f.column &&
@@ -176,19 +164,19 @@ export default function TemplatePreviewModal({
               {template.schema.layout === 'two-column' ? (
                 <div className="scoresheet-columns">
                   <div className="scoresheet-column">
-                    {template.schema.fields
+                    {(template.schema.fields ?? [])
                       .filter((f: any) => f.column === 'left')
                       .map(renderField)}
                   </div>
                   <div className="scoresheet-column">
-                    {template.schema.fields
+                    {(template.schema.fields ?? [])
                       .filter((f: any) => f.column === 'right')
                       .map(renderField)}
                   </div>
                 </div>
               ) : (
                 <div>
-                  {template.schema.fields
+                  {(template.schema.fields ?? [])
                     .filter(
                       (f: any) =>
                         !f.column &&
@@ -200,7 +188,7 @@ export default function TemplatePreviewModal({
               )}
 
               {/* Render grand total if it exists */}
-              {template.schema.fields
+              {(template.schema.fields ?? [])
                 .filter((f: any) => f.isGrandTotal)
                 .map(renderField)}
             </div>

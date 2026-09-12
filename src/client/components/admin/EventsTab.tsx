@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAuth } from '../../contexts/AuthContext';
+import { useEventMutations } from '../../queries/events';
+import React, { useState, useRef } from 'react';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
@@ -43,16 +45,21 @@ const defaultFormData: EventFormData = {
 };
 
 export default function EventsTab() {
-  const { events, refreshEvents, selectedEvent, selectEventById } = useEvent();
+  const { events, selectedEvent, selectEventById } = useEvent();
   const navigate = useNavigate();
+  const location = useLocation();
+  const currentLocation = useRef(location.key);
+  currentLocation.current = location.key;
+  const { user } = useAuth();
+  const { save, remove } = useEventMutations();
   const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [formData, setFormData] = useState<EventFormData>(defaultFormData);
-  const [saving, setSaving] = useState(false);
+  const saving = save.isPending;
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
 
-  const [togglingRelease, setTogglingRelease] = useState(false);
+  const togglingRelease = save.isPending;
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
@@ -78,12 +85,14 @@ export default function EventsTab() {
       : events.filter((e) => e.status === filterStatus);
 
   const handleCreateNew = () => {
+    save.reset();
     setEditingEvent(null);
     setFormData(defaultFormData);
     setShowModal(true);
   };
 
   const handleEdit = (event: Event) => {
+    save.reset();
     setEditingEvent(event);
     setFormData({
       name: event.name,
@@ -103,23 +112,18 @@ export default function EventsTab() {
     setFormData(defaultFormData);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
       toast.error('Event name is required');
       return;
     }
-
-    setSaving(true);
-    try {
-      const url = editingEvent ? `/events/${editingEvent.id}` : '/events';
-      const method = editingEvent ? 'PATCH' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+    if (!user?.isAdmin || save.isPending) return;
+    save.mutate(
+      {
+        userId: user.id,
+        eventId: editingEvent?.id,
+        data: {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           event_date: formData.event_date || null,
@@ -127,112 +131,60 @@ export default function EventsTab() {
           seeding_rounds: formData.seeding_rounds,
           min_rest_minutes: formData.min_rest_minutes,
           score_accept_mode: formData.score_accept_mode,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save event');
-      }
-
-      const savedEvent = await response.json();
-      toast.success(editingEvent ? 'Event updated!' : 'Event created!');
-      handleCloseModal();
-      await refreshEvents();
-
-      // If this is a new event, select it
-      if (!editingEvent && savedEvent.id) {
-        handleSelectEvent(savedEvent);
-      }
-    } catch (error) {
-      console.error('Error saving event:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to save event',
-      );
-    } finally {
-      setSaving(false);
-    }
+        },
+      },
+      {
+        onSuccess: (savedEvent) => {
+          toast.success(editingEvent ? 'Event updated!' : 'Event created!');
+          handleCloseModal();
+          if (!editingEvent && currentLocation.current === location.key)
+            handleSelectEvent(savedEvent);
+        },
+      },
+    );
   };
 
   const handleStatusChange = async (event: Event, newStatus: EventStatus) => {
-    // For archiving, show confirmation
-    if (newStatus === 'archived') {
-      const confirmed = await confirm({
+    if (
+      newStatus === 'archived' &&
+      !(await confirm({
         title: 'Archive Event',
         message: `Are you sure you want to archive "${event.name}"?`,
         confirmText: 'Archive',
         confirmStyle: 'warning',
-      });
-      if (!confirmed) return;
-    }
-
-    try {
-      const response = await fetch(`/events/${event.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update event status');
-      }
-
-      toast.success(`Event ${getEventStatusLabel(newStatus).toLowerCase()}!`);
-      await refreshEvents();
-    } catch (error) {
-      console.error('Error updating event status:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to update status',
-      );
-    }
-  };
-
-  const handleToggleResultsRelease = async (event: Event) => {
-    const releasing = !event.spectator_results_released;
-    setTogglingRelease(true);
-    try {
-      const response = await fetch(`/events/${event.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          spectator_results_released: releasing ? 1 : 0,
-        }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update release state');
-      }
-      toast.success(
-        releasing
-          ? 'Final scores released to spectators!'
-          : 'Final scores hidden from spectators.',
-      );
-      await refreshEvents();
-    } catch (error) {
-      console.error('Error toggling results release:', error);
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Failed to toggle results release',
-      );
-    } finally {
-      setTogglingRelease(false);
-    }
-  };
-
-  const getFallbackSelectionAfterDelete = (deletedEventId: number) => {
-    const remainingEvents = events.filter(
-      (event) => event.id !== deletedEventId,
+      }))
+    )
+      return;
+    if (!user?.isAdmin || save.isPending) return;
+    save.mutate(
+      { userId: user.id, eventId: event.id, data: { status: newStatus } },
+      {
+        onSuccess: () =>
+          toast.success(
+            `Event ${getEventStatusLabel(newStatus).toLowerCase()}!`,
+          ),
+      },
     );
-    if (remainingEvents.length === 0) return null;
+  };
 
-    const preferredEvent =
-      remainingEvents.find((event) => isEventActive(event.status)) ||
-      remainingEvents[0];
-    return preferredEvent.id;
+  const handleToggleResultsRelease = (event: Event) => {
+    if (!user?.isAdmin || save.isPending) return;
+    const releasing = !event.spectator_results_released;
+    save.mutate(
+      {
+        userId: user.id,
+        eventId: event.id,
+        data: { spectator_results_released: releasing },
+      },
+      {
+        onSuccess: () =>
+          toast.success(
+            releasing
+              ? 'Final scores released to spectators!'
+              : 'Final scores hidden from spectators.',
+          ),
+      },
+    );
   };
 
   const handleDelete = async (event: Event) => {
@@ -245,44 +197,23 @@ export default function EventsTab() {
       confirmText: 'Delete',
       confirmStyle: 'danger',
     });
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`/events/${event.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to delete event';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          // 204/empty and non-json responses are fine; keep default message.
-        }
-        throw new Error(errorMessage);
-      }
-
-      const fallbackEventId = isDeletingSelected
-        ? getFallbackSelectionAfterDelete(event.id)
-        : (selectedEvent?.id ?? null);
-      const fallbackEvent =
-        fallbackEventId == null
-          ? null
-          : (events.find(
-              (remainingEvent) => remainingEvent.id === fallbackEventId,
-            ) ?? null);
-
-      await refreshEvents();
-      handleSelectEvent(fallbackEvent);
-      toast.success('Event deleted!');
-    } catch (error) {
-      console.error('Error deleting event:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to delete event',
-      );
-    }
+    if (!confirmed || !user?.isAdmin || remove.isPending) return;
+    const remaining = events.filter(({ id }) => id !== event.id);
+    const fallback = isDeletingSelected
+      ? (remaining.find((item) => isEventActive(item.status)) ??
+        remaining[0] ??
+        null)
+      : selectedEvent;
+    remove.mutate(
+      { userId: user.id, eventId: event.id },
+      {
+        onSuccess: () => {
+          if (currentLocation.current === location.key)
+            handleSelectEvent(fallback);
+          toast.success('Event deleted!');
+        },
+      },
+    );
   };
 
   const getStatusActions = (event: Event) => {
@@ -440,6 +371,7 @@ export default function EventsTab() {
           </button>
           <button
             className="btn btn-secondary"
+            disabled={!user?.isAdmin || saving}
             onClick={() => handleEdit(event)}
             title="Edit event details"
           >
@@ -447,6 +379,7 @@ export default function EventsTab() {
           </button>
           <button
             className="btn btn-danger"
+            disabled={!user?.isAdmin || remove.isPending}
             onClick={() => handleDelete(event)}
             title="Delete this event"
           >
@@ -456,6 +389,7 @@ export default function EventsTab() {
             <button
               key={action.status}
               className={`btn ${action.className}`}
+              disabled={!user?.isAdmin || saving}
               onClick={() => handleStatusChange(event, action.status)}
               title={`Change status to ${action.status}`}
             >
@@ -571,12 +505,14 @@ export default function EventsTab() {
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button
                   className="btn btn-secondary"
+                  disabled={!user?.isAdmin || saving}
                   onClick={() => handleEdit(selectedEvent)}
                 >
                   Edit
                 </button>
                 <button
                   className="btn btn-danger"
+                  disabled={!user?.isAdmin || remove.isPending}
                   onClick={() => handleDelete(selectedEvent)}
                 >
                   Delete
@@ -597,7 +533,7 @@ export default function EventsTab() {
                 <button
                   className={`btn ${selectedEvent.spectator_results_released ? 'btn-warning' : 'btn-success'}`}
                   onClick={() => handleToggleResultsRelease(selectedEvent)}
-                  disabled={togglingRelease}
+                  disabled={!user?.isAdmin || togglingRelease}
                   title={
                     selectedEvent.spectator_results_released
                       ? 'Hide final score tabs from spectators'
@@ -631,6 +567,9 @@ export default function EventsTab() {
         </div>
       )}
 
+      {!showModal && (save.error || remove.error) && (
+        <p role="alert">{(save.error || remove.error)?.message}</p>
+      )}
       {/* Header with create button and filter */}
       <div
         style={{
@@ -683,7 +622,11 @@ export default function EventsTab() {
               <option value="archived">Archived</option>
             </select>
           </div>
-          <button className="btn btn-primary" onClick={handleCreateNew}>
+          <button
+            className="btn btn-primary"
+            disabled={!user?.isAdmin || saving}
+            onClick={handleCreateNew}
+          >
             + Create New Event
           </button>
         </div>
@@ -733,6 +676,7 @@ export default function EventsTab() {
             </p>
 
             <form onSubmit={handleSubmit}>
+              {save.error && <p role="alert">{save.error.message}</p>}
               <div className="form-group">
                 <label htmlFor="event-name">Event Name *</label>
                 <input

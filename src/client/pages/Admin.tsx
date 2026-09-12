@@ -232,9 +232,11 @@ export default function Admin() {
                 <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>
               }
             >
-              {activeTab === 'events' && <EventsTab />}
-              {activeTab === 'teams' && <TeamsTab />}
-              {activeTab === 'scoresheets' && <ScoreSheetsTab />}
+              {activeTab === 'events' && <EventsTab key={user.id} />}
+              {activeTab === 'teams' && (
+                <TeamsTab key={`${user.id}-${selectedEvent?.id}`} />
+              )}
+              {activeTab === 'scoresheets' && <ScoreSheetsTab key={user.id} />}
               {activeTab === 'scoring' && <ScoringTab />}
               {activeTab === 'seeding' && <SeedingTab />}
               {activeTab === 'double-seeding' && <DoubleSeedingTab />}

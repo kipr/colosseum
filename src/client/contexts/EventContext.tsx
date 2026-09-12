@@ -11,11 +11,9 @@ import {
 } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ApiError } from '../api/http';
 import { useAuth } from './AuthContext';
 import { Event, isEventActive } from '../utils/eventStatus';
 import { adminEventsQueryOptions } from '../queries/events';
-import { adminEventsKey, authUserKey } from '../queries/keys';
 import { adminEventsPath, isAdminView } from '../utils/routes';
 
 interface EventContextType {
@@ -98,25 +96,6 @@ export function EventProvider({ children }: { children: ReactNode }) {
     ...adminEventsQueryOptions(user?.id ?? 0),
     enabled: eventsQueryEnabled,
   });
-
-  useEffect(() => {
-    if (!eventsQuery.isError) return;
-    const error = eventsQuery.error;
-    if (!(error instanceof ApiError) || error.status !== 401) return;
-
-    const originUserId = userIdRef.current;
-    if (originUserId == null) return;
-
-    void (async () => {
-      await queryClient.cancelQueries({
-        queryKey: adminEventsKey(originUserId),
-      });
-      queryClient.removeQueries({ queryKey: adminEventsKey(originUserId) });
-      if (userIdRef.current === originUserId) {
-        await queryClient.invalidateQueries({ queryKey: authUserKey });
-      }
-    })();
-  }, [eventsQuery.error, eventsQuery.isError, queryClient]);
 
   const events: Event[] =
     user && !authLoading ? (eventsQuery.data ?? EMPTY_EVENTS) : EMPTY_EVENTS;

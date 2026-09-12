@@ -1,33 +1,29 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  templatesQueryOptions,
+  fieldTemplatesQueryOptions,
+  useTemplateMutations,
+} from '../../queries/templates';
+import type {
+  TemplateSummary as ScoreSheet,
+  FieldTemplate,
+} from '../../api/templates';
+import QueryFeedback, { queryData } from '../QueryFeedback';
+import { useState } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import ScoreSheetEditorModal from './ScoreSheetEditorModal';
-import ScoreSheetPreviewModal from './ScoreSheetPreviewModal';
+import TemplatePreviewModal from './TemplatePreviewModal';
 import FieldTemplateModal from './FieldTemplateModal';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDate } from '../../utils/dateUtils';
 
-interface ScoreSheet {
-  id: number;
-  name: string;
-  description: string;
-  access_code: string;
-  created_at: string;
-}
-
-interface FieldTemplate {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-}
-
 export default function ScoreSheetsTab() {
-  const [scoreSheets, setScoreSheets] = useState<ScoreSheet[]>([]);
-  const [fieldTemplates, setFieldTemplates] = useState<FieldTemplate[]>([]);
+  const { user, loading } = useAuth();
+  const { remove, removeField } = useTemplateMutations();
   const [editingScoreSheet, setEditingScoreSheet] = useState<number | null>(
     null,
   );
@@ -42,46 +38,16 @@ export default function ScoreSheetsTab() {
   const toast = useToast();
   const { selectedEvent } = useEvent();
 
-  useEffect(() => {
-    if (selectedEvent?.id != null) {
-      loadScoreSheets(selectedEvent.id);
-    } else {
-      setScoreSheets([]);
-    }
-    loadFieldTemplates();
-  }, [selectedEvent?.id]);
-
-  const loadScoreSheets = async (eventId: number) => {
-    try {
-      const response = await fetch(
-        `/scoresheet/templates/admin?eventId=${eventId}`,
-        { credentials: 'include' },
-      );
-      if (!response.ok) throw new Error('Failed to load score sheets');
-      const data = await response.json();
-      setScoreSheets(data);
-    } catch (error) {
-      console.error('Error loading score sheets:', error);
-    }
-  };
-
-  const loadFieldTemplates = async () => {
-    try {
-      const response = await fetch('/field-templates', {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to load field templates: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setFieldTemplates(data);
-    } catch (error: any) {
-      console.error('Error loading field templates:', error.message || error);
-      setFieldTemplates([]);
-    }
-  };
+  const sheetsQuery = useQuery({
+    ...templatesQueryOptions(user?.id ?? 0, selectedEvent?.id),
+    enabled: Boolean(user?.isAdmin && !loading && selectedEvent),
+  });
+  const fieldsQuery = useQuery({
+    ...fieldTemplatesQueryOptions(user?.id ?? 0),
+    enabled: Boolean(user && !loading),
+  });
+  const scoreSheets = user?.isAdmin ? (queryData(sheetsQuery) ?? []) : [];
+  const fieldTemplates = queryData(fieldsQuery) ?? [];
 
   const handleCreateNew = () => {
     setEditingScoreSheet(null);
@@ -108,22 +74,18 @@ export default function ScoreSheetsTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/scoresheet/templates/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to delete score sheet');
-      if (selectedEvent?.id != null) loadScoreSheets(selectedEvent.id);
+      if (!user?.isAdmin || remove.isPending) return;
+      await remove.mutateAsync({ userId: user.id, templateId: id });
     } catch (error) {
       console.error('Error deleting score sheet:', error);
       toast.error('Failed to delete score sheet');
     }
   };
 
-  const handleScoreSheetSaved = () => {
+  const handleScoreSheetSaved = (message: string) => {
+    toast.success(message);
     setShowEditor(false);
     setEditingScoreSheet(null);
-    if (selectedEvent?.id != null) loadScoreSheets(selectedEvent.id);
   };
 
   const handleCreateTemplate = () => {
@@ -146,22 +108,18 @@ export default function ScoreSheetsTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/field-templates/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to delete template');
-      loadFieldTemplates();
+      if (!user || removeField.isPending) return;
+      await removeField.mutateAsync({ userId: user.id, templateId: id });
     } catch (error) {
       console.error('Error deleting template:', error);
       toast.error('Failed to delete template');
     }
   };
 
-  const handleTemplateSaved = () => {
+  const handleTemplateSaved = (message: string) => {
+    toast.success(message);
     setShowTemplateEditor(false);
     setEditingTemplate(null);
-    loadFieldTemplates();
   };
 
   const fieldTemplateColumns: UnifiedColumnDef<FieldTemplate>[] = [
@@ -286,6 +244,7 @@ export default function ScoreSheetsTab() {
       {/* Field Templates Section */}
       <div className="card" style={{ marginBottom: '2rem' }}>
         <h3>Scoring Field Templates</h3>
+        <QueryFeedback query={fieldsQuery} />
         <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
           Create reusable scoring field patterns that work for both seeding and
           DE score sheets. These can be selected in the wizard to quickly
@@ -297,7 +256,9 @@ export default function ScoreSheetsTab() {
         </button>
 
         <div style={{ marginTop: '1rem' }}>
-          {fieldTemplates.length === 0 ? (
+          {fieldsQuery.isLoading ||
+          (fieldsQuery.isError &&
+            !queryData(fieldsQuery)) ? null : fieldTemplates.length === 0 ? (
             <p style={{ color: 'var(--secondary-color)' }}>
               No field templates created yet.
             </p>
@@ -313,7 +274,9 @@ export default function ScoreSheetsTab() {
       </div>
 
       <div className="card">
-        {!selectedEvent ? (
+        {!user?.isAdmin ? (
+          <p>Admin access is required to manage score sheets.</p>
+        ) : !selectedEvent ? (
           <p style={{ color: 'var(--secondary-color)' }}>
             Select an event to view and manage score sheets.
           </p>
@@ -323,7 +286,10 @@ export default function ScoreSheetsTab() {
               + Create New Score Sheet
             </button>
             <div id="scoresheetsList" style={{ marginTop: '1rem' }}>
-              {scoreSheets.length === 0 ? (
+              <QueryFeedback query={sheetsQuery} />
+              {sheetsQuery.isLoading ||
+              (sheetsQuery.isError &&
+                !queryData(sheetsQuery)) ? null : scoreSheets.length === 0 ? (
                 <p>No score sheets for this event yet.</p>
               ) : (
                 <UnifiedTable
@@ -340,6 +306,7 @@ export default function ScoreSheetsTab() {
 
       {showEditor && selectedEvent && (
         <ScoreSheetEditorModal
+          key={`${user?.id}-${selectedEvent.id}-${editingScoreSheet ?? 'new'}`}
           scoreSheetId={editingScoreSheet}
           eventId={selectedEvent.id}
           onClose={() => {
@@ -351,14 +318,16 @@ export default function ScoreSheetsTab() {
       )}
 
       {previewingScoreSheet && (
-        <ScoreSheetPreviewModal
-          scoreSheetId={previewingScoreSheet}
+        <TemplatePreviewModal
+          key={`${user?.id}-${previewingScoreSheet}`}
+          templateId={previewingScoreSheet}
           onClose={() => setPreviewingScoreSheet(null)}
         />
       )}
 
       {showTemplateEditor && (
         <FieldTemplateModal
+          key={`${user?.id}-${editingTemplate ?? 'new'}`}
           templateId={editingTemplate}
           onClose={() => {
             setShowTemplateEditor(false);

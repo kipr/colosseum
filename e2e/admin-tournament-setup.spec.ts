@@ -362,6 +362,60 @@ test.describe('Admin Tournament Setup E2E', () => {
     await expect(page.locator('code', { hasText: ACCESS_CODE })).toBeVisible();
   });
 
+  test('reuses team and field-template reads during repeated admin navigation', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+    let teamReads = 0;
+    let fieldReads = 0;
+    page.on('request', (request) => {
+      if (request.method() !== 'GET') return;
+      const path = new URL(request.url()).pathname;
+      if (path === `/teams/event/${createdEventId}`) teamReads++;
+      if (path === '/field-templates') fieldReads++;
+    });
+    await page.goto(`/admin/events/${createdEventId}?view=teams`);
+    await expect(
+      page.getByText(TEAM_SINGLE.name, { exact: true }),
+    ).toBeVisible();
+    const initialTeamReads = teamReads;
+    await Promise.all([
+      page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/field-templates' &&
+          response.ok(),
+      ),
+      page
+        .getByRole('button', { name: '📝 Score Sheets', exact: true })
+        .click(),
+    ]);
+    await expect(
+      page.locator('td', { hasText: SCORESHEET_NAME }),
+    ).toBeVisible();
+    const initialFieldReads = fieldReads;
+    await page
+      .getByRole('button', { name: '+ Create New Score Sheet' })
+      .click();
+    await page
+      .getByRole('button', { name: /Use Score Sheet Generator/ })
+      .click();
+    await expect(
+      page.getByRole('heading', { name: 'Score Sheet Wizard' }),
+    ).toBeVisible();
+    await page.locator('.modal .close').click();
+    await page.locator('.modal .close').click();
+    await page.getByRole('button', { name: '👥 Teams', exact: true }).click();
+    await expect(
+      page.getByText(TEAM_SINGLE.name, { exact: true }),
+    ).toBeVisible();
+    // Development StrictMode can start and abort an initial request. Returning
+    // to a fresh query (and opening another consumer) must add no requests.
+    expect(initialTeamReads).toBeGreaterThan(0);
+    expect(initialFieldReads).toBeGreaterThan(0);
+    expect(teamReads).toBe(initialTeamReads);
+    expect(fieldReads).toBe(initialFieldReads);
+  });
+
   /* ── 7. Score sheet appears on the judge page ──────────────────── */
 
   test('score sheet appears on the judge page under the event', async ({

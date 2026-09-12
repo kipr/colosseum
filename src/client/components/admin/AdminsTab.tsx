@@ -1,47 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
+import { adminUsersQueryOptions } from '../../queries/admins';
+import type { AdminUser } from '../../api/admins';
+import QueryFeedback, { queryData } from '../QueryFeedback';
 import './AdminsTab.css';
 
-interface AdminUser {
-  id: number;
-  email: string;
-  name: string;
-  is_admin: boolean;
-  isActive: boolean;
-  isRecentlyActive: boolean;
-  last_activity: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export default function AdminsTab() {
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const loadAdmins = async () => {
-    try {
-      setError(null);
-      const response = await fetch('/api/admin/users', {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load admins');
-      const data = await response.json();
-      setAdmins(data);
-    } catch (err) {
-      console.error('Error loading admins:', err);
-      setError('Failed to load admin users');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadAdmins();
-
-    // Refresh every 30 seconds
-    const interval = setInterval(loadAdmins, 30000);
-    return () => clearInterval(interval);
-  }, []);
+  const { user, loading } = useAuth();
+  const query = useQuery({
+    ...adminUsersQueryOptions(user?.id ?? 0),
+    enabled: Boolean(user?.isAdmin && !loading),
+  });
+  const admins = queryData(query) ?? [];
+  const loadAdmins = () => void query.refetch();
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'Unknown';
@@ -88,34 +59,15 @@ export default function AdminsTab() {
     return { label: 'Never', className: 'inactive' };
   };
 
-  if (loading) {
-    return (
-      <div className="admins-tab">
-        <h2>👥 Admin Users</h2>
-        <p>Loading...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="admins-tab">
-        <h2>👥 Admin Users</h2>
-        <div className="error-message">{error}</div>
-        <button className="btn btn-primary" onClick={loadAdmins}>
-          Retry
-        </button>
-      </div>
-    );
-  }
-
   const activeCount = admins.filter((a) => a.isActive).length;
   const recentCount = admins.filter(
     (a) => a.isRecentlyActive && !a.isActive,
   ).length;
+  if (!user?.isAdmin) return <p>Admin access required.</p>;
 
   return (
     <div className="admins-tab">
+      <QueryFeedback query={query} />
       <div className="admins-header">
         <h2>👥 Admin Users</h2>
         <div className="admins-summary">
@@ -136,7 +88,8 @@ export default function AdminsTab() {
       </div>
 
       <div className="admins-list">
-        {admins.length === 0 ? (
+        {query.isLoading ||
+        (query.isError && !queryData(query)) ? null : admins.length === 0 ? (
           <p className="no-admins">No admin users found.</p>
         ) : (
           admins.map((admin) => {

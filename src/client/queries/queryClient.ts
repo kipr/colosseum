@@ -1,6 +1,9 @@
+import { handleProtectedError } from './invalidation';
 import {
   CancelledError,
   QueryClient,
+  QueryCache,
+  MutationCache,
   type QueryClientConfig,
 } from '@tanstack/react-query';
 import { ApiError, ApiParseError } from '../api/http';
@@ -67,7 +70,35 @@ export function getQueryRetryDelay(
 export function createQueryClient(
   options: QueryClientConfig = {},
 ): QueryClient {
-  return new QueryClient({
+  const queryClient = new QueryClient({
+    queryCache: new QueryCache({
+      onError: (error, query) => {
+        if (query.queryKey[0] === 'admin') {
+          void handleProtectedError(
+            queryClient,
+            error,
+            query.queryKey[1],
+            query.meta?.adminOnly === true,
+          );
+        }
+      },
+    }),
+    mutationCache: new MutationCache({
+      onError: (error, variables, _context, mutation) => {
+        if (
+          variables &&
+          typeof variables === 'object' &&
+          'userId' in variables
+        ) {
+          void handleProtectedError(
+            queryClient,
+            error,
+            variables.userId,
+            mutation.meta?.adminOnly === true,
+          );
+        }
+      },
+    }),
     ...options,
     defaultOptions: {
       ...options.defaultOptions,
@@ -90,4 +121,5 @@ export function createQueryClient(
       },
     },
   });
+  return queryClient;
 }

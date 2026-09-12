@@ -119,6 +119,14 @@ test.describe('Admin navigation and session', () => {
       modal.getByRole('heading', { name: 'Create New Event' }),
     ).toBeVisible();
     await modal.locator('#event-name').fill(CREATED_EVENT);
+    let releaseRefresh!: () => void;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    await page.route('**/events', async (route) => {
+      if (route.request().method() === 'GET') await refreshGate;
+      await route.continue();
+    });
     await modal.getByRole('button', { name: 'Create Event' }).click();
     await expect(modal).not.toBeVisible({ timeout: 5_000 });
     await expect(page.locator('.event-badge-name')).toHaveText(CREATED_EVENT);
@@ -126,6 +134,7 @@ test.describe('Admin navigation and session', () => {
     const match = url.match(/\/admin\/events\/(\d+)/);
     expect(match).toBeTruthy();
     createdEventId = Number(match?.[1]);
+    releaseRefresh();
   });
 
   test('deleting the selected event falls back to an active or setup event', async ({

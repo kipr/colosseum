@@ -1,5 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
+import { fieldTemplatesQueryOptions } from '../../queries/templates';
+import type { FieldTemplate } from '../../api/templates';
+import QueryFeedback, { queryData } from '../QueryFeedback';
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useEvent } from '../../contexts/EventContext';
 import {
   buildDoubleEliminationSchema,
@@ -8,13 +13,6 @@ import {
 import { stripTeamInitialsFields } from '../../../shared/teamInitials';
 import '../Modal.css';
 import './ScoreSheetWizard.css';
-
-interface FieldTemplate {
-  id: number;
-  name: string;
-  description: string;
-  fields: any[];
-}
 
 interface ScoreSheetWizardProps {
   onComplete: (generatedData: {
@@ -63,7 +61,12 @@ export default function ScoreSheetWizard({
   const [sheetType, setSheetType] = useState<SheetType>('seeding');
   const [selectedTemplate, setSelectedTemplate] =
     useState<FieldTemplate | null>(null);
-  const [fieldTemplates, setFieldTemplates] = useState<FieldTemplate[]>([]);
+  const { user, loading } = useAuth();
+  const fieldsQuery = useQuery({
+    ...fieldTemplatesQueryOptions(user?.id ?? 0),
+    enabled: Boolean(user && !loading),
+  });
+  const fieldTemplates = queryData(fieldsQuery) ?? [];
 
   // Basic info
   const [name, setName] = useState('');
@@ -71,35 +74,6 @@ export default function ScoreSheetWizard({
   const [accessCode, setAccessCode] = useState('');
 
   const { selectedEvent } = useEvent();
-
-  useEffect(() => {
-    loadFieldTemplates();
-  }, []);
-
-  // Load field templates when entering template step
-  useEffect(() => {
-    if (currentStep === 'template') {
-      loadFieldTemplates();
-    }
-  }, [currentStep]);
-
-  const loadFieldTemplates = async () => {
-    try {
-      const response = await fetch('/field-templates', {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
-      // Parse fields_json for each template
-      const templatesWithParsedFields = data.map((t: any) => ({
-        ...t,
-        fields: JSON.parse(t.fields_json),
-      }));
-      setFieldTemplates(templatesWithParsedFields);
-    } catch (error) {
-      console.error('Error loading field templates:', error);
-    }
-  };
 
   const generateSchema = () => {
     if (sheetType === 'seeding') {
@@ -291,6 +265,7 @@ export default function ScoreSheetWizard({
         style={{ maxWidth: '700px' }}
         onClick={(e) => e.stopPropagation()}
       >
+        <QueryFeedback query={fieldsQuery} />
         <span className="close" onClick={onCancel}>
           &times;
         </span>

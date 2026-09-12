@@ -8,7 +8,7 @@ interface ScoreSheetEditorModalProps {
   scoreSheetId: number | null;
   eventId: number;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (message: string) => void;
 }
 
 export default function ScoreSheetEditorModal({

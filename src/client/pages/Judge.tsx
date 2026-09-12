@@ -1,51 +1,30 @@
+import { useQuery } from '@tanstack/react-query';
+import { publicTemplatesQueryOptions } from '../queries/templates';
+import type { PublicTemplate } from '../api/templates';
+import QueryFeedback from '../components/QueryFeedback';
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import AccessCodeModal from '../components/AccessCodeModal';
 import { formatDate } from '../utils/dateUtils';
 import './Judge.css';
 
-interface Template {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-  event_id?: number;
-  event_name?: string;
-  event_date?: string | null;
-  event_status?: string;
-}
+const EMPTY_TEMPLATES: PublicTemplate[] = [];
 
 export default function Judge() {
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(true);
+  const templatesQuery = useQuery(publicTemplatesQueryOptions());
+  const templates = templatesQuery.data ?? EMPTY_TEMPLATES;
+  const loading = templatesQuery.isLoading;
   const [selectedTemplate, setSelectedTemplate] = useState<{
     id: number;
     name: string;
   } | null>(null);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    loadTemplates();
-  }, []);
-
-  const loadTemplates = async () => {
-    try {
-      const response = await fetch('/scoresheet/templates');
-      if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
-      setTemplates(data);
-    } catch (error) {
-      console.error('Error loading templates:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Group templates by stable event identifier (event_id); event_name can duplicate across events
   const groupedTemplates = useMemo(() => {
-    const groups: Record<string, Template[]> = {};
+    const groups: Record<string, PublicTemplate[]> = {};
 
     templates.forEach((template) => {
       const groupKey =
@@ -94,9 +73,10 @@ export default function Judge() {
       <Navbar />
       <main className="container">
         <h2>Select a Score Sheet</h2>
-        {loading ? (
-          <p>Loading templates...</p>
-        ) : templates.length === 0 ? (
+        <QueryFeedback query={templatesQuery} />
+        {loading ||
+        (templatesQuery.isError &&
+          !templatesQuery.data) ? null : templates.length === 0 ? (
           <p>
             No scoresheets available. An administrator needs to create templates
             first.

@@ -1,4 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
+import { teamsQueryOptions, useTeamMutations } from '../../queries/teams';
+import type { Team, TeamStatus } from '../../api/teams';
+import QueryFeedback, { queryData } from '../QueryFeedback';
+import React, { useState, useMemo } from 'react';
 import { UnifiedTable } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
@@ -7,19 +12,7 @@ import { formatDateTime } from '../../utils/dateUtils';
 import '../Modal.css';
 import './TeamsTab.css';
 
-interface Team {
-  id: number;
-  event_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  status: TeamStatus;
-  checked_in_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-type TeamStatus = 'registered' | 'checked_in' | 'no_show' | 'withdrawn';
+const EMPTY_TEAMS: Team[] = [];
 
 interface TeamFormData {
   team_number: string;
@@ -71,11 +64,6 @@ function getStatusClass(status: TeamStatus): string {
     default:
       return '';
   }
-}
-
-interface BulkImportError {
-  index: number;
-  error: string;
 }
 
 interface ParsedTeam {
@@ -167,8 +155,8 @@ function parseTeamsText(text: string): {
 export default function TeamsTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [loading, setLoading] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+  const { save, remove, checkIn, bulkImport, bulkCheckIn } = useTeamMutations();
   const [filterStatus, setFilterStatus] = useState<TeamStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('team_number');
@@ -178,59 +166,36 @@ export default function TeamsTab() {
   const [showModal, setShowModal] = useState(false);
   const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [formData, setFormData] = useState<TeamFormData>(defaultFormData);
-  const [saving, setSaving] = useState(false);
+  const saving = save.isPending;
 
   // Bulk import state
   const [showBulkImport, setShowBulkImport] = useState(false);
   const [bulkText, setBulkText] = useState('');
-  const [bulkParsed, setBulkParsed] = useState<ParsedTeam[]>([]);
-  const [bulkParseErrors, setBulkParseErrors] = useState<string[]>([]);
-  const [bulkImporting, setBulkImporting] = useState(false);
-  const [bulkResults, setBulkResults] = useState<{
-    created: number;
-    errors: BulkImportError[];
-  } | null>(null);
+  const { teams: bulkParsed, errors: bulkParseErrors } = useMemo(
+    () => parseTeamsText(bulkText),
+    [bulkText],
+  );
+  const bulkImporting = bulkImport.isPending;
+  const bulkResults = bulkImport.data
+    ? { ...bulkImport.data, errors: bulkImport.data.errors ?? [] }
+    : null;
 
   // Bulk check-in state
   const [showBulkCheckIn, setShowBulkCheckIn] = useState(false);
   const [bulkCheckInSelected, setBulkCheckInSelected] = useState<Set<number>>(
     new Set(),
   );
-  const [bulkCheckingIn, setBulkCheckingIn] = useState(false);
+  const bulkCheckingIn = bulkCheckIn.isPending;
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
-  // Fetch teams when event changes or filter changes
-  const fetchTeams = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      let url = `/teams/event/${selectedEventId}`;
-      if (filterStatus !== 'all') {
-        url += `?status=${filterStatus}`;
-      }
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      const data: Team[] = await response.json();
-      setTeams(data);
-    } catch (error) {
-      console.error('Error fetching teams:', error);
-      toast.error('Failed to load teams');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId, filterStatus]);
-
-  useEffect(() => {
-    fetchTeams();
-  }, [fetchTeams]);
+  const teamsQuery = useQuery({
+    ...teamsQueryOptions(user?.id ?? 0, selectedEventId ?? 0, filterStatus),
+    enabled: Boolean(user && !authLoading && selectedEventId),
+  });
+  const teams = queryData(teamsQuery) ?? EMPTY_TEAMS;
+  const loading = teamsQuery.isLoading;
 
   // Filter and sort teams
   const filteredAndSortedTeams = useMemo(() => {
@@ -297,12 +262,14 @@ export default function TeamsTab() {
 
   // Modal handlers
   const handleCreateNew = () => {
+    save.reset();
     setEditingTeam(null);
     setFormData(defaultFormData);
     setShowModal(true);
   };
 
   const handleEdit = (team: Team) => {
+    save.reset();
     setEditingTeam(team);
     setFormData({
       team_number: team.team_number.toString(),
@@ -319,86 +286,49 @@ export default function TeamsTab() {
     setFormData(defaultFormData);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     const teamNumber = parseInt(formData.team_number, 10);
     if (isNaN(teamNumber) || teamNumber <= 0) {
       toast.error('Team number must be a positive integer');
       return;
     }
-
     if (!formData.team_name.trim()) {
       toast.error('Team name is required');
       return;
     }
-
-    setSaving(true);
-    try {
-      const url = editingTeam ? `/teams/${editingTeam.id}` : '/teams';
-      const method = editingTeam ? 'PATCH' : 'POST';
-
-      const body: Record<string, unknown> = {
-        team_number: teamNumber,
-        team_name: formData.team_name.trim(),
-        status: formData.status,
-      };
-
-      // Only include display_name if provided
-      if (formData.display_name.trim()) {
-        body.display_name = formData.display_name.trim();
-      }
-
-      // Include event_id for create
-      if (!editingTeam) {
-        body.event_id = selectedEventId;
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save team');
-      }
-
-      toast.success(editingTeam ? 'Team updated!' : 'Team created!');
-      handleCloseModal();
-      await fetchTeams();
-    } catch (error) {
-      console.error('Error saving team:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to save team',
-      );
-    } finally {
-      setSaving(false);
-    }
+    if (!user || !selectedEventId || save.isPending) return;
+    save.mutate(
+      {
+        userId: user.id,
+        eventId: selectedEventId,
+        teamId: editingTeam?.id,
+        data: {
+          team_number: teamNumber,
+          team_name: formData.team_name.trim(),
+          status: formData.status,
+          ...(formData.display_name.trim()
+            ? { display_name: formData.display_name.trim() }
+            : {}),
+        },
+      },
+      {
+        onSuccess: () => {
+          toast.success(editingTeam ? 'Team updated!' : 'Team created!');
+          handleCloseModal();
+        },
+      },
+    );
   };
 
-  const handleCheckIn = async (team: Team) => {
-    try {
-      const response = await fetch(`/teams/${team.id}/check-in`, {
-        method: 'PATCH',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to check in team');
-      }
-
-      toast.success(`Team ${team.team_number} checked in!`);
-      await fetchTeams();
-    } catch (error) {
-      console.error('Error checking in team:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to check in team',
-      );
-    }
+  const handleCheckIn = (team: Team) => {
+    if (!user || checkIn.isPending) return;
+    checkIn.mutate(
+      { userId: user.id, eventId: team.event_id, teamId: team.id },
+      {
+        onSuccess: () => toast.success(`Team ${team.team_number} checked in!`),
+      },
+    );
   };
 
   const handleDelete = async (team: Team) => {
@@ -408,103 +338,40 @@ export default function TeamsTab() {
       confirmText: 'Delete',
       confirmStyle: 'danger',
     });
-
-    if (!confirmed) return;
-
-    try {
-      const response = await fetch(`/teams/${team.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-
-      if (!response.ok && response.status !== 204) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete team');
-      }
-
-      toast.success('Team deleted');
-      await fetchTeams();
-    } catch (error) {
-      console.error('Error deleting team:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to delete team',
-      );
-    }
+    if (!confirmed || !user || remove.isPending) return;
+    remove.mutate(
+      { userId: user.id, eventId: team.event_id, teamId: team.id },
+      {
+        onSuccess: () => toast.success('Team deleted'),
+      },
+    );
   };
 
-  // Bulk import handlers
   const handleBulkTextChange = (text: string) => {
     setBulkText(text);
-    setBulkResults(null);
-
-    if (!text.trim()) {
-      setBulkParsed([]);
-      setBulkParseErrors([]);
-      return;
-    }
-
-    const { teams: parsed, errors } = parseTeamsText(text);
-    setBulkParsed(parsed);
-    setBulkParseErrors(errors);
+    bulkImport.reset();
   };
-
-  const handleBulkImport = async () => {
-    if (bulkParsed.length === 0 || !selectedEventId) return;
-
-    setBulkImporting(true);
-    setBulkResults(null);
-
-    try {
-      const response = await fetch('/teams/bulk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          event_id: selectedEventId,
-          teams: bulkParsed,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to import teams');
-      }
-
-      const data = await response.json();
-      const importErrors: BulkImportError[] = data.errors || [];
-      setBulkResults({
-        created: data.created,
-        errors: importErrors,
-      });
-
-      if (data.created > 0) {
-        toast.success(`Imported ${data.created} team(s)`);
-        await fetchTeams();
-        if (importErrors.length === 0) {
-          handleCloseBulkImport();
-          return;
-        }
-      }
-
-      if (importErrors.length > 0) {
-        toast.warning(`${importErrors.length} team(s) failed to import`);
-      }
-    } catch (error) {
-      console.error('Error importing teams:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to import teams',
-      );
-    } finally {
-      setBulkImporting(false);
-    }
-  };
-
   const handleCloseBulkImport = () => {
     setShowBulkImport(false);
     setBulkText('');
-    setBulkParsed([]);
-    setBulkParseErrors([]);
-    setBulkResults(null);
+    bulkImport.reset();
+  };
+  const handleBulkImport = () => {
+    if (!bulkParsed.length || !selectedEventId || !user || bulkImport.isPending)
+      return;
+    bulkImport.mutate(
+      { userId: user.id, eventId: selectedEventId, teams: bulkParsed },
+      {
+        onSuccess: ({ created, errors = [] }) => {
+          if (created > 0) {
+            toast.success(`Imported ${created} team(s)`);
+            if (!errors.length) handleCloseBulkImport();
+          }
+          if (errors.length)
+            toast.warning(`${errors.length} team(s) failed to import`);
+        },
+      },
+    );
   };
 
   // Bulk check-in handlers
@@ -544,40 +411,27 @@ export default function TeamsTab() {
     setBulkCheckInSelected(new Set());
   };
 
-  const handleBulkCheckIn = async () => {
-    if (bulkCheckInSelected.size === 0 || !selectedEventId) return;
-
-    setBulkCheckingIn(true);
-    try {
-      const response = await fetch(
-        `/teams/event/${selectedEventId}/check-in/bulk`,
-        {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            team_numbers: Array.from(bulkCheckInSelected),
-          }),
+  const handleBulkCheckIn = () => {
+    if (
+      !bulkCheckInSelected.size ||
+      !selectedEventId ||
+      !user ||
+      bulkCheckIn.isPending
+    )
+      return;
+    bulkCheckIn.mutate(
+      {
+        userId: user.id,
+        eventId: selectedEventId,
+        teamNumbers: Array.from(bulkCheckInSelected),
+      },
+      {
+        onSuccess: ({ updated }) => {
+          toast.success(`Checked in ${updated} team(s)`);
+          handleCloseBulkCheckIn();
         },
-      );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to check in teams');
-      }
-
-      const data = await response.json();
-      toast.success(`Checked in ${data.updated} team(s)`);
-      handleCloseBulkCheckIn();
-      await fetchTeams();
-    } catch (error) {
-      console.error('Error bulk checking in teams:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to check in teams',
-      );
-    } finally {
-      setBulkCheckingIn(false);
-    }
+      },
+    );
   };
 
   if (!selectedEventId) {
@@ -594,6 +448,10 @@ export default function TeamsTab() {
 
   return (
     <div className="teams-tab">
+      <QueryFeedback query={teamsQuery} />
+      {(remove.error || checkIn.error) && (
+        <p role="alert">{(remove.error || checkIn.error)?.message}</p>
+      )}
       {/* Controls */}
       <div className="teams-controls">
         <div className="teams-controls-left">
@@ -645,9 +503,10 @@ export default function TeamsTab() {
 
       {/* Teams table */}
       <div className="card">
-        {loading ? (
-          <p>Loading teams...</p>
-        ) : filteredAndSortedTeams.length === 0 ? (
+        {loading ||
+        (teamsQuery.isError &&
+          !queryData(teamsQuery)) ? null : filteredAndSortedTeams.length ===
+          0 ? (
           <p style={{ color: 'var(--secondary-color)' }}>
             {teams.length === 0
               ? 'No teams found for this event. Add a team or use bulk import.'
@@ -775,6 +634,7 @@ export default function TeamsTab() {
             </p>
 
             <form onSubmit={handleSubmit}>
+              {save.error && <p role="alert">{save.error.message}</p>}
               <div className="form-group">
                 <label htmlFor="team-number">Team Number *</label>
                 <input
@@ -891,6 +751,7 @@ export default function TeamsTab() {
               &times;
             </span>
             <h3>Bulk Import Teams</h3>
+            {bulkImport.error && <p role="alert">{bulkImport.error.message}</p>}
             <p
               style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
             >
@@ -914,6 +775,7 @@ export default function TeamsTab() {
                 id="bulk-text"
                 className="field-input"
                 rows={10}
+                disabled={bulkImporting}
                 value={bulkText}
                 onChange={(e) => handleBulkTextChange(e.target.value)}
                 placeholder={`Example:\n101, Team Alpha\n102, Team Beta, The Beta Bots\n103, Team Gamma, , registered`}
@@ -1056,6 +918,9 @@ export default function TeamsTab() {
               &times;
             </span>
             <h3>Bulk Check-In Teams</h3>
+            {bulkCheckIn.error && (
+              <p role="alert">{bulkCheckIn.error.message}</p>
+            )}
             <p
               style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
             >

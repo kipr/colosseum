@@ -1,69 +1,84 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  fieldTemplatesQueryOptions,
+  useTemplateMutations,
+} from '../../queries/templates';
+import type { FieldTemplate } from '../../api/templates';
+import QueryFeedback, { queryData } from '../QueryFeedback';
+import React, { useState } from 'react';
 import '../Modal.css';
 
 interface FieldTemplateModalProps {
   templateId: number | null;
   onClose: () => void;
-  onSave: () => void;
+  onSave: (message: string) => void;
 }
 
-export default function FieldTemplateModal({
+export default function FieldTemplateModal(props: FieldTemplateModalProps) {
+  const { user, loading } = useAuth();
+  const query = useQuery({
+    ...fieldTemplatesQueryOptions(user?.id ?? 0),
+    enabled: Boolean(user && !loading),
+  });
+  const template = queryData(query)?.find(({ id }) => id === props.templateId);
+  if (!user || loading) return null;
+  if (props.templateId && !template)
+    return (
+      <div className="modal show">
+        <div className="modal-content">
+          <QueryFeedback query={query} />
+          {query.isSuccess && <p>Field template not found.</p>}
+          <button className="btn btn-secondary" onClick={props.onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  return (
+    <FieldTemplateForm
+      {...props}
+      key={`${user.id}-${props.templateId ?? 'new'}`}
+      template={template}
+      feedback={<QueryFeedback query={query} />}
+    />
+  );
+}
+
+function FieldTemplateForm({
   templateId,
   onClose,
   onSave,
-}: FieldTemplateModalProps) {
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [fieldsJson, setFieldsJson] = useState('');
-  const [loading, setLoading] = useState(!!templateId);
+  template,
+  feedback,
+}: FieldTemplateModalProps & {
+  template?: FieldTemplate;
+  feedback: React.ReactNode;
+}) {
+  const { user } = useAuth();
+  const { saveField } = useTemplateMutations();
+  const [name, setName] = useState(template?.name ?? '');
+  const [description, setDescription] = useState(template?.description ?? '');
+  const [fieldsJson, setFieldsJson] = useState(() =>
+    JSON.stringify(
+      template?.fields ?? [
+        {
+          id: 'example_field',
+          label: 'Example Field',
+          type: 'number',
+          required: false,
+          min: 0,
+          step: 1,
+        },
+      ],
+      null,
+      2,
+    ),
+  );
 
-  useEffect(() => {
-    if (templateId) {
-      loadTemplate();
-    } else {
-      // Default empty fields array
-      setFieldsJson(
-        JSON.stringify(
-          [
-            {
-              id: 'example_field',
-              label: 'Example Field',
-              type: 'number',
-              required: false,
-              min: 0,
-              step: 1,
-            },
-          ],
-          null,
-          2,
-        ),
-      );
-    }
-  }, [templateId]);
-
-  const loadTemplate = async () => {
-    try {
-      const response = await fetch(`/field-templates/${templateId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load template');
-      const template = await response.json();
-
-      setName(template.name);
-      setDescription(template.description || '');
-      setFieldsJson(JSON.stringify(template.fields, null, 2));
-    } catch (error) {
-      console.error('Error loading template:', error);
-      alert('Failed to load template');
-      onClose();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user || saveField.isPending) return;
 
     try {
       const parsedFields = JSON.parse(fieldsJson);
@@ -73,59 +88,31 @@ export default function FieldTemplateModal({
         return;
       }
 
-      const method = templateId ? 'PUT' : 'POST';
-      const url = templateId
-        ? `/field-templates/${templateId}`
-        : '/field-templates';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name,
-          description,
-          fields: parsedFields,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save template');
-      }
-
-      showSuccessMessage(
-        templateId ? 'Field template updated!' : 'Field template created!',
+      saveField.mutate(
+        {
+          userId: user.id,
+          templateId: templateId ?? undefined,
+          data: { name, description, fields: parsedFields },
+        },
+        {
+          onSuccess: () =>
+            onSave(
+              templateId
+                ? 'Field template updated!'
+                : 'Field template created!',
+            ),
+        },
       );
-      onSave();
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving template:', error);
       if (error instanceof SyntaxError) {
         alert('Invalid JSON. Please check your syntax.');
       } else {
         alert(
-          `Failed to save template: ${error.message || 'Please try again.'}`,
+          `Failed to save template: ${error instanceof Error ? error.message : 'Please try again.'}`,
         );
       }
     }
-  };
-
-  const showSuccessMessage = (message: string) => {
-    const messageDiv = document.createElement('div');
-    messageDiv.textContent = message;
-    messageDiv.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background-color: var(--success-color);
-      color: white;
-      padding: 1rem 1.5rem;
-      border-radius: 0.5rem;
-      box-shadow: var(--shadow-lg);
-      z-index: 2000;
-    `;
-    document.body.appendChild(messageDiv);
-    setTimeout(() => messageDiv.remove(), 3000);
   };
 
   return (
@@ -139,57 +126,59 @@ export default function FieldTemplateModal({
           Field templates are reusable scoring field patterns that work for both
           seeding and DE score sheets.
         </p>
-        {loading ? (
-          <p>Loading...</p>
-        ) : (
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label>Template Name *</label>
-              <input
-                type="text"
-                className="field-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Botball 2024 Scoring Fields"
-                required
-              />
-            </div>
+        {feedback}
+        {saveField.error && <p role="alert">{saveField.error.message}</p>}
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Template Name *</label>
+            <input
+              type="text"
+              className="field-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., Botball 2024 Scoring Fields"
+              required
+            />
+          </div>
 
-            <div className="form-group">
-              <label>Description</label>
-              <textarea
-                className="field-input"
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description of what this template is for"
-              />
-              <small>
-                This template can be used for both seeding and DE score sheets
-              </small>
-            </div>
+          <div className="form-group">
+            <label>Description</label>
+            <textarea
+              className="field-input"
+              rows={2}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description of what this template is for"
+            />
+            <small>
+              This template can be used for both seeding and DE score sheets
+            </small>
+          </div>
 
-            <div className="form-group">
-              <label>Scoring Fields (JSON Array) *</label>
-              <textarea
-                className="field-input"
-                rows={15}
-                value={fieldsJson}
-                onChange={(e) => setFieldsJson(e.target.value)}
-                style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
-                required
-              />
-              <small>
-                Define your scoring fields as a JSON array. These will be
-                inserted into score sheets created with this template.
-              </small>
-            </div>
+          <div className="form-group">
+            <label>Scoring Fields (JSON Array) *</label>
+            <textarea
+              className="field-input"
+              rows={15}
+              value={fieldsJson}
+              onChange={(e) => setFieldsJson(e.target.value)}
+              style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
+              required
+            />
+            <small>
+              Define your scoring fields as a JSON array. These will be inserted
+              into score sheets created with this template.
+            </small>
+          </div>
 
-            <button type="submit" className="btn btn-primary">
-              {templateId ? 'Update Template' : 'Create Template'}
-            </button>
-          </form>
-        )}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={saveField.isPending}
+          >
+            {templateId ? 'Update Template' : 'Create Template'}
+          </button>
+        </form>
       </div>
     </div>
   );

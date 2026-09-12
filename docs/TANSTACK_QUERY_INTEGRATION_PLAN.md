@@ -319,6 +319,62 @@ The migration is complete when every client server-data operation uses the
 agreed query/mutation layer, remaining effects describe UI behavior, existing
 workflows pass, and cached data cannot cross event or authorization boundaries.
 
+## Stage three implementation
+
+Stage three migrates event writes, team management, scoresheet and field-template
+management, public judge template discovery, and admin-user polling. Domain API
+functions and query/mutation hooks own requests and cache effects; components
+retain navigation, confirmations, drafts, and notifications. The forwarding-only
+score-sheet preview wrapper and hand-built template toast implementations were
+removed. Bulk-import parsing and results, and editor bracket indicators, no
+longer require synchronized copies of state.
+
+Implementation boundaries:
+
+- Field-template management, the wizard, and the field editor share one list
+  query. Its API function normalizes stored `fields_json`; the list contains all
+  fields needed by the editor, so no separate detail request is necessary.
+- Scoresheet details distinguish admin and staff permissions within the user
+  namespace. Privileged queries carry `adminOnly` metadata. Cache-level error
+  callbacks revalidate auth after protected 401 or admin-only 403 responses;
+  confirmed identity/permission transitions use the existing eviction helpers.
+- Event writes apply the complete server response to the event list before UI
+  navigation. Background list refresh does not delay selecting a created event.
+  Deletion removes the event and its cached resources, including its filtered
+  scoresheet list. Other mutations await active list refreshes without treating
+  a refresh failure as a failed write.
+- Mutation variables capture the originating user and resource scope. Cache
+  effects survive component unmounting; late responses cannot recreate another
+  identity's protected cache. Editor drafts survive background data changes.
+- The supporting bracket-options query deliberately uses zero stale time until
+  stage four migrates bracket writes. Reopening an editor therefore refreshes
+  bracket choices despite legacy mutations not yet invalidating Query data.
+- `refreshEvents()` remains only as the compatibility adapter for Admin's retry
+  control and DoubleSeedingTab. Remove it when those remaining callers migrate.
+
+Later stages must extend the domain invalidations as their consumers migrate:
+team changes affect queue, scoring/ranking, bracket, award, and audit views;
+event settings affect queue and visibility-dependent results; template changes
+affect later template consumers. Scoresheet updates replace event associations,
+so all cached template-list filters are invalidated today. Field-template edits
+do not rewrite previously generated scoresheet schemas. No speculative keys or
+bridges to legacy component state were added.
+
+Stage-three validation adds hook/component coverage for shared reads,
+cancellation, event/filter/permission isolation, delayed writes, partial bulk
+success, draft preservation, duplicate submission, authorization recovery, and
+hidden-tab polling. Browser coverage verifies delayed event-list refresh and
+cache reuse across team navigation and the scoresheet wizard. The migration
+retains route splitting and excludes Query Devtools from production output.
+
+The source-size tradeoff is explicit: compared with the pre-stage-three HEAD,
+client UI/context code decreases by 386 lines, while the API/query layer adds
+594 lines (net +208 client lines, excluding tests and this document). Production
+JavaScript totals change from 644,108 to 648,136 bytes; summed per-chunk gzip
+sizes change from 200,399 to 202,669 bytes (+2,270 bytes). Lazy JavaScript chunks
+remain split (36 before, 38 after), with no Query Devtools in the build. Review
+future consumers for reuse of these modules rather than another fetching layer.
+
 ## References
 
 - [TanStack Query installation](https://tanstack.com/query/latest/docs/framework/react/installation)

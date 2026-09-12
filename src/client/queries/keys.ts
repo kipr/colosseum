@@ -35,3 +35,20 @@ export const adminKeys = {
   scope: adminScopeKey,
   events: adminEventsKey,
 };
+
+export function adminEventKey(
+  userId: number | string,
+  eventId: number | string,
+) {
+  return [...adminScopeKey(userId), 'event', Number(eventId)] as const;
+}
+
+export const publicTemplatesKey = ['public', 'templates'] as const;
+export const teamsKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'teams'] as const;
+export const templatesKey = (userId: number) =>
+  [...adminScopeKey(userId), 'templates'] as const;
+export const templateDetailKey = (userId: number, templateId: number) =>
+  [...adminScopeKey(userId), 'template', Number(templateId)] as const;
+export const fieldTemplatesKey = (userId: number) =>
+  [...adminScopeKey(userId), 'field-templates'] as const;
