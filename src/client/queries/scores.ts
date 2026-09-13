@@ -35,19 +35,6 @@ export function scoresQueryOptions(
     queryKey: [...scoresKey(userId, eventId), normalized],
     queryFn: ({ signal }) => getEventScores(eventId, normalized, signal),
     ...LIVE_QUERY,
-    placeholderData: (previousData, previousQuery) => {
-      const prev = previousQuery?.queryKey;
-      const prevFilters = prev?.[5] as typeof normalized | undefined;
-      return previousData &&
-        prev?.[1] === userId &&
-        prev?.[3] === eventId &&
-        prev?.[4] === 'scores' &&
-        prevFilters?.limit === normalized.limit &&
-        prevFilters?.status === normalized.status &&
-        prevFilters?.scoreType === normalized.scoreType
-        ? previousData
-        : undefined;
-    },
   });
 }
 

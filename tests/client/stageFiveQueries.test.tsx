@@ -305,7 +305,7 @@ describe('stage five polling and versioned GETs', () => {
     }
   });
 
-  it('keeps cached score rows visible while a later page is loading', async () => {
+  it('shows a loading state during page changes', async () => {
     const second = deferred<Response>();
     const fetchMock = vi.fn((url: string) => {
       const parsed = new URL(String(url), 'http://localhost');
@@ -333,10 +333,11 @@ describe('stage five polling and versioned GETs', () => {
     );
     await waitFor(() => expect(result.current.data?.rows[0]?.id).toBe(1));
     rerender({ page: 2 });
-    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
-    expect(result.current.data?.rows[0]?.id).toBe(1);
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    expect(result.current.data).toBeUndefined();
+    expect(result.current.isLoading).toBe(true);
     second.resolve(jsonResponse({ ...scorePage, page: 2, rows: [] }));
-    await waitFor(() => expect(result.current.isPlaceholderData).toBe(false));
+    await waitFor(() => expect(result.current.isPending).toBe(false));
     expect(result.current.data?.rows).toEqual([]);
   });
 
