@@ -1,15 +1,17 @@
 export class ApiError extends Error {
   readonly status: number;
   readonly retryAfterMs: number | undefined;
+  readonly body: unknown;
 
   constructor(
     message: string,
-    options: { status: number; retryAfterMs?: number },
+    options: { status: number; retryAfterMs?: number; body?: unknown },
   ) {
     super(message);
     this.name = 'ApiError';
     this.status = options.status;
     this.retryAfterMs = options.retryAfterMs;
+    this.body = options.body;
   }
 }
 
@@ -21,6 +23,7 @@ export class ApiParseError extends Error {
 }
 
 const FALLBACK_ERROR_MESSAGE = 'Request failed';
+export const VERSIONED_GET_CACHE = 'no-cache' as const;
 
 export function parseRetryAfterHeader(
   value: string | null,
@@ -48,10 +51,18 @@ function headersWithDefaults(init?: HeadersInit): Headers {
   return headers;
 }
 
-function messageFromErrorBody(
+function parseJsonValue(text: string): unknown | undefined {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return undefined;
+  }
+}
+
+function parsedJsonBody(
   text: string,
   contentType: string,
-): string | undefined {
+): unknown | undefined {
   const trimmed = text.trim();
   if (!trimmed) return undefined;
 
@@ -68,18 +79,17 @@ function messageFromErrorBody(
     trimmed.startsWith('[');
   if (!looksJson) return undefined;
 
-  try {
-    const parsed: unknown = JSON.parse(trimmed);
-    if (!parsed || typeof parsed !== 'object') return undefined;
-    const record = parsed as Record<string, unknown>;
-    if (typeof record.error === 'string' && record.error.trim()) {
-      return record.error.trim();
-    }
-    if (typeof record.message === 'string' && record.message.trim()) {
-      return record.message.trim();
-    }
-  } catch {
-    return undefined;
+  return parseJsonValue(trimmed);
+}
+
+function messageFromErrorBody(body: unknown): string | undefined {
+  if (!body || typeof body !== 'object') return undefined;
+  const record = body as Record<string, unknown>;
+  if (typeof record.error === 'string' && record.error.trim()) {
+    return record.error.trim();
+  }
+  if (typeof record.message === 'string' && record.message.trim()) {
+    return record.message.trim();
   }
   return undefined;
 }
@@ -96,12 +106,14 @@ async function createApiError(response: Response): Promise<ApiError> {
     if (isAbortError(error)) throw error;
     text = '';
   }
+  const body = parsedJsonBody(text, contentType);
   const message =
-    messageFromErrorBody(text, contentType) ??
+    messageFromErrorBody(body) ??
     `${FALLBACK_ERROR_MESSAGE} (${response.status})`;
   return new ApiError(message, {
     status: response.status,
     retryAfterMs,
+    body,
   });
 }
 

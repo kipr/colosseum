@@ -48,6 +48,22 @@ export function getTemplate(templateId: number, signal?: AbortSignal) {
     signal,
   });
 }
+export function verifyTemplate({
+  templateId,
+  accessCode,
+}: {
+  templateId: number;
+  accessCode: string;
+}) {
+  return requestJson<TemplateDetail>(
+    `/scoresheet/templates/${templateId}/verify`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accessCode }),
+    },
+  );
+}
 export async function getFieldTemplates(
   signal?: AbortSignal,
 ): Promise<FieldTemplate[]> {

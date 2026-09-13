@@ -14,19 +14,25 @@ import {
   getBracketRankings,
   getBrackets,
   getPublicBracketRankings,
+  getEventGames,
   updateBracket,
 } from '../api/brackets';
 import {
   assignedTeamsKey,
   bracketKey,
   bracketsKey,
+  judgeEventKey,
   publicEventKey,
 } from './keys';
 import {
   invalidateBracketDependents,
   type EventMutationScope,
 } from './invalidation';
-import { LIST_STALE_TIME_MS, RESULT_STALE_TIME_MS } from './queryClient';
+import {
+  LIST_STALE_TIME_MS,
+  POLL_INTERVAL_MS,
+  RESULT_STALE_TIME_MS,
+} from './queryClient';
 
 type BracketScope = EventMutationScope & { bracketId?: number };
 
@@ -94,6 +100,39 @@ export function assignedTeamsQueryOptions(userId: number, eventId: number) {
     queryKey: assignedTeamsKey(userId, eventId),
     queryFn: ({ signal }) => getAssignedTeams(eventId, signal),
     staleTime: LIST_STALE_TIME_MS,
+  });
+}
+
+export function judgeEventGamesQueryOptions(
+  generation: string,
+  eventId: number,
+  options: { complete: boolean },
+) {
+  return queryOptions({
+    queryKey: [
+      ...judgeEventKey(generation, eventId),
+      'games',
+      { complete: options.complete },
+    ],
+    queryFn: ({ signal }) =>
+      getEventGames(eventId, { complete: options.complete }, signal),
+    staleTime: 0,
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
+  });
+}
+
+export function judgeBracketQueryOptions(
+  generation: string,
+  eventId: number,
+  bracketId: number,
+) {
+  return queryOptions({
+    queryKey: [...judgeEventKey(generation, eventId), 'bracket', bracketId],
+    queryFn: ({ signal }) => getBracket(bracketId, signal),
+    staleTime: 0,
+    refetchInterval: POLL_INTERVAL_MS,
+    refetchIntervalInBackground: false,
   });
 }
 

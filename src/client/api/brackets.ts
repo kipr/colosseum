@@ -1,4 +1,9 @@
-import { requestJson, requestVoid, ApiError } from './http';
+import {
+  requestJson,
+  requestVoid,
+  ApiError,
+  VERSIONED_GET_CACHE,
+} from './http';
 import type {
   Bracket,
   BracketDetail,
@@ -79,6 +84,41 @@ export function getAssignedTeams(eventId: number, signal?: AbortSignal) {
   return requestJson<AssignedTeam[]>(
     `/brackets/event/${eventId}/assigned-teams`,
     { signal },
+  );
+}
+
+export interface EventBracketGame {
+  id: number;
+  bracket_game_id?: number;
+  bracket_id: number;
+  bracket_name?: string;
+  game_number: number;
+  round_name: string | null;
+  bracket_side: string | null;
+  status: string;
+  winner_id: number | null;
+  queue_position?: number | null;
+  team1_id: number | null;
+  team1_number?: number | null;
+  team1_name?: string | null;
+  team1_display?: string | null;
+  team2_id: number | null;
+  team2_number?: number | null;
+  team2_name?: string | null;
+  team2_display?: string | null;
+}
+
+export function getEventGames(
+  eventId: number,
+  options: { complete?: boolean } = {},
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  if (options.complete === false) params.set('eligible', 'scoreable');
+  const qs = params.toString();
+  return requestJson<EventBracketGame[]>(
+    `/brackets/event/${eventId}/games${qs ? `?${qs}` : ''}`,
+    { signal, cache: VERSIONED_GET_CACHE },
   );
 }
 

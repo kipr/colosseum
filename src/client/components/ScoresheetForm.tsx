@@ -1,7 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BracketGameOption,
+  type BracketTeamDisplay,
   buildRepeatableGroupDerivedScoreEntries,
   calculateRepeatableGroupDerived,
   calculateRepeatableGroupDerivedValues,
@@ -33,18 +35,119 @@ import JudgeChatButton from './judgeChat/JudgeChatButton';
 import JudgeChatDrawer from './judgeChat/JudgeChatDrawer';
 import { compileScoresheetFormulas } from '../../shared/scoresheetFormulaProgram';
 import FormulaErrors from './FormulaErrors';
+import type { TemplateDetail } from '../api/templates';
+import type { Team } from '../api/teams';
+import { QUEUE_STATUSES } from '../api/queue';
+import type { EventBracketGame } from '../api/brackets';
+import type { BracketGame } from '../types/brackets';
+import { judgeTeamsQueryOptions } from '../queries/teams';
+import {
+  judgeBracketQueryOptions,
+  judgeEventGamesQueryOptions,
+} from '../queries/brackets';
+import { judgeQueueQueryOptions } from '../queries/queue';
+import { useJudgeScoreSubmitMutation } from '../queries/scores';
+import {
+  isAuthorizationError,
+  removeJudgeQueries,
+} from '../queries/invalidation';
+import QueryFeedback from './QueryFeedback';
+import { clearJudgeSessionStorage } from '../utils/judgeSession';
 
-interface ScoresheetFormProps {
-  template: any;
+function mapTeamSide(
+  id: number | null,
+  number?: number | string | null,
+  name?: string | null,
+  display?: string | null,
+): BracketTeamDisplay | null {
+  if (id == null || (number == null && !name)) return null;
+  return {
+    teamNumber: String(number ?? name ?? ''),
+    displayName: display || name || String(number),
+  };
 }
 
-// Queue reads are cheap on the server (version ETag + 304 when unchanged),
-// so a 10s cadence keeps judges fresh without hammering the backend.
-const QUEUE_POLL_INTERVAL_MS = 10_000;
-const BRACKET_POLL_INTERVAL_MS = 10_000;
+function mapEventGameOption(game: EventBracketGame): BracketGameOption {
+  return {
+    gameNumber: game.game_number,
+    bracketId: game.bracket_id,
+    bracketName: game.bracket_name,
+    roundName: game.round_name,
+    bracketSide: game.bracket_side,
+    queuePosition: game.queue_position ?? null,
+    team1: mapTeamSide(
+      game.team1_id,
+      game.team1_number,
+      game.team1_name,
+      game.team1_display,
+    ),
+    team2: mapTeamSide(
+      game.team2_id,
+      game.team2_number,
+      game.team2_name,
+      game.team2_display,
+    ),
+    hasWinner: Boolean(game.winner_id) || game.status === 'completed',
+    bracketGameId: game.bracket_game_id ?? game.id,
+  };
+}
 
-export default function ScoresheetForm({ template }: ScoresheetFormProps) {
-  const schema = template.schema;
+function mapBracketGameOption(
+  game: BracketGame,
+  bracketId: number,
+): BracketGameOption {
+  return {
+    gameNumber: game.game_number,
+    bracketId: game.bracket_id ?? bracketId,
+    team1: mapTeamSide(
+      game.team1_id,
+      game.team1_number,
+      game.team1_name,
+      game.team1_display,
+    ),
+    team2: mapTeamSide(
+      game.team2_id,
+      game.team2_number,
+      game.team2_name,
+      game.team2_display,
+    ),
+    hasWinner: Boolean(game.winner_id) || game.status === 'completed',
+    bracketGameId: game.id,
+  };
+}
+
+function sortDropdownRows(rows: any[], labelField: string): any[] {
+  return [...rows].sort((a, b) => {
+    const aVal = String(a[labelField] ?? '');
+    const bVal = String(b[labelField] ?? '');
+    const aNum = parseFloat(aVal);
+    const bNum = parseFloat(bVal);
+    if (!Number.isNaN(aNum) && !Number.isNaN(bNum)) return aNum - bNum;
+    return aVal.localeCompare(bVal, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  });
+}
+
+function teamNumberMatches(team: Team, teamNumber: string): boolean {
+  const stored = String(
+    parseInt(String(team.team_number), 10) || team.team_number,
+  );
+  const wanted = String(parseInt(teamNumber, 10) || teamNumber);
+  return stored === wanted;
+}
+
+interface ScoresheetFormProps {
+  template: TemplateDetail;
+  sessionGeneration: string;
+}
+
+export default function ScoresheetForm({
+  template,
+  sessionGeneration,
+}: ScoresheetFormProps) {
+  const schema: any = template.schema;
   const isHeadToHead = schema.mode === 'head-to-head';
   // Explicit marker only: head-to-head means bracket scoring with a winner.
   const isDoubleSeeding = schema.scoreKind === 'double_seeding';
@@ -78,7 +181,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     // Initialize fields with their default values if specified
-    template.schema.fields.forEach((field: any) => {
+    (schema.fields ?? []).forEach((field: any) => {
       if (field.type === 'repeatableGroup') {
         const startingValue = getFieldDefaultValue(field);
         initial[field.id] =
@@ -108,9 +211,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const [touchedFields, setTouchedFields] = useState<Record<string, boolean>>(
     {},
   );
-  const [dynamicData, setDynamicData] = useState<Record<string, any[]>>({});
-  const [bracketGames, setBracketGames] = useState<BracketGameOption[]>([]);
-  const [teamsData, setTeamsData] = useState<any[]>([]); // Teams lookup for head-to-head
   const compilation = useMemo(
     () => compileScoresheetFormulas(schema.fields),
     [schema.fields],
@@ -125,28 +225,143 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     type: 'success' | 'error';
   } | null>(null);
   const [showGameAreas, setShowGameAreas] = useState(false);
+  const queryClient = useQueryClient();
+  const submitScore = useJudgeScoreSubmitMutation();
 
-  const [queueItems, setQueueItems] = useState<
-    Array<{
-      id: number;
-      queue_type: string;
-      seeding_team_id?: number;
-      seeding_round?: number;
-      seeding_team_number?: number;
-      seeding_team_name?: string;
-      double_seeding_match_id?: number;
-      double_seeding_round?: number;
-      double_seeding_match_number?: number;
-      double_seeding_team1_id?: number | null;
-      double_seeding_team2_id?: number | null;
-      double_seeding_team1_number?: number | null;
-      double_seeding_team1_name?: string | null;
-      double_seeding_team2_number?: number | null;
-      double_seeding_team2_name?: string | null;
-      queue_position: number;
-      status: string;
-    }>
-  >([]);
+  const teamEventIds = useMemo(() => {
+    const ids = new Set<number>();
+    const teamsConfig = schema.teamsDataSource;
+    if (teamsConfig?.type === 'db' && teamsConfig.eventId) {
+      ids.add(Number(teamsConfig.eventId));
+    }
+    for (const field of schema.fields) {
+      if (field.dataSource?.type === 'db' && field.dataSource.eventId) {
+        ids.add(Number(field.dataSource.eventId));
+      }
+    }
+    return [...ids];
+  }, [schema]);
+
+  const teamQueries = useQueries({
+    queries: teamEventIds.map((eventId) => ({
+      ...judgeTeamsQueryOptions(sessionGeneration, eventId),
+      enabled: Boolean(sessionGeneration && eventId),
+    })),
+  });
+  const teamQueryData = teamQueries.map((query) => query.data);
+  const teamsByEvent = useMemo(() => {
+    const map = new Map<number, Team[]>();
+    teamEventIds.forEach((eventId, index) => {
+      const rows = teamQueryData[index];
+      if (rows) map.set(eventId, rows);
+    });
+    return map;
+  }, [teamEventIds, teamQueryData]);
+  const teamsData =
+    (schema.teamsDataSource?.type === 'db' && schema.teamsDataSource.eventId
+      ? teamsByEvent.get(Number(schema.teamsDataSource.eventId))
+      : undefined) ??
+    (schema.eventId ? teamsByEvent.get(Number(schema.eventId)) : undefined) ??
+    [];
+
+  const queueEnabled = Boolean(
+    (useQueueForSeeding || useQueueForDoubleSeeding) && schema.eventId,
+  );
+  const queueQuery = useQuery({
+    ...judgeQueueQueryOptions(sessionGeneration, Number(schema.eventId) || 0, {
+      statuses: QUEUE_STATUSES,
+      queueType: isDoubleSeeding ? 'double_seeding' : 'seeding',
+    }),
+    enabled: queueEnabled,
+  });
+  const queueItems = queueQuery.data ?? [];
+
+  const eventGamesEnabled = Boolean(
+    isHeadToHead &&
+    isEventScopedBracket &&
+    bracketSourceEventId &&
+    schema.bracketSource?.type === 'db',
+  );
+  const eventGamesQuery = useQuery({
+    ...judgeEventGamesQueryOptions(
+      sessionGeneration,
+      Number(bracketSourceEventId) || 0,
+      { complete: false },
+    ),
+    enabled: eventGamesEnabled,
+  });
+  const singleBracketId =
+    schema.bracketSource?.type === 'db' && !isEventScopedBracket
+      ? schema.bracketSource.bracketId
+      : null;
+  const singleBracketQuery = useQuery({
+    ...judgeBracketQueryOptions(
+      sessionGeneration,
+      Number(schema.eventId) || Number(bracketSourceEventId) || 0,
+      Number(singleBracketId) || 0,
+    ),
+    enabled: Boolean(
+      isHeadToHead && schema.bracketSource?.type === 'db' && singleBracketId,
+    ),
+  });
+
+  const bracketGames = useMemo((): BracketGameOption[] => {
+    if (eventGamesEnabled) {
+      return (eventGamesQuery.data ?? []).map((game) =>
+        mapEventGameOption(game),
+      );
+    }
+    if (singleBracketId) {
+      return (singleBracketQuery.data?.games ?? []).map((game) =>
+        mapBracketGameOption(game, singleBracketId),
+      );
+    }
+    return [];
+  }, [
+    eventGamesEnabled,
+    eventGamesQuery.data,
+    singleBracketId,
+    singleBracketQuery.data,
+  ]);
+
+  const dynamicData = useMemo(() => {
+    const next: Record<string, any[]> = {};
+    for (const field of schema.fields) {
+      const ds = field.dataSource;
+      if (
+        !ds ||
+        ds.type === 'bracket' ||
+        (useQueueForSeeding && field.id === 'team_number')
+      ) {
+        continue;
+      }
+      if (ds.type === 'db' && ds.eventId) {
+        const teams = teamsByEvent.get(Number(ds.eventId)) ?? [];
+        const labelField = ds.labelField || 'team_number';
+        const valueField = ds.valueField || 'team_number';
+        next[field.id] = sortDropdownRows(
+          teams.map((team) => ({
+            [labelField]: String(team.team_number),
+            [valueField]: String(team.team_number),
+            team_name: team.team_name || team.display_name,
+            team_id: team.id,
+            'Team Number': String(team.team_number),
+            'Team Name': team.team_name || team.display_name,
+          })),
+          labelField,
+        );
+      }
+    }
+    return next;
+  }, [schema.fields, teamsByEvent, useQueueForSeeding]);
+
+  const resourceQuery = queueQuery.isError
+    ? queueQuery
+    : eventGamesQuery.isError
+      ? eventGamesQuery
+      : singleBracketQuery.isError
+        ? singleBracketQuery
+        : (teamQueries.find((query) => query.isError) ?? null);
 
   const eventScoreType = inferEventScoreType(schema);
   const teamInitialsSlots =
@@ -193,242 +408,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
   };
 
-  useEffect(() => {
-    // Load dynamic dropdown data (skip team_number when using queue)
-    loadDynamicData();
-
-    // Load queue for DB-backed seeding / double seeding.
-    // The server keeps the queue fresh (mutations flag it for repair), so
-    // clients just poll; unchanged polls are 304s answered from the version
-    // ETag and skipped client-side.
-    if ((useQueueForSeeding || useQueueForDoubleSeeding) && schema.eventId) {
-      loadQueue();
-      const pollInterval = setInterval(() => {
-        if (document.hidden) return;
-        loadQueue();
-      }, QUEUE_POLL_INTERVAL_MS);
-      return () => {
-        clearInterval(pollInterval);
-      };
-    }
-
-    // Load bracket games if head-to-head mode
-    if (isHeadToHead && schema.bracketSource) {
-      loadBracketGames();
-      loadTeamsData();
-
-      // Poll for bracket updates so new games appear as winners are decided
-      const interval = setInterval(() => {
-        if (document.hidden) return;
-        loadBracketGames();
-      }, BRACKET_POLL_INTERVAL_MS);
-
-      return () => clearInterval(interval);
-    }
-  }, [schema, useQueueForSeeding, useQueueForDoubleSeeding, isHeadToHead]);
-
-  const lastQueueEtagRef = useRef<string | null>(null);
-  const lastBracketEtagRef = useRef<string | null>(null);
-
-  const loadQueue = async () => {
-    if (!schema.eventId) return;
-    try {
-      const statuses = [
-        'queued',
-        'called',
-        'arrived',
-        'on_table',
-        'scored',
-      ].join(',');
-      const queueType = isDoubleSeeding ? 'double_seeding' : 'seeding';
-      const params = new URLSearchParams({
-        queue_type: queueType,
-        status: statuses,
-      });
-      const url = `/queue/event/${schema.eventId}?${params.toString()}`;
-      const response = await fetch(url);
-      if (!response.ok) return;
-      // Version-based ETag: skip the state update (and re-render) when the
-      // queue has not changed since the last poll.
-      const etag = response.headers.get('ETag');
-      if (etag && etag === lastQueueEtagRef.current) return;
-      const data = await response.json();
-      lastQueueEtagRef.current = etag;
-      setQueueItems(data);
-    } catch (error) {
-      console.error('Error loading queue:', error);
-    }
-  };
-
-  const loadBracketGames = async () => {
-    try {
-      const bracketSource = schema.bracketSource;
-      if (!bracketSource) return;
-
-      if (
-        bracketSource.type === 'db' &&
-        isEventScopedBracket &&
-        bracketSourceEventId
-      ) {
-        const response = await fetch(
-          `/brackets/event/${bracketSourceEventId}/games?eligible=scoreable`,
-          { credentials: 'include' },
-        );
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Failed to load bracket games from DB:', errorData);
-          return;
-        }
-        // Version-based ETag: skip re-render when nothing changed.
-        const etag = response.headers.get('ETag');
-        if (etag && etag === lastBracketEtagRef.current) return;
-        lastBracketEtagRef.current = etag;
-        const dbGames = await response.json();
-        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
-          const team1 =
-            g.team1_id != null && (g.team1_number != null || g.team1_name)
-              ? {
-                  teamNumber: String(g.team1_number ?? g.team1_name ?? ''),
-                  displayName:
-                    g.team1_display || g.team1_name || String(g.team1_number),
-                }
-              : null;
-          const team2 =
-            g.team2_id != null && (g.team2_number != null || g.team2_name)
-              ? {
-                  teamNumber: String(g.team2_number ?? g.team2_name ?? ''),
-                  displayName:
-                    g.team2_display || g.team2_name || String(g.team2_number),
-                }
-              : null;
-          return {
-            gameNumber: g.game_number,
-            bracketId: g.bracket_id,
-            bracketName: g.bracket_name,
-            roundName: g.round_name,
-            bracketSide: g.bracket_side,
-            queuePosition: g.queue_position ?? null,
-            team1,
-            team2,
-            hasWinner: !!g.winner_id || g.status === 'completed',
-            bracketGameId: g.bracket_game_id ?? g.id,
-          };
-        });
-        setBracketGames(mapped);
-      } else if (bracketSource.type === 'db' && bracketSource.bracketId) {
-        const response = await fetch(
-          `/brackets/${bracketSource.bracketId}/games`,
-          { credentials: 'include' },
-        );
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Failed to load bracket games from DB:', errorData);
-          return;
-        }
-        const dbGames = await response.json();
-        const mapped: BracketGameOption[] = dbGames.map((g: any) => {
-          const team1 =
-            g.team1_id != null && (g.team1_number != null || g.team1_name)
-              ? {
-                  teamNumber: String(g.team1_number ?? g.team1_name ?? ''),
-                  displayName:
-                    g.team1_display || g.team1_name || String(g.team1_number),
-                }
-              : null;
-          const team2 =
-            g.team2_id != null && (g.team2_number != null || g.team2_name)
-              ? {
-                  teamNumber: String(g.team2_number ?? g.team2_name ?? ''),
-                  displayName:
-                    g.team2_display || g.team2_name || String(g.team2_number),
-                }
-              : null;
-          return {
-            gameNumber: g.game_number,
-            bracketId: g.bracket_id ?? bracketSource.bracketId,
-            team1,
-            team2,
-            hasWinner: !!g.winner_id || g.status === 'completed',
-            bracketGameId: g.id,
-          };
-        });
-        setBracketGames(mapped);
-      } else {
-        // Only DB-backed bracket source is supported
-        setBracketGames([]);
-      }
-    } catch (error) {
-      console.error('Error loading bracket games:', error);
-    }
-  };
-
-  // Load teams data for looking up full team names in head-to-head mode
-  const loadTeamsData = async () => {
-    try {
-      const teamsConfig = schema.teamsDataSource;
-
-      // DB backend: load teams from event
-      if (teamsConfig?.type === 'db' && teamsConfig?.eventId) {
-        const response = await fetch(`/teams/event/${teamsConfig.eventId}`, {
-          credentials: 'include',
-        });
-        if (!response.ok) {
-          console.error('Failed to load teams data from DB');
-          return;
-        }
-        const data = await response.json();
-        setTeamsData(data);
-      }
-    } catch (error) {
-      console.error('Error loading teams data:', error);
-    }
-  };
-
-  // Look up full team name from Teams data using team number
   const lookupTeamName = (teamNumber: string): string => {
     if (!teamNumber || teamNumber === 'Bye') return 'Bye';
-
-    // Use field names from teamsDataSource config, or common defaults
-    const teamsConfig = schema.teamsDataSource;
-    const teamNumberField = teamsConfig?.teamNumberField || 'Team Number';
-    const teamNameField = teamsConfig?.teamNameField || 'Team Name';
-
-    // Normalize team number by stripping leading zeros (e.g., "001" -> "1")
-    const normalizedTeamNumber = String(parseInt(teamNumber, 10) || teamNumber);
-
-    const team = teamsData.find((t: any) => {
-      // Normalize the stored team number as well for comparison
-      const storedNumber = String(
-        parseInt(t[teamNumberField], 10) || t[teamNumberField],
-      );
-      const storedNumberAlt1 = String(parseInt(t['Team #'], 10) || t['Team #']);
-      const storedNumberAlt2 = String(
-        parseInt(t['Team Number'], 10) || t['Team Number'],
-      );
-      const storedNumberAlt3 = String(
-        parseInt(t['team_number'], 10) || t['team_number'],
-      );
-
-      return (
-        storedNumber === normalizedTeamNumber ||
-        storedNumberAlt1 === normalizedTeamNumber ||
-        storedNumberAlt2 === normalizedTeamNumber ||
-        storedNumberAlt3 === normalizedTeamNumber
-      );
-    });
-
-    if (team) {
-      return (
-        team[teamNameField] ||
-        team['Team Name'] ||
-        team['Name'] ||
-        team['team_name'] ||
-        team['display_name'] ||
-        teamNumber
-      );
-    }
-
-    return teamNumber; // Fallback to team number if not found
+    const team = teamsData.find((row) => teamNumberMatches(row, teamNumber));
+    return team?.team_name || team?.display_name || teamNumber;
   };
 
   // Format team display for bracket (team number + first 7 chars of name)
@@ -439,66 +422,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     if (!teamNumber || teamNumber === 'Bye') return 'Bye';
     const shortName = teamName.substring(0, 7);
     return `${teamNumber} ${shortName}`;
-  };
-
-  const loadDynamicData = async () => {
-    const fieldsWithDataSource = schema.fields.filter(
-      (f: any) =>
-        f.dataSource &&
-        f.dataSource.type !== 'bracket' &&
-        // Skip team_number when using queue - it gets populated from queue selection
-        !(useQueueForSeeding && f.id === 'team_number'),
-    );
-
-    for (const field of fieldsWithDataSource) {
-      try {
-        const ds = field.dataSource;
-
-        // DB backend: load teams from event for dropdown
-        if (ds.type === 'db' && ds.eventId) {
-          const response = await fetch(`/teams/event/${ds.eventId}`, {
-            credentials: 'include',
-          });
-          if (!response.ok) {
-            console.error(`Failed to load ${field.id} from DB`);
-            continue;
-          }
-          let data = await response.json();
-          const labelField = ds.labelField || 'team_number';
-          const valueField = ds.valueField || 'team_number';
-
-          // Map DB format to dropdown format (labelField/valueField for cascades)
-          // Include id for score submission (team_id for seeding_scores)
-          data = data.map((t: any) => ({
-            [labelField]: String(t.team_number),
-            [valueField]: String(t.team_number),
-            team_name: t.team_name || t.display_name,
-            team_id: t.id,
-            'Team Number': String(t.team_number),
-            'Team Name': t.team_name || t.display_name,
-          }));
-
-          data = data.sort((a: any, b: any) => {
-            const aVal = String(a[labelField] || '');
-            const bVal = String(b[labelField] || '');
-            const aNum = parseFloat(aVal);
-            const bNum = parseFloat(bVal);
-            if (!isNaN(aNum) && !isNaN(bNum)) return aNum - bNum;
-            return aVal.localeCompare(bVal, undefined, {
-              numeric: true,
-              sensitivity: 'base',
-            });
-          });
-
-          setDynamicData((prev) => ({ ...prev, [field.id]: data }));
-          continue;
-        }
-
-        // Only DB-backed data sources are supported
-      } catch (error) {
-        console.error(`Error loading data for ${field.id}:`, error);
-      }
-    }
   };
 
   const handleQueueSelect = (queueId: string) => {
@@ -758,6 +681,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submitScore.isPending) return;
     const submission = calculateScoresheetValues(
       schema.fields,
       formData,
@@ -988,10 +912,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         formData.winner === 'team_a'
           ? formData.team_a_number
           : formData.team_b_number;
-      const winnerTeam = teamsData.find((t: any) => {
-        const n = String(t.team_number ?? t['Team Number'] ?? '');
-        return n === String(winnerTeamNum);
-      });
+      const winnerTeam = teamsData.find((team) =>
+        teamNumberMatches(team, String(winnerTeamNum)),
+      );
       if (winnerTeam?.id != null) {
         scoreData.winner_team_id = {
           label: 'Winner Team ID',
@@ -1021,10 +944,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         disqualifiedSide === 'team_a'
           ? formData.team_a_number
           : formData.team_b_number;
-      const disqualifiedTeam = teamsData.find((team: any) => {
-        const number = String(team.team_number ?? team['Team Number'] ?? '');
-        return number === String(disqualifiedTeamNumber);
-      });
+      const disqualifiedTeam = teamsData.find((team) =>
+        teamNumberMatches(team, String(disqualifiedTeamNumber)),
+      );
       disqualifiedTeamId = disqualifiedTeam?.id;
       if (disqualifiedTeamId == null) {
         alert('Could not resolve the disqualified team. Please reload.');
@@ -1071,85 +993,78 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       }
     }
 
+    const submitEventId =
+      isDbBackedSeeding || isDbBackedBracket || isDbBackedDoubleSeeding
+        ? Number(eventId)
+        : undefined;
+
     try {
-      const response = await fetch('/api/scores/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId: template.id,
-          participantName,
-          matchId,
-          scoreData,
-          isHeadToHead,
-          bracketSource: isHeadToHead ? schema.bracketSource : null,
-          eventId:
-            isDbBackedSeeding || isDbBackedBracket || isDbBackedDoubleSeeding
-              ? eventId
+      await submitScore.mutateAsync({
+        sessionGeneration,
+        templateId: template.id,
+        participantName,
+        matchId,
+        scoreData,
+        isHeadToHead,
+        bracketSource: isHeadToHead ? schema.bracketSource : null,
+        eventId: submitEventId,
+        scoreType: isDbBackedSeeding
+          ? 'seeding'
+          : isDbBackedBracket
+            ? 'bracket'
+            : isDbBackedDoubleSeeding
+              ? 'double_seeding'
               : undefined,
-          scoreType: isDbBackedSeeding
-            ? 'seeding'
-            : isDbBackedBracket
-              ? 'bracket'
-              : isDbBackedDoubleSeeding
-                ? 'double_seeding'
-                : undefined,
-          game_queue_id: formData.game_queue_id ?? undefined,
-          bracket_game_id: isDbBackedBracket
-            ? formData.bracket_game_id
+        game_queue_id: formData.game_queue_id ?? undefined,
+        bracket_game_id: isDbBackedBracket
+          ? formData.bracket_game_id
+          : undefined,
+        double_seeding_match_id: isDbBackedDoubleSeeding
+          ? formData.double_seeding_match_id
+          : undefined,
+        resultType: isDbBackedBracket ? resultType : 'standard',
+        disqualifiedTeamId,
+        resultNote:
+          isDbBackedBracket && resultType === 'disqualification'
+            ? resultNote.trim()
             : undefined,
-          double_seeding_match_id: isDbBackedDoubleSeeding
-            ? formData.double_seeding_match_id
-            : undefined,
-          resultType: isDbBackedBracket ? resultType : 'standard',
-          disqualifiedTeamId,
-          resultNote:
-            isDbBackedBracket && resultType === 'disqualification'
-              ? resultNote.trim()
-              : undefined,
-        }),
       });
 
-      if (response.status === 401 || response.status === 403) {
-        const data = await response.json().catch(() => ({}));
-        const msg =
-          (data as { error?: string }).error ||
-          'Session expired. Redirecting to scoresheet selection...';
-        showNotification(msg, 'error');
-        sessionStorage.removeItem('currentTemplate');
-        setTimeout(() => {
-          window.location.href = '/judge';
-        }, 2000);
-        return;
-      }
-      if (!response.ok) throw new Error('Failed to submit score');
-
-      // Cache the round number for next submission (seeding only, not queue-based)
       if (!isHeadToHead && !useQueueForSeeding && scoreData['round']?.value) {
-        localStorage.setItem('lastRoundNumber', scoreData['round'].value);
+        localStorage.setItem(
+          'lastRoundNumber',
+          String(scoreData['round'].value),
+        );
       }
 
-      // Show success notification
       showNotification('Score submitted successfully!', 'success');
 
-      // Reset form
       if (isHeadToHead) {
-        // For head-to-head, reset completely so user can select a new game
         setFormData({});
         setResultType('standard');
         setDisqualifiedSide('');
         setResultNote('');
-        // Reload bracket games in case some are now decided
-        loadBracketGames();
       } else if (useQueueForSeeding || useQueueForDoubleSeeding) {
-        // For queue-based seeding/double seeding, reset and reload queue
         setFormData({});
-        loadQueue();
       } else {
-        // For manual seeding, keep round number for convenience
         const currentRound = formData['round'];
         setFormData({ round: currentRound });
       }
     } catch (error) {
+      if (isAuthorizationError(error)) {
+        showNotification(
+          error instanceof Error
+            ? error.message
+            : 'Session expired. Redirecting to scoresheet selection...',
+          'error',
+        );
+        window.setTimeout(() => {
+          clearJudgeSessionStorage();
+          void removeJudgeQueries(queryClient);
+          window.location.href = '/judge';
+        }, 2000);
+        return;
+      }
       console.error('Error submitting score:', error);
       showNotification('Failed to submit score. Please try again.', 'error');
     }
@@ -1621,6 +1536,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         noValidate={isHeadToHead && resultType !== 'standard'}
       >
         <FormulaErrors errors={calculation.errors} summary />
+        <FormulaErrors errors={calculation.errors} summary />
+        {resourceQuery?.isError ? (
+          <QueryFeedback query={resourceQuery as never} />
+        ) : null}
         {/* Title row: Reset | title | Event Staff */}
         <div
           style={{
@@ -1825,7 +1744,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           <button
             type="submit"
             className="btn btn-primary btn-large"
-            disabled={!calculation.ok}
+            disabled={!calculation.ok || submitScore.isPending}
           >
             {isHeadToHead
               ? resultType === 'standard'

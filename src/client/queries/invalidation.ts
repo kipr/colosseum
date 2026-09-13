@@ -19,6 +19,8 @@ import {
   overallKey,
   publicEventKey,
   publicEventsKey,
+  queueKey,
+  scoresKey,
   seedingKey,
   teamsKey,
 } from './keys';
@@ -122,6 +124,7 @@ export async function invalidateTeamDependents(
     auditKey(userId, eventId),
     [...adminScopeKey(userId), 'audit-entity'],
   ]);
+  await invalidateQueueDependents(queryClient, scope);
   await invalidatePublicEventResults(queryClient, eventId);
 }
 
@@ -163,6 +166,7 @@ export async function invalidateBracketDependents(
       ? [[...adminEventKey(userId, eventId), 'bracket', bracketId]]
       : [[...adminEventKey(userId, eventId), 'bracket']]),
   ]);
+  await invalidateQueueDependents(queryClient, scope);
   await invalidatePublicEventResults(queryClient, eventId);
 }
 
@@ -238,6 +242,77 @@ export async function invalidateAuditHistory(
     ],
     true,
   );
+}
+
+async function invalidateQuietly(work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch {
+    // A failed refresh is not a failed write.
+  }
+}
+
+function isJudgeEventResource(
+  queryKey: QueryKey,
+  eventId: number,
+  resource: 'queue' | 'games',
+  generation?: string,
+): boolean {
+  return (
+    queryKey[0] === 'judge' &&
+    (generation == null || queryKey[1] === generation) &&
+    queryKey[2] === 'event' &&
+    queryKey[3] === eventId &&
+    queryKey[4] === resource
+  );
+}
+
+export async function invalidateQueueDependents(
+  queryClient: QueryClient,
+  scope: { eventId: number; userId?: number; generation?: string },
+): Promise<void> {
+  const { eventId, userId, generation } = scope;
+  await invalidateQuietly(async () => {
+    if (userId != null) {
+      await invalidateForUser(queryClient, userId, [queueKey(userId, eventId)]);
+    }
+    await queryClient.invalidateQueries({
+      predicate: (query) =>
+        isJudgeEventResource(query.queryKey, eventId, 'queue', generation) ||
+        isJudgeEventResource(query.queryKey, eventId, 'games', generation),
+    });
+  });
+}
+
+export async function invalidateScoringDependents(
+  queryClient: QueryClient,
+  scope: { eventId: number; userId?: number; generation?: string },
+  options: { derivedResults?: boolean } = {},
+): Promise<void> {
+  const { eventId, userId } = scope;
+  await invalidateQuietly(async () => {
+    if (userId != null) {
+      await invalidateForUser(queryClient, userId, [
+        scoresKey(userId, eventId),
+        auditKey(userId, eventId),
+        [...adminScopeKey(userId), 'audit-entity'],
+      ]);
+    }
+    await invalidateQueueDependents(queryClient, scope);
+    if (options.derivedResults) {
+      if (userId != null) {
+        await invalidateForUser(queryClient, userId, [
+          seedingKey(userId, eventId),
+          doubleSeedingKey(userId, eventId),
+          bracketsKey(userId, eventId),
+          [...adminEventKey(userId, eventId), 'bracket'],
+          overallKey(userId, eventId),
+          awardsKey(userId, eventId),
+        ]);
+      }
+      await invalidatePublicEventResults(queryClient, eventId);
+    }
+  });
 }
 
 export function canUpdateUserCache(
