@@ -18,7 +18,6 @@ import {
 import type { SessionUser } from '../api/types';
 import {
   authUserKey,
-  judgeEventKey,
   normalizeScoreListFilters,
   scoresKey,
 } from './keys';
