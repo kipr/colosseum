@@ -1496,7 +1496,6 @@ export default function ScoresheetForm({
         noValidate={isHeadToHead && resultType !== 'standard'}
       >
         <FormulaErrors errors={calculation.errors} summary />
-        <FormulaErrors errors={calculation.errors} summary />
         {resourceQuery?.isError ? (
           <QueryFeedback query={resourceQuery as never} />
         ) : null}

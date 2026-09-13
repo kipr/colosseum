@@ -241,14 +241,24 @@ test.describe('Admin queue management', () => {
     const watcherRow = seedingRow(watcher, TEAM_B_NAME, 2);
     await expect(watcherRow.locator('.queue-status-queued')).toBeVisible();
 
+    let releaseCall!: () => void;
+    const held = new Promise<void>((resolve) => {
+      releaseCall = resolve;
+    });
+    await actor.route('**/queue/*/call', async (route) => {
+      await held;
+      await route.continue();
+    });
+
     await actorRow.getByRole('button', { name: 'Called' }).click();
-    await expect(
-      actorRow.locator('.queue-status-badge.queue-status-called'),
-    ).toBeVisible({ timeout: 10_000 });
     await expect(
       actorRow.getByRole('button', { name: 'Called' }),
     ).toBeDisabled();
+    releaseCall();
 
+    await expect(
+      actorRow.locator('.queue-status-badge.queue-status-called'),
+    ).toBeVisible({ timeout: 10_000 });
     await expect(
       watcherRow.locator('.queue-status-badge.queue-status-called'),
     ).toBeVisible({ timeout: 15_000 });
