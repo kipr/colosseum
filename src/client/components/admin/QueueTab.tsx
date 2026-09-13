@@ -46,6 +46,7 @@ const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
 ];
 
 const REST_CLOCK_INTERVAL_MS = 30_000;
+const EMPTY_QUEUE: QueueItem[] = [];
 
 const TYPE_BADGE_LABELS: Record<QueueType, string> = {
   seeding: 'seeding',
@@ -157,7 +158,7 @@ export default function QueueTab() {
     }),
     enabled,
   });
-  const queue = queryData(queueQuery) ?? [];
+  const queue = queryData(queueQuery) ?? EMPTY_QUEUE;
   const loading = queueQuery.isLoading && queryData(queueQuery) === undefined;
   const dialogEventId = selectedEventId ?? 0;
   const bracketsQuery = useQuery({

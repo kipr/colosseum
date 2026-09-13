@@ -665,6 +665,7 @@ describe('stage five mutations', () => {
     const fetchMock = vi.fn(() => Promise.resolve(jsonResponse({ id: 1 })));
     vi.stubGlobal('fetch', fetchMock);
     const client = clientWithUser();
+    client.setQueryData(queueKey(1, 10), []);
     const hook = renderHook(() => useQueueMutations(), {
       wrapper: createQueryWrapper({ queryClient: client }),
     });
@@ -685,6 +686,7 @@ describe('stage five mutations', () => {
       seeding_team_id: 4,
       seeding_round: 1,
     });
+    expect(client.getQueryState(queueKey(1, 10))?.isInvalidated).toBe(true);
   });
 });
 

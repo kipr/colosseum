@@ -34,6 +34,9 @@ import {
   type ChatMessageScope,
 } from '../queries/chat';
 import { isAuthorizationError } from '../queries/authorization';
+import type { JudgeChatConversation } from '../api/chat';
+
+const EMPTY_CONVERSATIONS: JudgeChatConversation[] = [];
 
 type JudgeChatProviderProps =
   | {
@@ -81,8 +84,8 @@ function useJudgeChatState(props: JudgeChatProviderProps) {
     enabled: mode === 'admin',
   });
   const conversations = isAuthorizationError(conversationsQuery.error)
-    ? []
-    : (conversationsQuery.data ?? []);
+    ? EMPTY_CONVERSATIONS
+    : (conversationsQuery.data ?? EMPTY_CONVERSATIONS);
 
   const messageScope = useMemo<ChatMessageScope>(
     () =>

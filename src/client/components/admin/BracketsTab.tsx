@@ -376,18 +376,6 @@ export default function BracketsTab() {
 
   const saving = create.isPending || update.isPending;
 
-  if (!selectedEventId) {
-    return (
-      <div className="brackets-tab">
-        <div className="card">
-          <p style={{ color: 'var(--secondary-color)' }}>
-            Please select an event from the dropdown above to manage brackets.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const renderAdminActions = () => {
     if (!bracketDetail) return null;
     return (
@@ -627,6 +615,18 @@ export default function BracketsTab() {
       });
       return cols;
     }, [doubleSeedingEnabled, selectedTeamIds]);
+
+  if (!selectedEventId) {
+    return (
+      <div className="brackets-tab">
+        <div className="card">
+          <p style={{ color: 'var(--secondary-color)' }}>
+            Please select an event from the dropdown above to manage brackets.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="brackets-tab">

@@ -35,6 +35,9 @@ import ScoresheetFieldControl from '../ScoresheetFieldControl';
 import RepeatableGroupTable from '../RepeatableGroupTable';
 import { compileScoresheetFormulas } from '../../../shared/scoresheetFormulaProgram';
 import FormulaErrors from '../FormulaErrors';
+import type { ScoresheetField } from '../../../shared/scoresheetSchema';
+
+const EMPTY_FIELDS: ScoresheetField[] = [];
 
 interface ScoreViewModalProps {
   score: ScoreSubmission;
@@ -70,7 +73,7 @@ export default function ScoreViewModal({
     return data;
   });
   const isReadOnly = score.status !== 'pending';
-  const fields = template?.schema?.fields ?? [];
+  const fields = template?.schema?.fields ?? EMPTY_FIELDS;
   const compilation = useMemo(
     () => compileScoresheetFormulas(fields),
     [fields],

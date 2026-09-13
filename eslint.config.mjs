@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 import pluginReact from 'eslint-plugin-react';
+import pluginReactHooks from 'eslint-plugin-react-hooks';
 import pluginQuery from '@tanstack/eslint-plugin-query';
 import css from '@eslint/css';
 import { defineConfig } from 'eslint/config';
@@ -21,6 +22,14 @@ export default defineConfig([
   {
     files: ['**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     ...pluginReact.configs.flat.recommended,
+  },
+  {
+    files: ['src/client/**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
+    plugins: { 'react-hooks': pluginReactHooks },
+    rules: {
+      'react-hooks/rules-of-hooks': 'error',
+      'react-hooks/exhaustive-deps': 'warn',
+    },
   },
   {
     files: ['**/*.css'],

@@ -128,8 +128,14 @@ export default function DocumentationTab() {
     scoresQuery,
   ].find((query) => query.isError);
 
-  const scoreByTeamId = new Map(scores.map((s) => [s.team_id, s]));
-  const teamByNumber = new Map(teams.map((t) => [t.team_number, t]));
+  const scoreByTeamId = useMemo(
+    () => new Map(scores.map((score) => [score.team_id, score])),
+    [scores],
+  );
+  const teamByNumber = useMemo(
+    () => new Map(teams.map((team) => [team.team_number, team])),
+    [teams],
+  );
 
   type SortField =
     | 'team_number'
@@ -173,7 +179,7 @@ export default function DocumentationTab() {
       return 0;
     });
     return merged;
-  }, [teams, scores, sortField, sortDirection]);
+  }, [teams, scoreByTeamId, sortField, sortDirection]);
 
   const handleSort = React.useCallback(
     (field: SortField) => {

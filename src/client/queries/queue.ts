@@ -15,7 +15,10 @@ import {
   type QueueType,
 } from '../api/queue';
 import { judgeEventKey, normalizeQueueFilters, queueKey } from './keys';
-import { invalidateQueueDependents } from './invalidation';
+import {
+  invalidateQueueDependents,
+  type EventMutationScope,
+} from './invalidation';
 import { LIVE_QUERY } from './queryClient';
 type QueueFilterInput = {
   statuses: readonly QueueStatus[];
@@ -67,29 +70,48 @@ export function judgeQueueQueryOptions(
 
 export function useQueueMutations() {
   const client = useQueryClient();
-  const refresh = (
-    _data: unknown,
-    scope: { eventId?: number; userId?: number; generation?: string },
-  ) =>
-    scope.eventId == null
-      ? undefined
-      : invalidateQueueDependents(client, {
-          ...scope,
-          eventId: scope.eventId,
-        });
-  const write = <TVars, TData>(
-    mutationFn: (variables: TVars) => Promise<TData>,
-  ) =>
-    useMutation({
-      mutationFn,
-      onSuccess: refresh as never,
-    });
+  const refresh = (_data: unknown, scope: EventMutationScope) =>
+    invalidateQueueDependents(client, scope);
+  const populateFromBracket = useMutation({
+    mutationFn: (variables: EventMutationScope) =>
+      populateQueueFromBracket(variables),
+    onSuccess: refresh,
+  });
+  const populateFromSeeding = useMutation({
+    mutationFn: (variables: EventMutationScope) =>
+      populateQueueFromSeeding(variables),
+    onSuccess: refresh,
+  });
+  const add = useMutation({
+    mutationFn: (
+      variables: EventMutationScope & Parameters<typeof addQueueItem>[0],
+    ) => addQueueItem(variables),
+    onSuccess: refresh,
+  });
+  const updateStatus = useMutation({
+    mutationFn: (
+      variables: EventMutationScope & Parameters<typeof updateQueueStatus>[0],
+    ) => updateQueueStatus(variables),
+    onSuccess: refresh,
+  });
+  const call = useMutation({
+    mutationFn: (
+      variables: EventMutationScope & Parameters<typeof callQueueItem>[0],
+    ) => callQueueItem(variables),
+    onSuccess: refresh,
+  });
+  const updatePresence = useMutation({
+    mutationFn: (
+      variables: EventMutationScope & Parameters<typeof updateQueuePresence>[0],
+    ) => updateQueuePresence(variables),
+    onSuccess: refresh,
+  });
   return {
-    populateFromBracket: write(populateQueueFromBracket),
-    populateFromSeeding: write(populateQueueFromSeeding),
-    add: write(addQueueItem),
-    updateStatus: write(updateQueueStatus),
-    call: write(callQueueItem),
-    updatePresence: write(updateQueuePresence),
+    populateFromBracket,
+    populateFromSeeding,
+    add,
+    updateStatus,
+    call,
+    updatePresence,
   };
 }
