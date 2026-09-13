@@ -8,7 +8,6 @@ import {
 } from '@tanstack/react-query';
 import { ApiError, ApiParseError } from '../api/http';
 
-export const QUERY_GC_TIME_MS = 5 * 60 * 1000;
 export const LIST_STALE_TIME_MS = 30_000;
 export const POLL_INTERVAL_MS = 10_000;
 export const LIVE_QUERY = { refetchInterval: POLL_INTERVAL_MS } as const;
@@ -18,18 +17,18 @@ export const QUERY_RETRY_MAX_DELAY_MS = 30_000;
 
 const RETRYABLE_STATUS = new Set([500, 502, 503, 504]);
 
-export function isRetryableServerStatus(status: number): boolean {
+function isRetryableServerStatus(status: number): boolean {
   return RETRYABLE_STATUS.has(status);
 }
 
-export function isCancellationError(error: unknown): boolean {
+function isCancellationError(error: unknown): boolean {
   return (
     error instanceof CancelledError ||
     (error instanceof Error && error.name === 'AbortError')
   );
 }
 
-export function isRetryableTransportError(error: unknown): boolean {
+function isRetryableTransportError(error: unknown): boolean {
   return (
     !(error instanceof ApiError) &&
     !(error instanceof ApiParseError) &&
@@ -37,11 +36,7 @@ export function isRetryableTransportError(error: unknown): boolean {
   );
 }
 
-export function shouldRetryQuery(
-  failureCount: number,
-  error: unknown,
-): boolean {
-  if (failureCount >= QUERY_RETRY_LIMIT) return false;
+export function isRetryableQueryError(error: unknown): boolean {
   if (isCancellationError(error) || error instanceof ApiParseError) {
     return false;
   }
@@ -53,9 +48,17 @@ export function shouldRetryQuery(
   return isRetryableTransportError(error);
 }
 
-export function getQueryRetryDelay(
+export function shouldRetryQuery(
   failureCount: number,
   error: unknown,
+): boolean {
+  return failureCount < QUERY_RETRY_LIMIT && isRetryableQueryError(error);
+}
+
+export function exponentialRetryDelay(
+  failureCount: number,
+  error: unknown,
+  { base, factor, max }: { base: number; factor: number; max: number },
 ): number {
   if (
     error instanceof ApiError &&
@@ -64,10 +67,18 @@ export function getQueryRetryDelay(
   ) {
     return error.retryAfterMs;
   }
-  return Math.min(
-    QUERY_RETRY_BASE_DELAY_MS * 2 ** failureCount,
-    QUERY_RETRY_MAX_DELAY_MS,
-  );
+  return Math.min(base * factor ** failureCount, max);
+}
+
+export function getQueryRetryDelay(
+  failureCount: number,
+  error: unknown,
+): number {
+  return exponentialRetryDelay(failureCount, error, {
+    base: QUERY_RETRY_BASE_DELAY_MS,
+    factor: 2,
+    max: QUERY_RETRY_MAX_DELAY_MS,
+  });
 }
 
 export function createQueryClient(
@@ -106,16 +117,6 @@ export function createQueryClient(
     defaultOptions: {
       ...options.defaultOptions,
       queries: {
-        // Derived results, audit, and chat latest pages keep this default of 0
-        // so they refetch on mount, focus, and reconnect. Other browsers still
-        // write data; spectator results have no interval polling.
-        staleTime: 0,
-        gcTime: QUERY_GC_TIME_MS,
-        refetchOnMount: true,
-        refetchOnWindowFocus: true,
-        refetchOnReconnect: true,
-        refetchInterval: false,
-        refetchIntervalInBackground: false,
         retry: shouldRetryQuery,
         retryDelay: getQueryRetryDelay,
         ...options.defaultOptions?.queries,
