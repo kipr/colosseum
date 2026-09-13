@@ -1,14 +1,18 @@
 import {
   saveEvent,
   deleteEvent,
+  getEvents,
   getOverallScores,
+  getPublicEvents,
   getPublicOverallScores,
 } from '../api/events';
 import type { Event } from '../utils/eventStatus';
 import {
   adminEventKey,
+  adminEventsKey,
   overallKey,
   publicEventKey,
+  publicEventsKey,
   publicTemplatesKey,
   templatesKey,
 } from './keys';
@@ -22,22 +26,13 @@ import {
   useQueryClient,
   queryOptions,
 } from '@tanstack/react-query';
-import { getEvents, getPublicEvents } from '../api/events';
-import { adminEventsKey, publicEventsKey } from './keys';
-import {
-  QUERY_GC_TIME_MS,
-  LIST_STALE_TIME_MS,
-  RESULT_STALE_TIME_MS,
-} from './queryClient';
-
-export const PUBLIC_EVENTS_STALE_TIME_MS = LIST_STALE_TIME_MS;
-export const ADMIN_EVENTS_STALE_TIME_MS = LIST_STALE_TIME_MS;
+import { LIST_STALE_TIME_MS } from './queryClient';
 
 export function publicEventsQueryOptions() {
   return queryOptions({
     queryKey: publicEventsKey,
     queryFn: ({ signal }) => getPublicEvents({ signal }),
-    staleTime: PUBLIC_EVENTS_STALE_TIME_MS,
+    staleTime: LIST_STALE_TIME_MS,
   });
 }
 
@@ -45,8 +40,7 @@ export function adminEventsQueryOptions(userId: number | string) {
   return queryOptions({
     queryKey: adminEventsKey(userId),
     queryFn: ({ signal }) => getEvents({ signal }),
-    staleTime: ADMIN_EVENTS_STALE_TIME_MS,
-    gcTime: QUERY_GC_TIME_MS,
+    staleTime: LIST_STALE_TIME_MS,
   });
 }
 
@@ -54,7 +48,6 @@ export function overallQueryOptions(userId: number, eventId: number) {
   return queryOptions({
     queryKey: overallKey(userId, eventId),
     queryFn: ({ signal }) => getOverallScores(eventId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
@@ -62,19 +55,17 @@ export function publicOverallQueryOptions(eventId: number) {
   return queryOptions({
     queryKey: [...publicEventKey(eventId), 'overall'],
     queryFn: ({ signal }) => getPublicOverallScores(eventId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
 export function useEventMutations() {
   const client = useQueryClient();
-  const refresh = async (userId: number) => {
-    await Promise.all([
+  const refresh = (userId: number) =>
+    Promise.all([
       client.invalidateQueries({ queryKey: adminEventsKey(userId) }),
       client.invalidateQueries({ queryKey: publicEventsKey }),
       client.invalidateQueries({ queryKey: publicTemplatesKey }),
     ]);
-  };
   const save = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
     mutationFn: (variables: MutationScope & Parameters<typeof saveEvent>[0]) =>

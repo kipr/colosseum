@@ -13,10 +13,12 @@ import {
   type TeamStatus,
 } from '../api/teams';
 import { publicEventKey, teamsKey, judgeEventKey } from './keys';
-import { invalidateTeamDependents, type MutationScope } from './invalidation';
+import {
+  invalidateTeamDependents,
+  type EventMutationScope,
+} from './invalidation';
 import { LIST_STALE_TIME_MS } from './queryClient';
 
-type TeamScope = MutationScope & { eventId: number };
 export function publicTeamsQueryOptions(eventId: number) {
   return queryOptions({
     queryKey: [...publicEventKey(eventId), 'teams'],
@@ -44,30 +46,29 @@ export function judgeTeamsQueryOptions(generation: string, eventId: number) {
 }
 export function useTeamMutations() {
   const client = useQueryClient();
-  const refresh = async (_data: unknown, scope: TeamScope) => {
-    await invalidateTeamDependents(client, scope);
-  };
+  const refresh = (_data: unknown, scope: EventMutationScope) =>
+    invalidateTeamDependents(client, scope);
   const save = useMutation({
-    mutationFn: (v: TeamScope & Parameters<typeof saveTeam>[0]) => saveTeam(v),
+    mutationFn: (v: EventMutationScope & Parameters<typeof saveTeam>[0]) =>
+      saveTeam(v),
     onSuccess: refresh,
   });
   const remove = useMutation({
-    mutationFn: (v: TeamScope & { teamId: number }) => deleteTeam(v),
+    mutationFn: (v: EventMutationScope & { teamId: number }) => deleteTeam(v),
     onSuccess: refresh,
   });
   const checkIn = useMutation({
-    mutationFn: (v: TeamScope & { teamId: number }) => checkInTeam(v),
+    mutationFn: (v: EventMutationScope & { teamId: number }) => checkInTeam(v),
     onSuccess: refresh,
   });
   const bulkImport = useMutation({
-    mutationFn: (v: TeamScope & Parameters<typeof importTeams>[0]) =>
+    mutationFn: (v: EventMutationScope & Parameters<typeof importTeams>[0]) =>
       importTeams(v),
-    onSuccess: async (result, scope) => {
-      if (result.created > 0) await refresh(result, scope);
-    },
+    onSuccess: (result, scope) =>
+      result.created > 0 ? refresh(result, scope) : undefined,
   });
   const bulkCheckIn = useMutation({
-    mutationFn: (v: TeamScope & Parameters<typeof checkInTeams>[0]) =>
+    mutationFn: (v: EventMutationScope & Parameters<typeof checkInTeams>[0]) =>
       checkInTeams(v),
     onSuccess: refresh,
   });

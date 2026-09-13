@@ -117,22 +117,17 @@ async function createApiError(response: Response): Promise<ApiError> {
   });
 }
 
-async function fetchWithDefaults(
+function fetchWithDefaults(
   url: string,
   options: RequestInit = {},
 ): Promise<Response> {
-  try {
-    return await fetch(url, {
-      ...options,
-      // Query staleTime is the freshness policy; do not let HTTP caches hide writes.
-      cache: options.cache ?? 'no-store',
-      credentials: options.credentials ?? 'include',
-      headers: headersWithDefaults(options.headers),
-    });
-  } catch (error) {
-    if (isAbortError(error)) throw error;
-    throw error;
-  }
+  return fetch(url, {
+    ...options,
+    // Query staleTime is the freshness policy; do not let HTTP caches hide writes.
+    cache: options.cache ?? 'no-store',
+    credentials: options.credentials ?? 'include',
+    headers: headersWithDefaults(options.headers),
+  });
 }
 
 async function parseJsonBody<T>(response: Response): Promise<T> {

@@ -564,3 +564,46 @@ Validation against `2312df9`:
   bytes versus 653,437 (+264); gzip-9 is 209,978 versus 209,640 (+338). Admin
   chat remains a lazy `JudgeChatTab` chunk; the additional small
   `useInfiniteQuery` chunk is shared with existing lazy audit pagination.
+
+## Stage seven implementation
+
+Stage seven removes leftover request/query indirection, tightens cache effects,
+adds isolation regression tests, and records the production source/bundle
+baseline plus developer conventions in [`CLIENT_DATA.md`](CLIENT_DATA.md).
+
+Request and query cleanup:
+
+- `fetchWithDefaults` no longer wraps `fetch` in a catch that rethrows the same
+  error. `createBracket` uses `requestJsonBody` and translates 409 conflicts
+  from `ApiError.body` locally.
+- Redundant `staleTime`/`gcTime` aliases that duplicated client defaults are
+  gone. Results keep the default `staleTime` of 0. Templates use
+  `LIST_STALE_TIME_MS`. The production Devtools stub and Vite alias stay:
+  dropping them pulled the real Devtools into a production graph.
+
+Cache and UI cleanup:
+
+- Independent invalidations run concurrently. Team edits also invalidate
+  scores. `invalidateQuietly` is removed; Query already swallows refetch
+  errors unless `throwOnError` is set.
+- Chat writes check identity **and** that the latest query still exists
+  before `setQueryData` / `invalidateQueries`. Logout clears judge
+  sessionStorage before removing judge queries.
+
+Validation against `32fb64b` (cleanup) and `4f1eb23` (full migration):
+
+- Production client TypeScript is 27,725 lines / 835,324 bytes versus
+  27,781 / 836,616 at stage six (−56 lines, −1,292 bytes), including the
+  API/query layer. Versus the plan: +1,940 lines / +51,336 bytes. The remaining
+  cost is the typed request layer and Query runtime, not a second fetching
+  stack in UI files.
+- Equal-path production JS (`dist/client/assets`, no maps, gzip-9): 46 files /
+  1,103,886 raw / 285,049 gzip-9 versus 47 / 1,104,411 / 285,288 at stage six
+  (−1 file, −525 raw, −239 gzip-9). Versus the plan: +10 files, +66,627 raw,
+  +24,056 gzip-9, almost all in the initial `index` chunk. Query Devtools
+  remain a 280-byte stub.
+- One-off Playwright traces on the same seeded tournament show stage seven
+  matching stage six: cached team lists, 10/30/3/15-second polling, hidden-tab
+  interval pause, one scores refetch after accept, lazy spectator tabs with no
+  interval polling. The pre-migration client refetched teams on every visit
+  and still polled scoring while hidden.

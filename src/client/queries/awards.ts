@@ -29,7 +29,7 @@ import {
   type EventMutationScope,
   type MutationScope,
 } from './invalidation';
-import { LIST_STALE_TIME_MS, RESULT_STALE_TIME_MS } from './queryClient';
+import { LIST_STALE_TIME_MS } from './queryClient';
 
 export function awardTemplatesQueryOptions(userId: number) {
   return queryOptions({
@@ -66,7 +66,6 @@ export function automaticAwardSettingsQueryOptions(
     queryKey: [...awardsKey(userId, eventId), 'automatic-settings'],
     queryFn: ({ signal }) =>
       getAutomaticAwardPreview(eventId, undefined, signal),
-    staleTime: RESULT_STALE_TIME_MS,
     meta: ADMIN_ONLY_QUERY_META,
   });
 }
@@ -80,7 +79,6 @@ export function automaticAwardPreviewQueryOptions(
     queryKey: [...awardsKey(userId, eventId), 'automatic-preview', settings],
     queryFn: ({ signal }) =>
       getAutomaticAwardPreview(eventId, settings, signal),
-    staleTime: RESULT_STALE_TIME_MS,
     meta: ADMIN_ONLY_QUERY_META,
   });
 }
@@ -89,21 +87,16 @@ export function publicAwardsQueryOptions(eventId: number) {
   return queryOptions({
     queryKey: [...publicEventKey(eventId), 'awards'],
     queryFn: ({ signal }) => getPublicAwards(eventId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
 export function useAwardMutations() {
   const client = useQueryClient();
-  const refreshEvent = async (_data: unknown, scope: EventMutationScope) => {
-    await invalidateAwardDependents(client, scope);
-  };
-  const refreshTemplates = async (
-    _data: unknown,
-    { userId }: MutationScope,
-  ) => {
+  const refreshEvent = (_data: unknown, scope: EventMutationScope) =>
+    invalidateAwardDependents(client, scope);
+  const refreshTemplates = (_data: unknown, { userId }: MutationScope) => {
     if (!canUpdateUserCache(client, userId, true)) return;
-    await client.invalidateQueries({ queryKey: awardTemplatesKey(userId) });
+    return client.invalidateQueries({ queryKey: awardTemplatesKey(userId) });
   };
   const saveTemplate = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
@@ -170,9 +163,8 @@ export function useAwardMutations() {
     mutationFn: (
       v: EventMutationScope & Parameters<typeof reorderEventAwards>[0],
     ) => reorderEventAwards(v),
-    onSuccess: async (results, scope) => {
-      if (results.some((row) => row.ok)) await refreshEvent(results, scope);
-    },
+    onSuccess: (results, scope) =>
+      results.some((row) => row.ok) ? refreshEvent(results, scope) : undefined,
   });
   return {
     saveTemplate,

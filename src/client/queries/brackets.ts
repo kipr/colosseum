@@ -28,11 +28,7 @@ import {
   invalidateBracketDependents,
   type EventMutationScope,
 } from './invalidation';
-import {
-  LIST_STALE_TIME_MS,
-  LIVE_QUERY,
-  RESULT_STALE_TIME_MS,
-} from './queryClient';
+import { LIST_STALE_TIME_MS, LIVE_QUERY } from './queryClient';
 
 type BracketScope = EventMutationScope & { bracketId?: number };
 
@@ -60,7 +56,6 @@ export function bracketQueryOptions(
   return queryOptions({
     queryKey: bracketKey(userId, eventId, bracketId),
     queryFn: ({ signal }) => getBracket(bracketId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
@@ -68,7 +63,6 @@ export function publicBracketQueryOptions(eventId: number, bracketId: number) {
   return queryOptions({
     queryKey: [...publicEventKey(eventId), 'bracket', bracketId],
     queryFn: ({ signal }) => getBracket(bracketId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
@@ -80,7 +74,6 @@ export function bracketRankingsQueryOptions(
   return queryOptions({
     queryKey: [...bracketKey(userId, eventId, bracketId), 'rankings'],
     queryFn: ({ signal }) => getBracketRankings(bracketId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
@@ -91,7 +84,6 @@ export function publicBracketRankingsQueryOptions(
   return queryOptions({
     queryKey: [...publicEventKey(eventId), 'bracket', bracketId, 'rankings'],
     queryFn: ({ signal }) => getPublicBracketRankings(bracketId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
@@ -134,9 +126,8 @@ export function judgeBracketQueryOptions(
 
 export function useBracketMutations() {
   const client = useQueryClient();
-  const refresh = async (_data: unknown, scope: BracketScope) => {
-    await invalidateBracketDependents(client, scope);
-  };
+  const refresh = (_data: unknown, scope: BracketScope) =>
+    invalidateBracketDependents(client, scope);
   const create = useMutation({
     mutationFn: (v: EventMutationScope & Parameters<typeof createBracket>[0]) =>
       createBracket(v),

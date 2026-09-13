@@ -2,7 +2,6 @@ import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query';
 import { getAuditLogs, getEntityHistory } from '../api/audit';
 import { auditEntityKey, auditKey } from './keys';
 import { ADMIN_ONLY_QUERY_META } from './invalidation';
-import { RESULT_STALE_TIME_MS } from './queryClient';
 
 export const AUDIT_PAGE_SIZE = 50;
 
@@ -33,7 +32,6 @@ export function auditHistoryQueryOptions(
       lastPage.length === pageSize
         ? allPages.reduce((total, page) => total + page.length, 0)
         : undefined,
-    staleTime: RESULT_STALE_TIME_MS,
     meta: ADMIN_ONLY_QUERY_META,
   });
 }
@@ -47,7 +45,6 @@ export function entityHistoryQueryOptions(
     queryKey: auditEntityKey(userId, entityType, entityId),
     queryFn: ({ signal }) =>
       getEntityHistory(entityType, entityId, AUDIT_PAGE_SIZE, signal),
-    staleTime: RESULT_STALE_TIME_MS,
     meta: ADMIN_ONLY_QUERY_META,
   });
 }

@@ -17,6 +17,7 @@ import {
   removeAdminUserQueries,
   removeJudgeQueries,
 } from '../queries/invalidation';
+import { clearJudgeSessionStorage } from '../utils/judgeSession';
 
 interface AuthContextType {
   user: SessionUser | null;
@@ -116,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (currentUser) {
         await removeAdminUserQueries(queryClient, currentUser.id);
       }
+      clearJudgeSessionStorage();
       await removeJudgeQueries(queryClient);
       window.location.href = '/auth/logout';
     })();

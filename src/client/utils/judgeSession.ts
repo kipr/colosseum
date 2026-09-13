@@ -21,6 +21,10 @@ export function writeJudgeSession(
   sessionStorage.setItem(JUDGE_SESSION_GENERATION_STORAGE_KEY, generation);
 }
 
+export function readStoredJudgeGeneration(): string | null {
+  return sessionStorage.getItem(JUDGE_SESSION_GENERATION_STORAGE_KEY);
+}
+
 export function readStoredJudgeScoresheet(): {
   template: TemplateDetail;
   generation: string;

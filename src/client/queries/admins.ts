@@ -7,7 +7,6 @@ export const adminUsersQueryOptions = (userId: number) =>
   queryOptions({
     queryKey: [...adminScopeKey(userId), 'users'],
     queryFn: ({ signal }) => getAdminUsers(signal),
-    staleTime: 0,
     refetchInterval: 30_000,
     meta: ADMIN_ONLY_QUERY_META,
   });

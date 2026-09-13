@@ -6,6 +6,7 @@ import {
   requestJson,
   requestVoid,
 } from '../../src/client/api/http';
+import { createBracket } from '../../src/client/api/brackets';
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
@@ -363,5 +364,64 @@ describe('parseRetryAfterHeader', () => {
     const delay = parseRetryAfterHeader(date);
     expect(delay).toBeGreaterThan(0);
     expect(delay).toBeLessThanOrEqual(8_000);
+  });
+});
+
+describe('createBracket', () => {
+  it('translates 409 conflicts from the shared helper body', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse(
+            {
+              error:
+                'One or more teams are already assigned to a bracket at this event',
+              conflicts: [
+                { team_name: 'Alpha', bracket_name: 'Main' },
+                { team_name: 'Beta', bracket_name: 'Silver' },
+              ],
+            },
+            { status: 409 },
+          ),
+        ),
+      ),
+    );
+
+    const error = await createBracket({
+      event_id: 4,
+      name: 'Gold',
+      team_ids: [1, 2],
+    }).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({
+      status: 409,
+      message:
+        'Teams already in another bracket: Alpha (in Main), Beta (in Silver). Remove them from selection.',
+    });
+    expect(getFetchMock()).toHaveBeenCalledWith(
+      '/brackets',
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'include',
+      }),
+    );
+  });
+
+  it('keeps ordinary HTTP error messages from the shared helper', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          jsonResponse({ error: 'Too many teams (65)' }, { status: 400 }),
+        ),
+      ),
+    );
+    await expect(
+      createBracket({ event_id: 4, name: 'Gold', team_ids: [1] }),
+    ).rejects.toMatchObject({
+      status: 400,
+      message: 'Too many teams (65)',
+    });
   });
 });

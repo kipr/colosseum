@@ -25,7 +25,7 @@ import {
   invalidateDocumentationDependents,
   type EventMutationScope,
 } from './invalidation';
-import { LIST_STALE_TIME_MS, RESULT_STALE_TIME_MS } from './queryClient';
+import { LIST_STALE_TIME_MS } from './queryClient';
 
 export function globalDocCategoriesQueryOptions(userId: number) {
   return queryOptions({
@@ -49,7 +49,6 @@ export function docScoresQueryOptions(userId: number, eventId: number) {
   return queryOptions({
     queryKey: [...documentationKey(userId, eventId), 'scores'],
     queryFn: ({ signal }) => getDocScores(eventId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
     meta: ADMIN_ONLY_QUERY_META,
   });
 }
@@ -58,21 +57,19 @@ export function publicDocumentationQueryOptions(eventId: number) {
   return queryOptions({
     queryKey: [...publicEventKey(eventId), 'documentation'],
     queryFn: ({ signal }) => getPublicDocumentation(eventId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
 export function useDocumentationMutations() {
   const client = useQueryClient();
-  const refresh = async (
+  const refresh = (
     _data: unknown,
     scope: EventMutationScope,
     globalCategories = false,
-  ) => {
-    await invalidateDocumentationDependents(client, scope, {
+  ) =>
+    invalidateDocumentationDependents(client, scope, {
       globalCategories,
     });
-  };
   const saveCategory = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
     mutationFn: (
@@ -113,9 +110,8 @@ export function useDocumentationMutations() {
     mutationFn: (
       v: EventMutationScope & Parameters<typeof importDocTeamScores>[0],
     ) => importDocTeamScores(v),
-    onSuccess: async (results, scope) => {
-      if (results.some((row) => row.ok)) await refresh(results, scope);
-    },
+    onSuccess: (results, scope) =>
+      results.some((row) => row.ok) ? refresh(results, scope) : undefined,
   });
   return {
     saveCategory,
