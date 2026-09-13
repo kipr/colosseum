@@ -59,12 +59,6 @@ export function authUserQueryOptions() {
   return queryOptions({
     queryKey: authUserKey,
     queryFn: ({ signal }) => getCurrentUser({ signal }),
-    staleTime: 0,
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
-    refetchInterval: false,
-    refetchIntervalInBackground: false,
     networkMode: 'always',
     retry: shouldRetryAuthQuery,
     retryDelay: getAuthQueryRetryDelay,

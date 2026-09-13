@@ -11,10 +11,6 @@
  */
 export const publicEventsKey = ['public', 'events'] as const;
 
-export const publicEventsKeys = {
-  all: () => publicEventsKey,
-};
-
 export const authUserKey = ['auth', 'user'] as const;
 
 export const judgeScopeKey = ['judge'] as const;
@@ -30,11 +26,6 @@ export function adminScopeKey(userId: number | string) {
 export function adminEventsKey(userId: number | string) {
   return [...adminScopeKey(userId), 'events'] as const;
 }
-
-export const adminKeys = {
-  scope: adminScopeKey,
-  events: adminEventsKey,
-};
 
 export function adminEventKey(
   userId: number | string,

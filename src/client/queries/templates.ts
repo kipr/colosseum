@@ -26,18 +26,19 @@ import {
   removeJudgeQueries,
   type MutationScope,
 } from './invalidation';
+import { LIST_STALE_TIME_MS } from './queryClient';
 
 export const publicTemplatesQueryOptions = () =>
   queryOptions({
     queryKey: publicTemplatesKey,
     queryFn: ({ signal }) => getPublicTemplates(signal),
-    staleTime: 30_000,
+    staleTime: LIST_STALE_TIME_MS,
   });
 export const templatesQueryOptions = (userId: number, eventId?: number) =>
   queryOptions({
     queryKey: [...templatesKey(userId), { eventId: eventId ?? null }],
     queryFn: ({ signal }) => getTemplates(eventId, signal),
-    staleTime: 30_000,
+    staleTime: LIST_STALE_TIME_MS,
     meta: ADMIN_ONLY_QUERY_META,
   });
 export const templateQueryOptions = (
@@ -51,23 +52,23 @@ export const templateQueryOptions = (
       isAdmin ? 'admin' : 'staff',
     ],
     queryFn: ({ signal }) => getTemplate(templateId, signal),
-    staleTime: 30_000,
+    staleTime: LIST_STALE_TIME_MS,
     meta: { adminOnly: isAdmin },
   });
 export const fieldTemplatesQueryOptions = (userId: number) =>
   queryOptions({
     queryKey: fieldTemplatesKey(userId),
     queryFn: ({ signal }) => getFieldTemplates(signal),
-    staleTime: 30_000,
+    staleTime: LIST_STALE_TIME_MS,
   });
 export function useTemplateMutations() {
   const client = useQueryClient();
-  const refresh = async (
+  const refresh = (
     _data: unknown,
     { userId, templateId }: MutationScope & { templateId?: number },
   ) => {
     if (!canUpdateUserCache(client, userId, true)) return;
-    await Promise.all([
+    return Promise.all([
       client.invalidateQueries({ queryKey: templatesKey(userId) }),
       client.invalidateQueries({ queryKey: publicTemplatesKey }),
       ...(templateId == null
@@ -99,9 +100,9 @@ export function useTemplateMutations() {
       await refresh(_, scope);
     },
   });
-  const refreshFields = async (_data: unknown, { userId }: MutationScope) => {
+  const refreshFields = (_data: unknown, { userId }: MutationScope) => {
     if (canUpdateUserCache(client, userId))
-      await client.invalidateQueries({ queryKey: fieldTemplatesKey(userId) });
+      return client.invalidateQueries({ queryKey: fieldTemplatesKey(userId) });
   };
   const saveField = useMutation({
     mutationFn: (v: MutationScope & Parameters<typeof saveFieldTemplate>[0]) =>

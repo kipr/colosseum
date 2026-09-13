@@ -23,7 +23,6 @@ import {
   judgeChatOlderKey,
 } from './keys';
 import { ADMIN_ONLY_QUERY_META, canUpdateUserCache } from './invalidation';
-import { RESULT_STALE_TIME_MS } from './queryClient';
 
 export const CHAT_PAGE_SIZE = 100;
 export const CHAT_ACTIVE_POLL_MS = 3_000;
@@ -75,7 +74,6 @@ export function chatConversationsQueryOptions(
   return queryOptions<JudgeChatConversation[]>({
     queryKey: adminChatConversationsKey(userId, eventId),
     queryFn: ({ signal }) => getChatConversations(eventId, signal),
-    staleTime: RESULT_STALE_TIME_MS,
     refetchInterval: active ? CHAT_ACTIVE_POLL_MS : CHAT_INACTIVE_POLL_MS,
     meta: ADMIN_ONLY_QUERY_META,
   });
@@ -97,7 +95,6 @@ export function chatLatestQueryOptions(
         },
         signal,
       ),
-    staleTime: RESULT_STALE_TIME_MS,
     refetchInterval: active ? CHAT_ACTIVE_POLL_MS : CHAT_INACTIVE_POLL_MS,
     structuralSharing: (previous, next) => {
       const latest = next as JudgeChatMessage[];

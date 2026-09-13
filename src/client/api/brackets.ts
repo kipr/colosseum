@@ -117,42 +117,50 @@ export function getEventGames(
   );
 }
 
+function conflictsFromBody(body: unknown): BracketConflict[] {
+  if (!body || typeof body !== 'object' || !('conflicts' in body)) return [];
+  const { conflicts } = body as { conflicts?: unknown };
+  if (!Array.isArray(conflicts)) return [];
+  return conflicts.filter((row): row is BracketConflict => {
+    if (!row || typeof row !== 'object') return false;
+    const conflict = row as Partial<BracketConflict>;
+    return (
+      typeof conflict.team_name === 'string' &&
+      typeof conflict.bracket_name === 'string'
+    );
+  });
+}
+
 export async function createBracket({
   event_id,
   name,
   team_ids,
   weight,
 }: CreateBracketInput) {
-  const response = await fetch('/brackets', {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      Accept: 'application/json',
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ event_id, name, team_ids, weight }),
-  });
-  const body = (await response.json().catch(() => ({}))) as {
-    error?: string;
-    conflicts?: BracketConflict[];
-  } & Partial<Bracket>;
-  if (!response.ok) {
-    if (response.status === 409 && body.conflicts?.length) {
-      const names = body.conflicts
-        .map(
-          (conflict) => `${conflict.team_name} (in ${conflict.bracket_name})`,
-        )
-        .join(', ');
-      throw new ApiError(
-        `Teams already in another bracket: ${names}. Remove them from selection.`,
-        { status: 409 },
-      );
-    }
-    throw new ApiError(body.error || 'Failed to create bracket', {
-      status: response.status,
+  try {
+    return await requestJsonBody<Bracket>('/brackets', 'POST', {
+      event_id,
+      name,
+      team_ids,
+      weight,
     });
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 409) {
+      const conflicts = conflictsFromBody(error.body);
+      if (conflicts.length > 0) {
+        const names = conflicts
+          .map(
+            (conflict) => `${conflict.team_name} (in ${conflict.bracket_name})`,
+          )
+          .join(', ');
+        throw new ApiError(
+          `Teams already in another bracket: ${names}. Remove them from selection.`,
+          { status: 409, body: error.body, retryAfterMs: error.retryAfterMs },
+        );
+      }
+    }
+    throw error;
   }
-  return body as Bracket;
 }
 
 export function updateBracket({

@@ -10,7 +10,6 @@ import { ApiError, ApiParseError } from '../api/http';
 
 export const QUERY_GC_TIME_MS = 5 * 60 * 1000;
 export const LIST_STALE_TIME_MS = 30_000;
-export const RESULT_STALE_TIME_MS = 0;
 export const POLL_INTERVAL_MS = 10_000;
 export const LIVE_QUERY = { refetchInterval: POLL_INTERVAL_MS } as const;
 export const QUERY_RETRY_LIMIT = 2;
@@ -107,6 +106,9 @@ export function createQueryClient(
     defaultOptions: {
       ...options.defaultOptions,
       queries: {
+        // Derived results, audit, and chat latest pages keep this default of 0
+        // so they refetch on mount, focus, and reconnect. Other browsers still
+        // write data; spectator results have no interval polling.
         staleTime: 0,
         gcTime: QUERY_GC_TIME_MS,
         refetchOnMount: true,
