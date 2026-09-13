@@ -81,9 +81,9 @@ export function getQueryRetryDelay(
   });
 }
 
-export function createQueryClient(
-  options: QueryClientConfig = {},
-): QueryClient {
+export function createQueryClient({
+  defaultOptions,
+}: Pick<QueryClientConfig, 'defaultOptions'> = {}): QueryClient {
   const queryClient = new QueryClient({
     queryCache: new QueryCache({
       onError: (error, query) => {
@@ -113,18 +113,17 @@ export function createQueryClient(
         }
       },
     }),
-    ...options,
     defaultOptions: {
-      ...options.defaultOptions,
+      ...defaultOptions,
       queries: {
         retry: shouldRetryQuery,
         retryDelay: getQueryRetryDelay,
-        ...options.defaultOptions?.queries,
+        ...defaultOptions?.queries,
       },
       mutations: {
         retry: 0,
         networkMode: 'always',
-        ...options.defaultOptions?.mutations,
+        ...defaultOptions?.mutations,
       },
     },
   });
