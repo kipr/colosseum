@@ -414,6 +414,15 @@ test.describe('Admin Tournament Setup E2E', () => {
     expect(initialFieldReads).toBeGreaterThan(0);
     expect(teamReads).toBe(initialTeamReads);
     expect(fieldReads).toBe(initialFieldReads);
+
+    await page.getByRole('button', { name: '🌱 Seeding', exact: true }).click();
+    await expect(page.getByText('Seeding scores and rankings')).toBeVisible();
+    expect(teamReads).toBe(initialTeamReads);
+    await page.getByRole('button', { name: '📊 Overall', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'Overall Scores' }),
+    ).toBeVisible();
+    expect(teamReads).toBe(initialTeamReads);
   });
 
   /* ── 7. Score sheet appears on the judge page ──────────────────── */

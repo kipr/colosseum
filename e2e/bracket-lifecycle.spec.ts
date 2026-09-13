@@ -500,4 +500,36 @@ test.describe('Bracket Lifecycle E2E', () => {
     );
     expect(hasTeamNumber).toBe(true);
   });
+
+  test('ranking view uses GET rankings without posting calculate', async ({
+    page,
+  }) => {
+    let calculatePosts = 0;
+    let rankingGets = 0;
+    page.on('request', (request) => {
+      const path = new URL(request.url()).pathname;
+      if (
+        request.method() === 'POST' &&
+        path === `/brackets/${bracketId}/rankings/calculate`
+      ) {
+        calculatePosts += 1;
+      }
+      if (
+        request.method() === 'GET' &&
+        path === `/brackets/${bracketId}/rankings`
+      ) {
+        rankingGets += 1;
+      }
+    });
+
+    await setAdminCookie(page);
+    await page.goto(
+      `/admin/events/${eventId}/brackets/${bracketId}?view=management`,
+    );
+    await expect(page.locator('.bracket-header-card')).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect.poll(() => rankingGets).toBeGreaterThan(0);
+    expect(calculatePosts).toBe(0);
+  });
 });

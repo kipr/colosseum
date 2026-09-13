@@ -6,30 +6,9 @@ import {
   type SeedingTableVariant,
   type Team,
 } from '../seedingScores';
+import type { SeedingRanking, SeedingScore } from '../../api/seeding';
 
-export type { Team };
-
-export interface SeedingScore {
-  id: number;
-  team_id: number;
-  round_number: number;
-  score: number | null;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-export interface SeedingRanking {
-  id: number;
-  team_id: number;
-  seed_average: number | null;
-  seed_rank: number | null;
-  raw_seed_score: number | null;
-  tiebreaker_value: number | null;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
+export type { Team, SeedingScore, SeedingRanking };
 
 export type TeamRowData = SeedingTableRow;
 

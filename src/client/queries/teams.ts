@@ -12,10 +12,18 @@ import {
   checkInTeams,
   type TeamStatus,
 } from '../api/teams';
-import { teamsKey } from './keys';
-import { canUpdateUserCache, type MutationScope } from './invalidation';
+import { publicEventKey, teamsKey } from './keys';
+import { invalidateTeamDependents, type MutationScope } from './invalidation';
+import { LIST_STALE_TIME_MS } from './queryClient';
 
 type TeamScope = MutationScope & { eventId: number };
+export function publicTeamsQueryOptions(eventId: number) {
+  return queryOptions({
+    queryKey: [...publicEventKey(eventId), 'teams'],
+    queryFn: ({ signal }) => getTeams(eventId, 'all', signal),
+    staleTime: LIST_STALE_TIME_MS,
+  });
+}
 export function teamsQueryOptions(
   userId: number,
   eventId: number,
@@ -24,14 +32,13 @@ export function teamsQueryOptions(
   return queryOptions({
     queryKey: [...teamsKey(userId, eventId), { status }],
     queryFn: ({ signal }) => getTeams(eventId, status, signal),
-    staleTime: 30_000,
+    staleTime: LIST_STALE_TIME_MS,
   });
 }
 export function useTeamMutations() {
   const client = useQueryClient();
-  const refresh = async (_data: unknown, { userId, eventId }: TeamScope) => {
-    if (canUpdateUserCache(client, userId))
-      await client.invalidateQueries({ queryKey: teamsKey(userId, eventId) });
+  const refresh = async (_data: unknown, scope: TeamScope) => {
+    await invalidateTeamDependents(client, scope);
   };
   const save = useMutation({
     mutationFn: (v: TeamScope & Parameters<typeof saveTeam>[0]) => saveTeam(v),

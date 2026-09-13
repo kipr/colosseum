@@ -8,7 +8,6 @@ import {
   getTemplates,
   getTemplate,
   getFieldTemplates,
-  getTemplateBrackets,
   saveTemplate,
   deleteTemplate,
   saveFieldTemplate,
@@ -19,7 +18,6 @@ import {
   templatesKey,
   templateDetailKey,
   fieldTemplatesKey,
-  adminEventKey,
 } from './keys';
 import {
   ADMIN_ONLY_QUERY_META,
@@ -59,12 +57,6 @@ export const fieldTemplatesQueryOptions = (userId: number) =>
     queryKey: fieldTemplatesKey(userId),
     queryFn: ({ signal }) => getFieldTemplates(signal),
     staleTime: 30_000,
-  });
-export const templateBracketsQueryOptions = (userId: number, eventId: number) =>
-  queryOptions({
-    queryKey: [...adminEventKey(userId, eventId), 'brackets'],
-    queryFn: ({ signal }) => getTemplateBrackets(eventId, signal),
-    staleTime: 0,
   });
 export function useTemplateMutations() {
   const client = useQueryClient();

@@ -3,9 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import {
   templateQueryOptions,
-  templateBracketsQueryOptions,
   useTemplateMutations,
 } from '../../queries/templates';
+import { bracketsQueryOptions } from '../../queries/brackets';
 import QueryFeedback, { queryData } from '../QueryFeedback';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
@@ -39,7 +39,7 @@ export default function TemplateEditorModal(props: TemplateEditorModalProps) {
     enabled: Boolean(user?.isAdmin && !loading && props.templateId),
   });
   const bracketsQuery = useQuery({
-    ...templateBracketsQueryOptions(user?.id ?? 0, props.eventId),
+    ...bracketsQueryOptions(user?.id ?? 0, props.eventId),
     enabled: Boolean(user?.isAdmin && !loading),
   });
   const template = queryData(query);

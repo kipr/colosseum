@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import {
   UnifiedTable,
   compareLocaleString,
@@ -10,15 +11,21 @@ import {
   compareByAwardLoad,
   type TeamAwardCounts,
 } from '@shared/awards';
+import { useAuth } from '../../contexts/AuthContext';
+import {
+  teamAwardCountsQueryOptions,
+  useAwardMutations,
+} from '../../queries/awards';
+import QueryFeedback, { queryData } from '../QueryFeedback';
 import '../Modal.css';
 import './AwardsTab.css';
+
 interface AwardRecipientModalProps {
   eventId: number;
   awardId: number;
   awardName: string;
   existingRecipientTeamIds: number[];
   onClose: () => void;
-  onAdded: () => void | Promise<void>;
   onError: (message: string) => void;
   onSuccess: (message: string) => void;
 }
@@ -34,65 +41,43 @@ interface RecipientRow extends TeamAwardCounts {
   alreadyRecipient: boolean;
 }
 
+const EMPTY_COUNTS: TeamAwardCounts[] = [];
+
 export default function AwardRecipientModal({
   eventId,
   awardId,
   awardName,
   existingRecipientTeamIds,
   onClose,
-  onAdded,
   onError,
   onSuccess,
 }: AwardRecipientModalProps) {
-  const [rows, setRows] = useState<TeamAwardCounts[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const { user, loading: authLoading } = useAuth();
+  const { addRecipients } = useAwardMutations();
+  const sessionKey = `${eventId}:${awardId}`;
+  const [selectionSession, setSelectionSession] = useState(sessionKey);
   const [selectedTeamIds, setSelectedTeamIds] = useState<Set<number>>(
     () => new Set(),
   );
+  if (selectionSession !== sessionKey) {
+    setSelectionSession(sessionKey);
+    setSelectedTeamIds(new Set());
+  }
   const [filter, setFilter] = useState('');
   const [sortField, setSortField] = useState<SortField>('weighted');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
 
-  // Keep latest onError without reloading when the parent passes a new inline callback.
-  const onErrorRef = useRef(onError);
-  onErrorRef.current = onError;
+  const countsQuery = useQuery({
+    ...teamAwardCountsQueryOptions(user?.id ?? 0, eventId),
+    enabled: Boolean(user && !authLoading),
+  });
+  const rows = queryData(countsQuery) ?? EMPTY_COUNTS;
+  const saving = addRecipients.isPending;
 
   const existingSet = useMemo(
     () => new Set(existingRecipientTeamIds),
     [existingRecipientTeamIds],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setSelectedTeamIds(new Set());
-    fetch(`/awards/event/${eventId}/team-award-counts`, {
-      credentials: 'include',
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to load team award counts');
-        return (await res.json()) as TeamAwardCounts[];
-      })
-      .then((data) => {
-        if (!cancelled) setRows(data);
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          onErrorRef.current(
-            err instanceof Error
-              ? err.message
-              : 'Failed to load team award counts',
-          );
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [eventId]);
 
   const handleSort = useCallback((sortId: string) => {
     const field = sortId as SortField;
@@ -241,30 +226,22 @@ export default function AwardRecipientModal({
   }, [selectedTeamIds]);
 
   const handleSubmit = async () => {
-    if (selectedTeamIds.size === 0) return;
-    setSaving(true);
+    if (selectedTeamIds.size === 0 || !user) return;
     try {
-      const res = await fetch(`/awards/event-awards/${awardId}/recipients`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ team_ids: Array.from(selectedTeamIds) }),
+      await addRecipients.mutateAsync({
+        userId: user.id,
+        eventId,
+        awardId,
+        teamIds: Array.from(selectedTeamIds),
       });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? 'Failed to add recipients');
-      }
       onSuccess(
         selectedTeamIds.size === 1
           ? 'Recipient added'
           : `${selectedTeamIds.size} recipients added`,
       );
-      await onAdded();
       onClose();
     } catch (err) {
       onError(err instanceof Error ? err.message : 'Failed to add recipients');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -306,7 +283,8 @@ export default function AwardRecipientModal({
           />
         </div>
 
-        {loading ? (
+        {countsQuery.isError ? <QueryFeedback query={countsQuery} /> : null}
+        {countsQuery.isLoading ? (
           <p style={{ color: 'var(--secondary-color)' }}>Loading teams…</p>
         ) : filteredSortedRows.length === 0 ? (
           <p style={{ color: 'var(--secondary-color)' }}>

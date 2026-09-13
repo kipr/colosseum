@@ -2,7 +2,26 @@ import { ApiError } from '../api/http';
 import type { SessionUser } from '../api/types';
 import { authUserKey } from './keys';
 import type { Query, QueryClient, QueryKey } from '@tanstack/react-query';
-import { adminScopeKey, judgeScopeKey } from './keys';
+import {
+  adminEventKey,
+  adminEventsKey,
+  adminScopeKey,
+  assignedTeamsKey,
+  auditEntityKey,
+  auditKey,
+  awardsKey,
+  awardTemplatesKey,
+  bracketsKey,
+  documentationKey,
+  doubleSeedingKey,
+  globalDocCategoriesKey,
+  judgeScopeKey,
+  overallKey,
+  publicEventKey,
+  publicEventsKey,
+  seedingKey,
+  teamsKey,
+} from './keys';
 
 export const ADMIN_ONLY_QUERY_META = { adminOnly: true as const };
 
@@ -59,6 +78,166 @@ export async function removeJudgeQueries(
 /** Mutations carry their originating identity even if the component navigates. */
 export interface MutationScope {
   userId: number;
+}
+
+export type EventMutationScope = MutationScope & { eventId: number };
+
+export async function invalidateForUser(
+  queryClient: QueryClient,
+  userId: number,
+  queryKeys: QueryKey[],
+  adminOnly = false,
+): Promise<void> {
+  if (!canUpdateUserCache(queryClient, userId, adminOnly)) return;
+  await Promise.all(
+    queryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),
+  );
+}
+
+export async function invalidatePublicEventResults(
+  queryClient: QueryClient,
+  eventId: number,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: publicEventKey(eventId) }),
+    queryClient.invalidateQueries({ queryKey: publicEventsKey }),
+  ]);
+}
+
+export async function invalidateTeamDependents(
+  queryClient: QueryClient,
+  scope: EventMutationScope,
+): Promise<void> {
+  const { userId, eventId } = scope;
+  await invalidateForUser(queryClient, userId, [
+    teamsKey(userId, eventId),
+    seedingKey(userId, eventId),
+    doubleSeedingKey(userId, eventId),
+    bracketsKey(userId, eventId),
+    [...adminEventKey(userId, eventId), 'bracket'],
+    assignedTeamsKey(userId, eventId),
+    overallKey(userId, eventId),
+    documentationKey(userId, eventId),
+    awardsKey(userId, eventId),
+    auditKey(userId, eventId),
+    [...adminScopeKey(userId), 'audit-entity'],
+  ]);
+  await invalidatePublicEventResults(queryClient, eventId);
+}
+
+export async function invalidateDoubleSeedingDependents(
+  queryClient: QueryClient,
+  scope: EventMutationScope,
+  options: { eventMetadata?: boolean } = {},
+): Promise<void> {
+  const { userId, eventId } = scope;
+  await invalidateForUser(
+    queryClient,
+    userId,
+    [
+      doubleSeedingKey(userId, eventId),
+      overallKey(userId, eventId),
+      awardsKey(userId, eventId),
+      [...adminEventKey(userId, eventId), 'bracket'],
+      auditKey(userId, eventId),
+      [...adminScopeKey(userId), 'audit-entity'],
+      ...(options.eventMetadata ? [adminEventsKey(userId)] : []),
+    ],
+    true,
+  );
+  await invalidatePublicEventResults(queryClient, eventId);
+}
+
+export async function invalidateBracketDependents(
+  queryClient: QueryClient,
+  scope: EventMutationScope & { bracketId?: number },
+): Promise<void> {
+  const { userId, eventId, bracketId } = scope;
+  await invalidateForUser(queryClient, userId, [
+    bracketsKey(userId, eventId),
+    assignedTeamsKey(userId, eventId),
+    overallKey(userId, eventId),
+    awardsKey(userId, eventId),
+    seedingKey(userId, eventId),
+    ...(bracketId != null
+      ? [[...adminEventKey(userId, eventId), 'bracket', bracketId]]
+      : [[...adminEventKey(userId, eventId), 'bracket']]),
+  ]);
+  await invalidatePublicEventResults(queryClient, eventId);
+}
+
+export async function invalidateDocumentationDependents(
+  queryClient: QueryClient,
+  scope: EventMutationScope,
+  options: { globalCategories?: boolean } = {},
+): Promise<void> {
+  const { userId, eventId } = scope;
+  await invalidateForUser(
+    queryClient,
+    userId,
+    [
+      documentationKey(userId, eventId),
+      overallKey(userId, eventId),
+      awardsKey(userId, eventId),
+      [...adminEventKey(userId, eventId), 'bracket'],
+      ...(options.globalCategories ? [globalDocCategoriesKey(userId)] : []),
+    ],
+    true,
+  );
+  await invalidatePublicEventResults(queryClient, eventId);
+}
+
+export async function invalidateAwardDependents(
+  queryClient: QueryClient,
+  scope: EventMutationScope,
+  options: { templates?: boolean } = {},
+): Promise<void> {
+  const { userId, eventId } = scope;
+  await invalidateForUser(
+    queryClient,
+    userId,
+    [
+      awardsKey(userId, eventId),
+      ...(options.templates ? [awardTemplatesKey(userId)] : []),
+    ],
+    true,
+  );
+  await invalidatePublicEventResults(queryClient, eventId);
+}
+
+export async function removeRestrictedPublicResults(
+  queryClient: QueryClient,
+  eventId: number,
+): Promise<void> {
+  const prefix = publicEventKey(eventId);
+  const predicate = (query: Query) => {
+    if (!startsWithPrefix(query.queryKey, prefix)) return false;
+    const rest = query.queryKey.slice(prefix.length);
+    const head = rest[0];
+    if (head === 'documentation' || head === 'awards' || head === 'overall') {
+      return true;
+    }
+    return head === 'bracket' && rest[2] === 'rankings';
+  };
+  await cancelThenRemove(queryClient, { predicate });
+}
+
+export async function invalidateAuditHistory(
+  queryClient: QueryClient,
+  scope: EventMutationScope & { entityType?: string; entityId?: number },
+): Promise<void> {
+  const { userId, eventId, entityType, entityId } = scope;
+  await invalidateForUser(
+    queryClient,
+    userId,
+    [
+      auditKey(userId, eventId),
+      ...(entityType != null && entityId != null
+        ? [auditEntityKey(userId, entityType, entityId)]
+        : []),
+    ],
+    true,
+  );
 }
 
 export function canUpdateUserCache(

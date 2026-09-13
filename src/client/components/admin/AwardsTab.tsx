@@ -1,9 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
+import { useAuth } from '../../contexts/AuthContext';
 import { useEvent } from '../../contexts/EventContext';
+import { teamsQueryOptions } from '../../queries/teams';
+import {
+  automaticAwardPreviewQueryOptions,
+  automaticAwardSettingsQueryOptions,
+  awardTemplatesQueryOptions,
+  eventAwardsQueryOptions,
+  useAwardMutations,
+} from '../../queries/awards';
+import QueryFeedback, { queryData } from '../QueryFeedback';
 import {
   DEFAULT_AUTOMATIC_AWARD_SETTINGS,
   type AutomaticAwardSettings,
@@ -15,6 +26,8 @@ import {
   DEFAULT_AWARD_TYPE,
   type AwardType,
 } from '@shared/awards';
+import type { Team } from '../../api/teams';
+import type { AwardTemplate, EventAward } from '../../api/awards';
 import AwardRecipientModal from './AwardRecipientModal';
 import '../Modal.css';
 import './AwardsTab.css';
@@ -26,50 +39,6 @@ const ZERO_COMPONENT_LABELS: Record<ZeroScoreComponent, string> = {
   weighted_de: 'weighted DE',
 };
 
-interface AwardTemplate {
-  id: number;
-  name: string;
-  description: string | null;
-  award_type: AwardType;
-}
-
-interface Recipient {
-  id: number;
-  event_award_id: number;
-  team_id: number;
-  team_number: number;
-  team_name: string;
-}
-
-interface IndividualRecipient {
-  id: number;
-  event_award_id: number;
-  name: string;
-  team_id: number | null;
-  team_number: number | null;
-  team_name: string | null;
-  display_name?: string | null;
-}
-
-interface EventAward {
-  id: number;
-  event_id: number;
-  template_award_id: number | null;
-  name: string;
-  description: string | null;
-  award_type: AwardType;
-  sort_order: number;
-  recipients: Recipient[];
-  individual_recipients: IndividualRecipient[];
-}
-
-interface Team {
-  id: number;
-  team_number: number;
-  team_name: string;
-}
-
-/** Matches server AUTO_AWARD_NAME_PREFIX in automaticAwards.ts */
 const AUTO_AWARD_NAME_PREFIX = 'Auto: ';
 const MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH = 200;
 
@@ -77,7 +46,9 @@ function isAutomaticAward(award: EventAward): boolean {
   return award.name.startsWith(AUTO_AWARD_NAME_PREFIX);
 }
 
-function formatIndividualRecipient(r: IndividualRecipient): string {
+function formatIndividualRecipient(
+  r: EventAward['individual_recipients'][number],
+): string {
   if (r.team_number != null) {
     const teamLabel = r.team_name
       ? `#${r.team_number} ${r.team_name}`
@@ -87,25 +58,28 @@ function formatIndividualRecipient(r: IndividualRecipient): string {
   return r.name;
 }
 
-function normalizeEventAward(award: EventAward): EventAward {
-  return {
-    ...award,
-    award_type: award.award_type ?? DEFAULT_AWARD_TYPE,
-    recipients: award.recipients ?? [],
-    individual_recipients: award.individual_recipients ?? [],
-  };
-}
+const EMPTY_TEMPLATES: AwardTemplate[] = [];
+const EMPTY_AWARDS: EventAward[] = [];
+const EMPTY_TEAMS: Team[] = [];
 
 export default function AwardsTab() {
   const { selectedEvent } = useEvent();
+  const { user, loading: authLoading } = useAuth();
   const selectedEventId = selectedEvent?.id ?? null;
+  const userId = user?.id ?? 0;
+  const enabled = Boolean(user && !authLoading && selectedEventId);
+  const {
+    saveTemplate,
+    removeTemplate,
+    saveAward,
+    removeAward,
+    removeRecipient,
+    addIndividual,
+    removeIndividual,
+    applyAutomatic,
+    reorder,
+  } = useAwardMutations();
 
-  const [templates, setTemplates] = useState<AwardTemplate[]>([]);
-  const [eventAwards, setEventAwards] = useState<EventAward[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  // Template modal
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<AwardTemplate | null>(
     null,
@@ -115,9 +89,7 @@ export default function AwardsTab() {
     description: '',
     award_type: DEFAULT_AWARD_TYPE as AwardType,
   });
-  const [savingTemplate, setSavingTemplate] = useState(false);
 
-  // Event award modal
   const [showAwardModal, setShowAwardModal] = useState(false);
   const [editingAward, setEditingAward] = useState<EventAward | null>(null);
   const [awardForm, setAwardForm] = useState({
@@ -127,26 +99,17 @@ export default function AwardsTab() {
     award_type: DEFAULT_AWARD_TYPE as AwardType,
     mode: 'manual' as 'manual' | 'template',
   });
-  const [savingAward, setSavingAward] = useState(false);
-  const [applyingAutomatic, setApplyingAutomatic] = useState(false);
 
-  // Team recipient modal
   const [recipientModalAward, setRecipientModalAward] =
     useState<EventAward | null>(null);
 
-  // Automatic awards modal
   const [showAutomaticModal, setShowAutomaticModal] = useState(false);
-  const [automaticForm, setAutomaticForm] = useState<AutomaticAwardSettings>({
-    ...DEFAULT_AUTOMATIC_AWARD_SETTINGS,
-  });
-  const [automaticPreview, setAutomaticPreview] =
-    useState<AutomaticAwardsPreviewResponse | null>(null);
-  const [loadingAutomaticPreview, setLoadingAutomaticPreview] = useState(false);
-  const [automaticPreviewError, setAutomaticPreviewError] = useState<
-    string | null
+  const [automaticForm, setAutomaticForm] =
+    useState<AutomaticAwardSettings | null>(null);
+  const [automaticSessionEventId, setAutomaticSessionEventId] = useState<
+    number | null
   >(null);
 
-  // Individual recipient controls
   const [addingIndividualForAwardId, setAddingIndividualForAwardId] = useState<
     number | null
   >(null);
@@ -156,64 +119,69 @@ export default function AwardsTab() {
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
-  const fetchTemplates = useCallback(async () => {
-    try {
-      const res = await fetch('/awards/templates', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch templates');
-      setTemplates(await res.json());
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load award templates');
-    }
-  }, []);
+  const templatesQuery = useQuery({
+    ...awardTemplatesQueryOptions(userId),
+    enabled: Boolean(user && !authLoading),
+  });
+  const awardsQuery = useQuery({
+    ...eventAwardsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const teamsQuery = useQuery({
+    ...teamsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const templates = queryData(templatesQuery) ?? EMPTY_TEMPLATES;
+  const eventAwards = queryData(awardsQuery) ?? EMPTY_AWARDS;
+  const teams = queryData(teamsQuery) ?? EMPTY_TEAMS;
+  const loading =
+    templatesQuery.isLoading || awardsQuery.isLoading || teamsQuery.isLoading;
+  const errorQuery = [templatesQuery, awardsQuery, teamsQuery].find(
+    (query) => query.isError,
+  );
 
-  const fetchEventAwards = useCallback(async () => {
-    if (!selectedEventId) {
-      setEventAwards([]);
-      return;
-    }
-    try {
-      const res = await fetch(`/awards/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch event awards');
-      const awards = (await res.json()) as EventAward[];
-      setEventAwards(awards.map(normalizeEventAward));
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load event awards');
-    }
-  }, [selectedEventId]);
+  const settingsQuery = useQuery({
+    ...automaticAwardSettingsQueryOptions(userId, selectedEventId ?? 0),
+    enabled: Boolean(
+      user && !authLoading && selectedEventId && showAutomaticModal,
+    ),
+  });
+  if (
+    showAutomaticModal &&
+    automaticForm == null &&
+    settingsQuery.data &&
+    automaticSessionEventId === selectedEventId
+  ) {
+    setAutomaticForm({ ...settingsQuery.data.settings });
+  }
+  if (showAutomaticModal && automaticSessionEventId !== selectedEventId) {
+    setAutomaticSessionEventId(selectedEventId);
+    setAutomaticForm(null);
+  }
 
-  const fetchTeams = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      return;
-    }
-    try {
-      const res = await fetch(`/teams/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch teams');
-      setTeams(await res.json());
-    } catch (err) {
-      console.error(err);
-      toast.error('Failed to load teams');
-    }
-  }, [selectedEventId]);
-
-  const loadAll = useCallback(() => {
-    setLoading(true);
-    Promise.all([fetchTemplates(), fetchEventAwards(), fetchTeams()]).finally(
-      () => setLoading(false),
-    );
-  }, [fetchTemplates, fetchEventAwards, fetchTeams]);
-
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
-
-  // ── Template CRUD ──
+  const previewQuery = useQuery({
+    ...automaticAwardPreviewQueryOptions(
+      userId,
+      selectedEventId ?? 0,
+      automaticForm ?? DEFAULT_AUTOMATIC_AWARD_SETTINGS,
+    ),
+    enabled: Boolean(
+      user &&
+      !authLoading &&
+      selectedEventId &&
+      showAutomaticModal &&
+      automaticForm,
+    ),
+  });
+  const automaticPreview = queryData(previewQuery) ?? null;
+  const loadingAutomaticPreview =
+    (settingsQuery.isLoading && automaticForm == null) ||
+    previewQuery.isFetching;
+  const automaticPreviewError = previewQuery.isError
+    ? previewQuery.error.message
+    : settingsQuery.isError && automaticForm == null
+      ? settingsQuery.error.message
+      : null;
 
   const handleCreateTemplate = () => {
     setEditingTemplate(null);
@@ -237,46 +205,30 @@ export default function AwardsTab() {
 
   const handleSaveTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user) return;
     if (!templateForm.name.trim()) {
       toast.error('Name is required');
       return;
     }
-    setSavingTemplate(true);
     try {
-      const body = {
-        name: templateForm.name.trim(),
-        description: templateForm.description.trim() || null,
-        award_type: templateForm.award_type,
-      };
-      if (editingTemplate) {
-        const res = await fetch(`/awards/templates/${editingTemplate.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.json()).error);
-        toast.success('Template updated');
-      } else {
-        const res = await fetch('/awards/templates', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        });
-        if (!res.ok) throw new Error((await res.json()).error);
-        toast.success('Template created');
-      }
+      await saveTemplate.mutateAsync({
+        userId: user.id,
+        templateId: editingTemplate?.id,
+        data: {
+          name: templateForm.name.trim(),
+          description: templateForm.description.trim() || null,
+          award_type: templateForm.award_type,
+        },
+      });
+      toast.success(editingTemplate ? 'Template updated' : 'Template created');
       setShowTemplateModal(false);
-      await fetchTemplates();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setSavingTemplate(false);
     }
   };
 
   const handleDeleteTemplate = async (t: AwardTemplate) => {
+    if (!user) return;
     const ok = await confirm({
       title: 'Delete Template',
       message: `Delete award template "${t.name}"? This will not affect existing event awards.`,
@@ -285,19 +237,12 @@ export default function AwardsTab() {
     });
     if (!ok) return;
     try {
-      const res = await fetch(`/awards/templates/${t.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to delete');
+      await removeTemplate.mutateAsync({ userId: user.id, templateId: t.id });
       toast.success('Template deleted');
-      await fetchTemplates();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete');
     }
   };
-
-  // ── Event Award CRUD ──
 
   const handleCreateAward = () => {
     setEditingAward(null);
@@ -325,6 +270,7 @@ export default function AwardsTab() {
 
   const handleSaveAward = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!user || !selectedEventId) return;
     if (awardForm.mode === 'manual' && !awardForm.name.trim()) {
       toast.error('Name is required');
       return;
@@ -333,130 +279,58 @@ export default function AwardsTab() {
       toast.error('Select a template');
       return;
     }
-
-    setSavingAward(true);
     try {
       if (editingAward) {
-        const body = {
-          name: awardForm.name.trim(),
-          description: awardForm.description.trim() || null,
-          award_type: awardForm.award_type,
-        };
-        const res = await fetch(`/awards/event-awards/${editingAward.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
+        await saveAward.mutateAsync({
+          userId: user.id,
+          eventId: selectedEventId,
+          awardId: editingAward.id,
+          data: {
+            name: awardForm.name.trim(),
+            description: awardForm.description.trim() || null,
+            award_type: awardForm.award_type,
+          },
         });
-        if (!res.ok) throw new Error((await res.json()).error);
         toast.success('Award updated');
       } else {
-        const body: Record<string, unknown> = {
-          award_type: awardForm.award_type,
-        };
-        if (awardForm.mode === 'template') {
-          body.template_award_id = Number(awardForm.template_award_id);
-        } else {
-          body.name = awardForm.name.trim();
-          body.description = awardForm.description.trim() || null;
-        }
-        const res = await fetch(`/awards/event/${selectedEventId}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
+        const data =
+          awardForm.mode === 'template'
+            ? {
+                award_type: awardForm.award_type,
+                template_award_id: Number(awardForm.template_award_id),
+              }
+            : {
+                award_type: awardForm.award_type,
+                name: awardForm.name.trim(),
+                description: awardForm.description.trim() || null,
+              };
+        await saveAward.mutateAsync({
+          userId: user.id,
+          eventId: selectedEventId,
+          data,
         });
-        if (!res.ok) throw new Error((await res.json()).error);
         toast.success('Award added');
       }
       setShowAwardModal(false);
-      await fetchEventAwards();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to save');
-    } finally {
-      setSavingAward(false);
     }
   };
 
-  const fetchAutomaticPreview = useCallback(
-    async (settings: AutomaticAwardSettings) => {
-      if (!selectedEventId) return;
-      setLoadingAutomaticPreview(true);
-      setAutomaticPreviewError(null);
-      try {
-        const params = new URLSearchParams({
-          de_top_n: String(settings.de_top_n),
-          per_bracket_overall_top_n: String(settings.per_bracket_overall_top_n),
-          seeding_top_n: String(settings.seeding_top_n),
-          de_award_type: settings.de_award_type,
-          per_bracket_overall_award_type:
-            settings.per_bracket_overall_award_type,
-          seeding_award_type: settings.seeding_award_type,
-        });
-        const res = await fetch(
-          `/awards/event/${selectedEventId}/automatic/preview?${params}`,
-          { credentials: 'include' },
-        );
-        const data = (await res.json()) as AutomaticAwardsPreviewResponse & {
-          error?: string;
-        };
-        if (!res.ok) {
-          throw new Error(data.error ?? 'Failed to preview automatic awards');
-        }
-        setAutomaticPreview(data);
-      } catch (err) {
-        setAutomaticPreview(null);
-        setAutomaticPreviewError(
-          err instanceof Error
-            ? err.message
-            : 'Failed to preview automatic awards',
-        );
-      } finally {
-        setLoadingAutomaticPreview(false);
-      }
-    },
-    [selectedEventId],
-  );
-
-  const openAutomaticModal = async () => {
-    if (!selectedEventId) return;
+  const openAutomaticModal = () => {
     setShowAutomaticModal(true);
-    setAutomaticPreview(null);
-    setAutomaticPreviewError(null);
-    setLoadingAutomaticPreview(true);
-    try {
-      const res = await fetch(
-        `/awards/event/${selectedEventId}/automatic/preview`,
-        { credentials: 'include' },
-      );
-      const data = (await res.json()) as AutomaticAwardsPreviewResponse & {
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error(
-          data.error ?? 'Failed to load automatic award settings',
-        );
-      }
-      setAutomaticForm({ ...data.settings });
-      setAutomaticPreview(data);
-    } catch (err) {
-      setAutomaticPreviewError(
-        err instanceof Error
-          ? err.message
-          : 'Failed to load automatic award settings',
-      );
-    } finally {
-      setLoadingAutomaticPreview(false);
-    }
+    setAutomaticSessionEventId(selectedEventId);
+    setAutomaticForm(null);
   };
 
   const handleAutomaticFormChange = <K extends keyof AutomaticAwardSettings>(
     key: K,
     value: AutomaticAwardSettings[K],
   ) => {
-    const next = { ...automaticForm, [key]: value };
-    setAutomaticForm(next);
-    void fetchAutomaticPreview(next);
+    setAutomaticForm((prev) => ({
+      ...(prev ?? DEFAULT_AUTOMATIC_AWARD_SETTINGS),
+      [key]: value,
+    }));
   };
 
   const countPlannedAwards = (
@@ -472,27 +346,16 @@ export default function AwardsTab() {
   };
 
   const handleApplyAutomaticAwards = async () => {
-    if (!selectedEventId) return;
-    setApplyingAutomatic(true);
+    if (!selectedEventId || !user || !automaticForm) return;
     try {
-      const res = await fetch(`/awards/event/${selectedEventId}/automatic`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+      const data = await applyAutomatic.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        data: {
           ...automaticForm,
           acknowledge_warnings: Boolean(automaticPreview?.hasWarnings),
-        }),
+        },
       });
-      const data = (await res.json()) as {
-        created?: number;
-        removed?: number;
-        error?: string;
-        requires_acknowledgement?: boolean;
-      };
-      if (!res.ok) {
-        throw new Error(data.error ?? 'Failed to apply automatic awards');
-      }
       const created = data.created ?? 0;
       const removed = data.removed ?? 0;
       if (created === 0) {
@@ -509,17 +372,16 @@ export default function AwardsTab() {
         );
       }
       setShowAutomaticModal(false);
-      await fetchEventAwards();
+      setAutomaticForm(null);
     } catch (err) {
       toast.error(
         err instanceof Error ? err.message : 'Failed to apply automatic awards',
       );
-    } finally {
-      setApplyingAutomatic(false);
     }
   };
 
   const handleDeleteAward = async (a: EventAward) => {
+    if (!user || !selectedEventId) return;
     const ok = await confirm({
       title: 'Delete Award',
       message: `Delete award "${a.name}" and all its recipients?`,
@@ -528,13 +390,12 @@ export default function AwardsTab() {
     });
     if (!ok) return;
     try {
-      const res = await fetch(`/awards/event-awards/${a.id}`, {
-        method: 'DELETE',
-        credentials: 'include',
+      await removeAward.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        awardId: a.id,
       });
-      if (!res.ok) throw new Error('Failed to delete');
       toast.success('Award deleted');
-      await fetchEventAwards();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete');
     }
@@ -545,77 +406,63 @@ export default function AwardsTab() {
     direction: -1 | 1,
     group: EventAward[],
   ) => {
+    if (!user || !selectedEventId) return;
     const idx = group.findIndex((a) => a.id === award.id);
     const swapIdx = idx + direction;
     if (idx < 0 || swapIdx < 0 || swapIdx >= group.length) return;
-
     const other = group[swapIdx];
-    try {
-      await Promise.all([
-        fetch(`/awards/event-awards/${award.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ sort_order: other.sort_order }),
-        }),
-        fetch(`/awards/event-awards/${other.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ sort_order: award.sort_order }),
-        }),
-      ]);
-      await fetchEventAwards();
-    } catch {
-      toast.error('Failed to reorder');
+    const results = await reorder.mutateAsync({
+      userId: user.id,
+      eventId: selectedEventId,
+      updates: [
+        { awardId: award.id, sort_order: other.sort_order },
+        { awardId: other.id, sort_order: award.sort_order },
+      ],
+    });
+    const failures = results.filter((row) => !row.ok);
+    if (failures.length > 0) {
+      toast.error(
+        failures.length === results.length
+          ? 'Failed to reorder'
+          : `Reordered with ${failures.length} failure(s)`,
+      );
     }
   };
 
-  // ── Recipients ──
-
   const handleRemoveRecipient = async (awardId: number, teamId: number) => {
+    if (!user || !selectedEventId) return;
     try {
-      const res = await fetch(
-        `/awards/event-awards/${awardId}/recipients/${teamId}`,
-        { method: 'DELETE', credentials: 'include' },
-      );
-      if (!res.ok) throw new Error('Failed to remove');
+      await removeRecipient.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        awardId,
+        teamId,
+      });
       toast.success('Recipient removed');
-      await fetchEventAwards();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to remove');
     }
   };
 
   const handleAddIndividualRecipient = async (awardId: number) => {
+    if (!user || !selectedEventId) return;
     const trimmedName = individualName.trim();
     if (!trimmedName) {
       toast.error('Name is required');
       return;
     }
     try {
-      const body: { name: string; team_id?: number } = { name: trimmedName };
-      if (individualTeamId) {
-        body.team_id = Number(individualTeamId);
-      }
-      const res = await fetch(
-        `/awards/event-awards/${awardId}/individual-recipients`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        },
-      );
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
-      }
+      await addIndividual.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        awardId,
+        name: trimmedName,
+        teamId: individualTeamId ? Number(individualTeamId) : undefined,
+      });
       toast.success('Individual added');
       setIndividualName('');
       setIndividualTeamId('');
       setAddingIndividualForAwardId(null);
-      await fetchEventAwards();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to add');
     }
@@ -625,18 +472,23 @@ export default function AwardsTab() {
     awardId: number,
     recipientId: number,
   ) => {
+    if (!user || !selectedEventId) return;
     try {
-      const res = await fetch(
-        `/awards/event-awards/${awardId}/individual-recipients/${recipientId}`,
-        { method: 'DELETE', credentials: 'include' },
-      );
-      if (!res.ok) throw new Error('Failed to remove');
+      await removeIndividual.mutateAsync({
+        userId: user.id,
+        eventId: selectedEventId,
+        awardId,
+        recipientId,
+      });
       toast.success('Individual removed');
-      await fetchEventAwards();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to remove');
     }
   };
+
+  const applyingAutomatic = applyAutomatic.isPending;
+  const savingTemplate = saveTemplate.isPending;
+  const savingAward = saveAward.isPending;
 
   // ── Render ──
 
@@ -922,6 +774,7 @@ export default function AwardsTab() {
 
   return (
     <div className="awards-tab">
+      {errorQuery ? <QueryFeedback query={errorQuery} /> : null}
       {loading && <p style={{ color: 'var(--secondary-color)' }}>Loading...</p>}
 
       {/* Section A: Event awards */}
@@ -1142,6 +995,7 @@ export default function AwardsTab() {
             </p>
 
             {(() => {
+              const form = automaticForm ?? DEFAULT_AUTOMATIC_AWARD_SETTINGS;
               const maxN = automaticPreview?.teamCount ?? teams.length;
               const options = Array.from({ length: maxN + 1 }, (_, i) => i);
               const selectStyle = { maxWidth: '12rem' } as const;
@@ -1181,7 +1035,7 @@ export default function AwardsTab() {
                       id="auto-de-top-n"
                       className="field-input"
                       style={selectStyle}
-                      value={automaticForm.de_top_n}
+                      value={form.de_top_n}
                       disabled={loadingAutomaticPreview && !automaticPreview}
                       onChange={(e) =>
                         handleAutomaticFormChange(
@@ -1200,7 +1054,7 @@ export default function AwardsTab() {
                   {typeSelect(
                     'auto-de-award-type',
                     'de_award_type',
-                    automaticForm.de_award_type,
+                    form.de_award_type,
                   )}
                   <div className="form-group">
                     <label htmlFor="auto-bracket-top-n">
@@ -1210,7 +1064,7 @@ export default function AwardsTab() {
                       id="auto-bracket-top-n"
                       className="field-input"
                       style={selectStyle}
-                      value={automaticForm.per_bracket_overall_top_n}
+                      value={form.per_bracket_overall_top_n}
                       disabled={loadingAutomaticPreview && !automaticPreview}
                       onChange={(e) =>
                         handleAutomaticFormChange(
@@ -1239,7 +1093,7 @@ export default function AwardsTab() {
                   {typeSelect(
                     'auto-bracket-award-type',
                     'per_bracket_overall_award_type',
-                    automaticForm.per_bracket_overall_award_type,
+                    form.per_bracket_overall_award_type,
                   )}
                   <div className="form-group">
                     <label htmlFor="auto-seeding-top-n">
@@ -1249,7 +1103,7 @@ export default function AwardsTab() {
                       id="auto-seeding-top-n"
                       className="field-input"
                       style={selectStyle}
-                      value={automaticForm.seeding_top_n}
+                      value={form.seeding_top_n}
                       disabled={loadingAutomaticPreview && !automaticPreview}
                       onChange={(e) =>
                         handleAutomaticFormChange(
@@ -1268,7 +1122,7 @@ export default function AwardsTab() {
                   {typeSelect(
                     'auto-seeding-award-type',
                     'seeding_award_type',
-                    automaticForm.seeding_award_type,
+                    form.seeding_award_type,
                   )}
                 </>
               );
@@ -1652,7 +1506,6 @@ export default function AwardsTab() {
             (r) => r.team_id,
           )}
           onClose={() => setRecipientModalAward(null)}
-          onAdded={fetchEventAwards}
           onError={(msg) => toast.error(msg)}
           onSuccess={(msg) => toast.success(msg)}
         />

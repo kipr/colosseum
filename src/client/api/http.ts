@@ -112,6 +112,8 @@ async function fetchWithDefaults(
   try {
     return await fetch(url, {
       ...options,
+      // Query staleTime is the freshness policy; do not let HTTP caches hide writes.
+      cache: options.cache ?? 'no-store',
       credentials: options.credentials ?? 'include',
       headers: headersWithDefaults(options.headers),
     });

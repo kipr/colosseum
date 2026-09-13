@@ -1,69 +1,51 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '../Toast';
+import { useQuery } from '@tanstack/react-query';
+import { useAuth } from '../../contexts/AuthContext';
 import { useEvent } from '../../contexts/EventContext';
-import type {
-  Team,
-  SeedingScore,
-  SeedingRanking,
-} from '../seeding/SeedingScoresTable';
+import { teamsQueryOptions } from '../../queries/teams';
+import {
+  seedingRankingsQueryOptions,
+  seedingScoresQueryOptions,
+} from '../../queries/seeding';
+import QueryFeedback, { queryData } from '../QueryFeedback';
+import type { Team } from '../../api/teams';
+import type { SeedingRanking, SeedingScore } from '../../api/seeding';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 
+const EMPTY_TEAMS: Team[] = [];
+const EMPTY_SCORES: SeedingScore[] = [];
+const EMPTY_RANKINGS: SeedingRanking[] = [];
+
 export default function SeedingTab() {
   const { selectedEvent } = useEvent();
+  const { user, loading: authLoading } = useAuth();
   const selectedEventId = selectedEvent?.id ?? null;
-  const seedingRounds = selectedEvent?.seeding_rounds ?? 3;
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [scores, setScores] = useState<SeedingScore[]>([]);
-  const [rankings, setRankings] = useState<SeedingRanking[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const toast = useToast();
-
-  const effectiveRounds = seedingRounds > 0 ? seedingRounds : 3;
-
-  const loadData = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      setScores([]);
-      setRankings([]);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [teamsRes, scoresRes, rankingsRes] = await Promise.all([
-        fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
-        fetch(`/seeding/scores/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-        fetch(`/seeding/rankings/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-      ]);
-
-      if (!teamsRes.ok) throw new Error('Failed to fetch teams');
-      if (!scoresRes.ok) throw new Error('Failed to fetch seeding scores');
-      if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
-
-      const teamsData: Team[] = await teamsRes.json();
-      const scoresData: SeedingScore[] = await scoresRes.json();
-      const rankingsData: SeedingRanking[] = await rankingsRes.json();
-
-      setTeams(teamsData);
-      setScores(scoresData);
-      setRankings(rankingsData);
-    } catch (error) {
-      console.error('Error loading seeding data:', error);
-      toast.error('Failed to load seeding data');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  const userId = user?.id ?? 0;
+  const enabled = Boolean(user && !authLoading && selectedEventId);
+  const teamsQuery = useQuery({
+    ...teamsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const scoresQuery = useQuery({
+    ...seedingScoresQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const rankingsQuery = useQuery({
+    ...seedingRankingsQueryOptions(userId, selectedEventId ?? 0),
+    enabled,
+  });
+  const teams = queryData(teamsQuery) ?? EMPTY_TEAMS;
+  const scores = queryData(scoresQuery) ?? EMPTY_SCORES;
+  const rankings = queryData(rankingsQuery) ?? EMPTY_RANKINGS;
+  const loading =
+    teamsQuery.isLoading || scoresQuery.isLoading || rankingsQuery.isLoading;
+  const errorQuery = [teamsQuery, scoresQuery, rankingsQuery].find(
+    (query) => query.isError,
+  );
+  const effectiveRounds =
+    (selectedEvent?.seeding_rounds ?? 0) > 0
+      ? (selectedEvent?.seeding_rounds ?? 3)
+      : 3;
 
   if (!selectedEventId) {
     return (
@@ -79,6 +61,7 @@ export default function SeedingTab() {
 
   return (
     <div className="seeding-tab">
+      {errorQuery ? <QueryFeedback query={errorQuery} /> : null}
       {loading ? (
         <p>Loading seeding data...</p>
       ) : teams.length === 0 ? (
@@ -95,8 +78,6 @@ export default function SeedingTab() {
           effectiveRounds={effectiveRounds}
         />
       )}
-
-      {toast.ToastContainer}
     </div>
   );
 }

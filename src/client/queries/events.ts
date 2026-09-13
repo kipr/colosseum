@@ -1,6 +1,17 @@
-import { saveEvent, deleteEvent } from '../api/events';
+import {
+  saveEvent,
+  deleteEvent,
+  getOverallScores,
+  getPublicOverallScores,
+} from '../api/events';
 import type { Event } from '../utils/eventStatus';
-import { adminEventKey, publicTemplatesKey, templatesKey } from './keys';
+import {
+  adminEventKey,
+  overallKey,
+  publicEventKey,
+  publicTemplatesKey,
+  templatesKey,
+} from './keys';
 import {
   ADMIN_ONLY_QUERY_META,
   canUpdateUserCache,
@@ -13,10 +24,14 @@ import {
 } from '@tanstack/react-query';
 import { getEvents, getPublicEvents } from '../api/events';
 import { adminEventsKey, publicEventsKey } from './keys';
-import { QUERY_GC_TIME_MS } from './queryClient';
+import {
+  QUERY_GC_TIME_MS,
+  LIST_STALE_TIME_MS,
+  RESULT_STALE_TIME_MS,
+} from './queryClient';
 
-export const PUBLIC_EVENTS_STALE_TIME_MS = 30_000;
-export const ADMIN_EVENTS_STALE_TIME_MS = 30_000;
+export const PUBLIC_EVENTS_STALE_TIME_MS = LIST_STALE_TIME_MS;
+export const ADMIN_EVENTS_STALE_TIME_MS = LIST_STALE_TIME_MS;
 
 export function publicEventsQueryOptions() {
   return queryOptions({
@@ -32,6 +47,22 @@ export function adminEventsQueryOptions(userId: number | string) {
     queryFn: ({ signal }) => getEvents({ signal }),
     staleTime: ADMIN_EVENTS_STALE_TIME_MS,
     gcTime: QUERY_GC_TIME_MS,
+  });
+}
+
+export function overallQueryOptions(userId: number, eventId: number) {
+  return queryOptions({
+    queryKey: overallKey(userId, eventId),
+    queryFn: ({ signal }) => getOverallScores(eventId, signal),
+    staleTime: RESULT_STALE_TIME_MS,
+  });
+}
+
+export function publicOverallQueryOptions(eventId: number) {
+  return queryOptions({
+    queryKey: [...publicEventKey(eventId), 'overall'],
+    queryFn: ({ signal }) => getPublicOverallScores(eventId, signal),
+    staleTime: RESULT_STALE_TIME_MS,
   });
 }
 
@@ -57,10 +88,14 @@ export function useEventMutations() {
           ? events.map((old) => (old.id === event.id ? event : old))
           : [event, ...events],
       );
-      if (eventId != null)
+      if (eventId != null) {
         void client.invalidateQueries({
           queryKey: adminEventKey(userId, eventId),
         });
+        void client.invalidateQueries({
+          queryKey: publicEventKey(eventId),
+        });
+      }
       void refresh(userId);
     },
   });
@@ -73,6 +108,8 @@ export function useEventMutations() {
       await client.cancelQueries({ queryKey: adminEventsKey(userId) });
       await client.cancelQueries({ queryKey: adminEventKey(userId, eventId) });
       client.removeQueries({ queryKey: adminEventKey(userId, eventId) });
+      await client.cancelQueries({ queryKey: publicEventKey(eventId) });
+      client.removeQueries({ queryKey: publicEventKey(eventId) });
       const templateList = [...templatesKey(userId), { eventId }];
       await client.cancelQueries({ queryKey: templateList });
       client.removeQueries({ queryKey: templateList });

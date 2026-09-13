@@ -1,4 +1,5 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import SeedingDisplay from '../components/seeding/SeedingDisplay';
@@ -17,16 +18,7 @@ import type {
   SeedingScore,
   SeedingRanking,
 } from '../components/seeding/SeedingScoresTable';
-import type {
-  Bracket,
-  BracketGame,
-  BracketEntryWithRank,
-  BracketSide,
-} from '../types/brackets';
-import type {
-  DocCategoryDisplay,
-  DocScoreDisplay,
-} from '../components/documentation/DocumentationScoresDisplay';
+import type { Bracket, BracketGame, BracketSide } from '../types/brackets';
 import type { OverallRow } from '../components/overall/OverallScoresDisplay';
 import {
   formatEventDate,
@@ -45,23 +37,35 @@ import {
 import '../components/bracket/BracketDisplay.css';
 import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
-  type AutomaticAwardsPublic,
 } from '../components/spectator/SpectatorAutomaticAwards';
 import './SpectatorShared.css';
 import './Spectator.css';
 import './SpectatorTableLayout.css';
 import { UnifiedTableScrollAffordanceProvider } from '../components/table';
-
-interface PublicEvent {
-  id: number;
-  name: string;
-  status: string;
-  event_date: string | null;
-  location: string | null;
-  seeding_rounds: number;
-  double_seeding_rounds: number;
-  final_scores_available: boolean;
-}
+import type { PublicEvent } from '../api/types';
+import type { PublicManualAward } from '../api/awards';
+import {
+  publicEventsQueryOptions,
+  publicOverallQueryOptions,
+} from '../queries/events';
+import { publicTeamsQueryOptions } from '../queries/teams';
+import {
+  publicSeedingRankingsQueryOptions,
+  publicSeedingScoresQueryOptions,
+} from '../queries/seeding';
+import {
+  publicDoubleSeedingRankingsQueryOptions,
+  publicDoubleSeedingScoresQueryOptions,
+} from '../queries/doubleSeeding';
+import {
+  publicBracketQueryOptions,
+  publicBracketRankingsQueryOptions,
+  publicBracketsQueryOptions,
+} from '../queries/brackets';
+import { publicDocumentationQueryOptions } from '../queries/documentation';
+import { publicAwardsQueryOptions } from '../queries/awards';
+import { removeRestrictedPublicResults } from '../queries/invalidation';
+import { queryData } from '../components/QueryFeedback';
 
 type EffectiveTab =
   | 'seeding'
@@ -72,82 +76,25 @@ type EffectiveTab =
   | 'bracketRankings'
   | 'overall';
 
+const EMPTY_EVENTS: PublicEvent[] = [];
+const EMPTY_TEAMS: Team[] = [];
+const EMPTY_SCORES: SeedingScore[] = [];
+const EMPTY_RANKINGS: SeedingRanking[] = [];
+const EMPTY_DS_SCORES: DoubleSeedingScore[] = [];
+const EMPTY_DS_RANKINGS: DoubleSeedingRanking[] = [];
+const EMPTY_BRACKETS: Bracket[] = [];
+const EMPTY_GAMES: BracketGame[] = [];
+const EMPTY_OVERALL: OverallRow[] = [];
+const EMPTY_MANUAL_AWARDS: PublicManualAward[] = [];
+
 export default function Spectator() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { eventId: eventIdParam, bracketId: bracketIdParam } = useParams<{
     eventId?: string;
     bracketId?: string;
   }>();
   const [searchParams, setSearchParams] = useSearchParams();
-
-  const [events, setEvents] = useState<PublicEvent[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
-
-  // Seeding state
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [scores, setScores] = useState<SeedingScore[]>([]);
-  const [rankings, setRankings] = useState<SeedingRanking[]>([]);
-  const [seedingLoading, setSeedingLoading] = useState(false);
-
-  // Double-seeding state (lazy-loaded)
-  const [doubleSeedingScores, setDoubleSeedingScores] = useState<
-    DoubleSeedingScore[]
-  >([]);
-  const [doubleSeedingRankings, setDoubleSeedingRankings] = useState<
-    DoubleSeedingRanking[]
-  >([]);
-  const [doubleSeedingLoading, setDoubleSeedingLoading] = useState(false);
-  const [doubleSeedingLoaded, setDoubleSeedingLoaded] = useState(false);
-
-  // Bracket state
-  const [brackets, setBrackets] = useState<Bracket[]>([]);
-  const [bracketGames, setBracketGames] = useState<BracketGame[]>([]);
-  const [bracketLoading, setBracketLoading] = useState(false);
-
-  // Documentation state (lazy-loaded)
-  const [docCategories, setDocCategories] = useState<DocCategoryDisplay[]>([]);
-  const [docScores, setDocScores] = useState<DocScoreDisplay[]>([]);
-  const [docLoading, setDocLoading] = useState(false);
-  const [docLoaded, setDocLoaded] = useState(false);
-
-  // Bracket rankings state (lazy-loaded)
-  const [bracketRankings, setBracketRankings] = useState<
-    BracketEntryWithRank[] | null
-  >(null);
-  const [bracketRankingsWeight, setBracketRankingsWeight] = useState(1);
-  const [bracketRankingsLoading, setBracketRankingsLoading] = useState(false);
-  const [bracketRankingsLoadedForId, setBracketRankingsLoadedForId] = useState<
-    number | null
-  >(null);
-
-  // Awards state (lazy-loaded)
-  interface PublicIndividualRecipient {
-    name: string;
-    team_number: number | null;
-    team_name: string | null;
-    display_name: string | null;
-  }
-  interface PublicManualAward {
-    name: string;
-    description: string | null;
-    sort_order: number;
-    recipients: {
-      team_number: number;
-      team_name: string;
-      display_name?: string | null;
-    }[];
-    individual_recipients: PublicIndividualRecipient[];
-  }
-  const [manualAwards, setManualAwards] = useState<PublicManualAward[]>([]);
-  const [automaticAwards, setAutomaticAwards] =
-    useState<AutomaticAwardsPublic | null>(null);
-  const [awardsLoading, setAwardsLoading] = useState(false);
-  const [awardsLoaded, setAwardsLoaded] = useState(false);
-
-  // Overall state (lazy-loaded)
-  const [overallRows, setOverallRows] = useState<OverallRow[]>([]);
-  const [overallLoading, setOverallLoading] = useState(false);
-  const [overallLoaded, setOverallLoaded] = useState(false);
 
   const selectedEventId = eventIdParam ? Number(eventIdParam) : null;
   const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
@@ -182,6 +129,10 @@ export default function Spectator() {
     return 'seeding';
   }, [bracketIdParam, viewParam]);
 
+  const eventsQuery = useQuery(publicEventsQueryOptions());
+  const events = eventsQuery.data ?? EMPTY_EVENTS;
+  const eventsLoading = eventsQuery.isLoading;
+
   const selectedEvent = useMemo(
     () => events.find((e) => e.id === selectedEventId) ?? null,
     [events, selectedEventId],
@@ -199,6 +150,14 @@ export default function Spectator() {
 
   const doubleSeedingRounds = selectedEvent?.double_seeding_rounds ?? 0;
   const doubleSeedingAvailable = doubleSeedingRounds > 0;
+  const eventReady = Boolean(selectedEventId && selectedEvent);
+  const restrictedEnabled = eventReady && finalScoresAvailable;
+
+  useEffect(() => {
+    if (selectedEvent && !selectedEvent.final_scores_available) {
+      void removeRestrictedPublicResults(queryClient, selectedEvent.id);
+    }
+  }, [queryClient, selectedEvent]);
 
   useEffect(() => {
     if (
@@ -219,251 +178,113 @@ export default function Spectator() {
     selectedEventId,
   ]);
 
-  // If no eventId in URL, redirect to event selection page
   useEffect(() => {
     if (!eventIdParam) {
       navigate('/spectator', { replace: true });
     }
   }, [eventIdParam, navigate]);
 
-  // Load public events list (for the selected event metadata)
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/events/public');
-        if (!res.ok) throw new Error('Failed to fetch events');
-        const data: PublicEvent[] = await res.json();
-        setEvents(data);
-      } catch (error) {
-        console.error('Error loading events:', error);
-      } finally {
-        setEventsLoading(false);
-      }
-    })();
-  }, []);
-
-  // Redirect to /spectator if eventId is invalid after events load
-  useEffect(() => {
-    if (eventsLoading || !eventIdParam || events.length === 0) return;
+    if (!eventsQuery.isSuccess || !eventIdParam || events.length === 0) return;
     const exists = events.find((e) => e.id === Number(eventIdParam));
     if (!exists) {
       navigate('/spectator', { replace: true });
     }
-  }, [eventsLoading, eventIdParam, events, navigate]);
+  }, [eventsQuery.isSuccess, eventIdParam, events, navigate]);
 
-  // Clear lazy-loaded state when event changes
-  useEffect(() => {
-    setDoubleSeedingLoaded(false);
-    setDoubleSeedingScores([]);
-    setDoubleSeedingRankings([]);
-    setDocLoaded(false);
-    setDocCategories([]);
-    setDocScores([]);
-    setOverallLoaded(false);
-    setOverallRows([]);
-    setAwardsLoaded(false);
-    setManualAwards([]);
-    setAutomaticAwards(null);
-    setBracketRankings(null);
-    setBracketRankingsLoadedForId(null);
-  }, [selectedEventId]);
+  const teamsQuery = useQuery({
+    ...publicTeamsQueryOptions(selectedEventId ?? 0),
+    enabled: eventReady,
+  });
+  const seedingScoresQuery = useQuery({
+    ...publicSeedingScoresQueryOptions(selectedEventId ?? 0),
+    enabled: eventReady,
+  });
+  const seedingRankingsQuery = useQuery({
+    ...publicSeedingRankingsQueryOptions(selectedEventId ?? 0),
+    enabled: eventReady,
+  });
+  const teams = queryData(teamsQuery) ?? EMPTY_TEAMS;
+  const scores = queryData(seedingScoresQuery) ?? EMPTY_SCORES;
+  const rankings = queryData(seedingRankingsQuery) ?? EMPTY_RANKINGS;
+  const seedingLoading =
+    teamsQuery.isLoading ||
+    seedingScoresQuery.isLoading ||
+    seedingRankingsQuery.isLoading;
 
-  // Load seeding data when event changes
-  const loadSeeding = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      setScores([]);
-      setRankings([]);
-      return;
-    }
-    setSeedingLoading(true);
-    try {
-      const [teamsRes, scoresRes, rankingsRes] = await Promise.all([
-        fetch(`/teams/event/${selectedEventId}`),
-        fetch(`/seeding/scores/event/${selectedEventId}`),
-        fetch(`/seeding/rankings/event/${selectedEventId}`),
-      ]);
-      if (!teamsRes.ok || !scoresRes.ok || !rankingsRes.ok) {
-        throw new Error('Failed to fetch seeding data');
-      }
-      setTeams(await teamsRes.json());
-      setScores(await scoresRes.json());
-      setRankings(await rankingsRes.json());
-    } catch (error) {
-      console.error('Error loading seeding data:', error);
-    } finally {
-      setSeedingLoading(false);
-    }
-  }, [selectedEventId]);
+  const dsEnabled =
+    eventReady && activeTab === 'double-seeding' && doubleSeedingAvailable;
+  const dsScoresQuery = useQuery({
+    ...publicDoubleSeedingScoresQueryOptions(selectedEventId ?? 0),
+    enabled: dsEnabled,
+  });
+  const dsRankingsQuery = useQuery({
+    ...publicDoubleSeedingRankingsQueryOptions(selectedEventId ?? 0),
+    enabled: dsEnabled,
+  });
+  const doubleSeedingScores = queryData(dsScoresQuery) ?? EMPTY_DS_SCORES;
+  const doubleSeedingRankings = queryData(dsRankingsQuery) ?? EMPTY_DS_RANKINGS;
+  const doubleSeedingLoading =
+    dsScoresQuery.isLoading || dsRankingsQuery.isLoading;
 
-  useEffect(() => {
-    loadSeeding();
-  }, [loadSeeding]);
+  const bracketsQuery = useQuery({
+    ...publicBracketsQueryOptions(selectedEventId ?? 0),
+    enabled: eventReady,
+  });
+  const brackets = queryData(bracketsQuery) ?? EMPTY_BRACKETS;
+  const bracketDetailQuery = useQuery({
+    ...publicBracketQueryOptions(selectedEventId ?? 0, selectedBracketId ?? 0),
+    enabled: eventReady && selectedBracketId != null,
+  });
+  const bracketGames = queryData(bracketDetailQuery)?.games ?? EMPTY_GAMES;
+  const bracketLoading = bracketDetailQuery.isLoading;
 
-  // Lazy-load double-seeding data when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'double-seeding' ||
-      !selectedEventId ||
-      doubleSeedingLoaded
-    )
-      return;
-    setDoubleSeedingLoading(true);
-    Promise.all([
-      fetch(`/double-seeding/scores/event/${selectedEventId}`),
-      fetch(`/double-seeding/rankings/event/${selectedEventId}`),
-    ])
-      .then(async ([scoresRes, rankingsRes]) => {
-        if (!scoresRes.ok || !rankingsRes.ok) throw new Error('Failed');
-        setDoubleSeedingScores(await scoresRes.json());
-        setDoubleSeedingRankings(await rankingsRes.json());
-        setDoubleSeedingLoaded(true);
-      })
-      .catch((err) => console.error('Error loading double-seeding data:', err))
-      .finally(() => setDoubleSeedingLoading(false));
-  }, [activeTab, selectedEventId, doubleSeedingLoaded]);
+  const docsQuery = useQuery({
+    ...publicDocumentationQueryOptions(selectedEventId ?? 0),
+    enabled: restrictedEnabled && activeTab === 'documentation',
+  });
+  const docCategories = restrictedEnabled
+    ? (queryData(docsQuery)?.categories ?? [])
+    : [];
+  const docScores = restrictedEnabled
+    ? (queryData(docsQuery)?.scores ?? [])
+    : [];
+  const docLoading = docsQuery.isLoading;
 
-  // Load brackets list when event changes
-  useEffect(() => {
-    if (!selectedEventId) {
-      setBrackets([]);
-      return;
-    }
-    (async () => {
-      try {
-        const res = await fetch(`/brackets/event/${selectedEventId}`);
-        if (!res.ok) throw new Error('Failed to fetch brackets');
-        const data: Bracket[] = await res.json();
-        setBrackets(data);
-      } catch (error) {
-        console.error('Error loading brackets:', error);
-      }
-    })();
-  }, [selectedEventId]);
+  const awardsQuery = useQuery({
+    ...publicAwardsQueryOptions(selectedEventId ?? 0),
+    enabled: restrictedEnabled && activeTab === 'awards',
+  });
+  const publicAwards = restrictedEnabled ? queryData(awardsQuery) : undefined;
+  const manualAwards = publicAwards?.manual ?? EMPTY_MANUAL_AWARDS;
+  const automaticAwards = publicAwards?.automatic ?? null;
+  const awardsLoading = awardsQuery.isLoading;
 
-  // Load bracket games when selected bracket changes
-  const loadBracketGames = useCallback(async () => {
-    if (!selectedBracketId) {
-      setBracketGames([]);
-      return;
-    }
-    setBracketLoading(true);
-    try {
-      const res = await fetch(`/brackets/${selectedBracketId}`);
-      if (!res.ok) throw new Error('Failed to fetch bracket');
-      const data = await res.json();
-      setBracketGames(data.games ?? []);
-    } catch (error) {
-      console.error('Error loading bracket games:', error);
-    } finally {
-      setBracketLoading(false);
-    }
-  }, [selectedBracketId]);
+  const bracketRankingsQuery = useQuery({
+    ...publicBracketRankingsQueryOptions(
+      selectedEventId ?? 0,
+      selectedBracketId ?? 0,
+    ),
+    enabled:
+      restrictedEnabled &&
+      activeTab === 'bracketRankings' &&
+      selectedBracketId != null,
+  });
+  const bracketRankingsData = restrictedEnabled
+    ? queryData(bracketRankingsQuery)
+    : undefined;
+  const bracketRankings = bracketRankingsData?.entries ?? null;
+  const bracketRankingsWeight = bracketRankingsData?.weight ?? 1;
+  const bracketRankingsLoading = bracketRankingsQuery.isLoading;
 
-  useEffect(() => {
-    loadBracketGames();
-  }, [loadBracketGames]);
-
-  // Lazy-load documentation scores when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'documentation' ||
-      !selectedEventId ||
-      !finalScoresAvailable ||
-      docLoaded
-    )
-      return;
-    setDocLoading(true);
-    fetch(`/documentation-scores/event/${selectedEventId}/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        setDocCategories(data.categories);
-        setDocScores(data.scores);
-        setDocLoaded(true);
-      })
-      .catch((err) => console.error('Error loading documentation scores:', err))
-      .finally(() => setDocLoading(false));
-  }, [activeTab, selectedEventId, finalScoresAvailable, docLoaded]);
-
-  // Lazy-load awards when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'awards' ||
-      !selectedEventId ||
-      !finalScoresAvailable ||
-      awardsLoaded
-    )
-      return;
-    setAwardsLoading(true);
-    fetch(`/awards/event/${selectedEventId}/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data: {
-          manual: PublicManualAward[];
-          automatic: AutomaticAwardsPublic;
-        } = await res.json();
-        setManualAwards(
-          (data.manual ?? []).map((award) => ({
-            ...award,
-            recipients: award.recipients ?? [],
-            individual_recipients: award.individual_recipients ?? [],
-          })),
-        );
-        setAutomaticAwards(data.automatic ?? null);
-        setAwardsLoaded(true);
-      })
-      .catch((err) => console.error('Error loading awards:', err))
-      .finally(() => setAwardsLoading(false));
-  }, [activeTab, selectedEventId, finalScoresAvailable, awardsLoaded]);
-
-  // Lazy-load bracket rankings when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'bracketRankings' ||
-      !selectedBracketId ||
-      !finalScoresAvailable ||
-      bracketRankingsLoadedForId === selectedBracketId
-    )
-      return;
-    setBracketRankingsLoading(true);
-    fetch(`/brackets/${selectedBracketId}/rankings/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        setBracketRankings(data.entries);
-        setBracketRankingsWeight(data.weight);
-        setBracketRankingsLoadedForId(selectedBracketId);
-      })
-      .catch((err) => console.error('Error loading bracket rankings:', err))
-      .finally(() => setBracketRankingsLoading(false));
-  }, [
-    activeTab,
-    selectedBracketId,
-    finalScoresAvailable,
-    bracketRankingsLoadedForId,
-  ]);
-
-  // Lazy-load overall scores when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'overall' ||
-      !selectedEventId ||
-      !finalScoresAvailable ||
-      overallLoaded
-    )
-      return;
-    setOverallLoading(true);
-    fetch(`/events/${selectedEventId}/overall/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        setOverallRows(data);
-        setOverallLoaded(true);
-      })
-      .catch((err) => console.error('Error loading overall scores:', err))
-      .finally(() => setOverallLoading(false));
-  }, [activeTab, selectedEventId, finalScoresAvailable, overallLoaded]);
+  const overallQuery = useQuery({
+    ...publicOverallQueryOptions(selectedEventId ?? 0),
+    enabled: restrictedEnabled && activeTab === 'overall',
+  });
+  const overallRows = restrictedEnabled
+    ? (queryData(overallQuery) ?? EMPTY_OVERALL)
+    : EMPTY_OVERALL;
+  const overallLoading = overallQuery.isLoading;
 
   const navigateToTab = useCallback(
     (tab: EffectiveTab) => {
