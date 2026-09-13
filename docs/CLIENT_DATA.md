@@ -46,22 +46,32 @@ so an evicted cache stays gone.
 
 ## Freshness and polling
 
-Defaults are in [`createQueryClient`](../src/client/queries/queryClient.ts):
-`staleTime: 0`, `gcTime` 5 minutes, refetch on mount/focus/reconnect, no
-interval polling, no background-tab intervals, two retries with exponential
-backoff for transport and 5xx/429.
+[`createQueryClient`](../src/client/queries/queryClient.ts) inherits Query's
+documented defaults: `staleTime: 0`, `gcTime` 5 minutes, refetch on
+mount/focus/reconnect, no interval polling, and no background-tab intervals.
+It only overrides retry policy and mutation `networkMode: 'always'`. Ordinary
+reads retry twice with 2x backoff (1s base, 30s cap) for transport failures,
+selected 5xx, and 429 when `Retry-After` is present. Authorization,
+validation, missing-resource, parse, and cancel errors are not retried.
+Mutations retry zero times.
+
+The session lookup in [`auth.ts`](../src/client/queries/auth.ts) uses the same
+error classification but retries up to ten times with 1.5x backoff capped at
+5s so a backend restart during startup can recover. Rate-limited 429s still
+stop after the ordinary two retries. That query also sets
+`networkMode: 'always'` so it is not paused when the browser reports offline.
 
 | Policy               | Value                    | Used for                                                                                                                                                                                             |
 | -------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Default `staleTime`  | 0                        | Derived results, audit, chat latest, and anything without an override. Other browsers still write; spectator results have no interval polling. Do not raise this because local mutations invalidate. |
+| Default `staleTime`  | 0 (Query default)        | Derived results, audit, chat latest, and anything without an override. Other browsers still write; spectator results have no interval polling. Do not raise this because local mutations invalidate. |
 | `LIST_STALE_TIME_MS` | 30s                      | Event/team/template/bracket/award/documentation lists and metadata                                                                                                                                   |
 | `LIVE_QUERY`         | 10s interval             | Scoring inboxes, admin/judge queues, judge game options                                                                                                                                              |
 | Admin users          | 30s interval             | [`adminUsersQueryOptions`](../src/client/queries/admins.ts)                                                                                                                                          |
 | Chat                 | 3s active / 15s inactive | Latest messages and admin conversation summaries. Older pages do not poll.                                                                                                                           |
 
-`refetchIntervalInBackground` stays false. Hidden-tab pauses are interval
-polling only; in-flight requests are not cancelled by hiding the tab. Focus and
-reconnect still refetch stale queries.
+`refetchIntervalInBackground` stays false (Query default). Hidden-tab pauses
+are interval polling only; in-flight requests are not cancelled by hiding the
+tab. Focus and reconnect still refetch stale queries.
 
 ## Invalidation
 

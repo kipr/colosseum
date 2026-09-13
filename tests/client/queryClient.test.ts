@@ -6,11 +6,11 @@ import {
   requestJson,
 } from '../../src/client/api/http';
 import {
-  QUERY_GC_TIME_MS,
   QUERY_RETRY_LIMIT,
   QUERY_RETRY_MAX_DELAY_MS,
   createQueryClient,
   getQueryRetryDelay,
+  isRetryableQueryError,
   shouldRetryQuery,
 } from '../../src/client/queries/queryClient';
 
@@ -26,6 +26,55 @@ function jsonError(status: number, retryAfter?: string): Response {
   }
   return new Response(JSON.stringify({ error: 'failed' }), { status, headers });
 }
+
+describe('isRetryableQueryError', () => {
+  it('classifies transport failures and selected 5xx as retryable', () => {
+    expect(isRetryableQueryError(new TypeError('Failed to fetch'))).toBe(true);
+    expect(isRetryableQueryError(new ApiError('x', { status: 500 }))).toBe(
+      true,
+    );
+    expect(isRetryableQueryError(new ApiError('x', { status: 502 }))).toBe(
+      true,
+    );
+    expect(isRetryableQueryError(new ApiError('x', { status: 503 }))).toBe(
+      true,
+    );
+    expect(isRetryableQueryError(new ApiError('x', { status: 504 }))).toBe(
+      true,
+    );
+  });
+
+  it('rejects cancellation, parse failures, and ordinary 4xx errors', () => {
+    expect(
+      isRetryableQueryError(new DOMException('aborted', 'AbortError')),
+    ).toBe(false);
+    expect(isRetryableQueryError(new CancelledError())).toBe(false);
+    expect(isRetryableQueryError(new ApiParseError())).toBe(false);
+    expect(isRetryableQueryError(new ApiError('nope', { status: 400 }))).toBe(
+      false,
+    );
+    expect(isRetryableQueryError(new ApiError('nope', { status: 401 }))).toBe(
+      false,
+    );
+    expect(isRetryableQueryError(new ApiError('nope', { status: 403 }))).toBe(
+      false,
+    );
+    expect(isRetryableQueryError(new ApiError('nope', { status: 404 }))).toBe(
+      false,
+    );
+  });
+
+  it('retries 429 only when Retry-After is present', () => {
+    expect(
+      isRetryableQueryError(new ApiError('limited', { status: 429 })),
+    ).toBe(false);
+    expect(
+      isRetryableQueryError(
+        new ApiError('limited', { status: 429, retryAfterMs: 1500 }),
+      ),
+    ).toBe(true);
+  });
+});
 
 describe('shouldRetryQuery', () => {
   it('retries transport failures and selected 5xx statuses up to the limit', () => {
@@ -96,16 +145,9 @@ describe('getQueryRetryDelay', () => {
 });
 
 describe('createQueryClient', () => {
-  it('applies Stage 1 query and mutation defaults', () => {
+  it('applies custom retry and mutation network defaults', () => {
     const client = createQueryClient();
     const defaults = client.getDefaultOptions();
-    expect(defaults.queries?.staleTime).toBe(0);
-    expect(defaults.queries?.gcTime).toBe(QUERY_GC_TIME_MS);
-    expect(defaults.queries?.refetchOnMount).toBe(true);
-    expect(defaults.queries?.refetchOnWindowFocus).toBe(true);
-    expect(defaults.queries?.refetchOnReconnect).toBe(true);
-    expect(defaults.queries?.refetchInterval).toBe(false);
-    expect(defaults.queries?.refetchIntervalInBackground).toBe(false);
     expect(defaults.queries?.retry).toBe(shouldRetryQuery);
     expect(defaults.queries?.retryDelay).toBe(getQueryRetryDelay);
     expect(defaults.mutations?.retry).toBe(0);
