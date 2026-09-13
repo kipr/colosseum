@@ -97,13 +97,11 @@ export function useEventMutations() {
     onSuccess: async (_, { userId, eventId }) => {
       if (!canUpdateUserCache(client, userId, true)) return;
       await client.cancelQueries({ queryKey: adminEventsKey(userId) });
-      await client.cancelQueries({ queryKey: adminEventKey(userId, eventId) });
       client.removeQueries({ queryKey: adminEventKey(userId, eventId) });
-      await client.cancelQueries({ queryKey: publicEventKey(eventId) });
       client.removeQueries({ queryKey: publicEventKey(eventId) });
-      const templateList = [...templatesKey(userId), { eventId }];
-      await client.cancelQueries({ queryKey: templateList });
-      client.removeQueries({ queryKey: templateList });
+      client.removeQueries({
+        queryKey: [...templatesKey(userId), { eventId }],
+      });
       if (!canUpdateUserCache(client, userId, true)) return;
       client.setQueryData<Event[]>(adminEventsKey(userId), (events) =>
         events?.filter(({ id }) => id !== eventId),

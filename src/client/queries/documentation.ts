@@ -22,7 +22,8 @@ import {
 } from './keys';
 import {
   ADMIN_ONLY_QUERY_META,
-  invalidateDocumentationDependents,
+  invalidateEventDependents,
+  invalidateForUser,
   type EventMutationScope,
 } from './invalidation';
 import { LIST_STALE_TIME_MS } from './queryClient';
@@ -62,20 +63,24 @@ export function publicDocumentationQueryOptions(eventId: number) {
 
 export function useDocumentationMutations() {
   const client = useQueryClient();
-  const refresh = (
-    _data: unknown,
-    scope: EventMutationScope,
-    globalCategories = false,
-  ) =>
-    invalidateDocumentationDependents(client, scope, {
-      globalCategories,
-    });
+  const refresh = (_data: unknown, scope: EventMutationScope) =>
+    invalidateEventDependents(client, scope);
+  const refreshWithCatalog = (_data: unknown, scope: EventMutationScope) =>
+    Promise.all([
+      invalidateEventDependents(client, scope),
+      invalidateForUser(
+        client,
+        scope.userId,
+        [globalDocCategoriesKey(scope.userId)],
+        true,
+      ),
+    ]);
   const saveCategory = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
     mutationFn: (
       v: EventMutationScope & Parameters<typeof saveDocCategory>[0],
     ) => saveDocCategory(v),
-    onSuccess: (_, scope) => refresh(_, scope, true),
+    onSuccess: refreshWithCatalog,
   });
   const updateCategory = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
@@ -89,7 +94,7 @@ export function useDocumentationMutations() {
     mutationFn: (
       v: EventMutationScope & Parameters<typeof deleteDocCategory>[0],
     ) => deleteDocCategory(v),
-    onSuccess: (_, scope) => refresh(_, scope, true),
+    onSuccess: refreshWithCatalog,
   });
   const saveScore = useMutation({
     meta: ADMIN_ONLY_QUERY_META,

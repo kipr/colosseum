@@ -17,7 +17,8 @@ import {
 import type { SessionUser } from '../api/types';
 import { authUserKey, normalizeScoreListFilters, scoresKey } from './keys';
 import {
-  invalidateScoringDependents,
+  invalidateEventDependents,
+  invalidateQueueDependents,
   type EventMutationScope,
 } from './invalidation';
 import { LIVE_QUERY } from './queryClient';
@@ -52,15 +53,15 @@ export function scoresQueryOptions(
 
 export function useScoreMutations() {
   const client = useQueryClient();
-  const refresh = (
-    _data: unknown,
-    scope: ScoreScope,
-    derivedResults: boolean,
-  ) => invalidateScoringDependents(client, scope, { derivedResults });
+  const refresh = (_data: unknown, scope: ScoreScope) =>
+    Promise.all([
+      invalidateEventDependents(client, scope),
+      invalidateQueueDependents(client, scope),
+    ]);
   const accept = useMutation({
     mutationFn: (v: ScoreScope & { scoreId: number; force?: boolean }) =>
       acceptEventScore(v),
-    onSuccess: (data, scope) => refresh(data, scope, true),
+    onSuccess: refresh,
   });
   const previewRevert = useMutation({
     mutationFn: (v: ScoreScope & { scoreId: number }) =>
@@ -69,21 +70,22 @@ export function useScoreMutations() {
   const revert = useMutation({
     mutationFn: (v: ScoreScope & { scoreId: number }) =>
       revertEventScore({ ...v, confirm: true }),
-    onSuccess: (data, scope) => refresh(data, scope, true),
+    onSuccess: refresh,
   });
   const reject = useMutation({
     mutationFn: (v: ScoreScope & { scoreId: number }) => rejectScore(v),
-    onSuccess: (data, scope) => refresh(data, scope, false),
+    onSuccess: refresh,
   });
   const bulkAccept = useMutation({
     mutationFn: (
       v: EventMutationScope & { eventId: number; scoreIds: number[] },
     ) => bulkAcceptEventScores(v),
-    onSuccess: (result, scope) => refresh(result, scope, result.accepted > 0),
+    onSuccess: (result, scope) =>
+      result.accepted > 0 ? refresh(result, scope) : undefined,
   });
   const update = useMutation({
     mutationFn: (v: ScoreScope & UpdateScoreInput) => updateScore(v),
-    onSuccess: (data, scope) => refresh(data, scope, false),
+    onSuccess: refresh,
   });
   return { accept, previewRevert, revert, reject, bulkAccept, update };
 }
@@ -92,18 +94,20 @@ export function useJudgeScoreSubmitMutation() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: submitJudgeScore,
-    onSuccess: async (submission, variables) => {
+    onSuccess: async (_submission, variables) => {
       if (variables.eventId == null) return;
       const user = client.getQueryData<SessionUser | null>(authUserKey);
-      await invalidateScoringDependents(
-        client,
-        {
+      await Promise.all([
+        invalidateEventDependents(client, {
+          userId: user?.id,
+          eventId: variables.eventId,
+        }),
+        invalidateQueueDependents(client, {
           userId: user?.id,
           eventId: variables.eventId,
           generation: variables.sessionGeneration,
-        },
-        { derivedResults: submission.status === 'accepted' },
-      );
+        }),
+      ]);
     },
   });
 }

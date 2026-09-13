@@ -25,7 +25,7 @@ import { awardTemplatesKey, awardsKey, publicEventKey } from './keys';
 import {
   ADMIN_ONLY_QUERY_META,
   canUpdateUserCache,
-  invalidateAwardDependents,
+  invalidateEventDependents,
   type EventMutationScope,
   type MutationScope,
 } from './invalidation';
@@ -93,7 +93,7 @@ export function publicAwardsQueryOptions(eventId: number) {
 export function useAwardMutations() {
   const client = useQueryClient();
   const refreshEvent = (_data: unknown, scope: EventMutationScope) =>
-    invalidateAwardDependents(client, scope);
+    invalidateEventDependents(client, scope);
   const refreshTemplates = (_data: unknown, { userId }: MutationScope) => {
     if (!canUpdateUserCache(client, userId, true)) return;
     return client.invalidateQueries({ queryKey: awardTemplatesKey(userId) });

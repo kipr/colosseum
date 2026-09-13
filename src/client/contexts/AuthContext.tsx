@@ -44,9 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const query = useQuery(authUserQueryOptions());
 
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [transitioning, setTransitioning] = useState(false);
   const userRef = useRef<SessionUser | null>(null);
-  const transitionGeneration = useRef(0);
 
   userRef.current = user;
 
@@ -68,7 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         Boolean(previousUser.isAdmin) !== Boolean(nextUser.isAdmin)
       ) {
         if (previousUser.isAdmin && !nextUser.isAdmin) {
-          void removeAdminOnlyQueries(queryClient, previousUser.id);
+          removeAdminOnlyQueries(queryClient, previousUser.id);
         }
         setUser(nextUser);
       } else if (
@@ -82,23 +80,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (previousUser == null) {
-      setUser(nextUser);
-      setTransitioning(false);
-      return;
+    if (previousUser != null) {
+      removeAdminUserQueries(queryClient, previousUser.id);
     }
-
-    const generation = ++transitionGeneration.current;
-    setTransitioning(true);
-
-    void (async () => {
-      await removeAdminUserQueries(queryClient, previousUser.id);
-      if (transitionGeneration.current !== generation) {
-        return;
-      }
-      setUser(nextUser);
-      setTransitioning(false);
-    })();
+    setUser(nextUser);
   }, [query.data, query.dataUpdatedAt, query.isError, queryClient]);
 
   const checkAuth = useCallback(async () => {
@@ -115,10 +100,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await queryClient.cancelQueries({ queryKey: authUserKey });
       queryClient.setQueryData(authUserKey, null);
       if (currentUser) {
-        await removeAdminUserQueries(queryClient, currentUser.id);
+        removeAdminUserQueries(queryClient, currentUser.id);
       }
       clearJudgeSessionStorage();
-      await removeJudgeQueries(queryClient);
+      removeJudgeQueries(queryClient);
       window.location.href = '/auth/logout';
     })();
   }, [queryClient]);
@@ -129,9 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const confirmedSignedOut = query.isSuccess && query.data === null;
   const terminalLookupFailure =
     query.isError && !query.isFetching && query.data === undefined;
-  const loading =
-    transitioning ||
-    (user == null && !confirmedSignedOut && !terminalLookupFailure);
+  const loading = user == null && !confirmedSignedOut && !terminalLookupFailure;
 
   const value = useMemo(
     () => ({

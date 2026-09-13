@@ -145,7 +145,6 @@ function useJudgeChatState(props: JudgeChatProviderProps) {
       latestQuery.data.length === 0 &&
       messagesEnabled
     ) {
-      void queryClient.cancelQueries({ queryKey: chatOlderKey(messageScope) });
       queryClient.removeQueries({ queryKey: chatOlderKey(messageScope) });
     }
   }, [

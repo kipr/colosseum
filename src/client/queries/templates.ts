@@ -90,14 +90,11 @@ export function useTemplateMutations() {
     meta: ADMIN_ONLY_QUERY_META,
     mutationFn: (v: MutationScope & { templateId: number }) =>
       deleteTemplate(v),
-    onSuccess: async (_, scope) => {
-      await client.cancelQueries({
-        queryKey: templateDetailKey(scope.userId, scope.templateId),
-      });
+    onSuccess: (_, scope) => {
       client.removeQueries({
         queryKey: templateDetailKey(scope.userId, scope.templateId),
       });
-      await refresh(_, scope);
+      return refresh(_, scope);
     },
   });
   const refreshFields = (_data: unknown, { userId }: MutationScope) => {

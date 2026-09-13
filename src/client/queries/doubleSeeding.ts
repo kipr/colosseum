@@ -11,10 +11,11 @@ import {
   getDoubleSeedingScores,
   recalculateDoubleSeedingRankings,
 } from '../api/doubleSeeding';
-import { doubleSeedingKey, publicEventKey } from './keys';
+import { adminEventsKey, doubleSeedingKey, publicEventKey } from './keys';
 import {
   ADMIN_ONLY_QUERY_META,
-  invalidateDoubleSeedingDependents,
+  invalidateEventDependents,
+  invalidateForUser,
   type EventMutationScope,
 } from './invalidation';
 
@@ -64,8 +65,18 @@ export function publicDoubleSeedingRankingsQueryOptions(eventId: number) {
 
 export function useDoubleSeedingMutations() {
   const client = useQueryClient();
+  const refresh = (_: unknown, scope: EventMutationScope) =>
+    invalidateEventDependents(client, scope);
   const refreshMetadata = (_: unknown, scope: EventMutationScope) =>
-    invalidateDoubleSeedingDependents(client, scope, { eventMetadata: true });
+    Promise.all([
+      invalidateEventDependents(client, scope),
+      invalidateForUser(
+        client,
+        scope.userId,
+        [adminEventsKey(scope.userId)],
+        true,
+      ),
+    ]);
   const generate = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
     mutationFn: (
@@ -87,7 +98,7 @@ export function useDoubleSeedingMutations() {
       v: EventMutationScope &
         Parameters<typeof recalculateDoubleSeedingRankings>[0],
     ) => recalculateDoubleSeedingRankings(v),
-    onSuccess: (_, scope) => invalidateDoubleSeedingDependents(client, scope),
+    onSuccess: refresh,
   });
   return { generate, removeRound, recalculate };
 }
