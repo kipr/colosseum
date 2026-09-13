@@ -212,6 +212,66 @@ test.describe('Admin queue management', () => {
     await context.close();
   });
 
+  test('second browser sees a queue status change on the 10s poll', async ({
+    browser,
+  }) => {
+    const actorContext = await browser.newContext();
+    const watcherContext = await browser.newContext();
+    await setAdminCookie(actorContext);
+    await setAdminCookie(watcherContext);
+    const actor = await actorContext.newPage();
+    const watcher = await watcherContext.newPage();
+    await bypassQueueSyncLimit(actor);
+    await bypassQueueSyncLimit(watcher);
+
+    await actor.goto(`/admin/events/${eventId}?view=queue`);
+    await watcher.goto(`/admin/events/${eventId}?view=queue`);
+    await expect(actor.locator('.admin-content-header h2')).toHaveText(
+      'Queue',
+      {
+        timeout: 15_000,
+      },
+    );
+    await expect(watcher.locator('.admin-content-header h2')).toHaveText(
+      'Queue',
+      { timeout: 15_000 },
+    );
+
+    const actorRow = seedingRow(actor, TEAM_B_NAME, 2);
+    const watcherRow = seedingRow(watcher, TEAM_B_NAME, 2);
+    await expect(watcherRow.locator('.queue-status-queued')).toBeVisible();
+
+    let releaseCall!: () => void;
+    const held = new Promise<void>((resolve) => {
+      releaseCall = resolve;
+    });
+    await actor.route('**/queue/*/call', async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await actorRow.getByRole('button', { name: 'Called' }).click();
+    await expect(
+      actorRow.getByRole('button', { name: 'Called' }),
+    ).toBeDisabled();
+    releaseCall();
+
+    await expect(
+      actorRow.locator('.queue-status-badge.queue-status-called'),
+    ).toBeVisible({ timeout: 10_000 });
+    await expect(
+      watcherRow.locator('.queue-status-badge.queue-status-called'),
+    ).toBeVisible({ timeout: 15_000 });
+
+    await actorRow.getByRole('button', { name: 'Back' }).click();
+    await expect(
+      actorRow.locator('.queue-status-badge.queue-status-queued'),
+    ).toBeVisible({ timeout: 10_000 });
+
+    await actorContext.close();
+    await watcherContext.close();
+  });
+
   test('queue table omits the order controls', async ({ browser }) => {
     const context = await browser.newContext();
     await setAdminCookie(context);

@@ -86,3 +86,51 @@ export const auditEntityKey = (
   entityType: string,
   entityId: number,
 ) => [...adminScopeKey(userId), 'audit-entity', entityType, entityId] as const;
+
+export const scoresKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'scores'] as const;
+export const queueKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'queue'] as const;
+export const judgeSessionKey = (generation: string) =>
+  [...judgeScopeKey, generation] as const;
+export const judgeEventKey = (generation: string, eventId: number) =>
+  [...judgeSessionKey(generation), 'event', Number(eventId)] as const;
+
+export interface ScoreListKeyFilters {
+  page: number;
+  limit: number;
+  status: string | null;
+  scoreType: string | null;
+}
+
+export interface QueueKeyFilters {
+  statuses: string[];
+  queueType: string | null;
+}
+
+export function normalizeScoreListFilters(filters: {
+  page: number;
+  limit: number;
+  status?: string | null;
+  scoreType?: string | null;
+}): ScoreListKeyFilters {
+  return {
+    page: Number(filters.page),
+    limit: Number(filters.limit),
+    status: filters.status || null,
+    scoreType: filters.scoreType || null,
+  };
+}
+
+export function normalizeQueueFilters(filters: {
+  statuses?: readonly string[];
+  queueType?: string | null;
+}): QueueKeyFilters {
+  return {
+    statuses: [...(filters.statuses ?? [])].sort(),
+    queueType:
+      filters.queueType && filters.queueType !== 'all'
+        ? filters.queueType
+        : null,
+  };
+}

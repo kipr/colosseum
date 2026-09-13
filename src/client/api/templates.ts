@@ -1,4 +1,10 @@
-import { requestJson, requestVoid, ApiParseError } from './http';
+import {
+  requestJson,
+  requestJsonBody,
+  requestVoid,
+  requestVoidBody,
+  ApiParseError,
+} from './http';
 import type {
   ScoresheetField,
   ScoresheetSchema,
@@ -48,6 +54,19 @@ export function getTemplate(templateId: number, signal?: AbortSignal) {
     signal,
   });
 }
+export function verifyTemplate({
+  templateId,
+  accessCode,
+}: {
+  templateId: number;
+  accessCode: string;
+}) {
+  return requestJsonBody<TemplateDetail>(
+    `/scoresheet/templates/${templateId}/verify`,
+    'POST',
+    { accessCode },
+  );
+}
 export async function getFieldTemplates(
   signal?: AbortSignal,
 ): Promise<FieldTemplate[]> {
@@ -72,15 +91,12 @@ export function saveTemplate({
   eventId: number;
   data: TemplateInput;
 }) {
-  return requestJson<TemplateDetail>(
+  return requestJsonBody<TemplateDetail>(
     templateId
       ? `/scoresheet/templates/${templateId}`
       : '/scoresheet/templates',
-    {
-      method: templateId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...data, eventId }),
-    },
+    templateId ? 'PUT' : 'POST',
+    { ...data, eventId },
   );
 }
 export function deleteTemplate({ templateId }: { templateId: number }) {
@@ -95,13 +111,10 @@ export function saveFieldTemplate({
   templateId?: number;
   data: FieldTemplateInput;
 }) {
-  return requestVoid(
+  return requestVoidBody(
     templateId ? `/field-templates/${templateId}` : '/field-templates',
-    {
-      method: templateId ? 'PUT' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    },
+    templateId ? 'PUT' : 'POST',
+    data,
   );
 }
 export function deleteFieldTemplate({ templateId }: { templateId: number }) {

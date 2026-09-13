@@ -1,4 +1,10 @@
-import { requestJson, requestVoid, ApiError } from './http';
+import {
+  requestJson,
+  requestJsonBody,
+  requestVoid,
+  ApiError,
+  VERSIONED_GET_CACHE,
+} from './http';
 import type {
   Bracket,
   BracketDetail,
@@ -82,6 +88,35 @@ export function getAssignedTeams(eventId: number, signal?: AbortSignal) {
   );
 }
 
+export interface EventBracketGame {
+  id: number;
+  bracket_game_id?: number;
+  bracket_id: number;
+  game_number: number;
+  round_name: string | null;
+  bracket_side: string | null;
+  status: string;
+  winner_id: number | null;
+  team1_id: number | null;
+  team2_id: number | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
+}
+
+export function getEventGames(
+  eventId: number,
+  options: { complete?: boolean } = {},
+  signal?: AbortSignal,
+) {
+  const params = new URLSearchParams();
+  if (options.complete === false) params.set('eligible', 'scoreable');
+  const qs = params.toString();
+  return requestJson<EventBracketGame[]>(
+    `/brackets/event/${eventId}/games${qs ? `?${qs}` : ''}`,
+    { signal, cache: VERSIONED_GET_CACHE },
+  );
+}
+
 export async function createBracket({
   event_id,
   name,
@@ -127,11 +162,7 @@ export function updateBracket({
   bracketId: number;
   data: UpdateBracketInput;
 }) {
-  return requestJson<Bracket>(`/brackets/${bracketId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  return requestJsonBody<Bracket>(`/brackets/${bracketId}`, 'PATCH', data);
 }
 
 export function deleteBracket({ bracketId }: { bracketId: number }) {

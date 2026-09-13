@@ -12,6 +12,7 @@ import {
   deleteTemplate,
   saveFieldTemplate,
   deleteFieldTemplate,
+  verifyTemplate,
 } from '../api/templates';
 import {
   publicTemplatesKey,
@@ -22,6 +23,7 @@ import {
 import {
   ADMIN_ONLY_QUERY_META,
   canUpdateUserCache,
+  removeJudgeQueries,
   type MutationScope,
 } from './invalidation';
 
@@ -112,4 +114,12 @@ export function useTemplateMutations() {
     onSuccess: refreshFields,
   });
   return { save, remove, saveField, removeField };
+}
+
+export function useVerifyTemplateMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: verifyTemplate,
+    onSuccess: () => removeJudgeQueries(client),
+  });
 }
