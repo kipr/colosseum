@@ -1,29 +1,12 @@
 export type QueueType = 'seeding' | 'bracket' | 'double_seeding';
 export type RestWarningKind = 'resting' | 'busy';
 
-export interface RestAwareQueueItem {
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export type RestAwareQueueItem = {
   queue_type: QueueType;
-  team1_id: number | null;
-  team2_id: number | null;
-  team1_number: number | null;
-  team2_number: number | null;
-  team1_last_played_at: string | null;
-  team2_last_played_at: string | null;
-  team1_busy: boolean;
-  team2_busy: boolean;
-  seeding_team_id: number | null;
-  seeding_team_number: number | null;
-  seeding_team_last_played_at: string | null;
-  seeding_team_busy: boolean;
-  double_seeding_team1_id: number | null;
-  double_seeding_team2_id: number | null;
-  double_seeding_team1_number: number | null;
-  double_seeding_team2_number: number | null;
-  double_seeding_team1_last_played_at: string | null;
-  double_seeding_team2_last_played_at: string | null;
-  double_seeding_team1_busy: boolean;
-  double_seeding_team2_busy: boolean;
-}
+  [key: string]: any;
+};
+/* eslint-enable @typescript-eslint/no-explicit-any */
 
 export interface TeamRestWarning {
   teamId: number;

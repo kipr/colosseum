@@ -1,4 +1,4 @@
-import { requestJson, requestVoid } from './http';
+import { requestJson, requestJsonBody, requestVoid } from './http';
 import type { AwardType } from '../../shared/awards';
 import type { TeamAwardCounts } from '../../shared/awards';
 import type {
@@ -94,13 +94,10 @@ export function saveAwardTemplate({
   templateId?: number;
   data: AwardTemplateInput;
 }) {
-  return requestJson<AwardTemplate>(
+  return requestJsonBody<AwardTemplate>(
     templateId ? `/awards/templates/${templateId}` : '/awards/templates',
-    {
-      method: templateId ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    },
+    templateId ? 'PATCH' : 'POST',
+    data,
   );
 }
 
@@ -128,13 +125,10 @@ export function saveEventAward({
   awardId?: number;
   data: EventAwardInput;
 }) {
-  return requestJson<EventAward>(
+  return requestJsonBody<EventAward>(
     awardId ? `/awards/event-awards/${awardId}` : `/awards/event/${eventId}`,
-    {
-      method: awardId ? 'PATCH' : 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    },
+    awardId ? 'PATCH' : 'POST',
+    data,
   );
 }
 
@@ -156,11 +150,11 @@ export function addAwardRecipients({
   awardId: number;
   teamIds: number[];
 }) {
-  return requestJson<unknown>(`/awards/event-awards/${awardId}/recipients`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ team_ids: teamIds }),
-  });
+  return requestJsonBody<unknown>(
+    `/awards/event-awards/${awardId}/recipients`,
+    'POST',
+    { team_ids: teamIds },
+  );
 }
 
 export function removeAwardRecipient({
@@ -184,16 +178,10 @@ export function addIndividualRecipient({
   name: string;
   teamId?: number;
 }) {
-  return requestJson<unknown>(
+  return requestJsonBody<unknown>(
     `/awards/event-awards/${awardId}/individual-recipients`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name,
-        ...(teamId != null ? { team_id: teamId } : {}),
-      }),
-    },
+    'POST',
+    { name, ...(teamId != null ? { team_id: teamId } : {}) },
   );
 }
 
@@ -241,13 +229,10 @@ export function applyAutomaticAwards({
   eventId: number;
   data: AutomaticAwardSettings & { acknowledge_warnings?: boolean };
 }) {
-  return requestJson<ApplyAutomaticAwardsResponse>(
+  return requestJsonBody<ApplyAutomaticAwardsResponse>(
     `/awards/event/${eventId}/automatic`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    },
+    'POST',
+    data,
   );
 }
 

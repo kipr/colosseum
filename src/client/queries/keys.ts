@@ -91,14 +91,10 @@ export const scoresKey = (userId: number, eventId: number) =>
   [...adminEventKey(userId, eventId), 'scores'] as const;
 export const queueKey = (userId: number, eventId: number) =>
   [...adminEventKey(userId, eventId), 'queue'] as const;
-
-export function judgeSessionKey(generation: string) {
-  return [...judgeScopeKey, generation] as const;
-}
-
-export function judgeEventKey(generation: string, eventId: number) {
-  return [...judgeSessionKey(generation), 'event', Number(eventId)] as const;
-}
+export const judgeSessionKey = (generation: string) =>
+  [...judgeScopeKey, generation] as const;
+export const judgeEventKey = (generation: string, eventId: number) =>
+  [...judgeSessionKey(generation), 'event', Number(eventId)] as const;
 
 export interface ScoreListKeyFilters {
   page: number;

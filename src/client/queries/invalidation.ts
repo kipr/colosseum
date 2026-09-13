@@ -296,20 +296,20 @@ export async function invalidateScoringDependents(
         scoresKey(userId, eventId),
         auditKey(userId, eventId),
         [...adminScopeKey(userId), 'audit-entity'],
+        ...(options.derivedResults
+          ? [
+              seedingKey(userId, eventId),
+              doubleSeedingKey(userId, eventId),
+              bracketsKey(userId, eventId),
+              [...adminEventKey(userId, eventId), 'bracket'],
+              overallKey(userId, eventId),
+              awardsKey(userId, eventId),
+            ]
+          : []),
       ]);
     }
     await invalidateQueueDependents(queryClient, scope);
     if (options.derivedResults) {
-      if (userId != null) {
-        await invalidateForUser(queryClient, userId, [
-          seedingKey(userId, eventId),
-          doubleSeedingKey(userId, eventId),
-          bracketsKey(userId, eventId),
-          [...adminEventKey(userId, eventId), 'bracket'],
-          overallKey(userId, eventId),
-          awardsKey(userId, eventId),
-        ]);
-      }
       await invalidatePublicEventResults(queryClient, eventId);
     }
   });

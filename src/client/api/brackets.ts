@@ -1,5 +1,6 @@
 import {
   requestJson,
+  requestJsonBody,
   requestVoid,
   ApiError,
   VERSIONED_GET_CACHE,
@@ -91,21 +92,15 @@ export interface EventBracketGame {
   id: number;
   bracket_game_id?: number;
   bracket_id: number;
-  bracket_name?: string;
   game_number: number;
   round_name: string | null;
   bracket_side: string | null;
   status: string;
   winner_id: number | null;
-  queue_position?: number | null;
   team1_id: number | null;
-  team1_number?: number | null;
-  team1_name?: string | null;
-  team1_display?: string | null;
   team2_id: number | null;
-  team2_number?: number | null;
-  team2_name?: string | null;
-  team2_display?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
 export function getEventGames(
@@ -167,11 +162,7 @@ export function updateBracket({
   bracketId: number;
   data: UpdateBracketInput;
 }) {
-  return requestJson<Bracket>(`/brackets/${bracketId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  return requestJsonBody<Bracket>(`/brackets/${bracketId}`, 'PATCH', data);
 }
 
 export function deleteBracket({ bracketId }: { bracketId: number }) {

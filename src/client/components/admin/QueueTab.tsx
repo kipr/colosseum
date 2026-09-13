@@ -33,7 +33,7 @@ interface QueueParticipant {
   teamNumber: number | null;
 }
 
-const STATUS_ORDER: QueueStatus[] = [...QUEUE_STATUSES];
+const STATUS_ORDER = QUEUE_STATUSES;
 
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';
@@ -45,9 +45,6 @@ const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'double_seeding', label: 'Double Seeding' },
 ];
 
-// The server answers unchanged polls with a 304 from a version ETag, so a
-// 10s cadence keeps every admin view live at negligible cost.
-// Rest warnings depend on wall-clock time, not queue mutations.
 const REST_CLOCK_INTERVAL_MS = 30_000;
 
 const TYPE_BADGE_LABELS: Record<QueueType, string> = {
@@ -132,11 +129,7 @@ export default function QueueTab() {
   const seedingRounds = selectedEvent?.seeding_rounds ?? 3;
   const minRestMinutes = selectedEvent?.min_rest_minutes ?? 10;
   const [filterStatuses, setFilterStatuses] = useState<QueueStatus[]>([
-    'queued',
-    'called',
-    'arrived',
-    'on_table',
-    'scored',
+    ...QUEUE_STATUSES,
   ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
   const [sortField, setSortField] = useState<SortField>('gameNumber');
@@ -155,6 +148,8 @@ export default function QueueTab() {
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
+  const fail = (fallback: string, error: unknown) =>
+    toast.error(error instanceof Error ? error.message : fallback);
   const queueQuery = useQuery({
     ...adminQueueQueryOptions(userId, selectedEventId ?? 0, {
       statuses: filterStatuses,
@@ -231,9 +226,7 @@ export default function QueueTab() {
       toast.success(`Added ${data.created} games to the queue`);
       setShowPopulateModal(false);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to populate queue',
-      );
+      fail('Failed to populate queue', error);
     }
   };
 
@@ -255,9 +248,7 @@ export default function QueueTab() {
       toast.success(`Added ${data.created} seeding rounds to the queue`);
       setShowPopulateSeedingModal(false);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to populate queue',
-      );
+      fail('Failed to populate queue', error);
     }
   };
 
@@ -286,9 +277,7 @@ export default function QueueTab() {
       toast.success('Seeding round added to queue');
       setShowAddSeedingModal(false);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to add seeding round',
-      );
+      fail('Failed to add seeding round', error);
     }
   };
 
@@ -316,9 +305,7 @@ export default function QueueTab() {
       toast.success('Bracket game added to queue');
       setShowAddBracketModal(false);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to add bracket game',
-      );
+      fail('Failed to add bracket game', error);
     }
   };
 
@@ -386,9 +373,7 @@ export default function QueueTab() {
         });
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to update status',
-      );
+      fail('Failed to update status', error);
     }
   };
 
@@ -405,11 +390,7 @@ export default function QueueTab() {
         present,
       });
     } catch (error) {
-      toast.error(
-        error instanceof Error
-          ? error.message
-          : 'Failed to update team presence',
-      );
+      fail('Failed to update team presence', error);
     }
   };
 

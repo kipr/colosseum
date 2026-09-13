@@ -119,9 +119,7 @@ export function useTemplateMutations() {
 export function useVerifyTemplateMutation() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (v: Parameters<typeof verifyTemplate>[0]) => verifyTemplate(v),
-    onSuccess: async () => {
-      await removeJudgeQueries(client);
-    },
+    mutationFn: verifyTemplate,
+    onSuccess: () => removeJudgeQueries(client),
   });
 }

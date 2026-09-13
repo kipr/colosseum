@@ -166,6 +166,22 @@ export async function requestJson<T>(
   return parseJsonBody<T>(response);
 }
 
+function jsonRequest(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  };
+}
+
+export function requestJsonBody<T>(
+  url: string,
+  method: string,
+  body: unknown,
+): Promise<T> {
+  return requestJson<T>(url, jsonRequest(method, body));
+}
+
 export async function requestVoid(
   url: string,
   options: RequestInit = {},
@@ -179,4 +195,12 @@ export async function requestVoid(
   } catch (error) {
     if (isAbortError(error)) throw error;
   }
+}
+
+export function requestVoidBody(
+  url: string,
+  method: string,
+  body: unknown,
+): Promise<void> {
+  return requestVoid(url, jsonRequest(method, body));
 }

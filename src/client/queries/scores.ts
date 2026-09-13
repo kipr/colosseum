@@ -11,27 +11,18 @@ import {
   revertEventScore,
   submitJudgeScore,
   updateScore,
-  type JudgeScoreSubmitInput,
   type ScoreListFilters,
   type UpdateScoreInput,
 } from '../api/scores';
 import type { SessionUser } from '../api/types';
-import {
-  authUserKey,
-  normalizeScoreListFilters,
-  scoresKey,
-} from './keys';
+import { authUserKey, normalizeScoreListFilters, scoresKey } from './keys';
 import {
   invalidateScoringDependents,
   type EventMutationScope,
 } from './invalidation';
-import { POLL_INTERVAL_MS } from './queryClient';
+import { LIVE_QUERY } from './queryClient';
 
 type ScoreScope = EventMutationScope & { scoreId?: number };
-type JudgeSubmitScope = JudgeScoreSubmitInput & {
-  sessionGeneration: string;
-  eventId?: number;
-};
 
 export function scoresQueryOptions(
   userId: number,
@@ -42,38 +33,30 @@ export function scoresQueryOptions(
   return queryOptions({
     queryKey: [...scoresKey(userId, eventId), normalized],
     queryFn: ({ signal }) => getEventScores(eventId, normalized, signal),
-    staleTime: 0,
-    refetchInterval: POLL_INTERVAL_MS,
-    refetchIntervalInBackground: false,
+    ...LIVE_QUERY,
     placeholderData: (previousData, previousQuery) => {
-      if (!previousData || !previousQuery) return undefined;
-      const prev = previousQuery.queryKey;
-      if (prev[1] !== userId || prev[3] !== eventId || prev[4] !== 'scores') {
-        return undefined;
-      }
-      const prevFilters = prev[5] as typeof normalized | undefined;
-      if (
-        !prevFilters ||
-        prevFilters.limit !== normalized.limit ||
-        prevFilters.status !== normalized.status ||
-        prevFilters.scoreType !== normalized.scoreType
-      ) {
-        return undefined;
-      }
-      return previousData;
+      const prev = previousQuery?.queryKey;
+      const prevFilters = prev?.[5] as typeof normalized | undefined;
+      return previousData &&
+        prev?.[1] === userId &&
+        prev?.[3] === eventId &&
+        prev?.[4] === 'scores' &&
+        prevFilters?.limit === normalized.limit &&
+        prevFilters?.status === normalized.status &&
+        prevFilters?.scoreType === normalized.scoreType
+        ? previousData
+        : undefined;
     },
   });
 }
 
 export function useScoreMutations() {
   const client = useQueryClient();
-  const refresh = async (
+  const refresh = (
     _data: unknown,
     scope: ScoreScope,
     derivedResults: boolean,
-  ) => {
-    await invalidateScoringDependents(client, scope, { derivedResults });
-  };
+  ) => invalidateScoringDependents(client, scope, { derivedResults });
   const accept = useMutation({
     mutationFn: (v: ScoreScope & { scoreId: number; force?: boolean }) =>
       acceptEventScore(v),
@@ -108,32 +91,15 @@ export function useScoreMutations() {
 export function useJudgeScoreSubmitMutation() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (v: JudgeSubmitScope) =>
-      submitJudgeScore({
-        templateId: v.templateId,
-        participantName: v.participantName,
-        matchId: v.matchId,
-        scoreData: v.scoreData,
-        isHeadToHead: v.isHeadToHead,
-        bracketSource: v.bracketSource,
-        eventId: v.eventId,
-        scoreType: v.scoreType,
-        game_queue_id: v.game_queue_id,
-        bracket_game_id: v.bracket_game_id,
-        double_seeding_match_id: v.double_seeding_match_id,
-        resultType: v.resultType,
-        disqualifiedTeamId: v.disqualifiedTeamId,
-        resultNote: v.resultNote,
-      }),
+    mutationFn: submitJudgeScore,
     onSuccess: async (submission, variables) => {
-      const eventId = variables.eventId;
-      if (eventId == null) return;
+      if (variables.eventId == null) return;
       const user = client.getQueryData<SessionUser | null>(authUserKey);
       await invalidateScoringDependents(
         client,
         {
           userId: user?.id,
-          eventId,
+          eventId: variables.eventId,
           generation: variables.sessionGeneration,
         },
         { derivedResults: submission.status === 'accepted' },

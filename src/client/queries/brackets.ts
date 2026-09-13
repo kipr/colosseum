@@ -30,7 +30,7 @@ import {
 } from './invalidation';
 import {
   LIST_STALE_TIME_MS,
-  POLL_INTERVAL_MS,
+  LIVE_QUERY,
   RESULT_STALE_TIME_MS,
 } from './queryClient';
 
@@ -116,9 +116,7 @@ export function judgeEventGamesQueryOptions(
     ],
     queryFn: ({ signal }) =>
       getEventGames(eventId, { complete: options.complete }, signal),
-    staleTime: 0,
-    refetchInterval: POLL_INTERVAL_MS,
-    refetchIntervalInBackground: false,
+    ...LIVE_QUERY,
   });
 }
 
@@ -130,9 +128,7 @@ export function judgeBracketQueryOptions(
   return queryOptions({
     queryKey: [...judgeEventKey(generation, eventId), 'bracket', bracketId],
     queryFn: ({ signal }) => getBracket(bracketId, signal),
-    staleTime: 0,
-    refetchInterval: POLL_INTERVAL_MS,
-    refetchIntervalInBackground: false,
+    ...LIVE_QUERY,
   });
 }
 

@@ -1,4 +1,4 @@
-import { requestJson, requestVoid } from './http';
+import { requestJson, requestJsonBody, requestVoid } from './http';
 import type { Event } from '../utils/eventStatus';
 import type { PublicEvent } from './types';
 
@@ -57,11 +57,11 @@ export function saveEvent({
   eventId?: number;
   data: EventInput;
 }) {
-  return requestJson<Event>(eventId ? `/events/${eventId}` : '/events', {
-    method: eventId ? 'PATCH' : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
-  });
+  return requestJsonBody<Event>(
+    eventId ? `/events/${eventId}` : '/events',
+    eventId ? 'PATCH' : 'POST',
+    data,
+  );
 }
 
 export function deleteEvent({ eventId }: { eventId: number }) {

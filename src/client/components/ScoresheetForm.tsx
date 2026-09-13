@@ -38,8 +38,6 @@ import FormulaErrors from './FormulaErrors';
 import type { TemplateDetail } from '../api/templates';
 import type { Team } from '../api/teams';
 import { QUEUE_STATUSES } from '../api/queue';
-import type { EventBracketGame } from '../api/brackets';
-import type { BracketGame } from '../types/brackets';
 import { judgeTeamsQueryOptions } from '../queries/teams';
 import {
   judgeBracketQueryOptions,
@@ -54,65 +52,29 @@ import {
 import QueryFeedback from './QueryFeedback';
 import { clearJudgeSessionStorage } from '../utils/judgeSession';
 
-function mapTeamSide(
-  id: number | null,
-  number?: number | string | null,
-  name?: string | null,
-  display?: string | null,
-): BracketTeamDisplay | null {
+function mapTeamSide(game: any, side: '1' | '2'): BracketTeamDisplay | null {
+  const id = game[`team${side}_id`];
+  const number = game[`team${side}_number`];
+  const name = game[`team${side}_name`];
   if (id == null || (number == null && !name)) return null;
   return {
     teamNumber: String(number ?? name ?? ''),
-    displayName: display || name || String(number),
+    displayName: game[`team${side}_display`] || name || String(number),
   };
 }
 
-function mapEventGameOption(game: EventBracketGame): BracketGameOption {
+function mapGameOption(game: any, bracketId?: number): BracketGameOption {
   return {
     gameNumber: game.game_number,
-    bracketId: game.bracket_id,
+    bracketId: game.bracket_id ?? bracketId,
     bracketName: game.bracket_name,
     roundName: game.round_name,
     bracketSide: game.bracket_side,
     queuePosition: game.queue_position ?? null,
-    team1: mapTeamSide(
-      game.team1_id,
-      game.team1_number,
-      game.team1_name,
-      game.team1_display,
-    ),
-    team2: mapTeamSide(
-      game.team2_id,
-      game.team2_number,
-      game.team2_name,
-      game.team2_display,
-    ),
+    team1: mapTeamSide(game, '1'),
+    team2: mapTeamSide(game, '2'),
     hasWinner: Boolean(game.winner_id) || game.status === 'completed',
     bracketGameId: game.bracket_game_id ?? game.id,
-  };
-}
-
-function mapBracketGameOption(
-  game: BracketGame,
-  bracketId: number,
-): BracketGameOption {
-  return {
-    gameNumber: game.game_number,
-    bracketId: game.bracket_id ?? bracketId,
-    team1: mapTeamSide(
-      game.team1_id,
-      game.team1_number,
-      game.team1_name,
-      game.team1_display,
-    ),
-    team2: mapTeamSide(
-      game.team2_id,
-      game.team2_number,
-      game.team2_name,
-      game.team2_display,
-    ),
-    hasWinner: Boolean(game.winner_id) || game.status === 'completed',
-    bracketGameId: game.id,
   };
 }
 
@@ -307,13 +269,11 @@ export default function ScoresheetForm({
 
   const bracketGames = useMemo((): BracketGameOption[] => {
     if (eventGamesEnabled) {
-      return (eventGamesQuery.data ?? []).map((game) =>
-        mapEventGameOption(game),
-      );
+      return (eventGamesQuery.data ?? []).map((game) => mapGameOption(game));
     }
     if (singleBracketId) {
       return (singleBracketQuery.data?.games ?? []).map((game) =>
-        mapBracketGameOption(game, singleBracketId),
+        mapGameOption(game, singleBracketId),
       );
     }
     return [];

@@ -84,6 +84,8 @@ export default function ScoringTab() {
 
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
+  const fail = (fallback: string, error: unknown) =>
+    toast.error(error instanceof Error ? error.message : fallback);
 
   const scoreScope = () => ({
     userId,
@@ -122,9 +124,7 @@ export default function ScoringTab() {
         if (confirmed) return handleAcceptEvent(id, true);
         return;
       }
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to accept score',
-      );
+      fail('Failed to accept score', error);
     }
   };
 
@@ -165,9 +165,7 @@ export default function ScoringTab() {
         toast.success('Score reverted successfully');
       }
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to revert score',
-      );
+      fail('Failed to revert score', error);
     }
   };
 
@@ -182,9 +180,7 @@ export default function ScoringTab() {
     try {
       await reject.mutateAsync({ ...scoreScope(), scoreId: id });
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to reject score',
-      );
+      fail('Failed to reject score', error);
     }
   };
 
@@ -232,9 +228,7 @@ export default function ScoringTab() {
       }
       handleCloseBulkAccept();
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to accept scores',
-      );
+      fail('Failed to accept scores', error);
     }
   };
 

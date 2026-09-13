@@ -1,20 +1,18 @@
-import { requestJson, requestVoid, ApiError } from './http';
+import {
+  requestJson,
+  requestVoid,
+  requestJsonBody,
+  requestVoidBody,
+  ApiError,
+} from './http';
 import type { BracketResultType } from '../../shared/bracketResult';
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 export type ScoreStatus = 'pending' | 'accepted' | 'rejected';
 export type ScoreType = 'seeding' | 'bracket' | 'double_seeding';
 
-export interface ScoreFieldValue {
-  // Scoresheet values follow the template schema rather than a fixed DTO.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  value?: any;
-  label?: string;
-  type?: string;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  derived?: { rows?: any };
-}
-
-export type ScoreData = Record<string, ScoreFieldValue>;
+export type ScoreData = Record<string, any>;
 
 export interface ScoreSubmission {
   id: number;
@@ -31,42 +29,7 @@ export interface ScoreSubmission {
   result_type: BracketResultType;
   disqualified_team_id: number | null;
   result_note: string | null;
-  event_id?: number;
-  score_type?: ScoreType;
-  bracket_game_id?: number;
-  seeding_score_id?: number;
-  double_seeding_match_id?: number;
-  game_queue_id?: number;
-  submitted_by?: string;
-  team_display_number?: string;
-  team_name?: string;
-  bracket_name?: string;
-  game_number?: number;
-  queue_position?: number;
-  seeding_round?: number;
-  bracket_team1_id?: number | null;
-  bracket_team2_id?: number | null;
-  bracket_team1_score?: number | null;
-  bracket_team2_score?: number | null;
-  bracket_team1_number?: number | null;
-  bracket_team1_name?: string | null;
-  bracket_team1_display?: string | null;
-  bracket_team2_number?: number | null;
-  bracket_team2_name?: string | null;
-  bracket_team2_display?: string | null;
-  bracket_winner_number?: number | null;
-  bracket_winner_name?: string | null;
-  bracket_winner_display?: string | null;
-  double_seeding_round?: number | null;
-  double_seeding_match_number?: number | null;
-  double_seeding_team1_id?: number | null;
-  double_seeding_team2_id?: number | null;
-  double_seeding_team1_number?: number | null;
-  double_seeding_team1_name?: string | null;
-  double_seeding_team1_display?: string | null;
-  double_seeding_team2_number?: number | null;
-  double_seeding_team2_name?: string | null;
-  double_seeding_team2_display?: string | null;
+  [key: string]: any;
 }
 
 export interface EventScoresResponse {
@@ -111,9 +74,6 @@ export interface AffectedGame {
 export interface RevertPreview {
   requiresConfirmation: boolean;
   affectedGames?: AffectedGame[];
-}
-
-export interface RevertResult {
   revertedGames?: number;
 }
 
@@ -138,6 +98,7 @@ export interface JudgeScoreSubmitInput {
   resultType?: BracketResultType;
   disqualifiedTeamId?: number;
   resultNote?: string;
+  sessionGeneration?: string;
 }
 
 export interface UpdateScoreInput {
@@ -153,9 +114,10 @@ export function getEventScores(
   filters: ScoreListFilters,
   signal?: AbortSignal,
 ) {
-  const params = new URLSearchParams();
-  params.set('page', String(filters.page));
-  params.set('limit', String(filters.limit));
+  const params = new URLSearchParams({
+    page: String(filters.page),
+    limit: String(filters.limit),
+  });
   if (filters.status) params.set('status', filters.status);
   if (filters.scoreType) params.set('score_type', filters.scoreType);
   return requestJson<EventScoresResponse>(
@@ -164,89 +126,66 @@ export function getEventScores(
   );
 }
 
-export function acceptEventScore({
-  scoreId,
-  force = false,
-}: {
-  scoreId: number;
-  force?: boolean;
-}) {
-  return requestJson<ScoreAcceptResult>(`/scores/${scoreId}/accept-event`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ force }),
-  });
+export function acceptEventScore(v: { scoreId: number; force?: boolean }) {
+  return requestJsonBody<ScoreAcceptResult>(
+    `/scores/${v.scoreId}/accept-event`,
+    'POST',
+    { force: v.force ?? false },
+  );
 }
 
-export function revertEventScore({
-  scoreId,
-  dryRun,
-  confirm,
-}: {
+export function revertEventScore(v: {
   scoreId: number;
   dryRun?: boolean;
   confirm?: boolean;
 }) {
-  return requestJson<RevertPreview & RevertResult>(
-    `/scores/${scoreId}/revert-event`,
+  return requestJsonBody<RevertPreview>(
+    `/scores/${v.scoreId}/revert-event`,
+    'POST',
     {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ dryRun, confirm }),
+      dryRun: v.dryRun,
+      confirm: v.confirm,
     },
   );
 }
 
-export function rejectScore({ scoreId }: { scoreId: number }) {
-  return requestVoid(`/scores/${scoreId}/reject`, { method: 'POST' });
-}
+export const rejectScore = (v: { scoreId: number }) =>
+  requestVoid(`/scores/${v.scoreId}/reject`, { method: 'POST' });
 
-export function bulkAcceptEventScores({
-  eventId,
-  scoreIds,
-}: {
+export function bulkAcceptEventScores(v: {
   eventId: number;
   scoreIds: number[];
 }) {
-  return requestJson<BulkAcceptResult>(`/scores/event/${eventId}/accept/bulk`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ score_ids: scoreIds }),
-  });
+  return requestJsonBody<BulkAcceptResult>(
+    `/scores/event/${v.eventId}/accept/bulk`,
+    'POST',
+    { score_ids: v.scoreIds },
+  );
 }
 
-export function updateScore({
-  scoreId,
-  scoreData,
-  resultType,
-  disqualifiedTeamId,
-  resultNote,
-}: UpdateScoreInput) {
-  return requestVoid(`/scores/${scoreId}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      scoreData,
-      resultType,
-      disqualifiedTeamId,
-      resultNote,
-    }),
+export function updateScore(v: UpdateScoreInput) {
+  return requestVoidBody(`/scores/${v.scoreId}`, 'PUT', {
+    scoreData: v.scoreData,
+    resultType: v.resultType,
+    disqualifiedTeamId: v.disqualifiedTeamId,
+    resultNote: v.resultNote,
   });
 }
 
 export function submitJudgeScore(input: JudgeScoreSubmitInput) {
-  return requestJson<ScoreSubmission>('/api/scores/submit', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(input),
-  });
+  const payload = { ...input };
+  delete payload.sessionGeneration;
+  return requestJsonBody<ScoreSubmission>(
+    '/api/scores/submit',
+    'POST',
+    payload,
+  );
 }
 
-export function isScoreAcceptConflict(
+export const isScoreAcceptConflict = (
   error: unknown,
-): error is ApiError & { body: ScoreAcceptConflict } {
-  return error instanceof ApiError && error.status === 409;
-}
+): error is ApiError & { body: ScoreAcceptConflict } =>
+  error instanceof ApiError && error.status === 409;
 
 export function scoreAcceptConflictFrom(error: ApiError): ScoreAcceptConflict {
   return error.body && typeof error.body === 'object'

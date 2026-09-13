@@ -1,4 +1,4 @@
-import { requestJson, VERSIONED_GET_CACHE } from './http';
+import { requestJson, requestJsonBody, VERSIONED_GET_CACHE } from './http';
 
 export const QUEUE_STATUSES = [
   'queued',
@@ -24,43 +24,12 @@ export interface QueueItem {
   table_number: number | null;
   called_at: string | null;
   created_at: string;
-  game_number: number | null;
-  round_name: string | null;
-  bracket_side: string | null;
-  bracket_name: string | null;
   team1_id: number | null;
   team2_id: number | null;
-  team1_number: number | null;
-  team1_name: string | null;
-  team1_display: string | null;
-  team2_number: number | null;
-  team2_name: string | null;
-  team2_display: string | null;
-  team1_last_played_at: string | null;
-  team2_last_played_at: string | null;
-  team1_busy: boolean;
-  team2_busy: boolean;
-  seeding_team_number: number | null;
-  seeding_team_name: string | null;
-  seeding_team_display: string | null;
-  seeding_team_last_played_at: string | null;
-  seeding_team_busy: boolean;
-  double_seeding_round: number | null;
-  double_seeding_match_number: number | null;
-  double_seeding_team1_id: number | null;
-  double_seeding_team2_id: number | null;
-  double_seeding_team1_number: number | null;
-  double_seeding_team1_name: string | null;
-  double_seeding_team1_display: string | null;
-  double_seeding_team2_number: number | null;
-  double_seeding_team2_name: string | null;
-  double_seeding_team2_display: string | null;
-  double_seeding_team1_last_played_at: string | null;
-  double_seeding_team2_last_played_at: string | null;
-  double_seeding_team1_busy: boolean;
-  double_seeding_team2_busy: boolean;
   team1_present: boolean;
   team2_present: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  [key: string]: any;
 }
 
 export interface QueueFilters {
@@ -97,84 +66,64 @@ export function getEventQueue(
   );
 }
 
-export function populateQueueFromBracket({ eventId }: { eventId: number }) {
-  return requestJson<QueuePopulateResult>('/queue/populate-from-bracket', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event_id: eventId }),
-  });
+export function populateQueueFromBracket(v: { eventId: number }) {
+  return requestJsonBody<QueuePopulateResult>(
+    '/queue/populate-from-bracket',
+    'POST',
+    { event_id: v.eventId },
+  );
 }
 
-export function populateQueueFromSeeding({ eventId }: { eventId: number }) {
-  return requestJson<QueuePopulateResult>('/queue/populate-from-seeding', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event_id: eventId }),
-  });
+export function populateQueueFromSeeding(v: { eventId: number }) {
+  return requestJsonBody<QueuePopulateResult>(
+    '/queue/populate-from-seeding',
+    'POST',
+    { event_id: v.eventId },
+  );
 }
 
-export function addQueueItem({
-  event_id,
-  queue_type,
-  seeding_team_id,
-  seeding_round,
-  bracket_game_id,
-}: {
+export function addQueueItem(v: {
   event_id: number;
   queue_type: QueueType;
   seeding_team_id?: number;
   seeding_round?: number;
   bracket_game_id?: number;
 }) {
-  return requestJson<QueueItem>('/queue', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      event_id,
-      queue_type,
-      seeding_team_id,
-      seeding_round,
-      bracket_game_id,
-    }),
+  return requestJsonBody<QueueItem>('/queue', 'POST', {
+    event_id: v.event_id,
+    queue_type: v.queue_type,
+    seeding_team_id: v.seeding_team_id,
+    seeding_round: v.seeding_round,
+    bracket_game_id: v.bracket_game_id,
   });
 }
 
-export function updateQueueStatus({
-  queueItemId,
-  status,
-}: {
+export function updateQueueStatus(v: {
   queueItemId: number;
   status: QueueStatus;
 }) {
-  return requestJson<QueueItem>(`/queue/${queueItemId}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status }),
+  return requestJsonBody<QueueItem>(`/queue/${v.queueItemId}`, 'PATCH', {
+    status: v.status,
   });
 }
 
-export function callQueueItem({ queueItemId }: { queueItemId: number }) {
-  return requestJson<QueueItem>(`/queue/${queueItemId}/call`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({}),
-  });
+export function callQueueItem(v: { queueItemId: number }) {
+  return requestJsonBody<QueueItem>(
+    `/queue/${v.queueItemId}/call`,
+    'PATCH',
+    {},
+  );
 }
 
-export function updateQueuePresence({
-  queueItemId,
-  teamId,
-  present,
-}: {
+export function updateQueuePresence(v: {
   queueItemId: number;
   teamId: number;
   present: boolean;
 }) {
-  return requestJson<
+  return requestJsonBody<
     Pick<QueueItem, 'id' | 'status' | 'team1_present' | 'team2_present'>
-  >(`/queue/${queueItemId}/presence`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ team_id: teamId, present }),
+  >(`/queue/${v.queueItemId}/presence`, 'PATCH', {
+    team_id: v.teamId,
+    present: v.present,
   });
 }
