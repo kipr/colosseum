@@ -7,7 +7,6 @@ import {
   adminEventsKey,
   adminScopeKey,
   assignedTeamsKey,
-  auditEntityKey,
   auditKey,
   authUserKey,
   awardsKey,
