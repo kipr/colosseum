@@ -5,6 +5,13 @@
   "workspaceFolder": "/workspaces/colosseum",
   "customizations": {
     "vscode": {
+      "settings": {
+        "terminal.integrated.profiles.linux": {
+          "fish": {
+            "path": "/usr/bin/fish"
+          }
+        }
+      },
       "extensions": [
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode"

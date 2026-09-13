@@ -4,9 +4,12 @@ FROM node:24-trixie
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
     ca-certificates \
+    fish \
     git \
     postgresql-client \
   && rm -rf /var/lib/apt/lists/*
+
+RUN chsh -s /usr/bin/fish node
 
 WORKDIR /workspaces/colosseum
 
