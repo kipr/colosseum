@@ -17,6 +17,8 @@ Current documentation:
   rules and the implemented repeatable-group mapping
 - [Portable Scoresheet Export](../tools/portable-scoresheet/README.md) — offline
   HTML export
+- [Client Server Data](CLIENT_DATA.md) — TanStack Query request, cache, and
+  test conventions after the client data migration
 
 ## Legacy documents
 
