@@ -16,6 +16,10 @@ vi.mock('../../src/client/contexts/EventContext', () => ({
   }),
 }));
 
+vi.mock('../../src/client/contexts/AuthContext', () => ({
+  useAuth: () => ({ user: { id: 7, name: 'Admin', email: 'a@kipr.org' } }),
+}));
+
 vi.mock('../../src/client/contexts/JudgeChatContext', () => ({
   JudgeChatProvider: ({ children }: { children: React.ReactNode }) => children,
   useJudgeChat: vi.fn(),
@@ -29,15 +33,18 @@ describe('JudgeChatTab', () => {
     const eventAElement = JudgeChatTab() as React.ReactElement<{
       eventId: number;
       mode: string;
+      userId: number;
     }>;
 
     selectedEventRef.current = { id: 2, name: 'Event B' };
     const eventBElement = JudgeChatTab() as React.ReactElement<{
       eventId: number;
       mode: string;
+      userId: number;
     }>;
 
     expect(eventAElement.props.eventId).toBe(1);
+    expect(eventAElement.props.userId).toBe(7);
     expect(eventAElement.key).toBe('1');
     expect(eventBElement.props.eventId).toBe(2);
     expect(eventBElement.key).toBe('2');

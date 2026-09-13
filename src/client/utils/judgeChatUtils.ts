@@ -1,27 +1,7 @@
 import { formatDate } from './dateUtils';
+import type { JudgeChatMessage } from '../api/chat';
 
-export interface JudgeChatMessage {
-  id: number;
-  event_id: number;
-  conversation_key: string;
-  sender_role: 'judge' | 'admin';
-  sender_name: string;
-  message: string;
-  template_id: number | null;
-  user_id: number | null;
-  created_at: string;
-}
-
-export interface JudgeChatConversation {
-  conversationKey: string;
-  messageCount: number;
-  lastMessageId: number;
-  lastActivity: string;
-  lastMessage: string | null;
-  lastJudgeName: string | null;
-}
-
-export type JudgeChatOlderMessagesMap = Record<string, boolean>;
+export type { JudgeChatConversation, JudgeChatMessage } from '../api/chat';
 
 export const JUDGE_CHAT_NAME_KEY = 'colosseum_judge_chat_name';
 export const JUDGE_CHAT_ADMIN_SEEN_KEY = 'colosseum_judge_chat_admin_seen';
@@ -164,92 +144,15 @@ export function groupMessagesByDate(
   );
 }
 
-/** Union server and local messages by id, preserving optimistic sends during polls. */
+/** Merge immutable message pages by id and return them chronologically. */
 export function mergeMessagesById(
-  server: JudgeChatMessage[],
-  local: JudgeChatMessage[],
+  ...pages: JudgeChatMessage[][]
 ): JudgeChatMessage[] {
   const byId = new Map<number, JudgeChatMessage>();
-  for (const message of server) {
-    byId.set(message.id, message);
-  }
-  for (const message of local) {
-    if (!byId.has(message.id)) {
+  for (const page of pages) {
+    for (const message of page) {
       byId.set(message.id, message);
     }
   }
   return [...byId.values()].sort((a, b) => a.id - b.id);
-}
-
-/** Merge only local messages belonging to the same conversation thread. */
-export function mergeMessagesForConversation(
-  server: JudgeChatMessage[],
-  local: JudgeChatMessage[],
-  conversationKey?: string | null,
-): JudgeChatMessage[] {
-  const scopedLocal =
-    conversationKey != null && conversationKey !== ''
-      ? local.filter((message) => message.conversation_key === conversationKey)
-      : local;
-  return mergeMessagesById(server, scopedLocal);
-}
-
-export function resolveRefreshedMessagesForConversation(
-  server: JudgeChatMessage[],
-  local: JudgeChatMessage[],
-  conversationKey?: string | null,
-): JudgeChatMessage[] {
-  if (server.length === 0) return [];
-  return mergeMessagesForConversation(server, local, conversationKey);
-}
-
-export function selectedConversationWasRemoved(
-  conversations: JudgeChatConversation[],
-  selectedConversationKey: string | null,
-): boolean {
-  if (!selectedConversationKey) return false;
-  return !conversations.some(
-    (conversation) => conversation.conversationKey === selectedConversationKey,
-  );
-}
-
-export function pageMayHaveOlderMessages(
-  pageLength: number,
-  pageSize: number,
-): boolean {
-  return pageLength >= pageSize;
-}
-
-export function hasOlderMessagesForConversation(
-  olderMessagesByConversation: JudgeChatOlderMessagesMap,
-  conversationKey: string | null,
-): boolean {
-  if (!conversationKey) return false;
-  return olderMessagesByConversation[conversationKey] ?? false;
-}
-
-export function messagesEqual(
-  a: JudgeChatMessage[],
-  b: JudgeChatMessage[],
-): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((msg, i) => msg.id === b[i].id);
-}
-
-export function conversationsEqual(
-  a: JudgeChatConversation[],
-  b: JudgeChatConversation[],
-): boolean {
-  if (a.length !== b.length) return false;
-  return a.every((conv, i) => {
-    const other = b[i];
-    return (
-      conv.conversationKey === other.conversationKey &&
-      conv.lastMessageId === other.lastMessageId &&
-      conv.messageCount === other.messageCount &&
-      conv.lastMessage === other.lastMessage &&
-      conv.lastJudgeName === other.lastJudgeName &&
-      conv.lastActivity === other.lastActivity
-    );
-  });
 }

@@ -510,3 +510,57 @@ Devtools remain a 0.27 kB production stub. Formatting, lint, both typechecks,
 - [TanStack Query cancellation](https://tanstack.com/query/latest/docs/framework/react/guides/query-cancellation)
 - [TanStack Query invalidation from mutations](https://tanstack.com/query/latest/docs/framework/react/guides/invalidations-from-mutations)
 - [TanStack Query network mode](https://tanstack.com/query/latest/docs/framework/react/guides/network-mode)
+
+## Stage six implementation
+
+Stage six migrates judge/admin chat reads, polling, pagination, sends, and
+conversation deletion to TanStack Query. Server routes, payloads, rate limits,
+database schema, local-storage keys, and the visible chat workflow are
+unchanged.
+
+Implementation boundaries:
+
+- `api/chat.ts` owns the message and conversation DTOs plus the four chat
+  operations. Read operations accept Query cancellation signals. Admin keys
+  include user, event, and conversation; judge keys include the local session
+  generation and event. Latest and older pages have separate suffixes, and
+  access codes are never cached.
+- Conversation summaries and latest messages poll every three seconds while a
+  drawer/thread is active and every 15 seconds otherwise. Older pages use a
+  disabled, non-polling infinite query. The shared Query client pauses hidden-tab
+  polling and refreshes on focus/reconnect, replacing chat's visibility listener
+  and interval.
+- Latest pages retain immutable messages displaced by the moving 100-row
+  window. Older pages merge chronologically by ID and stop after a short page.
+  A successful empty latest page is authoritative and removes older history.
+  Transient failures retain cached rows; 401/403 responses hide chat data.
+- Send and delete are zero-retry mutations whose variables capture their
+  originating identity/session, event, and conversation. Sends update only the
+  exact latest cache. Deletes cancel and remove both message caches, update and
+  refresh the originating conversation list, and clear UI selection only when
+  the deleted thread is still selected. Admin operations carry admin-only
+  metadata for the existing authorization recovery.
+- `JudgeChatContext` now adapts Query state to drawer state, judge name,
+  conversation selection, and persisted seen markers. Manual server-data state,
+  request-generation refs, polling timers, equality helpers, and per-thread
+  pagination maps were removed. Read failures have one inline retry action;
+  send and delete failures remain in their initiating UI flows.
+
+Validation against `2312df9`:
+
+- Prettier, ESLint, both TypeScript checks, 1,476 Vitest tests, the production
+  build, and all 99 Playwright tests pass. The chat browser workflow now covers
+  a 106-message conversation, older-page loading/scroll anchoring, admin reply,
+  judge unread clearing, and conversation deletion.
+- Focused tests cover authorization-scoped key isolation, access-code
+  exclusion, abort-signal propagation, active/inactive polling policies,
+  non-polling pagination, cursor termination, chronological deduplication,
+  retained latest-window history, and authoritative empty pages. Shared Query
+  client tests cover hidden-tab pausing and focus refresh.
+- Production TypeScript/TSX source is 27,781 lines and 836,616 bytes versus
+  27,782 lines and 837,084 bytes at the stage-five baseline (−1 line, −468
+  bytes), including the new API/query modules.
+- Production JavaScript changes from 45 to 46 files. Summed raw JS is 653,701
+  bytes versus 653,437 (+264); gzip-9 is 209,978 versus 209,640 (+338). Admin
+  chat remains a lazy `JudgeChatTab` chunk; the additional small
+  `useInfiniteQuery` chunk is shared with existing lazy audit pagination.

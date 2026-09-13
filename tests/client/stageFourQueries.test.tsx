@@ -288,7 +288,9 @@ describe('stage four queries and writes', () => {
       });
     });
     expect(results.map((row) => row.ok)).toEqual([true, false]);
-    expect(hook.result.current.bulkImport.isSuccess).toBe(true);
+    await waitFor(() =>
+      expect(hook.result.current.bulkImport.isSuccess).toBe(true),
+    );
     expect(client.getQueryState(scoresKey)?.isInvalidated).toBe(true);
   });
 

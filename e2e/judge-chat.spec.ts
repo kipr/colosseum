@@ -153,6 +153,7 @@ test.describe('Judge Chat E2E', () => {
     page,
     browser,
   }) => {
+    test.setTimeout(60_000);
     // ── Judge sends a message ──
     await enterAsJudge(page);
 
@@ -180,6 +181,31 @@ test.describe('Judge Chat E2E', () => {
     await page.getByRole('button', { name: 'Close' }).click();
     await expect(page.getByRole('dialog')).not.toBeVisible();
 
+    // Seed enough history to force a second message page.
+    const db = e2eDb();
+    const conversation = (await db.get(
+      `SELECT conversation_key
+       FROM judge_chat_messages
+       WHERE event_id = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [eventId],
+    )) as { conversation_key: string };
+    for (let index = 1; index <= 105; index += 1) {
+      await db.run(
+        `INSERT INTO judge_chat_messages
+           (event_id, conversation_key, sender_role, sender_name, message, template_id)
+         VALUES (?, ?, 'judge', ?, ?, ?)`,
+        [
+          eventId,
+          conversation.conversation_key,
+          JUDGE_NAME,
+          `Seeded history message ${index}`,
+          templateId,
+        ],
+      );
+    }
+
     // ── Admin sees conversation and replies ──
     const adminContext = await browser.newContext();
     await setSessionCookie(adminContext, admin.signedCookie);
@@ -191,12 +217,22 @@ test.describe('Judge Chat E2E', () => {
       adminPage.getByRole('heading', { name: 'Judge Chat' }),
     ).toBeVisible({ timeout: 10_000 });
 
-    const conversation = adminPage.locator('.judge-chat-conversation-item', {
-      hasText: JUDGE_NAME,
-    });
-    await expect(conversation).toBeVisible({ timeout: 10_000 });
-    await conversation.click();
+    const conversationItem = adminPage.locator(
+      '.judge-chat-conversation-item',
+      { hasText: JUDGE_NAME },
+    );
+    await expect(conversationItem).toBeVisible({ timeout: 10_000 });
+    await conversationItem.click();
 
+    await expect(
+      adminPage
+        .locator('.judge-chat-thread')
+        .getByText('Seeded history message 105'),
+    ).toBeVisible();
+    await adminPage
+      .locator('.judge-chat-thread')
+      .getByRole('button', { name: 'Load older messages' })
+      .click();
     await expect(
       adminPage.locator('.judge-chat-thread').getByText(JUDGE_MESSAGE),
     ).toBeVisible();
@@ -213,8 +249,6 @@ test.describe('Judge Chat E2E', () => {
     await expect(
       adminPage.locator('.judge-chat-thread').getByText(ADMIN_REPLY),
     ).toBeVisible({ timeout: 5_000 });
-
-    await adminContext.close();
 
     // ── Judge page (still open) receives reply via polling ──
     const staffBtn = page.locator('.judge-chat-staff-btn');
@@ -233,5 +267,21 @@ test.describe('Judge Chat E2E', () => {
     await expect(staffBtn.locator('.judge-chat-unread-dot')).not.toBeVisible({
       timeout: 5_000,
     });
+
+    // ── Admin deletes the complete conversation ──
+    await adminPage
+      .locator('.judge-chat-thread')
+      .getByRole('button', { name: 'Delete conversation' })
+      .click();
+    await adminPage
+      .locator('.modal')
+      .getByRole('button', { name: 'Delete' })
+      .click();
+    await expect(conversationItem).not.toBeVisible();
+    await expect(
+      adminPage.getByText('Select a conversation to view messages.'),
+    ).toBeVisible();
+
+    await adminContext.close();
   });
 });

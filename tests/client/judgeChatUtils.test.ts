@@ -5,11 +5,6 @@ import {
   truncatePreview,
   groupMessagesByDate,
   mergeMessagesById,
-  mergeMessagesForConversation,
-  resolveRefreshedMessagesForConversation,
-  selectedConversationWasRemoved,
-  pageMayHaveOlderMessages,
-  hasOlderMessagesForConversation,
   JUDGE_CHAT_NAME_KEY,
   JUDGE_CHAT_ADMIN_SEEN_KEY,
   judgeLastSeenKey,
@@ -19,7 +14,6 @@ import {
   setJudgeLastSeen,
   getAdminSeenMap,
   setAdminLastSeen,
-  type JudgeChatConversation,
   type JudgeChatMessage,
 } from '../../src/client/utils/judgeChatUtils';
 
@@ -155,157 +149,16 @@ describe('judgeChatUtils', () => {
       expect(merged.map((m) => m.id)).toEqual([1, 2]);
     });
 
-    it('prefers server copies when ids overlap', () => {
-      const server: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, message: 'server copy' },
+    it('prefers later pages when ids overlap', () => {
+      const older: JudgeChatMessage[] = [
+        { id: 1, ...baseMessage, message: 'older copy' },
       ];
-      const local: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, message: 'stale local copy' },
-      ];
-
-      const merged = mergeMessagesById(server, local);
-      expect(merged[0].message).toBe('server copy');
-    });
-  });
-
-  describe('mergeMessagesForConversation', () => {
-    const baseMessage = {
-      event_id: 1,
-      sender_role: 'judge' as const,
-      sender_name: 'J',
-      message: 'hello',
-      template_id: 1,
-      user_id: null,
-      created_at: '2026-06-08T12:00:00.000Z',
-    };
-
-    it('does not merge local messages from a different conversation', () => {
-      const server: JudgeChatMessage[] = [
-        { id: 3, ...baseMessage, conversation_key: 'thread-b', message: 'b1' },
-      ];
-      const local: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, conversation_key: 'thread-a', message: 'a1' },
-        { id: 2, ...baseMessage, conversation_key: 'thread-a', message: 'a2' },
+      const latest: JudgeChatMessage[] = [
+        { id: 1, ...baseMessage, message: 'latest copy' },
       ];
 
-      const merged = mergeMessagesForConversation(server, local, 'thread-b');
-      expect(merged.map((m) => m.id)).toEqual([3]);
-    });
-
-    it('keeps optimistic messages for the active conversation', () => {
-      const server: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, conversation_key: 'thread-b', message: 'b1' },
-      ];
-      const local: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, conversation_key: 'thread-b', message: 'b1' },
-        { id: 2, ...baseMessage, conversation_key: 'thread-b', message: 'b2' },
-      ];
-
-      const merged = mergeMessagesForConversation(server, local, 'thread-b');
-      expect(merged.map((m) => m.id)).toEqual([1, 2]);
-    });
-  });
-
-  describe('resolveRefreshedMessagesForConversation', () => {
-    const baseMessage = {
-      event_id: 1,
-      conversation_key: 'thread-b',
-      sender_role: 'judge' as const,
-      sender_name: 'J',
-      message: 'hello',
-      template_id: 1,
-      user_id: null,
-      created_at: '2026-06-08T12:00:00.000Z',
-    };
-
-    it('treats an empty server refresh as authoritative', () => {
-      const local: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, message: 'cached message' },
-      ];
-
-      const resolved = resolveRefreshedMessagesForConversation(
-        [],
-        local,
-        'thread-b',
-      );
-
-      expect(resolved).toEqual([]);
-    });
-
-    it('preserves local messages only when the server returns messages', () => {
-      const server: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, message: 'server message' },
-      ];
-      const local: JudgeChatMessage[] = [
-        { id: 1, ...baseMessage, message: 'cached message' },
-        { id: 2, ...baseMessage, message: 'optimistic message' },
-      ];
-
-      const resolved = resolveRefreshedMessagesForConversation(
-        server,
-        local,
-        'thread-b',
-      );
-
-      expect(resolved.map((m) => m.id)).toEqual([1, 2]);
-      expect(resolved[0].message).toBe('server message');
-    });
-  });
-
-  describe('selectedConversationWasRemoved', () => {
-    const conversations: JudgeChatConversation[] = [
-      {
-        conversationKey: 'thread-a',
-        messageCount: 1,
-        lastMessageId: 1,
-        lastActivity: '2026-06-08T12:00:00.000Z',
-        lastMessage: 'hello',
-        lastJudgeName: 'Judge A',
-      },
-    ];
-
-    it('returns true when the selected conversation is missing', () => {
-      expect(selectedConversationWasRemoved(conversations, 'thread-b')).toBe(
-        true,
-      );
-    });
-
-    it('returns false when no conversation is selected or the key remains', () => {
-      expect(selectedConversationWasRemoved(conversations, null)).toBe(false);
-      expect(selectedConversationWasRemoved(conversations, 'thread-a')).toBe(
-        false,
-      );
-    });
-  });
-
-  describe('older message availability', () => {
-    it('uses each conversation pagination state instead of message ids', () => {
-      const secondConversationFirstMessage: JudgeChatMessage = {
-        id: 42,
-        event_id: 1,
-        conversation_key: 'thread-b',
-        sender_role: 'judge',
-        sender_name: 'Judge B',
-        message: 'only message in this thread',
-        template_id: null,
-        user_id: null,
-        created_at: '2026-06-08T12:00:00.000Z',
-      };
-      const olderMessagesByConversation = { 'thread-a': true };
-
-      expect(secondConversationFirstMessage.id).toBeGreaterThan(1);
-      expect(
-        hasOlderMessagesForConversation(
-          olderMessagesByConversation,
-          secondConversationFirstMessage.conversation_key,
-        ),
-      ).toBe(false);
-    });
-
-    it('marks only full pages as possibly having older messages', () => {
-      expect(pageMayHaveOlderMessages(99, 100)).toBe(false);
-      expect(pageMayHaveOlderMessages(100, 100)).toBe(true);
-      expect(pageMayHaveOlderMessages(0, 100)).toBe(false);
+      const merged = mergeMessagesById(older, latest);
+      expect(merged[0].message).toBe('latest copy');
     });
   });
 

@@ -33,12 +33,13 @@ export default function JudgeChatDrawer({ eventName }: JudgeChatDrawerProps) {
     messages,
     isLoading,
     isSending,
-    error,
+    sendError,
+    readError,
+    retryRead,
     sendMessage,
     hasOlderMessages,
     isLoadingOlder,
     loadOlderMessages,
-    markSeen,
   } = useJudgeChat();
 
   const [view, setView] = useState<'chat' | 'settings'>('chat');
@@ -49,7 +50,6 @@ export default function JudgeChatDrawer({ eventName }: JudgeChatDrawerProps) {
   useEffect(() => {
     if (isDrawerOpen) {
       triggerRef.current = document.activeElement as HTMLElement;
-      markSeen();
       if (isMobile) {
         document.body.style.overflow = 'hidden';
       }
@@ -65,7 +65,7 @@ export default function JudgeChatDrawer({ eventName }: JudgeChatDrawerProps) {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isDrawerOpen, isMobile, markSeen]);
+  }, [isDrawerOpen, isMobile]);
 
   useEffect(() => {
     if (!isDrawerOpen) return;
@@ -139,6 +139,14 @@ export default function JudgeChatDrawer({ eventName }: JudgeChatDrawerProps) {
         </div>
 
         <div className="judge-chat-body">
+          {readError && (
+            <div className="judge-chat-input-error" role="alert">
+              Unable to refresh chat. {readError}
+              <button type="button" onClick={retryRead}>
+                Retry
+              </button>
+            </div>
+          )}
           {showNamePrompt ? (
             <JudgeChatNamePrompt
               onSubmit={(name) => {
@@ -168,7 +176,7 @@ export default function JudgeChatDrawer({ eventName }: JudgeChatDrawerProps) {
               <JudgeChatInput
                 onSend={sendMessage}
                 isSending={isSending}
-                error={error}
+                error={sendError}
                 disabled={needsNamePrompt}
               />
             </>

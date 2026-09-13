@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useEvent } from '../../contexts/EventContext';
+import { useAuth } from '../../contexts/AuthContext';
 import {
   JudgeChatProvider,
   useJudgeChat,
@@ -36,14 +37,15 @@ function JudgeChatInbox() {
     messages,
     isLoading,
     isSending,
-    error,
+    sendError,
+    readError,
+    retryRead,
     sendMessage,
     deleteConversation,
     conversationUnread,
     hasOlderMessages,
     isLoadingOlder,
     loadOlderMessages,
-    markConversationSeen,
   } = useJudgeChat();
 
   const { confirm, ConfirmDialog } = useConfirm();
@@ -57,7 +59,6 @@ function JudgeChatInbox() {
 
   const handleSelectConversation = (key: string) => {
     setSelectedConversationKey(key);
-    markConversationSeen(key);
     if (isNarrow) {
       setMobileView('thread');
     }
@@ -92,6 +93,14 @@ function JudgeChatInbox() {
   return (
     <>
       <div className={inboxClass}>
+        {readError && (
+          <div className="judge-chat-input-error" role="alert">
+            Unable to refresh chat. {readError}
+            <button type="button" onClick={retryRead}>
+              Retry
+            </button>
+          </div>
+        )}
         <div className="judge-chat-conversation-list" role="list">
           {isNarrow && mobileView === 'thread' && (
             <button
@@ -189,7 +198,7 @@ function JudgeChatInbox() {
               <JudgeChatInput
                 onSend={sendMessage}
                 isSending={isSending}
-                error={error}
+                error={sendError}
                 placeholder="Reply to judge…"
               />
             </>
@@ -204,9 +213,10 @@ function JudgeChatInbox() {
 
 export default function JudgeChatTab() {
   const { selectedEvent } = useEvent();
+  const { user } = useAuth();
   const selectedEventId = selectedEvent?.id ?? null;
 
-  if (!selectedEventId) {
+  if (!selectedEventId || !user) {
     return (
       <div className="card">
         <p style={{ color: 'var(--secondary-color)' }}>
@@ -221,6 +231,7 @@ export default function JudgeChatTab() {
       key={selectedEventId}
       eventId={selectedEventId}
       mode="admin"
+      userId={user.id}
     >
       <JudgeChatInbox />
     </JudgeChatProvider>

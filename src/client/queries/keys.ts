@@ -96,6 +96,44 @@ export const judgeSessionKey = (generation: string) =>
 export const judgeEventKey = (generation: string, eventId: number) =>
   [...judgeSessionKey(generation), 'event', Number(eventId)] as const;
 
+export const adminChatConversationsKey = (userId: number, eventId: number) =>
+  [...adminEventKey(userId, eventId), 'chat', 'conversations'] as const;
+export const adminChatMessagesKey = (
+  userId: number,
+  eventId: number,
+  conversationKey: string,
+) =>
+  [
+    ...adminEventKey(userId, eventId),
+    'chat',
+    conversationKey,
+    'messages',
+  ] as const;
+export const adminChatLatestKey = (
+  userId: number,
+  eventId: number,
+  conversationKey: string,
+) =>
+  [
+    ...adminChatMessagesKey(userId, eventId, conversationKey),
+    'latest',
+  ] as const;
+export const adminChatOlderKey = (
+  userId: number,
+  eventId: number,
+  conversationKey: string,
+) =>
+  [...adminChatMessagesKey(userId, eventId, conversationKey), 'older'] as const;
+export const judgeChatLatestKey = (generation: string, eventId: number) =>
+  [
+    ...judgeEventKey(generation, eventId),
+    'chat',
+    'messages',
+    'latest',
+  ] as const;
+export const judgeChatOlderKey = (generation: string, eventId: number) =>
+  [...judgeEventKey(generation, eventId), 'chat', 'messages', 'older'] as const;
+
 export interface ScoreListKeyFilters {
   page: number;
   limit: number;

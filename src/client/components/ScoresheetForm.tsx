@@ -1720,7 +1720,11 @@ export default function ScoresheetForm({
 
   if (chatEnabled) {
     return (
-      <JudgeChatProvider eventId={eventId} mode="judge">
+      <JudgeChatProvider
+        eventId={eventId}
+        mode="judge"
+        sessionGeneration={sessionGeneration}
+      >
         {formContent}
         <JudgeChatDrawer eventName={schema.title} />
       </JudgeChatProvider>
