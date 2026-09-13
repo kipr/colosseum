@@ -76,6 +76,12 @@ writes also refresh the user-scoped catalog; double-seeding generate/delete
 also refresh the admin event list; team, score, and bracket writes also
 refresh queue dependents.
 
+Ordinary mutations invalidate affected queries and await those refresh
+attempts. Components then toast, close modals, and navigate. Direct cache
+updates are reserved for explicit interaction needs such as inserting a sent
+chat message. `invalidateQueries` does not reject when a follow-up refetch
+fails, so a successful write stays successful if a later read fails.
+
 | Mutation family            | Cache effects                                                                         |
 | -------------------------- | ------------------------------------------------------------------------------------- |
 | Event create/update/delete | Admin and public event lists, public templates, affected event resources              |
@@ -83,13 +89,13 @@ refresh queue dependents.
 | Template / field-template  | Relevant lists, details, previews, and event associations                             |
 | Queue                      | Filtered queue entries and related judge queue/game data                              |
 | Chat send                  | Exact latest cache; admin also refreshes the conversation list                        |
-| Chat delete                | Remove both message caches, update and refresh the originating conversation list      |
+| Chat delete                | Remove both message caches, then refresh the originating conversation list            |
 
-Query's `invalidateQueries` does not reject when a follow-up refetch fails, so
-a successful write stays successful if a later read fails. Await refreshes when
-the action needs them (including partial bulk success). Chat: an empty latest
-page clears older history; deletion removes cached message queries (Query
-cancels their retryers on destroy); a delayed judge send after session
+Await refreshes when the action needs them (including partial bulk success).
+Chat: an empty latest page clears older history; deletion removes cached
+message queries (Query cancels their retryers on destroy) and does not
+manually filter the conversation list, so a failed refresh can leave a stale
+summary with Query's refresh error; a delayed judge send after session
 replacement or logout must not recreate evicted data.
 
 ## Loading and refresh errors

@@ -202,14 +202,6 @@ export function useDeleteChatConversationMutation() {
         variables.conversationKey,
       );
       client.removeQueries({ queryKey: messagePrefix });
-      client.setQueryData<JudgeChatConversation[]>(
-        adminChatConversationsKey(variables.userId, variables.eventId),
-        (current) =>
-          current?.filter(
-            (conversation) =>
-              conversation.conversationKey !== variables.conversationKey,
-          ),
-      );
       await client.invalidateQueries({
         queryKey: adminChatConversationsKey(
           variables.userId,

@@ -1,6 +1,10 @@
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEventMutations } from '../../queries/events';
+import { canUpdateUserCache } from '../../queries/invalidation';
+import { adminEventsKey } from '../../queries/keys';
 import React, { useState, useRef } from 'react';
+import { flushSync } from 'react-dom';
 import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
@@ -44,13 +48,27 @@ const defaultFormData: EventFormData = {
   score_accept_mode: 'manual',
 };
 
+function cachedEventList(queryClient: QueryClient, userId: number): Event[] {
+  return queryClient.getQueryData<Event[]>(adminEventsKey(userId)) ?? [];
+}
+
+function adminRouteEventId(pathname: string): number | null {
+  const match = /^\/admin\/events\/(\d+)/.exec(pathname);
+  if (!match) return null;
+  const id = Number(match[1]);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
 export default function EventsTab() {
   const { events, selectedEvent, selectEventById } = useEvent();
   const navigate = useNavigate();
   const location = useLocation();
   const currentLocation = useRef(location.key);
   currentLocation.current = location.key;
+  const currentPathname = useRef(location.pathname);
+  currentPathname.current = location.pathname;
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { save, remove } = useEventMutations();
   const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
@@ -119,6 +137,8 @@ export default function EventsTab() {
       return;
     }
     if (!user?.isAdmin || save.isPending) return;
+    const originLocationKey = location.key;
+    const isEdit = editingEvent != null;
     save.mutate(
       {
         userId: user.id,
@@ -134,11 +154,18 @@ export default function EventsTab() {
         },
       },
       {
-        onSuccess: (savedEvent) => {
-          toast.success(editingEvent ? 'Event updated!' : 'Event created!');
+        onSuccess: (savedEvent, { userId }) => {
+          toast.success(isEdit ? 'Event updated!' : 'Event created!');
           handleCloseModal();
-          if (!editingEvent && currentLocation.current === location.key)
-            handleSelectEvent(savedEvent);
+          if (isEdit) return;
+          if (currentLocation.current !== originLocationKey) return;
+          if (!canUpdateUserCache(queryClient, userId, true)) return;
+          const list = cachedEventList(queryClient, userId);
+          if (list.some(({ id }) => id === savedEvent.id)) {
+            flushSync(() => {
+              handleSelectEvent(savedEvent);
+            });
+          }
         },
       },
     );
@@ -198,19 +225,27 @@ export default function EventsTab() {
       confirmStyle: 'danger',
     });
     if (!confirmed || !user?.isAdmin || remove.isPending) return;
-    const remaining = events.filter(({ id }) => id !== event.id);
-    const fallback = isDeletingSelected
-      ? (remaining.find((item) => isEventActive(item.status)) ??
-        remaining[0] ??
-        null)
-      : selectedEvent;
     remove.mutate(
       { userId: user.id, eventId: event.id },
       {
-        onSuccess: () => {
-          if (currentLocation.current === location.key)
-            handleSelectEvent(fallback);
+        onSuccess: (_data, { userId }) => {
           toast.success('Event deleted!');
+          if (!canUpdateUserCache(queryClient, userId, true)) return;
+          if (!isDeletingSelected) return;
+          const routeEventId = adminRouteEventId(currentPathname.current);
+          if (routeEventId != null && routeEventId !== event.id) return;
+          const list = cachedEventList(queryClient, userId);
+          if (list.some(({ id }) => id === event.id)) {
+            flushSync(() => {
+              handleSelectEvent(null);
+            });
+            return;
+          }
+          const fallback =
+            list.find((item) => isEventActive(item.status)) ?? list[0] ?? null;
+          flushSync(() => {
+            handleSelectEvent(fallback);
+          });
         },
       },
     );
