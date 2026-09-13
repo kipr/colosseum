@@ -453,6 +453,56 @@ documentation, awards, and brackets. Query Devtools remain a 0.27 kB production
 stub. Formatting, lint, both typechecks, 1,463 Vitest tests, the production
 build, and 98 Playwright tests pass.
 
+## Stage five implementation
+
+Stage five migrates scoring administration, queue management, access-code
+verification, and judge score submission onto the existing Query data layer.
+Chat stays unchanged for stage six. There are no server route, migration, or
+payload changes.
+
+Implementation boundaries:
+
+- `api/scores.ts` and `api/queue.ts` own the existing endpoint DTOs and request
+  functions. Template verification and scoreable-game reads extend the current
+  template and bracket modules. Versioned queue and event-game GETs use
+  `cache: 'no-cache'` so the browser can revalidate with ETags; Query structural
+  sharing keeps unchanged values. Component ETag refs are gone.
+- Admin score keys include user, event, page, limit, status, and score type.
+  Admin queue keys include user, event, sorted statuses, and queue type. Judge
+  keys include a locally generated session identifier, event, resource, and
+  complete filters. Access codes never enter keys.
+- Scoring inboxes, admin queues, judge queues, and judge bracket options poll
+  every 10 seconds with background-tab polling disabled. Cached rows stay
+  visible during refresh. Failures surface as one inline retryable error.
+- Queue dialogs enable team, bracket-list, and bracket-detail queries only while
+  open. The scoresheet issues one judge-scoped team query per distinct schema
+  event. `ScoreViewModal` loads its template through the authenticated detail
+  query; `adminScoreTemplate.ts` is removed because `score_submissions.template_id`
+  is a required foreign key.
+- Score and queue writes are mutations. Variables capture the originating user,
+  event, score, queue item, and judge generation. Successful writes await
+  targeted refreshes without optimistic scoring or queue updates. Two helpers
+  own invalidation: queue dependents, and scoring dependents with a
+  `derivedResults` option.
+- Verification evicts the previous judge namespace, stores `currentTemplate` in
+  the existing format plus a separate session generation, and navigates as
+  before. The scoresheet route parses session storage synchronously. Expired
+  submit authorization keeps the draft long enough to show the error, then
+  clears judge storage/cache and redirects. Network failures keep the entire
+  draft.
+
+Compared with the stage-four HEAD, production client UI/context code decreases
+by 694 lines while the API/query layer adds 688 (net −6, excluding tests and
+this document). The review target is a net reduction including the request
+layer; the decrease comes from removing component fetch/polling/ETag state and
+compacting the new score/queue modules rather than a second fetching layer.
+
+Production JavaScript file count changes from 44 to 46; summed raw JS changes
+from 1,086,072 to 1,087,874 bytes (+1,802); gzip-9 totals change from 282,069
+to 284,511 bytes (+2,442). New lazy chunks cover scores and queue. Query
+Devtools remain a 0.27 kB production stub. Formatting, lint, both typechecks,
+1,473 Vitest tests, the production build, and 99 Playwright tests pass.
+
 ## References
 
 - [TanStack Query installation](https://tanstack.com/query/latest/docs/framework/react/installation)
