@@ -4,25 +4,12 @@ import { readStoredJudgeGeneration } from '../utils/judgeSession';
 import type { Query, QueryClient, QueryKey } from '@tanstack/react-query';
 import {
   adminEventKey,
-  adminEventsKey,
   adminScopeKey,
-  assignedTeamsKey,
-  auditKey,
   authUserKey,
-  awardsKey,
-  awardTemplatesKey,
-  bracketsKey,
-  documentationKey,
-  doubleSeedingKey,
-  globalDocCategoriesKey,
   judgeScopeKey,
-  overallKey,
   publicEventKey,
   publicEventsKey,
   queueKey,
-  scoresKey,
-  seedingKey,
-  teamsKey,
 } from './keys';
 
 export const ADMIN_ONLY_QUERY_META = { adminOnly: true as const };
@@ -34,47 +21,40 @@ function startsWithPrefix(queryKey: QueryKey, prefix: QueryKey): boolean {
   );
 }
 
-async function cancelThenRemove(
-  queryClient: QueryClient,
-  filters: { queryKey?: QueryKey; predicate?: (query: Query) => boolean },
-): Promise<void> {
-  await queryClient.cancelQueries(filters);
-  queryClient.removeQueries(filters);
-}
-
 /**
- * Cancel, then remove, every cached query under a captured admin-user prefix.
- * Public and auth entries are left intact.
+ * Remove every cached query under a captured admin-user prefix.
+ * Public and auth entries are left intact. `removeQueries` already cancels
+ * in-flight retryers via `destroy()`.
  */
-export async function removeAdminUserQueries(
+export function removeAdminUserQueries(
   queryClient: QueryClient,
   userId: number | string,
-): Promise<void> {
-  await cancelThenRemove(queryClient, { queryKey: adminScopeKey(userId) });
+): void {
+  queryClient.removeQueries({ queryKey: adminScopeKey(userId) });
 }
 
 /**
  * Evict queries marked admin-only for a user whose `isAdmin` permission was
  * withdrawn. Authenticated staff queries (such as the event list) remain.
  */
-export async function removeAdminOnlyQueries(
+export function removeAdminOnlyQueries(
   queryClient: QueryClient,
   userId: number | string,
-): Promise<void> {
+): void {
   const prefix = adminScopeKey(userId);
-  const predicate = (query: Query) =>
-    startsWithPrefix(query.queryKey, prefix) && query.meta?.adminOnly === true;
-  await cancelThenRemove(queryClient, { predicate });
+  queryClient.removeQueries({
+    predicate: (query: Query) =>
+      startsWithPrefix(query.queryKey, prefix) &&
+      query.meta?.adminOnly === true,
+  });
 }
 
 /**
  * Explicit `/auth/logout` destroys the server session, including any judge
- * access-code session. Cancel/remove judge Query entries for that action only.
+ * access-code session. Remove judge Query entries for that action only.
  */
-export async function removeJudgeQueries(
-  queryClient: QueryClient,
-): Promise<void> {
-  await cancelThenRemove(queryClient, { queryKey: [...judgeScopeKey] });
+export function removeJudgeQueries(queryClient: QueryClient): void {
+  queryClient.removeQueries({ queryKey: [...judgeScopeKey] });
 }
 
 /** Mutations carry their originating identity even if the component navigates. */
@@ -96,145 +76,50 @@ export async function invalidateForUser(
   );
 }
 
-export async function invalidatePublicEventResults(
+/**
+ * After an event-scoped mutation, mark the originating admin event prefix and
+ * matching public event prefix stale. Query refetches active observers only, so
+ * this does not eagerly fetch every admin tab. Unrelated active queries under
+ * those prefixes (including chat) may refetch; queue and chat writes keep
+ * narrower invalidation instead.
+ *
+ * Also refreshes resources that live outside those prefixes: the public event
+ * list and entity-audit queries. Callers add event lists, global
+ * templates/categories, or judge-session data when the write affects them.
+ */
+export async function invalidateEventDependents(
   queryClient: QueryClient,
-  eventId: number,
+  scope: { eventId: number; userId?: number },
 ): Promise<void> {
+  const { userId, eventId } = scope;
   await Promise.all([
+    userId != null
+      ? invalidateForUser(queryClient, userId, [
+          adminEventKey(userId, eventId),
+          [...adminScopeKey(userId), 'audit-entity'],
+        ])
+      : Promise.resolve(),
     queryClient.invalidateQueries({ queryKey: publicEventKey(eventId) }),
     queryClient.invalidateQueries({ queryKey: publicEventsKey }),
   ]);
 }
 
-export async function invalidateTeamDependents(
-  queryClient: QueryClient,
-  scope: EventMutationScope,
-): Promise<void> {
-  const { userId, eventId } = scope;
-  await Promise.all([
-    invalidateForUser(queryClient, userId, [
-      teamsKey(userId, eventId),
-      scoresKey(userId, eventId),
-      seedingKey(userId, eventId),
-      doubleSeedingKey(userId, eventId),
-      bracketsKey(userId, eventId),
-      [...adminEventKey(userId, eventId), 'bracket'],
-      assignedTeamsKey(userId, eventId),
-      overallKey(userId, eventId),
-      documentationKey(userId, eventId),
-      awardsKey(userId, eventId),
-      auditKey(userId, eventId),
-      [...adminScopeKey(userId), 'audit-entity'],
-    ]),
-    invalidateQueueDependents(queryClient, scope),
-    invalidatePublicEventResults(queryClient, eventId),
-  ]);
-}
-
-export async function invalidateDoubleSeedingDependents(
-  queryClient: QueryClient,
-  scope: EventMutationScope,
-  options: { eventMetadata?: boolean } = {},
-): Promise<void> {
-  const { userId, eventId } = scope;
-  await Promise.all([
-    invalidateForUser(
-      queryClient,
-      userId,
-      [
-        doubleSeedingKey(userId, eventId),
-        overallKey(userId, eventId),
-        awardsKey(userId, eventId),
-        [...adminEventKey(userId, eventId), 'bracket'],
-        auditKey(userId, eventId),
-        [...adminScopeKey(userId), 'audit-entity'],
-        ...(options.eventMetadata ? [adminEventsKey(userId)] : []),
-      ],
-      true,
-    ),
-    invalidatePublicEventResults(queryClient, eventId),
-  ]);
-}
-
-export async function invalidateBracketDependents(
-  queryClient: QueryClient,
-  scope: EventMutationScope & { bracketId?: number },
-): Promise<void> {
-  const { userId, eventId, bracketId } = scope;
-  await Promise.all([
-    invalidateForUser(queryClient, userId, [
-      bracketsKey(userId, eventId),
-      assignedTeamsKey(userId, eventId),
-      overallKey(userId, eventId),
-      awardsKey(userId, eventId),
-      seedingKey(userId, eventId),
-      ...(bracketId != null
-        ? [[...adminEventKey(userId, eventId), 'bracket', bracketId]]
-        : [[...adminEventKey(userId, eventId), 'bracket']]),
-    ]),
-    invalidateQueueDependents(queryClient, scope),
-    invalidatePublicEventResults(queryClient, eventId),
-  ]);
-}
-
-export async function invalidateDocumentationDependents(
-  queryClient: QueryClient,
-  scope: EventMutationScope,
-  options: { globalCategories?: boolean } = {},
-): Promise<void> {
-  const { userId, eventId } = scope;
-  await Promise.all([
-    invalidateForUser(
-      queryClient,
-      userId,
-      [
-        documentationKey(userId, eventId),
-        overallKey(userId, eventId),
-        awardsKey(userId, eventId),
-        [...adminEventKey(userId, eventId), 'bracket'],
-        ...(options.globalCategories ? [globalDocCategoriesKey(userId)] : []),
-      ],
-      true,
-    ),
-    invalidatePublicEventResults(queryClient, eventId),
-  ]);
-}
-
-export async function invalidateAwardDependents(
-  queryClient: QueryClient,
-  scope: EventMutationScope,
-  options: { templates?: boolean } = {},
-): Promise<void> {
-  const { userId, eventId } = scope;
-  await Promise.all([
-    invalidateForUser(
-      queryClient,
-      userId,
-      [
-        awardsKey(userId, eventId),
-        ...(options.templates ? [awardTemplatesKey(userId)] : []),
-      ],
-      true,
-    ),
-    invalidatePublicEventResults(queryClient, eventId),
-  ]);
-}
-
-export async function removeRestrictedPublicResults(
+export function removeRestrictedPublicResults(
   queryClient: QueryClient,
   eventId: number,
-): Promise<void> {
+): void {
   const prefix = publicEventKey(eventId);
-  const predicate = (query: Query) => {
-    if (!startsWithPrefix(query.queryKey, prefix)) return false;
-    const rest = query.queryKey.slice(prefix.length);
-    const head = rest[0];
-    if (head === 'documentation' || head === 'awards' || head === 'overall') {
-      return true;
-    }
-    return head === 'bracket' && rest[2] === 'rankings';
-  };
-  await cancelThenRemove(queryClient, { predicate });
+  queryClient.removeQueries({
+    predicate: (query: Query) => {
+      if (!startsWithPrefix(query.queryKey, prefix)) return false;
+      const rest = query.queryKey.slice(prefix.length);
+      const head = rest[0];
+      if (head === 'documentation' || head === 'awards' || head === 'overall') {
+        return true;
+      }
+      return head === 'bracket' && rest[2] === 'rankings';
+    },
+  });
 }
 
 function isJudgeEventResource(
@@ -269,37 +154,6 @@ export async function invalidateQueueDependents(
   ]);
 }
 
-export async function invalidateScoringDependents(
-  queryClient: QueryClient,
-  scope: { eventId: number; userId?: number; generation?: string },
-  options: { derivedResults?: boolean } = {},
-): Promise<void> {
-  const { eventId, userId } = scope;
-  await Promise.all([
-    userId != null
-      ? invalidateForUser(queryClient, userId, [
-          scoresKey(userId, eventId),
-          auditKey(userId, eventId),
-          [...adminScopeKey(userId), 'audit-entity'],
-          ...(options.derivedResults
-            ? [
-                seedingKey(userId, eventId),
-                doubleSeedingKey(userId, eventId),
-                bracketsKey(userId, eventId),
-                [...adminEventKey(userId, eventId), 'bracket'],
-                overallKey(userId, eventId),
-                awardsKey(userId, eventId),
-              ]
-            : []),
-        ])
-      : Promise.resolve(),
-    invalidateQueueDependents(queryClient, scope),
-    options.derivedResults
-      ? invalidatePublicEventResults(queryClient, eventId)
-      : Promise.resolve(),
-  ]);
-}
-
 export function canUpdateUserCache(
   queryClient: QueryClient,
   userId: number,
@@ -328,8 +182,8 @@ export async function handleProtectedError(
   if (!(error instanceof ApiError) || typeof userId !== 'number') return;
   if (error.status !== 401 && !(error.status === 403 && adminOnly)) return;
   if (!canUpdateUserCache(queryClient, userId)) return;
-  if (error.status === 401) await removeAdminUserQueries(queryClient, userId);
-  else await removeAdminOnlyQueries(queryClient, userId);
+  if (error.status === 401) removeAdminUserQueries(queryClient, userId);
+  else removeAdminOnlyQueries(queryClient, userId);
   if (canUpdateUserCache(queryClient, userId)) {
     await queryClient.invalidateQueries({ queryKey: authUserKey });
   }

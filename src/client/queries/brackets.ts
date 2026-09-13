@@ -25,7 +25,8 @@ import {
   publicEventKey,
 } from './keys';
 import {
-  invalidateBracketDependents,
+  invalidateEventDependents,
+  invalidateQueueDependents,
   type EventMutationScope,
 } from './invalidation';
 import { LIST_STALE_TIME_MS, LIVE_QUERY } from './queryClient';
@@ -127,7 +128,10 @@ export function judgeBracketQueryOptions(
 export function useBracketMutations() {
   const client = useQueryClient();
   const refresh = (_data: unknown, scope: BracketScope) =>
-    invalidateBracketDependents(client, scope);
+    Promise.all([
+      invalidateEventDependents(client, scope),
+      invalidateQueueDependents(client, scope),
+    ]);
   const create = useMutation({
     mutationFn: (v: EventMutationScope & Parameters<typeof createBracket>[0]) =>
       createBracket(v),
@@ -140,14 +144,11 @@ export function useBracketMutations() {
   });
   const remove = useMutation({
     mutationFn: (v: BracketScope & { bracketId: number }) => deleteBracket(v),
-    onSuccess: async (_, scope) => {
-      await client.cancelQueries({
-        queryKey: bracketKey(scope.userId, scope.eventId, scope.bracketId),
-      });
+    onSuccess: (_, scope) => {
       client.removeQueries({
         queryKey: bracketKey(scope.userId, scope.eventId, scope.bracketId),
       });
-      await refresh(_, scope);
+      return refresh(_, scope);
     },
   });
   const generateEntries = useMutation({

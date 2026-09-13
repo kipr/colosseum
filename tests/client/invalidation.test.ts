@@ -1,20 +1,27 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
-import { QueryClient, type QueryClientConfig } from '@tanstack/react-query';
+import {
+  CancelledError,
+  QueryClient,
+  type QueryClientConfig,
+} from '@tanstack/react-query';
 import {
   ADMIN_ONLY_QUERY_META,
   canUpdateJudgeCache,
-  invalidateTeamDependents,
+  invalidateEventDependents,
+  invalidateQueueDependents,
   removeAdminOnlyQueries,
   removeAdminUserQueries,
   removeJudgeQueries,
 } from '../../src/client/queries/invalidation';
 import {
+  adminChatConversationsKey,
   adminEventsKey,
   adminScopeKey,
   authUserKey,
   judgeScopeKey,
   publicEventsKey,
+  queueKey,
   scoresKey,
 } from '../../src/client/queries/keys';
 import { JUDGE_SESSION_GENERATION_STORAGE_KEY } from '../../src/client/utils/judgeSession';
@@ -34,7 +41,7 @@ describe('query keys', () => {
 });
 
 describe('removeAdminUserQueries', () => {
-  it('cancels and removes only that user admin prefix', async () => {
+  it('removes only that user admin prefix', async () => {
     const queryClient = clientWithData();
     queryClient.setQueryData(adminEventsKey(1), [eventFive]);
     queryClient.setQueryData(adminEventsKey(2), [eventFive]);
@@ -42,7 +49,7 @@ describe('removeAdminUserQueries', () => {
     queryClient.setQueryData(authUserKey, { id: 1 });
     queryClient.setQueryData([...judgeScopeKey, 7, 'queue'], [{ id: 1 }]);
 
-    await removeAdminUserQueries(queryClient, 1);
+    removeAdminUserQueries(queryClient, 1);
 
     expect(queryClient.getQueryData(adminEventsKey(1))).toBeUndefined();
     expect(queryClient.getQueryData(adminEventsKey(2))).toEqual([eventFive]);
@@ -51,6 +58,30 @@ describe('removeAdminUserQueries', () => {
     expect(queryClient.getQueryData([...judgeScopeKey, 7, 'queue'])).toEqual([
       { id: 1 },
     ]);
+    queryClient.clear();
+  });
+
+  it('aborts in-flight reads when the admin prefix is removed', async () => {
+    const queryClient = clientWithData({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let aborted = false;
+    const pending = queryClient.fetchQuery({
+      queryKey: adminEventsKey(1),
+      queryFn: ({ signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            aborted = true;
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
+    });
+
+    removeAdminUserQueries(queryClient, 1);
+
+    await expect(pending).rejects.toBeInstanceOf(CancelledError);
+    expect(aborted).toBe(true);
+    expect(queryClient.getQueryData(adminEventsKey(1))).toBeUndefined();
     queryClient.clear();
   });
 });
@@ -65,7 +96,7 @@ describe('removeAdminOnlyQueries', () => {
       meta: ADMIN_ONLY_QUERY_META,
     });
 
-    await removeAdminOnlyQueries(queryClient, 1);
+    removeAdminOnlyQueries(queryClient, 1);
 
     expect(queryClient.getQueryData(adminEventsKey(1))).toEqual([eventFive]);
     expect(
@@ -76,12 +107,12 @@ describe('removeAdminOnlyQueries', () => {
 });
 
 describe('removeJudgeQueries', () => {
-  it('removes judge entries on explicit logout cleanup', async () => {
+  it('removes judge entries on explicit logout cleanup', () => {
     const queryClient = clientWithData();
     queryClient.setQueryData([...judgeScopeKey, 3, 'queue'], [{ id: 1 }]);
     queryClient.setQueryData(publicEventsKey, [{ id: 99 }]);
 
-    await removeJudgeQueries(queryClient);
+    removeJudgeQueries(queryClient);
 
     expect(
       queryClient.getQueryData([...judgeScopeKey, 3, 'queue']),
@@ -101,15 +132,50 @@ describe('canUpdateJudgeCache', () => {
   });
 });
 
-describe('invalidateTeamDependents', () => {
-  it('refreshes scores along with ranking and award dependents', async () => {
+describe('invalidateEventDependents', () => {
+  it('marks the admin and public event prefixes stale without touching other events', async () => {
     const queryClient = clientWithData();
     queryClient.setQueryData(authUserKey, { id: 1, isAdmin: true });
     queryClient.setQueryData(scoresKey(1, 10), { rows: [] });
-    await invalidateTeamDependents(queryClient, { userId: 1, eventId: 10 });
+    queryClient.setQueryData(adminChatConversationsKey(1, 10), []);
+    queryClient.setQueryData(adminEventsKey(1), [eventFive]);
+    queryClient.setQueryData(publicEventsKey, [{ id: 10 }]);
+    queryClient.setQueryData(scoresKey(1, 20), { rows: [] });
+    await invalidateEventDependents(queryClient, { userId: 1, eventId: 10 });
     expect(queryClient.getQueryState(scoresKey(1, 10))?.isInvalidated).toBe(
       true,
     );
+    expect(
+      queryClient.getQueryState(adminChatConversationsKey(1, 10))
+        ?.isInvalidated,
+    ).toBe(true);
+    expect(queryClient.getQueryState(publicEventsKey)?.isInvalidated).toBe(
+      true,
+    );
+    expect(
+      queryClient.getQueryState(adminEventsKey(1))?.isInvalidated,
+    ).not.toBe(true);
+    expect(queryClient.getQueryState(scoresKey(1, 20))?.isInvalidated).not.toBe(
+      true,
+    );
+    queryClient.clear();
+  });
+});
+
+describe('invalidateQueueDependents', () => {
+  it('refreshes queue entries without invalidating chat', async () => {
+    const queryClient = clientWithData();
+    queryClient.setQueryData(authUserKey, { id: 1, isAdmin: true });
+    queryClient.setQueryData(queueKey(1, 10), []);
+    queryClient.setQueryData(adminChatConversationsKey(1, 10), []);
+    await invalidateQueueDependents(queryClient, { userId: 1, eventId: 10 });
+    expect(queryClient.getQueryState(queueKey(1, 10))?.isInvalidated).toBe(
+      true,
+    );
+    expect(
+      queryClient.getQueryState(adminChatConversationsKey(1, 10))
+        ?.isInvalidated,
+    ).not.toBe(true);
     queryClient.clear();
   });
 });

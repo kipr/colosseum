@@ -14,7 +14,8 @@ import {
 } from '../api/teams';
 import { publicEventKey, teamsKey, judgeEventKey } from './keys';
 import {
-  invalidateTeamDependents,
+  invalidateEventDependents,
+  invalidateQueueDependents,
   type EventMutationScope,
 } from './invalidation';
 import { LIST_STALE_TIME_MS } from './queryClient';
@@ -47,7 +48,10 @@ export function judgeTeamsQueryOptions(generation: string, eventId: number) {
 export function useTeamMutations() {
   const client = useQueryClient();
   const refresh = (_data: unknown, scope: EventMutationScope) =>
-    invalidateTeamDependents(client, scope);
+    Promise.all([
+      invalidateEventDependents(client, scope),
+      invalidateQueueDependents(client, scope),
+    ]);
   const save = useMutation({
     mutationFn: (v: EventMutationScope & Parameters<typeof saveTeam>[0]) =>
       saveTeam(v),

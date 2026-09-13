@@ -19,8 +19,8 @@ stack in components.
 Read example: [`teamsQueryOptions`](../src/client/queries/teams.ts) consumed by
 [`SeedingTab`](../src/client/components/admin/SeedingTab.tsx) (shared with the
 Teams tab; 30-second list freshness). Mutation example:
-[`useScoreMutations`](../src/client/queries/scores.ts) (`accept` / `revert`
-refresh derived results; `reject` / `update` do not).
+[`useScoreMutations`](../src/client/queries/scores.ts) (event-prefix invalidation
+plus narrow queue dependents).
 
 Pass Query's `signal` through every fetcher. Domain modules return typed DTOs
 and do not import server runtime code. Components should not call `fetch` or
@@ -68,27 +68,29 @@ reconnect still refetch stale queries.
 Helpers in `invalidation.ts` take the originating mutation's user/event (and
 judge generation when relevant). Independent keys refresh concurrently with
 `Promise.all`. There is no whole-cache clear and no generic CRUD/mutation
-factory.
+factory. Event-scoped writes invalidate the admin event prefix and matching
+public event prefix (plus the public event list and entity-audit queries).
+Query marks matches stale and refetches active observers only. Queue and chat
+writes stay narrow because they happen more often. Documentation category
+writes also refresh the user-scoped catalog; double-seeding generate/delete
+also refresh the admin event list; team, score, and bracket writes also
+refresh queue dependents.
 
-| Mutation family                  | Cache effects                                                                                            |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Event create/update/delete       | Admin and public event lists, public templates, affected event resources                                 |
-| Team edit/check-in/import/delete | Teams, scores, seeding/DS, brackets, assigned teams, overall, docs, awards, audit, queue, public results |
-| Template / field-template        | Relevant lists, details, previews, and event associations                                                |
-| Score submit / reject / edit     | Submission lists, queue/game availability, audit                                                         |
-| Score accept / revert            | Those plus derived scores, rankings, brackets, overall, awards, public results                           |
-| Bracket lifecycle                | Bracket lists/details/games/rankings, assigned teams, queue, derived results                             |
-| Documentation                    | Categories/scores, overall, automatic awards; global category edits also refresh the user-scoped catalog |
-| Awards                           | Awards/recipients/counts; template edits also refresh the user-scoped catalog                            |
-| Queue                            | Filtered queue entries and related selection data                                                        |
-| Chat send                        | Exact latest cache; admin also refreshes the conversation list                                           |
-| Chat delete                      | Cancel/remove both message caches, update and refresh the originating conversation list                  |
+| Mutation family            | Cache effects                                                                         |
+| -------------------------- | ------------------------------------------------------------------------------------- |
+| Event create/update/delete | Admin and public event lists, public templates, affected event resources              |
+| Event-scoped domain writes | Admin and public event prefixes, public event list, entity audit; extras in onSuccess |
+| Template / field-template  | Relevant lists, details, previews, and event associations                             |
+| Queue                      | Filtered queue entries and related judge queue/game data                              |
+| Chat send                  | Exact latest cache; admin also refreshes the conversation list                        |
+| Chat delete                | Remove both message caches, update and refresh the originating conversation list      |
 
 Query's `invalidateQueries` does not reject when a follow-up refetch fails, so
 a successful write stays successful if a later read fails. Await refreshes when
 the action needs them (including partial bulk success). Chat: an empty latest
-page clears older history; deletion cancels in-flight reads; a delayed judge
-send after session replacement or logout must not recreate evicted data.
+page clears older history; deletion removes cached message queries (Query
+cancels their retryers on destroy); a delayed judge send after session
+replacement or logout must not recreate evicted data.
 
 ## Loading and refresh errors
 
@@ -113,7 +115,6 @@ Keep these outside Query:
 - Form drafts, touched state, formula evaluation, and scoresheet validation
 - Confirmations, toasts, and tab/localStorage UI preferences
 - The queue's 30-second rest-warning clock (elapsed wall time, not server data)
-- Auth transition flags that order cache eviction
 - Chat drawer, display name, selected conversation, and last-seen markers
 - Duplicate-submit guards while a mutation is pending
 
