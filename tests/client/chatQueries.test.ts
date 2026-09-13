@@ -3,7 +3,10 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useQuery } from '@tanstack/react-query';
 import { createElement, type ReactNode } from 'react';
-import type { JudgeChatMessage } from '../../src/client/api/chat';
+import type {
+  JudgeChatConversation,
+  JudgeChatMessage,
+} from '../../src/client/api/chat';
 import { getChatMessages } from '../../src/client/api/chat';
 import {
   JudgeChatProvider,
@@ -35,6 +38,7 @@ import { JUDGE_SESSION_GENERATION_STORAGE_KEY } from '../../src/client/utils/jud
 import {
   createQueryWrapper,
   createTestQueryClient,
+  jsonErrorResponse,
   jsonResponse,
   registerQueryTestCleanup,
 } from './helpers/queryTestUtils';
@@ -51,6 +55,18 @@ const baseMessage: Omit<JudgeChatMessage, 'id'> = {
   user_id: null,
   created_at: '2026-09-13T10:00:00.000Z',
 };
+
+const conversation = (
+  conversationKey: string,
+  lastMessageId: number,
+): JudgeChatConversation => ({
+  conversationKey,
+  messageCount: lastMessageId,
+  lastMessageId,
+  lastActivity: baseMessage.created_at,
+  lastMessage: 'message',
+  lastJudgeName: 'Judge',
+});
 
 const message = (id: number): JudgeChatMessage => ({
   ...baseMessage,
@@ -285,10 +301,22 @@ describe('chat mutations', () => {
     ).toBeUndefined();
   });
 
-  it('removes both page caches and the summary after deletion', async () => {
+  it('evicts message pages and refreshes the conversation list after deletion', async () => {
+    let deleted = false;
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve(jsonResponse({ success: true }))),
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          deleted = true;
+          return Promise.resolve(jsonResponse({ success: true }));
+        }
+        if (String(url).includes('/conversations')) {
+          return Promise.resolve(
+            jsonResponse(deleted ? [] : [conversation('thread-a', 2)]),
+          );
+        }
+        return Promise.resolve(jsonResponse([]));
+      }),
     );
     const client = createTestQueryClient();
     client.setQueryData(authUserKey, {
@@ -302,21 +330,18 @@ describe('chat mutations', () => {
       pageParams: [2],
     });
     client.setQueryData(adminChatConversationsKey(7, 4), [
-      {
-        conversationKey: 'thread-a',
-        messageCount: 2,
-        lastMessageId: 2,
-        lastActivity: baseMessage.created_at,
-        lastMessage: 'message',
-        lastJudgeName: 'Judge',
-      },
+      conversation('thread-a', 2),
     ]);
-    const { result } = renderHook(() => useDeleteChatConversationMutation(), {
-      wrapper: createQueryWrapper({ queryClient: client, router: false }),
-    });
+    const { result } = renderHook(
+      () => ({
+        list: useQuery(chatConversationsQueryOptions(7, 4, false)),
+        remove: useDeleteChatConversationMutation(),
+      }),
+      { wrapper: createQueryWrapper({ queryClient: client, router: false }) },
+    );
 
     await act(async () => {
-      await result.current.mutateAsync({
+      await result.current.remove.mutateAsync({
         mode: 'admin',
         userId: 7,
         eventId: 4,
@@ -331,6 +356,211 @@ describe('chat mutations', () => {
       client.getQueryData(adminChatOlderKey(7, 4, 'thread-a')),
     ).toBeUndefined();
     expect(client.getQueryData(adminChatConversationsKey(7, 4))).toEqual([]);
+    await waitFor(() => expect(result.current.remove.isSuccess).toBe(true));
+  });
+
+  it('leaves a stale conversation summary when refresh fails after deletion', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve(jsonResponse({ success: true }));
+        }
+        if (String(url).includes('/conversations')) {
+          return Promise.resolve(jsonErrorResponse(500, 'Unavailable'));
+        }
+        return Promise.resolve(jsonResponse([]));
+      }),
+    );
+    const client = createTestQueryClient();
+    client.setQueryData(authUserKey, {
+      id: 7,
+      email: 'admin@kipr.org',
+      isAdmin: true,
+    });
+    const summary = [conversation('thread-a', 2)];
+    client.setQueryData(adminChatConversationsKey(7, 4), summary);
+    const { result } = renderHook(
+      () => ({
+        list: useQuery(chatConversationsQueryOptions(7, 4, false)),
+        remove: useDeleteChatConversationMutation(),
+      }),
+      { wrapper: createQueryWrapper({ queryClient: client, router: false }) },
+    );
+
+    await act(async () => {
+      await result.current.remove.mutateAsync({
+        mode: 'admin',
+        userId: 7,
+        eventId: 4,
+        conversationKey: 'thread-a',
+      });
+    });
+
+    await waitFor(() => expect(result.current.list.isError).toBe(true));
+    expect(result.current.remove.isSuccess).toBe(true);
+    expect(client.getQueryData(adminChatConversationsKey(7, 4))).toEqual(
+      summary,
+    );
+  });
+
+  it('keeps conversation deletion pending until list refresh attempts finish', async () => {
+    let resolveRefresh!: (response: Response) => void;
+    let deleted = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          deleted = true;
+          return Promise.resolve(jsonResponse({ success: true }));
+        }
+        if (String(url).includes('/conversations')) {
+          if (!deleted) {
+            return Promise.resolve(jsonResponse([conversation('thread-a', 2)]));
+          }
+          return new Promise<Response>((resolve) => {
+            resolveRefresh = resolve;
+          });
+        }
+        return Promise.resolve(jsonResponse([]));
+      }),
+    );
+    const client = createTestQueryClient();
+    client.setQueryData(authUserKey, {
+      id: 7,
+      email: 'admin@kipr.org',
+      isAdmin: true,
+    });
+    const { result } = renderHook(
+      () => ({
+        list: useQuery(chatConversationsQueryOptions(7, 4, false)),
+        remove: useDeleteChatConversationMutation(),
+      }),
+      { wrapper: createQueryWrapper({ queryClient: client, router: false }) },
+    );
+    await waitFor(() => expect(result.current.list.isSuccess).toBe(true));
+
+    let finished = false;
+    let pending!: Promise<unknown>;
+    act(() => {
+      pending = result.current.remove.mutateAsync({
+        mode: 'admin',
+        userId: 7,
+        eventId: 4,
+        conversationKey: 'thread-a',
+      });
+      void pending.then(() => {
+        finished = true;
+      });
+    });
+    await waitFor(() => expect(resolveRefresh).toEqual(expect.any(Function)));
+    expect(result.current.remove.isPending).toBe(true);
+    expect(finished).toBe(false);
+    resolveRefresh(jsonResponse([]));
+    await act(async () => {
+      await pending;
+    });
+    expect(finished).toBe(true);
+    await waitFor(() => expect(result.current.remove.isSuccess).toBe(true));
+    expect(client.getQueryData(adminChatConversationsKey(7, 4))).toEqual([]);
+  });
+
+  function renderAdminChat(client: ReturnType<typeof createTestQueryClient>) {
+    const wrapper = ({ children }: { children: ReactNode }) => {
+      const Inner = createQueryWrapper({ queryClient: client, router: false });
+      return createElement(
+        Inner,
+        null,
+        createElement(JudgeChatProvider, {
+          mode: 'admin',
+          userId: 7,
+          eventId: 4,
+          children,
+        }),
+      );
+    };
+    return renderHook(() => useJudgeChat(), { wrapper });
+  }
+
+  it('clears the deleted conversation selection after a failed list refresh', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve(jsonResponse({ success: true }));
+        }
+        if (String(url).includes('/conversations')) {
+          return Promise.resolve(jsonErrorResponse(500, 'Unavailable'));
+        }
+        return Promise.resolve(jsonResponse([]));
+      }),
+    );
+    const client = createTestQueryClient();
+    client.setQueryData(authUserKey, {
+      id: 7,
+      email: 'admin@kipr.org',
+      isAdmin: true,
+    });
+    const summary = [conversation('thread-a', 2)];
+    client.setQueryData(adminChatConversationsKey(7, 4), summary);
+    const { result } = renderAdminChat(client);
+    act(() => {
+      result.current.setSelectedConversationKey('thread-a');
+    });
+    await act(async () => {
+      await expect(result.current.deleteConversation('thread-a')).resolves.toBe(
+        true,
+      );
+    });
+    expect(result.current.selectedConversationKey).toBeNull();
+    expect(result.current.conversations).toEqual(summary);
+  });
+
+  it('does not clear a conversation selected while deletion is in flight', async () => {
+    let resolveDelete!: (response: Response) => void;
+    const summaries = [
+      conversation('thread-a', 2),
+      conversation('thread-b', 5),
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return new Promise<Response>((resolve) => {
+            resolveDelete = resolve;
+          });
+        }
+        if (String(url).includes('/conversations')) {
+          return Promise.resolve(jsonResponse(summaries));
+        }
+        return Promise.resolve(jsonResponse([]));
+      }),
+    );
+    const client = createTestQueryClient();
+    client.setQueryData(authUserKey, {
+      id: 7,
+      email: 'admin@kipr.org',
+      isAdmin: true,
+    });
+    client.setQueryData(adminChatConversationsKey(7, 4), summaries);
+    const { result } = renderAdminChat(client);
+    act(() => {
+      result.current.setSelectedConversationKey('thread-a');
+    });
+    let deleted = false;
+    act(() => {
+      void result.current.deleteConversation('thread-a').then((ok) => {
+        deleted = ok;
+      });
+    });
+    await waitFor(() => expect(resolveDelete).toEqual(expect.any(Function)));
+    act(() => {
+      result.current.setSelectedConversationKey('thread-b');
+    });
+    expect(result.current.selectedConversationKey).toBe('thread-b');
+    resolveDelete(jsonResponse({ success: true }));
+    await waitFor(() => expect(deleted).toBe(true));
+    expect(result.current.selectedConversationKey).toBe('thread-b');
   });
 
   it('does not recreate evicted judge messages after session replacement', async () => {

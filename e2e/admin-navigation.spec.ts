@@ -106,7 +106,7 @@ test.describe('Admin navigation and session', () => {
     await expect(page.locator('.event-badge-name')).toHaveText(DEEP_LINK_EVENT);
   });
 
-  test('creating an event selects it even if the list refresh is slow', async ({
+  test('creating an event waits for list refresh before selecting it', async ({
     page,
   }) => {
     await loginAsAdmin(page);
@@ -129,13 +129,20 @@ test.describe('Admin navigation and session', () => {
       await route.continue();
     });
     await modal.getByRole('button', { name: 'Create Event' }).click();
-    await expect(modal).not.toBeVisible({ timeout: 5_000 });
+    await expect(
+      modal.getByRole('button', { name: 'Saving...' }),
+    ).toBeVisible();
+    await expect(modal).toBeVisible();
+    await expect(page.locator('.event-badge-name')).not.toHaveText(
+      CREATED_EVENT,
+    );
+    releaseRefresh();
+    await expect(modal).not.toBeVisible();
     await expect(page.locator('.event-badge-name')).toHaveText(CREATED_EVENT);
     const url = page.url();
     const match = url.match(/\/admin\/events\/(\d+)/);
     expect(match).toBeTruthy();
     createdEventId = Number(match?.[1]);
-    releaseRefresh();
   });
 
   test('deleting the selected event falls back to an active or setup event', async ({

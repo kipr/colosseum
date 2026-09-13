@@ -6,7 +6,6 @@ import {
   getPublicEvents,
   getPublicOverallScores,
 } from '../api/events';
-import type { Event } from '../utils/eventStatus';
 import {
   adminEventKey,
   adminEventsKey,
@@ -60,53 +59,44 @@ export function publicOverallQueryOptions(eventId: number) {
 
 export function useEventMutations() {
   const client = useQueryClient();
-  const refresh = (userId: number) =>
-    Promise.all([
-      client.invalidateQueries({ queryKey: adminEventsKey(userId) }),
-      client.invalidateQueries({ queryKey: publicEventsKey }),
-      client.invalidateQueries({ queryKey: publicTemplatesKey }),
-    ]);
+  const refreshLists = (userId: number) => [
+    client.invalidateQueries({ queryKey: adminEventsKey(userId) }),
+    client.invalidateQueries({ queryKey: publicEventsKey }),
+    client.invalidateQueries({ queryKey: publicTemplatesKey }),
+  ];
   const save = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
     mutationFn: (variables: MutationScope & Parameters<typeof saveEvent>[0]) =>
       saveEvent(variables),
-    onSuccess: async (event, { userId, eventId }) => {
+    onSuccess: (_event, { userId, eventId }) => {
       if (!canUpdateUserCache(client, userId, true)) return;
-      await client.cancelQueries({ queryKey: adminEventsKey(userId) });
-      if (!canUpdateUserCache(client, userId, true)) return;
-      client.setQueryData<Event[]>(adminEventsKey(userId), (events = []) =>
-        events.some(({ id }) => id === event.id)
-          ? events.map((old) => (old.id === event.id ? event : old))
-          : [event, ...events],
-      );
-      if (eventId != null) {
-        void client.invalidateQueries({
-          queryKey: adminEventKey(userId, eventId),
-        });
-        void client.invalidateQueries({
-          queryKey: publicEventKey(eventId),
-        });
-      }
-      void refresh(userId);
+      return Promise.all([
+        ...refreshLists(userId),
+        ...(eventId != null
+          ? [
+              client.invalidateQueries({
+                queryKey: adminEventKey(userId, eventId),
+              }),
+              client.invalidateQueries({
+                queryKey: publicEventKey(eventId),
+              }),
+            ]
+          : []),
+      ]);
     },
   });
   const remove = useMutation({
     meta: ADMIN_ONLY_QUERY_META,
     mutationFn: (variables: MutationScope & { eventId: number }) =>
       deleteEvent(variables),
-    onSuccess: async (_, { userId, eventId }) => {
+    onSuccess: (_, { userId, eventId }) => {
       if (!canUpdateUserCache(client, userId, true)) return;
-      await client.cancelQueries({ queryKey: adminEventsKey(userId) });
       client.removeQueries({ queryKey: adminEventKey(userId, eventId) });
       client.removeQueries({ queryKey: publicEventKey(eventId) });
       client.removeQueries({
         queryKey: [...templatesKey(userId), { eventId }],
       });
-      if (!canUpdateUserCache(client, userId, true)) return;
-      client.setQueryData<Event[]>(adminEventsKey(userId), (events) =>
-        events?.filter(({ id }) => id !== eventId),
-      );
-      void refresh(userId);
+      return Promise.all(refreshLists(userId));
     },
   });
   return { save, remove };

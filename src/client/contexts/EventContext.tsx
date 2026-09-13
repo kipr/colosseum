@@ -97,6 +97,8 @@ export function EventProvider({ children }: { children: ReactNode }) {
     user && !authLoading ? (eventsQuery.data ?? EMPTY_EVENTS) : EMPTY_EVENTS;
   const listSucceeded = eventsQueryEnabled && eventsQuery.isSuccess;
   const routeEventId = parseRouteEventId(eventIdParam);
+  const routeEventIdRef = useRef(routeEventId);
+  routeEventIdRef.current = routeEventId;
 
   const effectiveSelectedId = useMemo(() => {
     if (typeof routeEventId === 'number') {
@@ -252,7 +254,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
 
     if (typeof routeEventId === 'number') {
       const found = events.some((event) => event.id === routeEventId);
-      if (!found) {
+      if (!found && routeEventIdRef.current === routeEventId) {
         navigate(adminEventsPath(view), { replace: true });
       }
     }

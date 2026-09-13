@@ -21,9 +21,12 @@ import {
   renderWithQuery,
 } from './helpers/queryTestUtils';
 import {
+  adminEventKey,
   adminEventsKey,
   authUserKey,
   fieldTemplatesKey,
+  overallKey,
+  publicEventKey,
   publicTemplatesKey,
   templateDetailKey,
   teamsKey,
@@ -32,7 +35,11 @@ import {
   teamsQueryOptions,
   useTeamMutations,
 } from '../../src/client/queries/teams';
-import { useEventMutations } from '../../src/client/queries/events';
+import {
+  useEventMutations,
+  adminEventsQueryOptions,
+  overallQueryOptions,
+} from '../../src/client/queries/events';
 import {
   fieldTemplatesQueryOptions,
   templateQueryOptions,
@@ -211,7 +218,7 @@ describe('stage three queries and writes', () => {
     expect(client.getQueryData(adminEventsKey(1))).toBeUndefined();
   });
 
-  it('makes a successful event immediately selectable while its list refresh is delayed', async () => {
+  it('keeps an event save pending until list refresh attempts finish', async () => {
     const refresh = deferred<Response>();
     vi.stubGlobal(
       'fetch',
@@ -224,15 +231,54 @@ describe('stage three queries and writes', () => {
     const client = clientWithUser();
     client.setQueryData(adminEventsKey(1), []);
     const hook = renderHook(
-      () => {
-        const list = useQuery({
-          queryKey: adminEventsKey(1),
-          queryFn: async ({ signal }) =>
-            (await fetch('/events', { signal })).json(),
-          staleTime: Infinity,
-        });
-        return { list, ...useEventMutations() };
-      },
+      () => ({
+        list: useQuery(adminEventsQueryOptions(1)),
+        ...useEventMutations(),
+      }),
+      { wrapper: createQueryWrapper({ queryClient: client }) },
+    );
+    let finished = false;
+    let result!: Promise<unknown>;
+    act(() => {
+      result = hook.result.current.save.mutateAsync({
+        userId: 1,
+        data: { name: event.name },
+      });
+      void result.then(() => {
+        finished = true;
+      });
+    });
+    await waitFor(() => expect(hook.result.current.save.isPending).toBe(true));
+    expect(finished).toBe(false);
+    expect(client.getQueryData(adminEventsKey(1))).toEqual([]);
+    refresh.resolve(jsonResponse([event]));
+    await act(async () => {
+      await result;
+    });
+    expect(finished).toBe(true);
+    await waitFor(() => expect(hook.result.current.save.isPending).toBe(false));
+    expect(hook.result.current.save.isSuccess).toBe(true);
+    expect(client.getQueryData(adminEventsKey(1))).toEqual([event]);
+  });
+
+  it('keeps a successful event write successful when the list refresh fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url, options) =>
+        Promise.resolve(
+          options.method === 'POST'
+            ? jsonResponse(event)
+            : jsonErrorResponse(500, 'Failed to fetch events'),
+        ),
+      ),
+    );
+    const client = clientWithUser();
+    client.setQueryData(adminEventsKey(1), []);
+    const hook = renderHook(
+      () => ({
+        list: useQuery(adminEventsQueryOptions(1)),
+        ...useEventMutations(),
+      }),
       { wrapper: createQueryWrapper({ queryClient: client }) },
     );
     await act(async () => {
@@ -241,9 +287,9 @@ describe('stage three queries and writes', () => {
         data: { name: event.name },
       });
     });
-    expect(client.getQueryData(adminEventsKey(1))).toEqual([event]);
-    expect(hook.result.current.save.isPending).toBe(false);
-    refresh.resolve(jsonResponse([event]));
+    await waitFor(() => expect(hook.result.current.list.isError).toBe(true));
+    expect(hook.result.current.save.isSuccess).toBe(true);
+    expect(client.getQueryData(adminEventsKey(1))).toEqual([]);
   });
 
   it('keeps a successful write successful when the essential team refresh fails', async () => {
@@ -380,7 +426,7 @@ describe('stage three queries and writes', () => {
     expect(client.getQueryData(publicTemplatesKey)).toEqual([]);
   });
 
-  it('removes a deleted event and its filtered template list even when refreshing events fails', async () => {
+  it('evicts a deleted event and its templates while leaving the list to Query when refresh fails', async () => {
     vi.stubGlobal(
       'fetch',
       vi
@@ -397,17 +443,70 @@ describe('stage three queries and writes', () => {
     client.setQueryData(adminEventsKey(1), [event]);
     const templates = templatesQueryOptions(1, event.id).queryKey;
     client.setQueryData(templates, [template]);
-    const hook = renderHook(() => useEventMutations(), {
-      wrapper: createQueryWrapper({ queryClient: client }),
-    });
+    const hook = renderHook(
+      () => ({
+        list: useQuery(adminEventsQueryOptions(1)),
+        ...useEventMutations(),
+      }),
+      { wrapper: createQueryWrapper({ queryClient: client }) },
+    );
     await act(async () => {
       await hook.result.current.remove.mutateAsync({
         userId: 1,
         eventId: event.id,
       });
     });
-    expect(client.getQueryData(adminEventsKey(1))).toEqual([]);
+    await waitFor(() => expect(hook.result.current.list.isError).toBe(true));
+    expect(hook.result.current.remove.isSuccess).toBe(true);
+    expect(client.getQueryData(adminEventsKey(1))).toEqual([event]);
     expect(client.getQueryData(templates)).toBeUndefined();
+  });
+
+  it('does not restore evicted event queries from a late in-flight read', async () => {
+    let resolveOverall!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve(new Response(null, { status: 204 }));
+        }
+        return new Promise<Response>((resolve, reject) => {
+          resolveOverall = resolve;
+          init?.signal?.addEventListener('abort', () => {
+            reject(
+              new DOMException('This operation was aborted', 'AbortError'),
+            );
+          });
+        });
+      }),
+    );
+    const client = clientWithUser();
+    client.setQueryData(adminEventsKey(1), [event]);
+    client.setQueryData(publicEventKey(event.id), { id: event.id });
+    const hook = renderHook(
+      () => ({
+        overall: useQuery(overallQueryOptions(1, event.id)),
+        ...useEventMutations(),
+      }),
+      { wrapper: createQueryWrapper({ queryClient: client }) },
+    );
+    await waitFor(() =>
+      expect(hook.result.current.overall.isFetching).toBe(true),
+    );
+
+    await act(async () => {
+      await hook.result.current.remove.mutateAsync({
+        userId: 1,
+        eventId: event.id,
+      });
+    });
+    resolveOverall(jsonResponse([{ team_id: 1 }]));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(client.getQueryData(overallKey(1, event.id))).toBeUndefined();
+    expect(client.getQueryData(adminEventKey(1, event.id))).toBeUndefined();
+    expect(client.getQueryData(publicEventKey(event.id))).toBeUndefined();
   });
 
   it('removes deleted template details rather than leaving a reusable stale preview', async () => {
