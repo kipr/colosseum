@@ -249,8 +249,16 @@ test.describe('Judge Scoring E2E', () => {
     expect(Array.isArray(parsed.schema.fields)).toBe(true);
     expect(parsed.schema.fields.length).toBeGreaterThan(0);
 
-    // access_code must NOT be leaked to the client
+    const generation = await page.evaluate(() =>
+      sessionStorage.getItem('judgeSessionGeneration'),
+    );
+    expect(generation).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+
+    // access_code must NOT be leaked to the client or query keys
     expect(parsed.access_code).toBeUndefined();
+    expect(generation).not.toBe(ACCESS_CODE);
 
     // Scoresheet form renders with the template title
     await expect(page.locator('.scoresheet-form')).toBeVisible();
@@ -296,10 +304,20 @@ test.describe('Judge Scoring E2E', () => {
 
     await page.getByLabel('Team Initials').fill('AB');
 
-    // Submit
-    await page.getByRole('button', { name: 'Submit Score' }).click();
+    let releaseSubmit!: () => void;
+    const held = new Promise<void>((resolve) => {
+      releaseSubmit = resolve;
+    });
+    await page.route('**/api/scores/submit', async (route) => {
+      await held;
+      await route.continue();
+    });
 
-    // Success notification appears
+    const submit = page.getByRole('button', { name: 'Submit Score' });
+    await submit.click();
+    await expect(submit).toBeDisabled();
+    releaseSubmit();
+
     await expect(page.getByText('Score submitted successfully!')).toBeVisible({
       timeout: 5_000,
     });

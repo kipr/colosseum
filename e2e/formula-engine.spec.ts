@@ -48,8 +48,11 @@ test('judge blocks submission, guards the handler, recovers, and submits fresh o
   page,
 }) => {
   await page.addInitScript(
-    (value) => sessionStorage.setItem('currentTemplate', JSON.stringify(value)),
-    template,
+    ([value, generation]) => {
+      sessionStorage.setItem('currentTemplate', JSON.stringify(value));
+      sessionStorage.setItem('judgeSessionGeneration', generation);
+    },
+    [template, 'e2e-formula-generation'] as const,
   );
   let submissions = 0;
   let submitted: Record<string, { value: number }> = {};
@@ -187,8 +190,11 @@ test('app and portable preserve numeric and string button types for strict equal
     { stdio: 'pipe' },
   );
   await page.addInitScript(
-    (value) => sessionStorage.setItem('currentTemplate', JSON.stringify(value)),
-    typedTemplate,
+    ([value, generation]) => {
+      sessionStorage.setItem('currentTemplate', JSON.stringify(value));
+      sessionStorage.setItem('judgeSessionGeneration', generation);
+    },
+    [typedTemplate, 'e2e-formula-typed-generation'] as const,
   );
   for (const url of ['/scoresheet', pathToFileURL(output).href]) {
     await page.goto(url);

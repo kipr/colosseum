@@ -1,13 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
 import { publicTemplatesQueryOptions } from '../queries/templates';
 import type { PublicTemplate } from '../api/templates';
+import type { TemplateDetail } from '../api/templates';
 import QueryFeedback from '../components/QueryFeedback';
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import AccessCodeModal from '../components/AccessCodeModal';
 import { formatDate } from '../utils/dateUtils';
+import {
+  createJudgeSessionGeneration,
+  writeJudgeSession,
+} from '../utils/judgeSession';
 import './Judge.css';
 
 const EMPTY_TEMPLATES: PublicTemplate[] = [];
@@ -42,8 +46,8 @@ export default function Judge() {
     setSelectedTemplate({ id, name });
   };
 
-  const handleAccessGranted = (template: any) => {
-    sessionStorage.setItem('currentTemplate', JSON.stringify(template));
+  const handleAccessGranted = (template: TemplateDetail) => {
+    writeJudgeSession(template, createJudgeSessionGeneration());
     const urlName = selectedTemplate!.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')

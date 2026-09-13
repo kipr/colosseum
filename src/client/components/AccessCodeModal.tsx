@@ -1,12 +1,14 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
+import { ApiError } from '../api/http';
+import { useVerifyTemplateMutation } from '../queries/templates';
+import type { TemplateDetail } from '../api/templates';
 import './Modal.css';
 
 interface AccessCodeModalProps {
   templateId: number;
   templateName: string;
   onClose: () => void;
-  onSuccess: (template: any) => void;
+  onSuccess: (template: TemplateDetail) => void;
 }
 
 export default function AccessCodeModal({
@@ -17,6 +19,7 @@ export default function AccessCodeModal({
 }: AccessCodeModalProps) {
   const [accessCode, setAccessCode] = useState('');
   const [error, setError] = useState('');
+  const verify = useVerifyTemplateMutation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,37 +29,17 @@ export default function AccessCodeModal({
       setError('Please enter an access code');
       return;
     }
+    if (verify.isPending) return;
 
     try {
-      const response = await fetch(
-        `/scoresheet/templates/${templateId}/verify`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accessCode }),
-        },
-      );
-
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError('Invalid access code');
-        } else {
-          setError('Failed to verify access code');
-        }
+      const template = await verify.mutateAsync({ templateId, accessCode });
+      onSuccess(template);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 403) {
+        setError('Invalid access code');
         return;
       }
-
-      const template = await response.json();
-      onSuccess(template);
-    } catch (error) {
-      console.error('Error verifying access code:', error);
       setError('Failed to verify access code');
-    }
-  };
-
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      handleSubmit(e as any);
     }
   };
 
@@ -83,7 +66,6 @@ export default function AccessCodeModal({
               placeholder="Enter code provided by administrator"
               value={accessCode}
               onChange={(e) => setAccessCode(e.target.value)}
-              onKeyPress={handleKeyPress}
               autoComplete="off"
               autoFocus
             />
@@ -104,11 +86,16 @@ export default function AccessCodeModal({
               type="button"
               className="btn btn-secondary"
               onClick={onClose}
+              disabled={verify.isPending}
             >
               Cancel
             </button>
-            <button type="submit" className="btn btn-primary">
-              Access Scoresheet
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={verify.isPending}
+            >
+              {verify.isPending ? 'Verifying...' : 'Access Scoresheet'}
             </button>
           </div>
         </form>

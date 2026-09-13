@@ -1,4 +1,4 @@
-import { requestJson } from './http';
+import { requestJson, requestJsonBody } from './http';
 
 export interface DoubleSeedingScore {
   id: number;
@@ -93,13 +93,10 @@ export function generateDoubleSeedingMatches({
   eventId: number;
   rounds: number;
 }) {
-  return requestJson<GenerateDoubleSeedingResult>(
+  return requestJsonBody<GenerateDoubleSeedingResult>(
     `/double-seeding/matches/generate/${eventId}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rounds }),
-    },
+    'POST',
+    { rounds },
   );
 }
 

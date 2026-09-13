@@ -444,10 +444,19 @@ test.describe('Bracket Lifecycle E2E', () => {
     await expect(pendingRow).toContainText('75');
     await expect(pendingRow).toContainText('50');
 
-    // Click Accept
-    await pendingRow.getByRole('button', { name: 'Accept' }).click();
+    const accept = pendingRow.getByRole('button', { name: 'Accept' });
+    let releaseAccept!: () => void;
+    const held = new Promise<void>((resolve) => {
+      releaseAccept = resolve;
+    });
+    await page.route('**/scores/*/accept-event', async (route) => {
+      await held;
+      await route.continue();
+    });
+    await accept.click();
+    await expect(accept).toBeDisabled();
+    releaseAccept();
 
-    // Success toast should appear
     await expect(page.getByText(/Score accepted/i)).toBeVisible({
       timeout: 5_000,
     });

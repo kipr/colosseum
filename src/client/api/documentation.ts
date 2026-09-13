@@ -1,4 +1,4 @@
-import { requestJson, requestVoid } from './http';
+import { requestJson, requestJsonBody, requestVoid } from './http';
 
 export interface DocCategory {
   id: number;
@@ -89,18 +89,18 @@ export function saveDocCategory({
   max_score?: number;
   category_id?: number;
 }) {
-  return requestJson<DocCategory>('/documentation-scores/categories', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+  return requestJsonBody<DocCategory>(
+    '/documentation-scores/categories',
+    'POST',
+    {
       event_id,
       ordinal,
       name,
       weight,
       max_score,
       category_id,
-    }),
-  });
+    },
+  );
 }
 
 export function updateDocCategoryOrdinal({
@@ -112,13 +112,10 @@ export function updateDocCategoryOrdinal({
   eventId: number;
   ordinal: number;
 }) {
-  return requestJson<DocCategory>(
+  return requestJsonBody<DocCategory>(
     `/documentation-scores/categories/${categoryId}?event_id=${eventId}`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ordinal }),
-    },
+    'PATCH',
+    { ordinal },
   );
 }
 
@@ -144,13 +141,10 @@ export function saveDocTeamScore({
   teamId: number;
   sub_scores: DocSubScoreInput[];
 }) {
-  return requestJson<DocScore>(
+  return requestJsonBody<DocScore>(
     `/documentation-scores/event/${eventId}/team/${teamId}`,
-    {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sub_scores }),
-    },
+    'PUT',
+    { sub_scores },
   );
 }
 

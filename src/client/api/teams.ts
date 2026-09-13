@@ -1,4 +1,4 @@
-import { requestJson, requestVoid } from './http';
+import { requestJson, requestJsonBody, requestVoid } from './http';
 
 export type TeamStatus = 'registered' | 'checked_in' | 'no_show' | 'withdrawn';
 export interface Team {
@@ -39,11 +39,11 @@ export function saveTeam({
   teamId?: number;
   data: TeamInput;
 }) {
-  return requestJson<Team>(teamId ? `/teams/${teamId}` : '/teams', {
-    method: teamId ? 'PATCH' : 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(teamId ? data : { ...data, event_id: eventId }),
-  });
+  return requestJsonBody<Team>(
+    teamId ? `/teams/${teamId}` : '/teams',
+    teamId ? 'PATCH' : 'POST',
+    teamId ? data : { ...data, event_id: eventId },
+  );
 }
 export function deleteTeam({ teamId }: { teamId: number }) {
   return requestVoid(`/teams/${teamId}`, { method: 'DELETE' });
@@ -58,10 +58,9 @@ export function importTeams({
   eventId: number;
   teams: TeamInput[];
 }) {
-  return requestJson<BulkImportResult>('/teams/bulk', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event_id: eventId, teams }),
+  return requestJsonBody<BulkImportResult>('/teams/bulk', 'POST', {
+    event_id: eventId,
+    teams,
   });
 }
 export function checkInTeams({
@@ -71,12 +70,9 @@ export function checkInTeams({
   eventId: number;
   teamNumbers: number[];
 }) {
-  return requestJson<{ updated: number; not_found?: number[] }>(
+  return requestJsonBody<{ updated: number; not_found?: number[] }>(
     `/teams/event/${eventId}/check-in/bulk`,
-    {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ team_numbers: teamNumbers }),
-    },
+    'PATCH',
+    { team_numbers: teamNumbers },
   );
 }

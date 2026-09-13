@@ -12,7 +12,7 @@ import {
   checkInTeams,
   type TeamStatus,
 } from '../api/teams';
-import { publicEventKey, teamsKey } from './keys';
+import { publicEventKey, teamsKey, judgeEventKey } from './keys';
 import { invalidateTeamDependents, type MutationScope } from './invalidation';
 import { LIST_STALE_TIME_MS } from './queryClient';
 
@@ -32,6 +32,13 @@ export function teamsQueryOptions(
   return queryOptions({
     queryKey: [...teamsKey(userId, eventId), { status }],
     queryFn: ({ signal }) => getTeams(eventId, status, signal),
+    staleTime: LIST_STALE_TIME_MS,
+  });
+}
+export function judgeTeamsQueryOptions(generation: string, eventId: number) {
+  return queryOptions({
+    queryKey: [...judgeEventKey(generation, eventId), 'teams'],
+    queryFn: ({ signal }) => getTeams(eventId, 'all', signal),
     staleTime: LIST_STALE_TIME_MS,
   });
 }

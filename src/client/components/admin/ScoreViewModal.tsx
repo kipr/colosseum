@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -15,7 +16,12 @@ import {
   shouldAutoAppendRepeatableGroupRow,
 } from '../scoresheetUtils';
 import type { BracketResultType } from '../../../shared/bracketResult';
-import { loadAdminScoreTemplate } from '../../utils/adminScoreTemplate';
+import { useAuth } from '../../contexts/AuthContext';
+import { useEvent } from '../../contexts/EventContext';
+import type { ScoreData, ScoreSubmission } from '../../api/scores';
+import { templateQueryOptions } from '../../queries/templates';
+import { useScoreMutations } from '../../queries/scores';
+import QueryFeedback, { queryData } from '../QueryFeedback';
 import {
   buildTeamInitialsScoreEntries,
   getMissingTeamInitialsError,
@@ -31,7 +37,7 @@ import { compileScoresheetFormulas } from '../../../shared/scoresheetFormulaProg
 import FormulaErrors from '../FormulaErrors';
 
 interface ScoreViewModalProps {
-  score: any;
+  score: ScoreSubmission;
   onClose: () => void;
   onSave: () => void;
 }
@@ -41,10 +47,30 @@ export default function ScoreViewModal({
   onClose,
   onSave,
 }: ScoreViewModalProps) {
-  const [template, setTemplate] = useState<any>(null);
-  const [formData, setFormData] = useState<Record<string, any>>({});
+  const { user, loading: authLoading } = useAuth();
+  const { selectedEvent } = useEvent();
+  const userId = user?.id ?? 0;
+  const templateQuery = useQuery({
+    ...templateQueryOptions(
+      userId,
+      Number(score.template_id),
+      Boolean(user?.isAdmin),
+    ),
+    enabled: Boolean(user && !authLoading && score.template_id),
+  });
+  const template = queryData(templateQuery);
+  const { update } = useScoreMutations();
+  const [formData, setFormData] = useState<Record<string, any>>(() => {
+    const data: Record<string, any> = {};
+    Object.entries(score.score_data).forEach(
+      ([fieldId, fieldData]: [string, any]) => {
+        data[fieldId] = fieldData.value;
+      },
+    );
+    return data;
+  });
   const isReadOnly = score.status !== 'pending';
-  const fields = template?.schema?.fields;
+  const fields = template?.schema?.fields ?? [];
   const compilation = useMemo(
     () => compileScoresheetFormulas(fields),
     [fields],
@@ -57,8 +83,6 @@ export default function ScoreViewModal({
     [fields, formData, compilation, isReadOnly],
   );
   const calculatedValues = calculation.values;
-  const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [resultType, setResultType] = useState<BracketResultType>(
     score.result_type ?? 'standard',
   );
@@ -83,41 +107,6 @@ export default function ScoreViewModal({
               (score.double_seeding_team2_id != null ||
                 formData.team_b_id != null)),
         });
-
-  useEffect(() => {
-    loadTemplate();
-    initializeFormData();
-  }, []);
-
-  const loadTemplate = async () => {
-    try {
-      const foundTemplate = await loadAdminScoreTemplate(score);
-      if (foundTemplate) {
-        setTemplate(foundTemplate);
-      } else {
-        console.error(
-          'Template not found. Score template_id:',
-          score.template_id,
-          'template_name:',
-          score.template_name,
-        );
-      }
-    } catch (error) {
-      console.error('Error loading template:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const initializeFormData = () => {
-    const data: Record<string, any> = {};
-    Object.entries(score.score_data).forEach(
-      ([fieldId, fieldData]: [string, any]) => {
-        data[fieldId] = fieldData.value;
-      },
-    );
-    setFormData(data);
-  };
 
   const handleDisqualifiedTeamChange = (teamId: number | null) => {
     setDisqualifiedTeamId(teamId);
@@ -204,10 +193,9 @@ export default function ScoreViewModal({
       alert('Correct the formula errors before saving.');
       return;
     }
-    setSaving(true);
+    if (update.isPending) return;
     try {
-      // Build updated score data with labels and types preserved
-      const updatedScoreData: Record<string, any> = {};
+      const updatedScoreData: ScoreData = {};
 
       const fieldsById = new Map<string, any>(
         (template?.schema?.fields || []).map((field: any) => [field.id, field]),
@@ -263,29 +251,23 @@ export default function ScoreViewModal({
         buildTeamInitialsScoreEntries(formData, teamInitialsSlots),
       );
 
-      const response = await fetch(`/scores/${score.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          scoreData: updatedScoreData,
-          resultType,
-          disqualifiedTeamId:
-            resultType === 'disqualification' ? disqualifiedTeamId : null,
-          resultNote:
-            resultType === 'disqualification' ? resultNote.trim() : null,
-        }),
+      await update.mutateAsync({
+        userId,
+        eventId: selectedEvent?.id ?? score.event_id ?? 0,
+        scoreId: score.id,
+        scoreData: updatedScoreData,
+        resultType,
+        disqualifiedTeamId:
+          resultType === 'disqualification' ? disqualifiedTeamId : null,
+        resultNote:
+          resultType === 'disqualification' ? resultNote.trim() : null,
       });
-
-      if (!response.ok) throw new Error('Failed to update score');
 
       alert('Score updated successfully!');
       onSave();
     } catch (error) {
       console.error('Error updating score:', error);
-      alert('Failed to update score');
-    } finally {
-      setSaving(false);
+      alert(error instanceof Error ? error.message : 'Failed to update score');
     }
   };
 
@@ -618,7 +600,7 @@ export default function ScoreViewModal({
     );
   };
 
-  if (loading) {
+  if (templateQuery.isLoading || authLoading) {
     return (
       <div className="modal show" onClick={onClose}>
         <div
@@ -629,6 +611,22 @@ export default function ScoreViewModal({
             &times;
           </span>
           <p>Loading scoresheet...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (templateQuery.isError && !template) {
+    return (
+      <div className="modal show" onClick={onClose}>
+        <div
+          className="modal-content score-view-modal"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <span className="close" onClick={onClose}>
+            &times;
+          </span>
+          <QueryFeedback query={templateQuery} />
         </div>
       </div>
     );
@@ -807,7 +805,7 @@ export default function ScoreViewModal({
               )}
 
               <div className="scoresheet-header-fields">
-                {schema.fields
+                {fields
                   .filter(
                     (f: any) =>
                       !f.column &&
@@ -821,19 +819,19 @@ export default function ScoreViewModal({
               {schema.layout === 'two-column' ? (
                 <div className="scoresheet-columns">
                   <div className="scoresheet-column">
-                    {schema.fields
+                    {fields
                       .filter((f: any) => f.column === 'left')
                       .map(renderField)}
                   </div>
                   <div className="scoresheet-column">
-                    {schema.fields
+                    {fields
                       .filter((f: any) => f.column === 'right')
                       .map(renderField)}
                   </div>
                 </div>
               ) : (
                 <div>
-                  {schema.fields
+                  {fields
                     .filter(
                       (f: any) =>
                         !f.column &&
@@ -845,9 +843,7 @@ export default function ScoreViewModal({
               )}
 
               {/* Render grand total */}
-              {schema.fields
-                .filter((f: any) => f.isGrandTotal)
-                .map(renderField)}
+              {fields.filter((f: any) => f.isGrandTotal).map(renderField)}
 
               <TeamInitialsFields
                 slots={teamInitialsSlots}
@@ -868,9 +864,9 @@ export default function ScoreViewModal({
             <button
               className="btn btn-primary"
               onClick={handleSave}
-              disabled={saving || !template || !calculation.ok}
+              disabled={update.isPending || !template || !calculation.ok}
             >
-              {saving ? 'Saving...' : 'Save Changes'}
+              {update.isPending ? 'Saving...' : 'Save Changes'}
             </button>
           )}
         </div>
