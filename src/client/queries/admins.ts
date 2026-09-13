@@ -1,7 +1,7 @@
 import { queryOptions } from '@tanstack/react-query';
 import { getAdminUsers } from '../api/admins';
 import { adminScopeKey } from './keys';
-import { ADMIN_ONLY_QUERY_META } from './invalidation';
+import { ADMIN_ONLY_QUERY_META } from './authorization';
 
 export const adminUsersQueryOptions = (userId: number) =>
   queryOptions({

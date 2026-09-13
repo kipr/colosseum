@@ -20,8 +20,8 @@ import {
   globalDocCategoriesKey,
   publicEventKey,
 } from './keys';
+import { ADMIN_ONLY_QUERY_META } from './authorization';
 import {
-  ADMIN_ONLY_QUERY_META,
   invalidateEventDependents,
   invalidateForUser,
   type EventMutationScope,

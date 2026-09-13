@@ -7,7 +7,6 @@ import {
 } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
-import { EventProvider } from './contexts/EventContext';
 
 const Home = lazy(() => import('./pages/Home'));
 const Judge = lazy(() => import('./pages/Judge'));
@@ -15,12 +14,6 @@ const Scoresheet = lazy(() => import('./pages/Scoresheet'));
 const SpectatorEvents = lazy(() => import('./pages/SpectatorEvents'));
 const Spectator = lazy(() => import('./pages/Spectator'));
 const Admin = lazy(() => import('./pages/Admin'));
-
-const AdminWithProvider = () => (
-  <EventProvider>
-    <Admin />
-  </EventProvider>
-);
 
 function App() {
   return (
@@ -51,13 +44,10 @@ function App() {
               />
               <Route
                 path="/admin/events/:eventId/brackets/:bracketId"
-                element={<AdminWithProvider />}
+                element={<Admin />}
               />
-              <Route
-                path="/admin/events/:eventId"
-                element={<AdminWithProvider />}
-              />
-              <Route path="/admin/events" element={<AdminWithProvider />} />
+              <Route path="/admin/events/:eventId" element={<Admin />} />
+              <Route path="/admin/events" element={<Admin />} />
             </Routes>
           </Suspense>
         </Router>

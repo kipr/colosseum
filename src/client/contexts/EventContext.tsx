@@ -1,7 +1,5 @@
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -15,17 +13,8 @@ import { useAuth } from './AuthContext';
 import { Event, isEventActive } from '../utils/eventStatus';
 import { adminEventsQueryOptions } from '../queries/events';
 import { adminEventsPath, isAdminView } from '../utils/routes';
-
-interface EventContextType {
-  selectedEvent: Event | null;
-  events: Event[];
-  loading: boolean;
-  error: string | null;
-  setSelectedEvent: (event: Event | null) => void;
-  selectEventById: (id: number | null) => void;
-}
-
-const EventContext = createContext<EventContextType | undefined>(undefined);
+import { EventContext } from './EventContextState';
+export { useEvent } from './EventContextState';
 
 const LOCAL_STORAGE_KEY = 'colosseum_selected_event_id';
 const EMPTY_EVENTS: Event[] = [];
@@ -309,12 +298,4 @@ export function EventProvider({ children }: { children: ReactNode }) {
   return (
     <EventContext.Provider value={value}>{children}</EventContext.Provider>
   );
-}
-
-export function useEvent() {
-  const context = useContext(EventContext);
-  if (!context) {
-    throw new Error('useEvent must be used within EventProvider');
-  }
-  return context;
 }

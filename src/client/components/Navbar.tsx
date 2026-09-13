@@ -7,7 +7,7 @@ import {
 } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { useEvent } from '../contexts/EventContext';
+import { useEvent } from '../contexts/EventContextState';
 import {
   getEventStatusClass,
   getEventStatusLabel,

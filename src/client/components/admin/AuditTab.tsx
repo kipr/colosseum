@@ -15,7 +15,7 @@ import {
   entityHistoryQueryOptions,
 } from '../../queries/audit';
 import QueryFeedback from '../QueryFeedback';
-import { isAuthorizationError } from '../../queries/invalidation';
+import { isAuthorizationError } from '../../queries/authorization';
 import '../Modal.css';
 import './AuditTab.css';
 

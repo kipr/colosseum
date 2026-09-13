@@ -24,8 +24,8 @@ import {
   ADMIN_ONLY_QUERY_META,
   canUpdateUserCache,
   removeJudgeQueries,
-  type MutationScope,
-} from './invalidation';
+} from './authorization';
+import type { MutationScope } from './invalidation';
 import { LIST_STALE_TIME_MS } from './queryClient';
 
 export const publicTemplatesQueryOptions = () =>

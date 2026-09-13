@@ -16,7 +16,7 @@ import {
   removeAdminOnlyQueries,
   removeAdminUserQueries,
   removeJudgeQueries,
-} from '../queries/invalidation';
+} from '../queries/authorization';
 import { clearJudgeSessionStorage } from '../utils/judgeSession';
 
 interface AuthContextType {

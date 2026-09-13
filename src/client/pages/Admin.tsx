@@ -2,7 +2,7 @@ import { useEffect, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../contexts/AuthContext';
-import { useEvent } from '../contexts/EventContext';
+import { EventProvider, useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
 import { getEventStatusClass } from '../utils/eventStatus';
 import {
@@ -79,7 +79,7 @@ function resolveView(searchView: string | null): AdminView {
   return 'events';
 }
 
-export default function Admin() {
+function AdminContent() {
   const { user, loading, serverAvailable, checkAuth } = useAuth();
   const queryClient = useQueryClient();
   const {
@@ -261,5 +261,13 @@ export default function Admin() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function Admin() {
+  return (
+    <EventProvider>
+      <AdminContent />
+    </EventProvider>
   );
 }

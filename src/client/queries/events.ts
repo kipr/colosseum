@@ -15,11 +15,8 @@ import {
   publicTemplatesKey,
   templatesKey,
 } from './keys';
-import {
-  ADMIN_ONLY_QUERY_META,
-  canUpdateUserCache,
-  type MutationScope,
-} from './invalidation';
+import { ADMIN_ONLY_QUERY_META, canUpdateUserCache } from './authorization';
+import type { MutationScope } from './invalidation';
 import {
   useMutation,
   useQueryClient,

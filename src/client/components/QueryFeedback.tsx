@@ -1,5 +1,5 @@
 import type { UseQueryResult } from '@tanstack/react-query';
-import { isAuthorizationError } from '../queries/invalidation';
+import { isAuthorizationError } from '../queries/authorization';
 
 /** Failed authorization must not leave stale protected content on screen. */
 export function queryData<T>(query: UseQueryResult<T>): T | undefined {

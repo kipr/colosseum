@@ -1,7 +1,7 @@
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useAuth } from '../../contexts/AuthContext';
 import { useEventMutations } from '../../queries/events';
-import { canUpdateUserCache } from '../../queries/invalidation';
+import { canUpdateUserCache } from '../../queries/authorization';
 import { adminEventsKey } from '../../queries/keys';
 import React, { useState, useRef } from 'react';
 import { flushSync } from 'react-dom';

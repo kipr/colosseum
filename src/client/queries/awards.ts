@@ -22,9 +22,8 @@ import {
   saveEventAward,
 } from '../api/awards';
 import { awardTemplatesKey, awardsKey, publicEventKey } from './keys';
+import { ADMIN_ONLY_QUERY_META, canUpdateUserCache } from './authorization';
 import {
-  ADMIN_ONLY_QUERY_META,
-  canUpdateUserCache,
   invalidateEventDependents,
   type EventMutationScope,
   type MutationScope,

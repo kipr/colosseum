@@ -1,4 +1,4 @@
-import { handleProtectedError } from './invalidation';
+import { handleProtectedError } from './authorization';
 import {
   CancelledError,
   QueryClient,

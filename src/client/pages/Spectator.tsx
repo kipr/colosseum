@@ -64,7 +64,7 @@ import {
 } from '../queries/brackets';
 import { publicDocumentationQueryOptions } from '../queries/documentation';
 import { publicAwardsQueryOptions } from '../queries/awards';
-import { removeRestrictedPublicResults } from '../queries/invalidation';
+import { removeRestrictedPublicResults } from '../queries/authorization';
 import { queryData } from '../components/QueryFeedback';
 
 type EffectiveTab =

@@ -48,7 +48,7 @@ import { useJudgeScoreSubmitMutation } from '../queries/scores';
 import {
   isAuthorizationError,
   removeJudgeQueries,
-} from '../queries/invalidation';
+} from '../queries/authorization';
 import QueryFeedback from './QueryFeedback';
 import { clearJudgeSessionStorage } from '../utils/judgeSession';
 

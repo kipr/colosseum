@@ -22,11 +22,8 @@ import {
   judgeChatLatestKey,
   judgeChatOlderKey,
 } from './keys';
-import {
-  ADMIN_ONLY_QUERY_META,
-  canUpdateJudgeCache,
-  canUpdateUserCache,
-} from './invalidation';
+import { ADMIN_ONLY_QUERY_META, canUpdateUserCache } from './authorization';
+import { canUpdateJudgeCache } from './invalidation';
 
 export const CHAT_PAGE_SIZE = 100;
 export const CHAT_ACTIVE_POLL_MS = 3_000;

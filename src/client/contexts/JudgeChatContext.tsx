@@ -33,7 +33,7 @@ import {
   useSendChatMessageMutation,
   type ChatMessageScope,
 } from '../queries/chat';
-import { isAuthorizationError } from '../queries/invalidation';
+import { isAuthorizationError } from '../queries/authorization';
 
 type JudgeChatProviderProps =
   | {
