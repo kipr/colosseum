@@ -20,6 +20,10 @@ import {
   registerQueryTestCleanup,
   renderWithQuery,
 } from './helpers/queryTestUtils';
+import {
+  CURRENT_TEMPLATE_STORAGE_KEY,
+  JUDGE_SESSION_GENERATION_STORAGE_KEY,
+} from '../../src/client/utils/judgeSession';
 import { eventFive, userA, userB } from './helpers/sessionFixtures';
 
 registerQueryTestCleanup();
@@ -348,6 +352,8 @@ describe('AuthProvider', () => {
 
     const queryClient = createTestQueryClient();
     queryClient.setQueryData([...judgeScopeKey, 1, 'queue'], [{ id: 1 }]);
+    sessionStorage.setItem(JUDGE_SESSION_GENERATION_STORAGE_KEY, 'gen-1');
+    sessionStorage.setItem(CURRENT_TEMPLATE_STORAGE_KEY, '{"id":3}');
 
     const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => {
       calls += 1;
@@ -397,6 +403,10 @@ describe('AuthProvider', () => {
     expect(
       queryClient.getQueryData([...judgeScopeKey, 1, 'queue']),
     ).toBeUndefined();
+    expect(sessionStorage.getItem(JUDGE_SESSION_GENERATION_STORAGE_KEY)).toBe(
+      null,
+    );
+    expect(sessionStorage.getItem(CURRENT_TEMPLATE_STORAGE_KEY)).toBe(null);
   });
 });
 

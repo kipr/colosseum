@@ -1,7 +1,10 @@
+// @vitest-environment jsdom
 import { describe, expect, it } from 'vitest';
 import { QueryClient, type QueryClientConfig } from '@tanstack/react-query';
 import {
   ADMIN_ONLY_QUERY_META,
+  canUpdateJudgeCache,
+  invalidateTeamDependents,
   removeAdminOnlyQueries,
   removeAdminUserQueries,
   removeJudgeQueries,
@@ -12,7 +15,9 @@ import {
   authUserKey,
   judgeScopeKey,
   publicEventsKey,
+  scoresKey,
 } from '../../src/client/queries/keys';
+import { JUDGE_SESSION_GENERATION_STORAGE_KEY } from '../../src/client/utils/judgeSession';
 import { eventFive } from './helpers/sessionFixtures';
 
 function clientWithData(options: QueryClientConfig = {}): QueryClient {
@@ -82,6 +87,29 @@ describe('removeJudgeQueries', () => {
       queryClient.getQueryData([...judgeScopeKey, 3, 'queue']),
     ).toBeUndefined();
     expect(queryClient.getQueryData(publicEventsKey)).toEqual([{ id: 99 }]);
+    queryClient.clear();
+  });
+});
+
+describe('canUpdateJudgeCache', () => {
+  it('requires the stored session generation to match', () => {
+    sessionStorage.setItem(JUDGE_SESSION_GENERATION_STORAGE_KEY, 'gen-1');
+    expect(canUpdateJudgeCache('gen-1')).toBe(true);
+    expect(canUpdateJudgeCache('gen-2')).toBe(false);
+    sessionStorage.removeItem(JUDGE_SESSION_GENERATION_STORAGE_KEY);
+    expect(canUpdateJudgeCache('gen-1')).toBe(false);
+  });
+});
+
+describe('invalidateTeamDependents', () => {
+  it('refreshes scores along with ranking and award dependents', async () => {
+    const queryClient = clientWithData();
+    queryClient.setQueryData(authUserKey, { id: 1, isAdmin: true });
+    queryClient.setQueryData(scoresKey(1, 10), { rows: [] });
+    await invalidateTeamDependents(queryClient, { userId: 1, eventId: 10 });
+    expect(queryClient.getQueryState(scoresKey(1, 10))?.isInvalidated).toBe(
+      true,
+    );
     queryClient.clear();
   });
 });

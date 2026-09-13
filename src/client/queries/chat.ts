@@ -22,7 +22,11 @@ import {
   judgeChatLatestKey,
   judgeChatOlderKey,
 } from './keys';
-import { ADMIN_ONLY_QUERY_META, canUpdateUserCache } from './invalidation';
+import {
+  ADMIN_ONLY_QUERY_META,
+  canUpdateJudgeCache,
+  canUpdateUserCache,
+} from './invalidation';
 
 export const CHAT_PAGE_SIZE = 100;
 export const CHAT_ACTIVE_POLL_MS = 3_000;
@@ -134,6 +138,19 @@ export function chatOlderQueryOptions(
   });
 }
 
+function canWriteChatCache(
+  client: QueryClient,
+  scope: ChatMessageScope,
+): boolean {
+  if (scope.mode === 'admin') {
+    return canUpdateUserCache(client, scope.userId, true);
+  }
+  return (
+    canUpdateJudgeCache(scope.sessionGeneration) &&
+    client.getQueryState(chatLatestKey(scope)) != null
+  );
+}
+
 function insertSentMessage(
   client: QueryClient,
   scope: ChatMessageScope,
@@ -156,12 +173,7 @@ export function useSendChatMessageMutation(adminOnly: boolean) {
           variables.mode === 'judge' ? variables.senderName : undefined,
       }),
     onSuccess: async (message, variables) => {
-      if (
-        variables.mode === 'admin' &&
-        !canUpdateUserCache(client, variables.userId, true)
-      ) {
-        return;
-      }
+      if (!canWriteChatCache(client, variables)) return;
       insertSentMessage(client, variables, message);
       if (variables.mode === 'admin') {
         await client.invalidateQueries({

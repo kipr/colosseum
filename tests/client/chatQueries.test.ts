@@ -1,8 +1,14 @@
 // @vitest-environment jsdom
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useQuery } from '@tanstack/react-query';
+import { createElement, type ReactNode } from 'react';
 import type { JudgeChatMessage } from '../../src/client/api/chat';
 import { getChatMessages } from '../../src/client/api/chat';
+import {
+  JudgeChatProvider,
+  useJudgeChat,
+} from '../../src/client/contexts/JudgeChatContext';
 import {
   CHAT_ACTIVE_POLL_MS,
   CHAT_INACTIVE_POLL_MS,
@@ -24,6 +30,8 @@ import {
   judgeChatLatestKey,
   judgeChatOlderKey,
 } from '../../src/client/queries/keys';
+import { removeJudgeQueries } from '../../src/client/queries/invalidation';
+import { JUDGE_SESSION_GENERATION_STORAGE_KEY } from '../../src/client/utils/judgeSession';
 import {
   createQueryWrapper,
   createTestQueryClient,
@@ -323,5 +331,153 @@ describe('chat mutations', () => {
       client.getQueryData(adminChatOlderKey(7, 4, 'thread-a')),
     ).toBeUndefined();
     expect(client.getQueryData(adminChatConversationsKey(7, 4))).toEqual([]);
+  });
+
+  it('does not recreate evicted judge messages after session replacement', async () => {
+    let resolveResponse!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveResponse = resolve;
+          }),
+      ),
+    );
+    const client = createTestQueryClient();
+    sessionStorage.setItem(
+      JUDGE_SESSION_GENERATION_STORAGE_KEY,
+      judgeScope.sessionGeneration,
+    );
+    client.setQueryData(judgeChatLatestKey(judgeScope.sessionGeneration, 4), [
+      message(1),
+    ]);
+    const { result } = renderHook(() => useSendChatMessageMutation(false), {
+      wrapper: createQueryWrapper({ queryClient: client, router: false }),
+    });
+
+    act(() => {
+      result.current.mutate({
+        ...judgeScope,
+        message: 'late',
+        senderName: 'Judge',
+      });
+    });
+    await waitFor(() => expect(result.current.isPending).toBe(true));
+    sessionStorage.setItem(
+      JUDGE_SESSION_GENERATION_STORAGE_KEY,
+      'generation-3',
+    );
+    await removeJudgeQueries(client);
+    resolveResponse(jsonResponse({ ...message(2), message: 'late' }));
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(
+      client.getQueryData(judgeChatLatestKey(judgeScope.sessionGeneration, 4)),
+    ).toBeUndefined();
+  });
+
+  it('does not restore deleted messages from a late in-flight read', async () => {
+    let resolveLatest!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string, init?: RequestInit) => {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve(jsonResponse({ success: true }));
+        }
+        return new Promise<Response>((resolve, reject) => {
+          resolveLatest = resolve;
+          init?.signal?.addEventListener('abort', () => {
+            reject(
+              new DOMException('This operation was aborted', 'AbortError'),
+            );
+          });
+        });
+      }),
+    );
+    const client = createTestQueryClient();
+    client.setQueryData(authUserKey, {
+      id: 7,
+      email: 'admin@kipr.org',
+      isAdmin: true,
+    });
+    const { result } = renderHook(
+      () => ({
+        latest: useQuery(chatLatestQueryOptions(adminScope, true)),
+        remove: useDeleteChatConversationMutation(),
+      }),
+      { wrapper: createQueryWrapper({ queryClient: client, router: false }) },
+    );
+    await waitFor(() => expect(result.current.latest.isFetching).toBe(true));
+
+    await act(async () => {
+      await result.current.remove.mutateAsync({
+        mode: 'admin',
+        userId: 7,
+        eventId: 4,
+        conversationKey: 'thread-a',
+      });
+    });
+    resolveLatest(jsonResponse([message(99)]));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      client.getQueryData(adminChatLatestKey(7, 4, 'thread-a')),
+    ).toBeUndefined();
+  });
+
+  it('clears older history when the latest page is authoritatively empty', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          String(url).includes('/conversations')
+            ? jsonResponse([
+                {
+                  conversationKey: 'thread-a',
+                  messageCount: 0,
+                  lastMessageId: 0,
+                  lastActivity: baseMessage.created_at,
+                  lastMessage: null,
+                  lastJudgeName: null,
+                },
+              ])
+            : jsonResponse([]),
+        ),
+      ),
+    );
+    const client = createTestQueryClient();
+    client.setQueryData(authUserKey, {
+      id: 7,
+      email: 'admin@kipr.org',
+      isAdmin: true,
+    });
+    client.setQueryData(adminChatOlderKey(7, 4, 'thread-a'), {
+      pages: [[message(1)]],
+      pageParams: [2],
+    });
+    const wrapper = ({ children }: { children: ReactNode }) => {
+      const Inner = createQueryWrapper({ queryClient: client, router: false });
+      return createElement(
+        Inner,
+        null,
+        createElement(JudgeChatProvider, {
+          mode: 'admin',
+          userId: 7,
+          eventId: 4,
+          children,
+        }),
+      );
+    };
+    const { result } = renderHook(() => useJudgeChat(), { wrapper });
+    act(() => {
+      result.current.setSelectedConversationKey('thread-a');
+    });
+    await waitFor(() => expect(result.current.messages).toEqual([]));
+    await waitFor(() =>
+      expect(
+        client.getQueryData(adminChatOlderKey(7, 4, 'thread-a')),
+      ).toBeUndefined(),
+    );
   });
 });

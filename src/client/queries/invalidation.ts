@@ -1,6 +1,6 @@
 import { ApiError } from '../api/http';
 import type { SessionUser } from '../api/types';
-import { authUserKey } from './keys';
+import { readStoredJudgeGeneration } from '../utils/judgeSession';
 import type { Query, QueryClient, QueryKey } from '@tanstack/react-query';
 import {
   adminEventKey,
@@ -9,6 +9,7 @@ import {
   assignedTeamsKey,
   auditEntityKey,
   auditKey,
+  authUserKey,
   awardsKey,
   awardTemplatesKey,
   bracketsKey,
@@ -111,21 +112,24 @@ export async function invalidateTeamDependents(
   scope: EventMutationScope,
 ): Promise<void> {
   const { userId, eventId } = scope;
-  await invalidateForUser(queryClient, userId, [
-    teamsKey(userId, eventId),
-    seedingKey(userId, eventId),
-    doubleSeedingKey(userId, eventId),
-    bracketsKey(userId, eventId),
-    [...adminEventKey(userId, eventId), 'bracket'],
-    assignedTeamsKey(userId, eventId),
-    overallKey(userId, eventId),
-    documentationKey(userId, eventId),
-    awardsKey(userId, eventId),
-    auditKey(userId, eventId),
-    [...adminScopeKey(userId), 'audit-entity'],
+  await Promise.all([
+    invalidateForUser(queryClient, userId, [
+      teamsKey(userId, eventId),
+      scoresKey(userId, eventId),
+      seedingKey(userId, eventId),
+      doubleSeedingKey(userId, eventId),
+      bracketsKey(userId, eventId),
+      [...adminEventKey(userId, eventId), 'bracket'],
+      assignedTeamsKey(userId, eventId),
+      overallKey(userId, eventId),
+      documentationKey(userId, eventId),
+      awardsKey(userId, eventId),
+      auditKey(userId, eventId),
+      [...adminScopeKey(userId), 'audit-entity'],
+    ]),
+    invalidateQueueDependents(queryClient, scope),
+    invalidatePublicEventResults(queryClient, eventId),
   ]);
-  await invalidateQueueDependents(queryClient, scope);
-  await invalidatePublicEventResults(queryClient, eventId);
 }
 
 export async function invalidateDoubleSeedingDependents(
@@ -134,21 +138,23 @@ export async function invalidateDoubleSeedingDependents(
   options: { eventMetadata?: boolean } = {},
 ): Promise<void> {
   const { userId, eventId } = scope;
-  await invalidateForUser(
-    queryClient,
-    userId,
-    [
-      doubleSeedingKey(userId, eventId),
-      overallKey(userId, eventId),
-      awardsKey(userId, eventId),
-      [...adminEventKey(userId, eventId), 'bracket'],
-      auditKey(userId, eventId),
-      [...adminScopeKey(userId), 'audit-entity'],
-      ...(options.eventMetadata ? [adminEventsKey(userId)] : []),
-    ],
-    true,
-  );
-  await invalidatePublicEventResults(queryClient, eventId);
+  await Promise.all([
+    invalidateForUser(
+      queryClient,
+      userId,
+      [
+        doubleSeedingKey(userId, eventId),
+        overallKey(userId, eventId),
+        awardsKey(userId, eventId),
+        [...adminEventKey(userId, eventId), 'bracket'],
+        auditKey(userId, eventId),
+        [...adminScopeKey(userId), 'audit-entity'],
+        ...(options.eventMetadata ? [adminEventsKey(userId)] : []),
+      ],
+      true,
+    ),
+    invalidatePublicEventResults(queryClient, eventId),
+  ]);
 }
 
 export async function invalidateBracketDependents(
@@ -156,18 +162,20 @@ export async function invalidateBracketDependents(
   scope: EventMutationScope & { bracketId?: number },
 ): Promise<void> {
   const { userId, eventId, bracketId } = scope;
-  await invalidateForUser(queryClient, userId, [
-    bracketsKey(userId, eventId),
-    assignedTeamsKey(userId, eventId),
-    overallKey(userId, eventId),
-    awardsKey(userId, eventId),
-    seedingKey(userId, eventId),
-    ...(bracketId != null
-      ? [[...adminEventKey(userId, eventId), 'bracket', bracketId]]
-      : [[...adminEventKey(userId, eventId), 'bracket']]),
+  await Promise.all([
+    invalidateForUser(queryClient, userId, [
+      bracketsKey(userId, eventId),
+      assignedTeamsKey(userId, eventId),
+      overallKey(userId, eventId),
+      awardsKey(userId, eventId),
+      seedingKey(userId, eventId),
+      ...(bracketId != null
+        ? [[...adminEventKey(userId, eventId), 'bracket', bracketId]]
+        : [[...adminEventKey(userId, eventId), 'bracket']]),
+    ]),
+    invalidateQueueDependents(queryClient, scope),
+    invalidatePublicEventResults(queryClient, eventId),
   ]);
-  await invalidateQueueDependents(queryClient, scope);
-  await invalidatePublicEventResults(queryClient, eventId);
 }
 
 export async function invalidateDocumentationDependents(
@@ -176,19 +184,21 @@ export async function invalidateDocumentationDependents(
   options: { globalCategories?: boolean } = {},
 ): Promise<void> {
   const { userId, eventId } = scope;
-  await invalidateForUser(
-    queryClient,
-    userId,
-    [
-      documentationKey(userId, eventId),
-      overallKey(userId, eventId),
-      awardsKey(userId, eventId),
-      [...adminEventKey(userId, eventId), 'bracket'],
-      ...(options.globalCategories ? [globalDocCategoriesKey(userId)] : []),
-    ],
-    true,
-  );
-  await invalidatePublicEventResults(queryClient, eventId);
+  await Promise.all([
+    invalidateForUser(
+      queryClient,
+      userId,
+      [
+        documentationKey(userId, eventId),
+        overallKey(userId, eventId),
+        awardsKey(userId, eventId),
+        [...adminEventKey(userId, eventId), 'bracket'],
+        ...(options.globalCategories ? [globalDocCategoriesKey(userId)] : []),
+      ],
+      true,
+    ),
+    invalidatePublicEventResults(queryClient, eventId),
+  ]);
 }
 
 export async function invalidateAwardDependents(
@@ -197,16 +207,18 @@ export async function invalidateAwardDependents(
   options: { templates?: boolean } = {},
 ): Promise<void> {
   const { userId, eventId } = scope;
-  await invalidateForUser(
-    queryClient,
-    userId,
-    [
-      awardsKey(userId, eventId),
-      ...(options.templates ? [awardTemplatesKey(userId)] : []),
-    ],
-    true,
-  );
-  await invalidatePublicEventResults(queryClient, eventId);
+  await Promise.all([
+    invalidateForUser(
+      queryClient,
+      userId,
+      [
+        awardsKey(userId, eventId),
+        ...(options.templates ? [awardTemplatesKey(userId)] : []),
+      ],
+      true,
+    ),
+    invalidatePublicEventResults(queryClient, eventId),
+  ]);
 }
 
 export async function removeRestrictedPublicResults(
@@ -224,32 +236,6 @@ export async function removeRestrictedPublicResults(
     return head === 'bracket' && rest[2] === 'rankings';
   };
   await cancelThenRemove(queryClient, { predicate });
-}
-
-export async function invalidateAuditHistory(
-  queryClient: QueryClient,
-  scope: EventMutationScope & { entityType?: string; entityId?: number },
-): Promise<void> {
-  const { userId, eventId, entityType, entityId } = scope;
-  await invalidateForUser(
-    queryClient,
-    userId,
-    [
-      auditKey(userId, eventId),
-      ...(entityType != null && entityId != null
-        ? [auditEntityKey(userId, entityType, entityId)]
-        : []),
-    ],
-    true,
-  );
-}
-
-async function invalidateQuietly(work: () => Promise<unknown>): Promise<void> {
-  try {
-    await work();
-  } catch {
-    // A failed refresh is not a failed write.
-  }
 }
 
 function isJudgeEventResource(
@@ -272,16 +258,16 @@ export async function invalidateQueueDependents(
   scope: { eventId: number; userId?: number; generation?: string },
 ): Promise<void> {
   const { eventId, userId, generation } = scope;
-  await invalidateQuietly(async () => {
-    if (userId != null) {
-      await invalidateForUser(queryClient, userId, [queueKey(userId, eventId)]);
-    }
-    await queryClient.invalidateQueries({
+  await Promise.all([
+    userId != null
+      ? invalidateForUser(queryClient, userId, [queueKey(userId, eventId)])
+      : Promise.resolve(),
+    queryClient.invalidateQueries({
       predicate: (query) =>
         isJudgeEventResource(query.queryKey, eventId, 'queue', generation) ||
         isJudgeEventResource(query.queryKey, eventId, 'games', generation),
-    });
-  });
+    }),
+  ]);
 }
 
 export async function invalidateScoringDependents(
@@ -290,29 +276,29 @@ export async function invalidateScoringDependents(
   options: { derivedResults?: boolean } = {},
 ): Promise<void> {
   const { eventId, userId } = scope;
-  await invalidateQuietly(async () => {
-    if (userId != null) {
-      await invalidateForUser(queryClient, userId, [
-        scoresKey(userId, eventId),
-        auditKey(userId, eventId),
-        [...adminScopeKey(userId), 'audit-entity'],
-        ...(options.derivedResults
-          ? [
-              seedingKey(userId, eventId),
-              doubleSeedingKey(userId, eventId),
-              bracketsKey(userId, eventId),
-              [...adminEventKey(userId, eventId), 'bracket'],
-              overallKey(userId, eventId),
-              awardsKey(userId, eventId),
-            ]
-          : []),
-      ]);
-    }
-    await invalidateQueueDependents(queryClient, scope);
-    if (options.derivedResults) {
-      await invalidatePublicEventResults(queryClient, eventId);
-    }
-  });
+  await Promise.all([
+    userId != null
+      ? invalidateForUser(queryClient, userId, [
+          scoresKey(userId, eventId),
+          auditKey(userId, eventId),
+          [...adminScopeKey(userId), 'audit-entity'],
+          ...(options.derivedResults
+            ? [
+                seedingKey(userId, eventId),
+                doubleSeedingKey(userId, eventId),
+                bracketsKey(userId, eventId),
+                [...adminEventKey(userId, eventId), 'bracket'],
+                overallKey(userId, eventId),
+                awardsKey(userId, eventId),
+              ]
+            : []),
+        ])
+      : Promise.resolve(),
+    invalidateQueueDependents(queryClient, scope),
+    options.derivedResults
+      ? invalidatePublicEventResults(queryClient, eventId)
+      : Promise.resolve(),
+  ]);
 }
 
 export function canUpdateUserCache(
@@ -322,6 +308,10 @@ export function canUpdateUserCache(
 ): boolean {
   const user = queryClient.getQueryData<SessionUser | null>(authUserKey);
   return user?.id === userId && (!adminOnly || Boolean(user.isAdmin));
+}
+
+export function canUpdateJudgeCache(generation: string): boolean {
+  return readStoredJudgeGeneration() === generation;
 }
 
 export function isAuthorizationError(error: unknown): boolean {
