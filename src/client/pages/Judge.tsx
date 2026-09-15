@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useMemo } from 'react';
+import { useLoaderData, useNavigate, useNavigation } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import AccessCodeModal from '../components/AccessCodeModal';
 import { formatDate } from '../utils/dateUtils';
@@ -18,30 +18,15 @@ interface Template {
 }
 
 export default function Judge() {
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [loading, setLoading] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<{
     id: number;
     name: string;
   } | null>(null);
   const navigate = useNavigate();
+  const navigation = useNavigation();
+  const isNavigating = Boolean(navigation.location);
 
-  useEffect(() => {
-    loadTemplates();
-  }, []);
-
-  const loadTemplates = async () => {
-    try {
-      const response = await fetch('/scoresheet/templates');
-      if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
-      setTemplates(data);
-    } catch (error) {
-      console.error('Error loading templates:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const templates = useLoaderData<Template[]>();
 
   // Group templates by stable event identifier (event_id); event_name can duplicate across events
   const groupedTemplates = useMemo(() => {
@@ -94,7 +79,7 @@ export default function Judge() {
       <Navbar />
       <main className="container">
         <h2>Select a Score Sheet</h2>
-        {loading ? (
+        {isNavigating ? (
           <p>Loading templates...</p>
         ) : templates.length === 0 ? (
           <p>

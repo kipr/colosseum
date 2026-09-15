@@ -1,4 +1,5 @@
 import { lazy } from 'react';
+import { judgeLoader } from './loaders/judgeLoader';
 import {
   Navigate,
   createBrowserRouter,
@@ -28,11 +29,12 @@ const router = createBrowserRouter([
   },
   {
     path: "/judge",
-    element: <Judge />
+    element: <Judge />,
+    loader: judgeLoader,
   },
   {
     path: "/scoresheet",
-    element: <Scoresheet />
+    element: <Scoresheet />,
   },
   {
     path: "/spectator",
