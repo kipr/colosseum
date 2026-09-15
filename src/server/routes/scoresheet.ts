@@ -52,7 +52,6 @@ router.get(
         t.id, 
         t.name, 
         t.description, 
-        t.schema, 
         t.created_at,
         e.id AS event_id,
         e.name AS event_name,
@@ -64,18 +63,6 @@ router.get(
       WHERE t.is_active IS TRUE
       ORDER BY e.event_date DESC, e.name, t.name
     `);
-
-      // Parse schema JSON for each template
-      templates.forEach((template) => {
-        if (template.schema) {
-          try {
-            template.schema = JSON.parse(template.schema);
-          } catch (e) {
-            console.error('Error parsing template schema:', e);
-            template.schema = null;
-          }
-        }
-      });
 
       res.json(templates);
     } catch (error) {
