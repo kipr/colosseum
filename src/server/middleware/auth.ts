@@ -77,6 +77,7 @@ export function requireJudgeSession(
     return next();
   }
 
+  // Created in src/server/routes/scoresheet.ts during access-code verification
   const judgeAuth = req.session?.judgeAuth;
   if (!judgeAuth) {
     return res.status(401).json({

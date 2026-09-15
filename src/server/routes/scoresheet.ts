@@ -165,6 +165,8 @@ router.post(
           typeof existing.conversationKey === 'string' &&
           existing.conversationKey.length > 0;
 
+        // This gets stored in Postgres by `express-session` with `connect-pg-simple` as the store
+        // This is how judge's score submissions are authenticated (src/server/routes/api.ts)
         req.session.judgeAuth = {
           templateId: Number(id),
           eventIds,
