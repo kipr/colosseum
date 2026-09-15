@@ -1,9 +1,8 @@
-import { lazy, Suspense } from 'react';
+import { lazy } from 'react';
 import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
   Navigate,
+  createBrowserRouter,
+  RouterProvider,
 } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -22,45 +21,54 @@ const AdminWithProvider = () => (
   </EventProvider>
 );
 
+const router = createBrowserRouter([
+  {
+    path: "/",
+    element: <Home />
+  },
+  {
+    path: "/judge",
+    element: <Judge />
+  },
+  {
+    path: "/scoresheet",
+    element: <Scoresheet />
+  },
+  {
+    path: "/spectator",
+    element: <SpectatorEvents />
+  },
+  {
+    path: "/spectator/events/:eventId/brackets/:bracketId",
+    element: <Spectator />
+  },
+  {
+    path: "/spectator/events/:eventId",
+    element: <Spectator />
+  },
+  {
+    path: "/admin",
+    element: <Navigate to="/admin/events" replace />
+  },
+  {
+    path: "/admin/events/:eventId/brackets/:bracketId",
+    element: <AdminWithProvider />
+  },
+  {
+    path: "/admin/events/:eventId",
+    element: <AdminWithProvider />
+  },
+  {
+    path: "/admin/events",
+    element: <AdminWithProvider />
+  }
+]);
+
 function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <Router>
-          <Suspense fallback={<div className="app-loading">Loading...</div>}>
-            <Routes>
-              <Route path="/" element={<Home />} />
-              <Route path="/judge" element={<Judge />} />
-              <Route path="/scoresheet" element={<Scoresheet />} />
-
-              {/* Spectator routes */}
-              <Route path="/spectator" element={<SpectatorEvents />} />
-              <Route
-                path="/spectator/events/:eventId/brackets/:bracketId"
-                element={<Spectator />}
-              />
-              <Route
-                path="/spectator/events/:eventId"
-                element={<Spectator />}
-              />
-
-              {/* Admin routes */}
-              <Route
-                path="/admin"
-                element={<Navigate to="/admin/events" replace />}
-              />
-              <Route
-                path="/admin/events/:eventId/brackets/:bracketId"
-                element={<AdminWithProvider />}
-              />
-              <Route
-                path="/admin/events/:eventId"
-                element={<AdminWithProvider />}
-              />
-              <Route path="/admin/events" element={<AdminWithProvider />} />
-            </Routes>
-          </Suspense>
-        </Router>
+        <RouterProvider router={router} />
       </AuthProvider>
     </ThemeProvider>
   );

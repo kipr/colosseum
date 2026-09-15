@@ -6,6 +6,7 @@ import type {
 } from '../../../src/server/database/connection';
 import { runSchema } from '../../../src/server/database/schema';
 import { queueSchema } from '../../../src/server/database/schema/queue';
+import { usersSchema } from '../../../src/server/database/schema/users';
 import type { SchemaModule } from '../../../src/server/database/schema/types';
 import { createMinimalTestDb, type TestDb } from '../../sql/helpers/testDb';
 
@@ -55,7 +56,9 @@ describe('schema runner column additions', () => {
     `;
 
     await runSchema(db, [schemaModule({ tables: [createTable] }, 'baseline')]);
-    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['existing']);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', [
+      'existing',
+    ]);
 
     const upgraded = schemaModule(
       {
@@ -82,7 +85,9 @@ describe('schema runner column additions', () => {
     );
     expect(existing?.priority).toBe(10);
 
-    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', ['new']);
+    await db.run('INSERT INTO migration_test (name) VALUES (?) RETURNING id', [
+      'new',
+    ]);
     const inserted = await db.get<{ priority: number }>(
       'SELECT priority FROM migration_test WHERE name = ?',
       ['new'],
@@ -155,9 +160,9 @@ describe('schema runner column additions', () => {
       ]),
     ).rejects.toThrow();
 
-    expect(
-      await columnNames(db, 'rollback_test', ['temporary_value']),
-    ).toEqual([]);
+    expect(await columnNames(db, 'rollback_test', ['temporary_value'])).toEqual(
+      [],
+    );
   });
 
   it('upgrades legacy queue rows with nullable presence columns idempotently', async () => {
@@ -191,6 +196,56 @@ describe('schema runner column additions', () => {
       'SELECT present_team1_id, present_team2_id FROM game_queue WHERE id = 1',
     );
     expect(row).toEqual({ present_team1_id: null, present_team2_id: null });
+  });
+
+  it('upgrades a legacy users table with OAuth token columns', async () => {
+    testDb = await createMinimalTestDb();
+    const db = testDb.db;
+    await db.exec(`
+      CREATE TABLE users (
+        id SERIAL PRIMARY KEY,
+        google_id TEXT UNIQUE NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT,
+        is_admin BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+      INSERT INTO users (google_id, email, name)
+      VALUES ('legacy-google-id', 'legacy@example.com', 'Legacy User');
+    `);
+
+    await runSchema(db, [usersSchema]);
+    await expect(runSchema(db, [usersSchema])).resolves.toBeUndefined();
+
+    expect(
+      await columnNames(db, 'users', [
+        'access_token',
+        'last_activity',
+        'refresh_token',
+        'token_expires_at',
+      ]),
+    ).toEqual([
+      'access_token',
+      'last_activity',
+      'refresh_token',
+      'token_expires_at',
+    ]);
+
+    const legacyUser = await db.get<{
+      access_token: string | null;
+      last_activity: Date | string | null;
+      refresh_token: string | null;
+      token_expires_at: string | null;
+    }>(
+      `SELECT access_token, refresh_token, token_expires_at, last_activity
+       FROM users WHERE google_id = ?`,
+      ['legacy-google-id'],
+    );
+    expect(legacyUser?.access_token).toBeNull();
+    expect(legacyUser?.refresh_token).toBeNull();
+    expect(legacyUser?.token_expires_at).toBeNull();
+    expect(legacyUser?.last_activity).toBeTruthy();
   });
 });
 

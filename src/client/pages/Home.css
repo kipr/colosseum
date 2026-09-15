@@ -31,6 +31,7 @@
   text-align: center;
   transition: all 0.3s;
   box-shadow: var(--shadow);
+  text-decoration: none;
 }
 
 .role-card-clickable {

@@ -12,8 +12,6 @@ router.get('/google', oauthLimiter, (req, res, next) => {
     scope: [
       'profile',
       'email',
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/spreadsheets',
     ],
     // These ensure we get a refresh token that lasts longer
     accessType: 'offline',

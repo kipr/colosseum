@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
 import './Home.css';
@@ -22,14 +22,6 @@ export default function Home() {
     }
   }, [searchParams, user, loading, navigate]);
 
-  const handleJudgeClick = () => {
-    navigate('/judge');
-  };
-
-  const handleSpectatorClick = () => {
-    navigate('/spectator');
-  };
-
   const handleAdminClick = () => {
     if (user) {
       // Already logged in, go directly to admin
@@ -51,22 +43,11 @@ export default function Home() {
         </div>
 
         <div className="role-selection">
-          <div
-            className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
-            onClick={handleJudgeClick}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleJudgeClick();
-              }
-            }}
-          >
+          <Link to="/judge" className="role-card role-card-clickable">
             <div className="role-icon">
               <img src="/images/botguy-red-trans-small.png" alt="Judge Icon" />
             </div>
-            <h3>Judge / Scorer</h3>
+            <h3>Judge</h3>
             <p>
               Access scoresheets to evaluate and score participants in
               competitions or events.
@@ -77,7 +58,7 @@ export default function Home() {
               <li>✓ Multiple scoresheet templates</li>
               <li>✓ Real-time scoring</li>
             </ul>
-          </div>
+          </Link>
 
           <div
             className="role-card role-card-clickable"
@@ -107,18 +88,7 @@ export default function Home() {
             </ul>
           </div>
 
-          <div
-            className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
-            onClick={handleSpectatorClick}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleSpectatorClick();
-              }
-            }}
-          >
+          <Link to="/spectator" className="role-card role-card-clickable">
             <div className="role-icon role-icon-text">
               <span>📊</span>
             </div>
@@ -133,7 +103,7 @@ export default function Home() {
               <li>✓ No login required</li>
               <li>✓ Real-time updates</li>
             </ul>
-          </div>
+          </Link>
         </div>
       </main>
     </div>

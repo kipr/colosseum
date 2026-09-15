@@ -20,6 +20,28 @@ export const usersSchema: SchemaModule = {
       )
     `,
   ],
+  columns: [
+    {
+      table: 'users',
+      column: 'access_token',
+      definition: 'TEXT',
+    },
+    {
+      table: 'users',
+      column: 'refresh_token',
+      definition: 'TEXT',
+    },
+    {
+      table: 'users',
+      column: 'token_expires_at',
+      definition: 'BIGINT',
+    },
+    {
+      table: 'users',
+      column: 'last_activity',
+      definition: 'TIMESTAMP DEFAULT CURRENT_TIMESTAMP',
+    },
+  ],
   indexes: [
     `CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id)`,
   ],
