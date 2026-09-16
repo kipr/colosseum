@@ -8,6 +8,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { EventProvider } from './contexts/EventContext';
 import { adminLoader } from './loaders/adminLoader';
+import AdminRouteError from './components/AdminRouteError';
 
 const Home = lazy(() => import('./pages/Home'));
 const Judge = lazy(() => import('./pages/Judge'));
@@ -50,6 +51,7 @@ const router = createBrowserRouter([
   {
     path: '/admin',
     loader: adminLoader,
+    errorElement: <AdminRouteError />,
     children: [
       {
         index: true,

@@ -8,6 +8,8 @@ services:
     volumes:
       - .:/workspaces/colosseum:cached
     command: sleep infinity
+    security_opt:
+      - seccomp:unconfined
     depends_on:
       postgres:
         condition: service_healthy
