@@ -208,7 +208,7 @@ test.describe('Bracket Lifecycle E2E', () => {
     page,
   }) => {
     await setAdminCookie(page);
-    await page.goto(`/admin/events/${eventId}?view=brackets`);
+    await page.goto(`/admin/brackets/${eventId}`);
 
     // Wait for the admin page to load with the event
     await expect(page.locator('.admin-content')).toBeVisible({
@@ -246,13 +246,13 @@ test.describe('Bracket Lifecycle E2E', () => {
       .click();
 
     // Should navigate to bracket detail view
-    await page.waitForURL(/\/admin\/events\/\d+\/brackets\/\d+/, {
+    await page.waitForURL(/\/admin\/brackets\/\d+\/\d+/, {
       timeout: 10_000,
     });
 
     // Extract bracketId from URL
     const url = page.url();
-    const match = url.match(/\/brackets\/(\d+)/);
+    const match = url.match(/\/admin\/brackets\/\d+\/(\d+)/);
     expect(match).toBeTruthy();
     bracketId = Number(match![1]);
     expect(bracketId).toBeGreaterThan(0);
@@ -272,9 +272,7 @@ test.describe('Bracket Lifecycle E2E', () => {
     await setAdminCookie(page);
 
     // Management view
-    await page.goto(
-      `/admin/events/${eventId}/brackets/${bracketId}?view=management`,
-    );
+    await page.goto(`/admin/brackets/${eventId}/${bracketId}?view=management`);
     await expect(page.locator('.bracket-header-card')).toBeVisible({
       timeout: 15_000,
     });
@@ -294,9 +292,7 @@ test.describe('Bracket Lifecycle E2E', () => {
     await expect(page.getByText('Winners Bracket')).toBeVisible();
 
     // Bracket view (via URL)
-    await page.goto(
-      `/admin/events/${eventId}/brackets/${bracketId}?view=bracket`,
-    );
+    await page.goto(`/admin/brackets/${eventId}/${bracketId}?view=bracket`);
     await expect(page.locator('.bracket-header-card')).toBeVisible({
       timeout: 10_000,
     });
@@ -306,9 +302,7 @@ test.describe('Bracket Lifecycle E2E', () => {
     await expect(bracketViewBtn).toBeVisible();
 
     // Ranking view (via URL)
-    await page.goto(
-      `/admin/events/${eventId}/brackets/${bracketId}?view=ranking`,
-    );
+    await page.goto(`/admin/brackets/${eventId}/${bracketId}?view=ranking`);
     await expect(page.locator('.bracket-header-card')).toBeVisible({
       timeout: 10_000,
     });
@@ -414,12 +408,14 @@ test.describe('Bracket Lifecycle E2E', () => {
     page,
   }) => {
     await setAdminCookie(page);
-    await page.goto(`/admin/events/${eventId}?view=scoring`);
+    await page.goto(`/admin/scoring/${eventId}`);
 
     // Wait for scoring tab to load
-    await expect(page.getByRole('heading', { name: 'Scoring' })).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(
+      page
+        .locator('.admin-content-header')
+        .getByRole('heading', { name: 'Scoring' }),
+    ).toBeVisible({ timeout: 15_000 });
 
     // Filter to bracket rows now that scoring renders bracket and seeding in separate tables
     const scoreTypeFilter = page.locator('select.field-input').nth(1);
@@ -456,9 +452,7 @@ test.describe('Bracket Lifecycle E2E', () => {
     page,
   }) => {
     await setAdminCookie(page);
-    await page.goto(
-      `/admin/events/${eventId}/brackets/${bracketId}?view=management`,
-    );
+    await page.goto(`/admin/brackets/${eventId}/${bracketId}?view=management`);
 
     await expect(page.locator('.bracket-header-card')).toBeVisible({
       timeout: 15_000,

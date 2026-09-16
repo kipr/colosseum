@@ -19,5 +19,3 @@ USER node
 
 RUN wget -qO- https://astral.sh/uv/install.sh | sh \
   && /home/node/.local/bin/uv tool install -p 3.13 serena-agent@latest --prerelease=allow
-
-RUN npx playwright install

@@ -17,6 +17,10 @@ export const ADMIN_VIEWS = [
 
 export type AdminView = (typeof ADMIN_VIEWS)[number];
 
+export interface AdminRouteHandle {
+  adminView: AdminView;
+}
+
 export const SPECTATOR_VIEWS = [
   'seeding',
   'double-seeding',
@@ -92,15 +96,11 @@ function qs(params: Record<string, string | number | undefined>): string {
   return '?' + new URLSearchParams(entries.map(([k, v]) => [k, String(v)]));
 }
 
-export function adminEventsPath(view?: AdminView): string {
-  return '/admin/events' + qs({ view });
-}
-
-export function adminEventPath(
-  eventId: number | string,
-  view?: AdminView,
+export function adminTabPath(
+  view: AdminView,
+  eventId?: number | string,
 ): string {
-  return `/admin/events/${eventId}` + qs({ view });
+  return `/admin/${view}${eventId === undefined ? '' : `/${eventId}`}`;
 }
 
 export function adminBracketPath(
@@ -109,7 +109,7 @@ export function adminBracketPath(
   view?: BracketDetailView,
   side?: BracketSideParam,
 ): string {
-  return `/admin/events/${eventId}/brackets/${bracketId}` + qs({ view, side });
+  return `/admin/brackets/${eventId}/${bracketId}` + qs({ view, side });
 }
 
 export function spectatorEventPath(

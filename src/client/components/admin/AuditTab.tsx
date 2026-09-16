@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import * as Diff from 'diff';
 import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import { formatDateTime } from '../../utils/dateUtils';
+import { adminTabPath, type AdminView } from '../../utils/routes';
 import '../Modal.css';
 import './AuditTab.css';
 
@@ -23,12 +24,6 @@ interface AuditLogEntry {
   created_at: string;
   user_name: string | null;
   user_email: string | null;
-}
-
-import type { AdminView } from '../../utils/routes';
-
-interface AuditTabProps {
-  onNavigateTab: (tab: AdminView) => void;
 }
 
 function formatUserDisplay(entry: AuditLogEntry): string {
@@ -65,9 +60,10 @@ const ENTITY_TYPE_TO_TAB: Record<string, AdminView> = {
   events: 'events',
 };
 
-export default function AuditTab({ onNavigateTab }: AuditTabProps) {
+export default function AuditTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
+  const navigate = useNavigate();
   const toast = useToast();
   const toastRef = useRef(toast);
   toastRef.current = toast;
@@ -205,7 +201,7 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
   const handleJumpToTab = (entityType: string, entityId: number) => {
     const tab = ENTITY_TYPE_TO_TAB[entityType];
     if (tab) {
-      onNavigateTab(tab);
+      navigate(adminTabPath(tab, selectedEventId ?? undefined));
       toast.success(`Switched to ${tab} tab (${entityType} #${entityId})`);
     } else {
       toast.error(`No tab mapping for entity type "${entityType}"`);

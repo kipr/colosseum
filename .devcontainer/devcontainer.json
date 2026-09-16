@@ -22,6 +22,6 @@
     "DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum",
     "TEST_DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum_test"
   },
-  "postCreateCommand": "npm ci",
+  "postCreateCommand": "npm ci && npx playwright install",
   "postStartCommand": "sh -c 'until pg_isready -h postgres -U colosseum -d colosseum; do sleep 1; done'"
 }

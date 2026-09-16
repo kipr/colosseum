@@ -1,15 +1,11 @@
 import React, { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import {
-  adminEventPath,
-  adminEventsPath,
-  isAdminView,
-} from '../../utils/routes';
+import { adminTabPath } from '../../utils/routes';
 import { formatDate, toDateOnlyString } from '../../utils/dateUtils';
 import {
   Event,
@@ -45,7 +41,6 @@ const defaultFormData: EventFormData = {
 export default function EventsTab() {
   const { events, refreshEvents, selectedEvent, setSelectedEvent } = useEvent();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
   const [formData, setFormData] = useState<EventFormData>(defaultFormData);
@@ -57,17 +52,12 @@ export default function EventsTab() {
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
-  const getCurrentAdminView = () => {
-    const rawView = searchParams.get('view');
-    return isAdminView(rawView) ? rawView : 'events';
-  };
-
   const handleSelectEvent = (event: Event | null) => {
     setSelectedEvent(event);
     if (event) {
-      navigate(adminEventPath(event.id, getCurrentAdminView()));
+      navigate(adminTabPath('events', event.id));
     } else {
-      navigate(adminEventsPath(getCurrentAdminView()));
+      navigate(adminTabPath('events'));
     }
   };
 

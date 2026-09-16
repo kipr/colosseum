@@ -22,6 +22,8 @@
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "verify": "node -e \"const {spawn}=require('node:child_process');const tasks=['pretty','lint','typecheck:client','typecheck:server','test:run','test:e2e','build'];const npm=process.platform==='win32'?'npm.cmd':'npm';Promise.all(tasks.map(task=>new Promise(resolve=>{const child=spawn(npm,['run',task],{stdio:['ignore','pipe','pipe']});let output='';child.stdout.on('data',data=>output+=data);child.stderr.on('data',data=>output+=data);child.on('error',error=>resolve({task,code:1,output:String(error)}));child.on('close',code=>resolve({task,code,output}));}))).then(results=>{const failures=results.filter(result=>result.code!==0);for(const failure of failures){console.error('\\n❌ '+failure.task+' failed (exit code '+failure.code+')\\n'+failure.output.trim());}process.exitCode=failures.length?1:0;});\"",
+    "verify:s": "npm run pretty && npm run lint && npm run typecheck:client && npm run typecheck:server && npm run test:run && npm run test:e2e && npm run build",
     "lint": "npx eslint src",
     "pretty": "npx prettier src/ --check",
     "export:scoresheet": "node tools/portable-scoresheet/export-html.mjs",

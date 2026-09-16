@@ -10,7 +10,7 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import {
-  adminEventPath,
+  adminTabPath,
   adminBracketPath,
   isBracketDetailView,
   type BracketDetailView as BracketDetailViewType,
@@ -107,7 +107,7 @@ export default function BracketsTab() {
           : 'bracket';
         navigate(adminBracketPath(selectedEventId, id, view));
       } else if (selectedEventId) {
-        navigate(adminEventPath(selectedEventId, 'brackets'));
+        navigate(adminTabPath('brackets', selectedEventId));
       }
     },
     [selectedEventId, navigate, searchParams],
@@ -180,7 +180,7 @@ export default function BracketsTab() {
         ]);
         if (!detailRes.ok) {
           if (detailRes.status === 404 && selectedEventId) {
-            navigate(adminEventPath(selectedEventId, 'brackets'), {
+            navigate(adminTabPath('brackets', selectedEventId), {
               replace: true,
             });
             return;
@@ -451,7 +451,7 @@ export default function BracketsTab() {
       toast.success('Bracket deleted');
       if (selectedBracketId === bracket.id) {
         if (selectedEventId) {
-          navigate(adminEventPath(selectedEventId, 'brackets'));
+          navigate(adminTabPath('brackets', selectedEventId));
         }
         setBracketDetail(null);
       }
@@ -879,7 +879,7 @@ export default function BracketsTab() {
               bracketDetail={bracketDetail}
               onBack={() => {
                 if (selectedEventId) {
-                  navigate(adminEventPath(selectedEventId, 'brackets'));
+                  navigate(adminTabPath('brackets', selectedEventId));
                 }
                 setBracketDetail(null);
               }}

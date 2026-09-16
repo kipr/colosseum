@@ -37,16 +37,14 @@ describe('adminLoader', () => {
         status: 401,
       }),
     );
-    const request = new Request(
-      'https://colosseum.test/admin/events/42?view=queue#status',
-    );
+    const request = new Request('https://colosseum.test/admin/queue/42#status');
 
     const response = await adminLoader({ request });
 
     expect(response).toBeInstanceOf(Response);
     expect(response?.status).toBe(302);
     expect(response?.headers.get('Location')).toBe(
-      '/auth/google?returnTo=%2Fadmin%2Fevents%2F42%3Fview%3Dqueue%23status',
+      '/auth/google?returnTo=%2Fadmin%2Fqueue%2F42%23status',
     );
     expect(response?.headers.get('X-Remix-Reload-Document')).toBe('true');
   });

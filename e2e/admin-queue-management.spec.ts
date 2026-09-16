@@ -116,7 +116,7 @@ test.describe('Admin queue management', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
 
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
       timeout: 15_000,
@@ -139,7 +139,7 @@ test.describe('Admin queue management', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
     await page.getByRole('button', { name: 'Populate from Brackets' }).click();
 
     await expect(
@@ -163,7 +163,7 @@ test.describe('Admin queue management', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
     const row = seedingRow(page, TEAM_A_NAME, 1);
     await expect(row.locator('.queue-rest-chip--resting')).toContainText(
       `#${TEAM_A_NUMBER}`,
@@ -190,7 +190,7 @@ test.describe('Admin queue management', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
       timeout: 15_000,
     });
@@ -218,7 +218,7 @@ test.describe('Admin queue management', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
       timeout: 15_000,
     });
@@ -238,7 +238,7 @@ test.describe('Admin queue management', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
       timeout: 15_000,
     });
@@ -260,7 +260,7 @@ test.describe('Admin queue management', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
       timeout: 15_000,
     });
@@ -347,7 +347,7 @@ test.describe('Admin queue management', () => {
     await setAdminCookie(context);
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
 
     const bracketRow = page
       .locator('tr.queue-row')

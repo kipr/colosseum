@@ -185,7 +185,7 @@ test.describe('Judge Chat E2E', () => {
     await setSessionCookie(adminContext, admin.signedCookie);
     const adminPage = await adminContext.newPage();
 
-    await adminPage.goto(`/admin/events/${eventId}?view=judge-chat`);
+    await adminPage.goto(`/admin/judge-chat/${eventId}`);
 
     await expect(
       adminPage.getByRole('heading', { name: 'Judge Chat' }),

@@ -87,7 +87,7 @@ describe('Scoresheet Routes – extra coverage', () => {
       expect(templates.every((t) => t.name !== 'Archived Template')).toBe(true);
     });
 
-    it('handles template with unparseable schema', async () => {
+    it('does not parse or expose stored template schemas', async () => {
       const event = await seedEvent(testDb.db, { status: 'active' });
       const template = await seedScoresheetTemplate(testDb.db, {
         name: 'Bad Schema',
@@ -102,10 +102,10 @@ describe('Scoresheet Routes – extra coverage', () => {
 
       const res = await http.get(`${baseUrl}/scoresheet/templates`);
       expect(res.status).toBe(200);
-      const templates = res.json as { name: string; schema: unknown }[];
+      const templates = res.json as { name: string }[];
       const badTemplate = templates.find((t) => t.name === 'Bad Schema');
       expect(badTemplate).toBeDefined();
-      expect(badTemplate!.schema).toBeNull();
+      expect(badTemplate).not.toHaveProperty('schema');
     });
   });
 

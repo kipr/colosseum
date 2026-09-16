@@ -1,4 +1,4 @@
-import { lazy } from 'react';
+import { lazy, type ComponentType } from 'react';
 import {
   Navigate,
   createBrowserRouter,
@@ -9,6 +9,7 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { EventProvider } from './contexts/EventContext';
 import { adminLoader } from './loaders/adminLoader';
 import AdminRouteError from './components/AdminRouteError';
+import type { AdminRouteHandle, AdminView } from './utils/routes';
 
 const Home = lazy(() => import('./pages/Home'));
 const Judge = lazy(() => import('./pages/Judge'));
@@ -22,6 +23,16 @@ const AdminWithProvider = () => (
     <Admin />
   </EventProvider>
 );
+
+type DefaultComponentModule = { default: ComponentType };
+
+function lazyRoute(importer: () => Promise<DefaultComponentModule>) {
+  return async () => ({ Component: (await importer()).default });
+}
+
+function adminHandle(adminView: AdminView): AdminRouteHandle {
+  return { adminView };
+}
 
 const router = createBrowserRouter([
   {
@@ -50,6 +61,7 @@ const router = createBrowserRouter([
   },
   {
     path: '/admin',
+    element: <AdminWithProvider />,
     loader: adminLoader,
     errorElement: <AdminRouteError />,
     children: [
@@ -58,16 +70,79 @@ const router = createBrowserRouter([
         element: <Navigate to="/admin/events" replace />,
       },
       {
-        path: 'events/:eventId/brackets/:bracketId',
-        element: <AdminWithProvider />,
+        path: 'events/:eventId?',
+        handle: adminHandle('events'),
+        lazy: lazyRoute(() => import('./components/admin/EventsTab')),
       },
       {
-        path: 'events/:eventId',
-        element: <AdminWithProvider />,
+        path: 'teams/:eventId?',
+        handle: adminHandle('teams'),
+        lazy: lazyRoute(() => import('./components/admin/TeamsTab')),
       },
       {
-        path: 'events',
-        element: <AdminWithProvider />,
+        path: 'scoresheets/:eventId?',
+        handle: adminHandle('scoresheets'),
+        lazy: lazyRoute(() => import('./components/admin/ScoreSheetsTab')),
+      },
+      {
+        path: 'scoring/:eventId?',
+        handle: adminHandle('scoring'),
+        lazy: lazyRoute(() => import('./components/admin/ScoringTab')),
+      },
+      {
+        path: 'seeding/:eventId?',
+        handle: adminHandle('seeding'),
+        lazy: lazyRoute(() => import('./components/admin/SeedingTab')),
+      },
+      {
+        path: 'double-seeding/:eventId?',
+        handle: adminHandle('double-seeding'),
+        lazy: lazyRoute(() => import('./components/admin/DoubleSeedingTab')),
+      },
+      {
+        path: 'brackets/:eventId/:bracketId',
+        handle: adminHandle('brackets'),
+        lazy: lazyRoute(() => import('./components/admin/BracketsTab')),
+      },
+      {
+        path: 'brackets/:eventId?',
+        handle: adminHandle('brackets'),
+        lazy: lazyRoute(() => import('./components/admin/BracketsTab')),
+      },
+      {
+        path: 'queue/:eventId?',
+        handle: adminHandle('queue'),
+        lazy: lazyRoute(() => import('./components/admin/QueueTab')),
+      },
+      {
+        path: 'judge-chat/:eventId?',
+        handle: adminHandle('judge-chat'),
+        lazy: lazyRoute(() => import('./components/admin/JudgeChatTab')),
+      },
+      {
+        path: 'documentation/:eventId?',
+        handle: adminHandle('documentation'),
+        lazy: lazyRoute(() => import('./components/admin/DocumentationTab')),
+      },
+      {
+        path: 'awards/:eventId?',
+        handle: adminHandle('awards'),
+        lazy: lazyRoute(() => import('./components/admin/AwardsTab')),
+      },
+      {
+        path: 'overall/:eventId?',
+        handle: adminHandle('overall'),
+        lazy: lazyRoute(() => import('./components/admin/OverallTab')),
+      },
+      {
+        path: 'admins/:eventId?',
+        handle: adminHandle('admins'),
+        lazy: lazyRoute(() => import('./components/admin/AdminsTab')),
+      },
+      {
+        path: 'audit/:eventId?',
+        handle: adminHandle('audit'),
+        lazy: lazyRoute(() => import('./components/admin/AuditTab')),
       },
     ],
   },

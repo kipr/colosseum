@@ -88,7 +88,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('creates a new event via the admin Events tab', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto('/admin/events?view=events');
+    await page.goto('/admin/events');
 
     const createEventButton = page.getByRole('button', {
       name: '+ Create New Event',
@@ -135,21 +135,29 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('selected event persists in localStorage', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/events/${createdEventId}?view=events`);
+    await page.goto(`/admin/events/${createdEventId}`);
 
     await expect(page.getByText('Currently Selected')).toBeVisible();
+
+    await page.getByRole('link', { name: /Teams/ }).click();
+    await expect(page).toHaveURL(`/admin/teams/${createdEventId}`);
+    await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
+    await expect(page.locator('.event-badge-name')).toHaveText(EVENT_NAME);
 
     const storedId = await page.evaluate(() =>
       localStorage.getItem('colosseum_selected_event_id'),
     );
     expect(storedId).toBe(String(createdEventId));
+
+    await page.goto(`/admin/teams/${Number.MAX_SAFE_INTEGER}`);
+    await expect(page).toHaveURL('/admin/events');
   });
 
   /* ── 3. Add a single team ──────────────────────────────────────── */
 
   test('adds a single team via the Teams tab', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/events/${createdEventId}?view=teams`);
+    await page.goto(`/admin/teams/${createdEventId}`);
 
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
 
@@ -181,7 +189,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('bulk imports teams via CSV', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/events/${createdEventId}?view=teams`);
+    await page.goto(`/admin/teams/${createdEventId}`);
 
     await page.getByRole('button', { name: 'Bulk Import' }).click();
 
@@ -223,7 +231,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('bulk checks in all registered teams', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/events/${createdEventId}?view=teams`);
+    await page.goto(`/admin/teams/${createdEventId}`);
 
     // Wait for teams to load
     await expect(page.getByText(`${1 + BULK_TEAMS.length} teams`)).toBeVisible({
@@ -262,10 +270,12 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('creates a score sheet via Paste JSON Manually', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/events/${createdEventId}?view=scoresheets`);
+    await page.goto(`/admin/scoresheets/${createdEventId}`);
 
     await expect(
-      page.getByRole('heading', { name: 'Score Sheets' }),
+      page
+        .locator('.admin-content-header')
+        .getByRole('heading', { name: 'Score Sheets' }),
     ).toBeVisible();
 
     // Click the Create button in the event-scoped section

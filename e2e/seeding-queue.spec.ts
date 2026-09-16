@@ -283,7 +283,7 @@ test.describe('Seeding Queue E2E', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
 
     // Admin page should load and show Queue tab
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
@@ -321,11 +321,13 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const page = await context.newPage();
 
-    await page.goto(`/admin/events/${eventId}?view=scoring`);
+    await page.goto(`/admin/scoring/${eventId}`);
 
-    await expect(page.locator('h2', { hasText: 'Scoring' })).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(
+      page
+        .locator('.admin-content-header')
+        .getByRole('heading', { name: 'Scoring' }),
+    ).toBeVisible({ timeout: 10_000 });
 
     // Filter to seeding rows now that scoring renders separate table shapes by type
     const scoreTypeFilter = page.locator('select.field-input').nth(1);
@@ -359,7 +361,7 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const page = await context.newPage();
 
-    await page.goto(`/admin/events/${eventId}?view=scoring`);
+    await page.goto(`/admin/scoring/${eventId}`);
 
     await expect(page.locator('table tbody tr').first()).toBeVisible({
       timeout: 10_000,
@@ -393,7 +395,7 @@ test.describe('Seeding Queue E2E', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/events/${eventId}?view=queue`);
+    await page.goto(`/admin/queue/${eventId}`);
 
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
       timeout: 10_000,
@@ -425,7 +427,7 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const page = await context.newPage();
 
-    await page.goto(`/admin/events/${eventId}?view=scoring`);
+    await page.goto(`/admin/scoring/${eventId}`);
 
     await expect(page.locator('table tbody tr').first()).toBeVisible({
       timeout: 10_000,
@@ -480,7 +482,7 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const adminPage = await context.newPage();
 
-    await adminPage.goto(`/admin/events/${eventId}?view=scoring`);
+    await adminPage.goto(`/admin/scoring/${eventId}`);
     await expect(adminPage.locator('table tbody tr').first()).toBeVisible({
       timeout: 10_000,
     });

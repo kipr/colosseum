@@ -1,10 +1,5 @@
 import React, { useState } from 'react';
-import {
-  Link,
-  useLocation,
-  useNavigate,
-  useSearchParams,
-} from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useEvent } from '../contexts/EventContext';
@@ -13,23 +8,22 @@ import {
   getEventStatusLabel,
   formatEventDate,
 } from '../utils/eventStatus';
-import { adminEventPath, adminEventsPath, isAdminView } from '../utils/routes';
+import { adminTabPath } from '../utils/routes';
+import { useAdminRoute } from '../hooks/useAdminRoute';
 import './Navbar.css';
 
 function AdminEventSelector() {
   const { selectedEvent, events, selectEventById } = useEvent();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const { activeTab } = useAdminRoute();
 
   const handleEventChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value ? Number(e.target.value) : null;
     selectEventById(id);
     if (id) {
-      const raw = searchParams.get('view');
-      const view = isAdminView(raw) ? raw : undefined;
-      navigate(adminEventPath(id, view));
+      navigate(adminTabPath(activeTab, id));
     } else {
-      navigate(adminEventsPath());
+      navigate(adminTabPath('events'));
     }
   };
 
