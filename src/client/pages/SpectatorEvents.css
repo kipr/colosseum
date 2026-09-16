@@ -37,6 +37,8 @@
     box-shadow 0.3s,
     transform 0.3s;
   box-shadow: var(--shadow);
+  color: inherit;
+  text-decoration: none;
 }
 
 .spectator-event-card:hover {

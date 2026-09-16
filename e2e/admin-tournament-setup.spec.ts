@@ -139,8 +139,10 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     await expect(page.getByText('Currently Selected')).toBeVisible();
 
-    await page.getByRole('link', { name: /Teams/ }).click();
+    const teamsLink = page.getByRole('link', { name: /Teams/ });
+    await teamsLink.click();
     await expect(page).toHaveURL(`/admin/teams/${createdEventId}`);
+    await expect(teamsLink).toHaveAttribute('aria-current', 'page');
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
     await expect(page.locator('.event-badge-name')).toHaveText(EVENT_NAME);
 

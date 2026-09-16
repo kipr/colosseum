@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import {
   formatEventDate,
@@ -21,7 +21,6 @@ interface PublicEvent {
 }
 
 export default function SpectatorEvents() {
-  const navigate = useNavigate();
   const [events, setEvents] = useState<PublicEvent[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -39,10 +38,6 @@ export default function SpectatorEvents() {
       }
     })();
   }, []);
-
-  const handleEventClick = (eventId: number) => {
-    navigate(spectatorEventPath(eventId, 'seeding'));
-  };
 
   return (
     <div className="app">
@@ -64,18 +59,10 @@ export default function SpectatorEvents() {
         ) : (
           <div className="spectator-events-grid">
             {events.map((event) => (
-              <div
+              <Link
                 key={event.id}
                 className="spectator-event-card"
-                role="button"
-                tabIndex={0}
-                onClick={() => handleEventClick(event.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleEventClick(event.id);
-                  }
-                }}
+                to={spectatorEventPath(event.id, 'seeding')}
               >
                 <div className="spectator-event-card-header spectator-status-cluster">
                   <span
@@ -103,7 +90,7 @@ export default function SpectatorEvents() {
                     Final results available
                   </span>
                 )}
-              </div>
+              </Link>
             ))}
           </div>
         )}

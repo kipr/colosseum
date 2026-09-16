@@ -383,9 +383,15 @@ test.describe('Spectator Public Views & Release Gating', () => {
   }) => {
     await page.goto('/spectator');
 
-    const card = page.locator('.spectator-event-card', {
-      hasText: ACTIVE_EVENT_NAME,
+    const card = page.getByRole('link', {
+      name: new RegExp(ACTIVE_EVENT_NAME),
     });
+    await expect(card).toHaveAttribute(
+      'href',
+      `/spectator/events/${activeEventId}?view=seeding`,
+    );
+    await card.focus();
+    await expect(card).toBeFocused();
     await card.click();
 
     await page.waitForURL(
