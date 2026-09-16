@@ -135,14 +135,21 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('selected event persists in localStorage', async ({ page }) => {
     await loginAsAdmin(page);
+    await page.goto('/admin/events');
+    await page.evaluate(() =>
+      localStorage.setItem('colosseum_selected_event_id', '999999999'),
+    );
     await page.goto(`/admin/events/${createdEventId}`);
 
     await expect(page.getByText('Currently Selected')).toBeVisible();
 
     const teamsLink = page.getByRole('link', { name: /Teams/ });
     await teamsLink.click();
-    await expect(page).toHaveURL(`/admin/teams/${createdEventId}`);
+    await expect(page).toHaveURL(`/admin/events/${createdEventId}/teams`);
     await expect(teamsLink).toHaveAttribute('aria-current', 'page');
+    const eventsLink = page.getByRole('link', { name: /Manage Events/ });
+    await expect(eventsLink).not.toHaveAttribute('aria-current', 'page');
+    await expect(eventsLink).not.toHaveClass(/\bactive\b/);
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
     await expect(page.locator('.event-badge-name')).toHaveText(EVENT_NAME);
 
@@ -151,15 +158,55 @@ test.describe('Admin Tournament Setup E2E', () => {
     );
     expect(storedId).toBe(String(createdEventId));
 
-    await page.goto(`/admin/teams/${Number.MAX_SAFE_INTEGER}`);
-    await expect(page).toHaveURL('/admin/events');
+    await page.goto('/admin');
+    await expect(page).toHaveURL(`/admin/events/${createdEventId}`);
+
+    await page.goto('/admin/events');
+    await expect(page.locator('.event-dropdown')).toHaveValue('');
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          localStorage.getItem('colosseum_selected_event_id'),
+        ),
+      )
+      .toBeNull();
+  });
+
+  test('invalid event URL shows 404 when the event list is empty', async ({
+    page,
+  }) => {
+    await loginAsAdmin(page);
+    await page.route('**/events', async (route) => {
+      if (new URL(route.request().url()).pathname === '/events') {
+        await route.fulfill({ status: 200, json: [] });
+      } else {
+        await route.continue();
+      }
+    });
+    await page.goto('/admin/events');
+    await expect(page.locator('.event-dropdown option')).toHaveCount(1);
+
+    const invalidUrl = `/admin/events/${Number.MAX_SAFE_INTEGER}/teams`;
+    await page.evaluate((url) => {
+      window.history.pushState(null, '', url);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, invalidUrl);
+
+    await expect(page).toHaveURL(invalidUrl);
+    await expect(
+      page.getByRole('heading', { name: 'Event not found' }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: 'Teams' }),
+    ).not.toBeVisible();
+    await expect(page.locator('.event-dropdown')).not.toBeVisible();
   });
 
   /* ── 3. Add a single team ──────────────────────────────────────── */
 
   test('adds a single team via the Teams tab', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/teams/${createdEventId}`);
+    await page.goto(`/admin/events/${createdEventId}/teams`);
 
     await expect(page.getByRole('heading', { name: 'Teams' })).toBeVisible();
 
@@ -191,7 +238,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('bulk imports teams via CSV', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/teams/${createdEventId}`);
+    await page.goto(`/admin/events/${createdEventId}/teams`);
 
     await page.getByRole('button', { name: 'Bulk Import' }).click();
 
@@ -233,7 +280,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('bulk checks in all registered teams', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/teams/${createdEventId}`);
+    await page.goto(`/admin/events/${createdEventId}/teams`);
 
     // Wait for teams to load
     await expect(page.getByText(`${1 + BULK_TEAMS.length} teams`)).toBeVisible({
@@ -272,7 +319,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
   test('creates a score sheet via Paste JSON Manually', async ({ page }) => {
     await loginAsAdmin(page);
-    await page.goto(`/admin/scoresheets/${createdEventId}`);
+    await page.goto(`/admin/events/${createdEventId}/scoresheets`);
 
     await expect(
       page

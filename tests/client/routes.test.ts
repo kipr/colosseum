@@ -4,14 +4,18 @@ import { adminBracketPath, adminTabPath } from '../../src/client/utils/routes';
 describe('admin route helpers', () => {
   it('builds tab paths with and without an event', () => {
     expect(adminTabPath('events')).toBe('/admin/events');
-    expect(adminTabPath('teams', 42)).toBe('/admin/teams/42');
-    expect(adminTabPath('double-seeding', '7')).toBe('/admin/double-seeding/7');
+    expect(adminTabPath('teams')).toBe('/admin/events');
+    expect(adminTabPath('events', 42)).toBe('/admin/events/42');
+    expect(adminTabPath('teams', 42)).toBe('/admin/events/42/teams');
+    expect(adminTabPath('double-seeding', '7')).toBe(
+      '/admin/events/7/double-seeding',
+    );
   });
 
   it('builds bracket detail paths with their nested view state', () => {
-    expect(adminBracketPath(42, 9)).toBe('/admin/brackets/42/9');
+    expect(adminBracketPath(42, 9)).toBe('/admin/events/42/brackets/9');
     expect(adminBracketPath(42, 9, 'ranking', 'redemption')).toBe(
-      '/admin/brackets/42/9?view=ranking&side=redemption',
+      '/admin/events/42/brackets/9?view=ranking&side=redemption',
     );
   });
 });

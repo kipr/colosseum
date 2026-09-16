@@ -39,7 +39,7 @@ const defaultFormData: EventFormData = {
 };
 
 export default function EventsTab() {
-  const { events, refreshEvents, selectedEvent, setSelectedEvent } = useEvent();
+  const { events, refreshEvents, selectedEvent } = useEvent();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
@@ -53,7 +53,6 @@ export default function EventsTab() {
   const toast = useToast();
 
   const handleSelectEvent = (event: Event | null) => {
-    setSelectedEvent(event);
     if (event) {
       navigate(adminTabPath('events', event.id));
     } else {

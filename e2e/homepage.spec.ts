@@ -52,6 +52,6 @@ test.describe('Homepage', () => {
     await page.getByRole('heading', { name: 'Administrator' }).click();
 
     await expect.poll(() => oauthUrl?.pathname).toBe('/auth/google');
-    expect(oauthUrl?.searchParams.get('returnTo')).toBe('/admin/events');
+    expect(oauthUrl?.searchParams.get('returnTo')).toBe('/admin');
   });
 });

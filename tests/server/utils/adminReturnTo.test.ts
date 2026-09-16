@@ -7,8 +7,10 @@ import {
 describe('sanitizeAdminReturnTo', () => {
   it('preserves admin paths, queries, and fragments', () => {
     expect(
-      sanitizeAdminReturnTo('/admin/brackets/42/7?view=ranking#standings'),
-    ).toBe('/admin/brackets/42/7?view=ranking#standings');
+      sanitizeAdminReturnTo(
+        '/admin/events/42/brackets/7?view=ranking#standings',
+      ),
+    ).toBe('/admin/events/42/brackets/7?view=ranking#standings');
     expect(sanitizeAdminReturnTo('/admin')).toBe('/admin');
   });
 

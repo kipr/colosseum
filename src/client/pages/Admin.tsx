@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
@@ -44,42 +44,14 @@ const TAB_ICONS: Record<AdminView, string> = {
 
 export default function Admin() {
   const { user } = useAuth();
-  const {
-    selectedEvent,
-    events,
-    loading: eventsLoading,
-    selectEventById,
-  } = useEvent();
+  const { selectedEvent, loading: eventsLoading } = useEvent();
   const location = useLocation();
-  const navigate = useNavigate();
-  const { activeTab, eventIdParam } = useAdminRoute();
+  const { activeTab } = useAdminRoute();
 
   const [tokenStatus, setTokenStatus] = useState<{
     valid: boolean;
     message?: string;
   } | null>(null);
-
-  // Sync URL eventId to EventContext once events have loaded
-  useEffect(() => {
-    if (eventsLoading || events.length === 0) return;
-
-    if (eventIdParam) {
-      const id = Number(eventIdParam);
-      const exists = events.find((e) => e.id === id);
-      if (exists) {
-        if (selectedEvent?.id !== id) selectEventById(id);
-      } else {
-        navigate(adminTabPath('events'), { replace: true });
-      }
-    }
-  }, [
-    eventIdParam,
-    events,
-    eventsLoading,
-    selectedEvent?.id,
-    selectEventById,
-    navigate,
-  ]);
 
   useEffect(() => {
     if (!user) return;
@@ -139,17 +111,20 @@ export default function Admin() {
         <div className="admin-layout">
           <aside className="admin-sidebar">
             <div className="sidebar-menu">
-              {(Object.keys(TAB_LABELS) as AdminView[]).map((view) => (
-                <NavLink
-                  key={view}
-                  className={({ isActive }) =>
-                    `sidebar-item ${isActive || activeTab === view ? 'active' : ''}`
-                  }
-                  to={adminTabPath(view, eventIdParam ?? selectedEvent?.id)}
-                >
-                  {TAB_ICONS[view]} {TAB_LABELS[view]}
-                </NavLink>
-              ))}
+              {(Object.keys(TAB_LABELS) as AdminView[])
+                .filter((view) => selectedEvent || view === 'events')
+                .map((view) => (
+                  <NavLink
+                    key={view}
+                    end={view === 'events'}
+                    className={({ isActive }) =>
+                      `sidebar-item ${isActive || activeTab === view ? 'active' : ''}`
+                    }
+                    to={adminTabPath(view, selectedEvent?.id)}
+                  >
+                    {TAB_ICONS[view]} {TAB_LABELS[view]}
+                  </NavLink>
+                ))}
             </div>
           </aside>
 

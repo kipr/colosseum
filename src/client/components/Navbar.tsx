@@ -13,13 +13,12 @@ import { useAdminRoute } from '../hooks/useAdminRoute';
 import './Navbar.css';
 
 function AdminEventSelector() {
-  const { selectedEvent, events, selectEventById } = useEvent();
+  const { selectedEvent, events } = useEvent();
   const navigate = useNavigate();
   const { activeTab } = useAdminRoute();
 
   const handleEventChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const id = e.target.value ? Number(e.target.value) : null;
-    selectEventById(id);
     if (id) {
       navigate(adminTabPath(activeTab, id));
     } else {

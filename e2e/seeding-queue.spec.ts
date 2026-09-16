@@ -283,7 +283,7 @@ test.describe('Seeding Queue E2E', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/queue/${eventId}`);
+    await page.goto(`/admin/events/${eventId}/queue`);
 
     // Admin page should load and show Queue tab
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
@@ -321,7 +321,7 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const page = await context.newPage();
 
-    await page.goto(`/admin/scoring/${eventId}`);
+    await page.goto(`/admin/events/${eventId}/scoring`);
 
     await expect(
       page
@@ -361,7 +361,7 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const page = await context.newPage();
 
-    await page.goto(`/admin/scoring/${eventId}`);
+    await page.goto(`/admin/events/${eventId}/scoring`);
 
     await expect(page.locator('table tbody tr').first()).toBeVisible({
       timeout: 10_000,
@@ -395,7 +395,7 @@ test.describe('Seeding Queue E2E', () => {
     const page = await context.newPage();
     await bypassQueueSyncLimit(page);
 
-    await page.goto(`/admin/queue/${eventId}`);
+    await page.goto(`/admin/events/${eventId}/queue`);
 
     await expect(page.locator('.admin-content-header h2')).toHaveText('Queue', {
       timeout: 10_000,
@@ -427,7 +427,7 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const page = await context.newPage();
 
-    await page.goto(`/admin/scoring/${eventId}`);
+    await page.goto(`/admin/events/${eventId}/scoring`);
 
     await expect(page.locator('table tbody tr').first()).toBeVisible({
       timeout: 10_000,
@@ -482,7 +482,7 @@ test.describe('Seeding Queue E2E', () => {
     await setAdminCookie(context);
     const adminPage = await context.newPage();
 
-    await adminPage.goto(`/admin/scoring/${eventId}`);
+    await adminPage.goto(`/admin/events/${eventId}/scoring`);
     await expect(adminPage.locator('table tbody tr').first()).toBeVisible({
       timeout: 10_000,
     });

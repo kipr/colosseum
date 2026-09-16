@@ -30,7 +30,7 @@ export default function Home() {
             </ul>
           </Link>
 
-          <Link to="/admin/events" className="role-card role-card-clickable">
+          <Link to="/admin" className="role-card role-card-clickable">
             <div className="role-icon">
               <img src="/images/KIPR-Logo-bk-tiny.jpg" alt="Admin Icon" />
             </div>

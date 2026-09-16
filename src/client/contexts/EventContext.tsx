@@ -2,12 +2,15 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useState,
   useCallback,
   ReactNode,
 } from 'react';
+import { useLocation, useRouteLoaderData } from 'react-router-dom';
 import { useAuth } from './AuthContext';
-import { Event, isEventActive } from '../utils/eventStatus';
+import { Event } from '../utils/eventStatus';
+import { SELECTED_EVENT_STORAGE_KEY } from '../loaders/adminLoader';
 
 interface EventContextType {
   selectedEvent: Event | null;
@@ -15,26 +18,26 @@ interface EventContextType {
   loading: boolean;
   error: string | null;
   refreshEvents: () => Promise<Event[]>;
-  setSelectedEvent: (event: Event | null) => void;
-  selectEventById: (id: number | null) => void;
 }
 
 const EventContext = createContext<EventContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY = 'colosseum_selected_event_id';
-
 export function EventProvider({ children }: { children: ReactNode }) {
   const { user, loading: authLoading } = useAuth();
+  const location = useLocation();
+  const loadedEvent = useRouteLoaderData('admin-event') as Event | undefined;
   const [events, setEvents] = useState<Event[]>([]);
-  const [selectedEvent, setSelectedEventState] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialized, setInitialized] = useState(false);
+
+  const selectedEvent = useMemo(() => {
+    if (!loadedEvent) return null;
+    return events.find((event) => event.id === loadedEvent.id) ?? loadedEvent;
+  }, [events, loadedEvent]);
 
   const refreshEvents = useCallback(async () => {
     if (!user) {
       setEvents([]);
-      setSelectedEventState(null);
       setLoading(false);
       return [];
     }
@@ -64,95 +67,38 @@ export function EventProvider({ children }: { children: ReactNode }) {
     }
   }, [user]);
 
-  // Set selected event and persist to localStorage
-  const setSelectedEvent = useCallback((event: Event | null) => {
-    setSelectedEventState(event);
-    if (event) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, String(event.id));
-    } else {
-      localStorage.removeItem(LOCAL_STORAGE_KEY);
-    }
-  }, []);
-
-  // Select event by ID (useful for dropdown changes)
-  const selectEventById = useCallback(
-    (id: number | null) => {
-      if (id === null) {
-        setSelectedEvent(null);
-        return;
-      }
-
-      const event = events.find((e) => e.id === id) || null;
-      setSelectedEvent(event);
-    },
-    [events, setSelectedEvent],
-  );
-
-  // Initial load
+  // Keep the event list available for selection; the route owns selection.
   useEffect(() => {
     const initializeEvents = async () => {
       if (authLoading) return;
 
       if (!user) {
         setEvents([]);
-        setSelectedEventState(null);
         setLoading(false);
-        setInitialized(false);
         return;
       }
 
-      const fetchedEvents = await refreshEvents();
-
-      // Try to restore last selected event from localStorage
-      const savedEventId = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedEventId && fetchedEvents.length > 0) {
-        const savedEvent = fetchedEvents.find(
-          (e: Event) => e.id === Number(savedEventId),
-        );
-        if (savedEvent) {
-          setSelectedEventState(savedEvent);
-        } else {
-          // Saved event no longer exists, prefer active/setup event then fallback.
-          const nextEvent =
-            fetchedEvents.find((event) => isEventActive(event.status)) ||
-            fetchedEvents[0];
-          setSelectedEventState(nextEvent);
-          localStorage.setItem(LOCAL_STORAGE_KEY, String(nextEvent.id));
-        }
-      } else if (fetchedEvents.length > 0) {
-        // No saved selection, prefer active/setup event then fallback.
-        const nextEvent =
-          fetchedEvents.find((event) => isEventActive(event.status)) ||
-          fetchedEvents[0];
-        setSelectedEventState(nextEvent);
-        localStorage.setItem(LOCAL_STORAGE_KEY, String(nextEvent.id));
-      }
-
-      setInitialized(true);
+      await refreshEvents();
     };
 
     initializeEvents();
   }, [authLoading, refreshEvents, user]);
 
-  // Update selectedEvent if it was edited/deleted
+  // Persist only validated route selection. The explicit event-list route clears it.
   useEffect(() => {
-    if (!initialized || !selectedEvent) return;
-
-    const currentEvent = events.find((e) => e.id === selectedEvent.id);
-    if (currentEvent) {
-      // Update with latest data if changed
-      if (JSON.stringify(currentEvent) !== JSON.stringify(selectedEvent)) {
-        setSelectedEventState(currentEvent);
+    try {
+      if (loadedEvent) {
+        localStorage.setItem(
+          SELECTED_EVENT_STORAGE_KEY,
+          String(loadedEvent.id),
+        );
+      } else if (location.pathname === '/admin/events') {
+        localStorage.removeItem(SELECTED_EVENT_STORAGE_KEY);
       }
-    } else {
-      // Selected event was deleted, select first available or null
-      if (events.length > 0) {
-        setSelectedEvent(events[0]);
-      } else {
-        setSelectedEvent(null);
-      }
+    } catch {
+      // URL-backed selection still works when storage is unavailable.
     }
-  }, [events, initialized, selectedEvent, setSelectedEvent]);
+  }, [loadedEvent, location.pathname]);
 
   return (
     <EventContext.Provider
@@ -162,8 +108,6 @@ export function EventProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         refreshEvents,
-        setSelectedEvent,
-        selectEventById,
       }}
     >
       {children}

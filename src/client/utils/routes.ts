@@ -100,7 +100,10 @@ export function adminTabPath(
   view: AdminView,
   eventId?: number | string,
 ): string {
-  return `/admin/${view}${eventId === undefined ? '' : `/${eventId}`}`;
+  if (eventId === undefined) return '/admin/events';
+
+  const eventPath = `/admin/events/${eventId}`;
+  return view === 'events' ? eventPath : `${eventPath}/${view}`;
 }
 
 export function adminBracketPath(
@@ -109,7 +112,7 @@ export function adminBracketPath(
   view?: BracketDetailView,
   side?: BracketSideParam,
 ): string {
-  return `/admin/brackets/${eventId}/${bracketId}` + qs({ view, side });
+  return `/admin/events/${eventId}/brackets/${bracketId}` + qs({ view, side });
 }
 
 export function spectatorEventPath(

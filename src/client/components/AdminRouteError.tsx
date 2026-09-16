@@ -28,21 +28,30 @@ export default function AdminRouteError() {
   const revalidator = useRevalidator();
   const isRetrying = revalidator.state === 'loading';
   const status = isRouteErrorResponse(error) ? error.status : undefined;
+  const isEventNotFound = status === 404;
 
   return (
     <main className="container admin-route-error" role="alert">
-      <h2>Unable to load the admin area</h2>
+      <h2>
+        {isEventNotFound ? 'Event not found' : 'Unable to load the admin area'}
+      </h2>
       <p>{getErrorDetail(error)}</p>
       {status === 401 && <p>Please sign in again to continue.</p>}
       <div className="admin-route-error-actions">
-        <button
-          className="btn btn-primary"
-          type="button"
-          onClick={() => revalidator.revalidate()}
-          disabled={isRetrying}
-        >
-          {isRetrying ? 'Retrying…' : 'Try again'}
-        </button>
+        {isEventNotFound ? (
+          <Link className="btn btn-primary" to="/admin/events">
+            Manage events
+          </Link>
+        ) : (
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={() => revalidator.revalidate()}
+            disabled={isRetrying}
+          >
+            {isRetrying ? 'Retrying…' : 'Try again'}
+          </button>
+        )}
         <Link className="btn btn-secondary" to="/">
           Return home
         </Link>

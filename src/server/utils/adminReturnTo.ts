@@ -1,4 +1,4 @@
-export const DEFAULT_ADMIN_RETURN_TO = '/admin/events';
+export const DEFAULT_ADMIN_RETURN_TO = '/admin';
 
 const INTERNAL_ORIGIN = 'http://colosseum.internal';
 
