@@ -17,6 +17,7 @@ export interface JudgeAuth {
 declare module 'express-session' {
   interface SessionData {
     judgeAuth?: JudgeAuth;
+    adminReturnTo?: string;
   }
 }
 

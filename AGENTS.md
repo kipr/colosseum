@@ -6,6 +6,17 @@
 
 Colosseum is a tournament management and scoring platform (React 19 + Express 5 + TypeScript). See `README.md` for full details.
 
+### Environment detection
+
+- This workspace is commonly run inside the repository's devcontainer. Before
+  reporting that Docker, PostgreSQL, or another required tool/service does not
+  exist, check `/.dockerenv`, the `DEVCONTAINER` /
+  `REMOTE_CONTAINERS` environment markers, and the `.devcontainer/`
+  configuration files.
+- Distinguish a missing CLI inside the current container from an unavailable
+  Docker socket or host-side service, and report the specific limitation
+  observed rather than concluding that the environment does not provide it.
+
 ### Services
 
 | Service | Port | Command |

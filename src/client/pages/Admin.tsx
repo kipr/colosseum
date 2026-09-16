@@ -1,5 +1,10 @@
 import { useEffect, useState, useCallback, lazy, Suspense } from 'react';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  useLocation,
+  useNavigate,
+  useParams,
+  useSearchParams,
+} from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvent } from '../contexts/EventContext';
 import Navbar from '../components/Navbar';
@@ -78,13 +83,14 @@ function resolveView(searchView: string | null): AdminView {
 }
 
 export default function Admin() {
-  const { user, loading } = useAuth();
+  const { user } = useAuth();
   const {
     selectedEvent,
     events,
     loading: eventsLoading,
     selectEventById,
   } = useEvent();
+  const location = useLocation();
   const navigate = useNavigate();
   const { eventId: eventIdParam, bracketId: bracketIdParam } = useParams<{
     eventId?: string;
@@ -142,12 +148,6 @@ export default function Admin() {
   );
 
   useEffect(() => {
-    if (!loading && !user) {
-      navigate('/');
-    }
-  }, [user, loading, navigate]);
-
-  useEffect(() => {
     if (!user) return;
 
     const checkTokens = async () => {
@@ -166,10 +166,11 @@ export default function Admin() {
   }, [user]);
 
   const handleReauth = () => {
-    window.location.href = '/auth/google';
+    const returnTo = `${location.pathname}${location.search}${location.hash}`;
+    window.location.href = `/auth/google?returnTo=${encodeURIComponent(returnTo)}`;
   };
 
-  if (loading || eventsLoading) {
+  if (eventsLoading) {
     return (
       <div className="app">
         <Navbar />

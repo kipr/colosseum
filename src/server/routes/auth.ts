@@ -2,26 +2,29 @@ import express, { Request, Response } from 'express';
 import passport from 'passport';
 import { oauthLimiter } from '../middleware/rateLimit';
 import { getValidAccessToken } from '../services/tokenRefresh';
+import { sanitizeAdminReturnTo } from '../utils/adminReturnTo';
 
 const router = express.Router();
 
 // Initiate Google OAuth
 // Note: accessType and prompt must be passed exactly as Google expects
 router.get('/google', oauthLimiter, (req, res, next) => {
-  passport.authenticate('google', {
-    scope: [
-      'profile',
-      'email',
-    ],
-    // These ensure we get a refresh token that lasts longer
-    accessType: 'offline',
-    prompt: 'consent', // Forces re-consent to ensure we get a fresh refresh token
-    includeGrantedScopes: true,
-  } as passport.AuthenticateOptions & {
-    accessType?: string;
-    prompt?: string;
-    includeGrantedScopes?: boolean;
-  })(req, res, next);
+  req.session.adminReturnTo = sanitizeAdminReturnTo(req.query.returnTo);
+  req.session.save((sessionError) => {
+    if (sessionError) return next(sessionError);
+
+    passport.authenticate('google', {
+      scope: ['profile', 'email'],
+      // These ensure we get a refresh token that lasts longer
+      accessType: 'offline',
+      prompt: 'consent', // Forces re-consent to ensure we get a fresh refresh token
+      includeGrantedScopes: true,
+    } as passport.AuthenticateOptions & {
+      accessType?: string;
+      prompt?: string;
+      includeGrantedScopes?: boolean;
+    })(req, res, next);
+  });
 });
 
 // Google OAuth callback
@@ -32,6 +35,9 @@ router.get(
     failureMessage: true,
   }),
   (req: Request, res: Response) => {
+    const returnTo = sanitizeAdminReturnTo(req.session.adminReturnTo);
+    delete req.session.adminReturnTo;
+
     // Ensure session is saved before redirecting
     req.session.save((err) => {
       if (err) {
@@ -39,14 +45,12 @@ router.get(
         return res.status(500).send('Session save failed');
       }
 
-      // Redirect to root with a query param so frontend knows to go to admin
-      // Don't redirect to /admin as it conflicts with the API route
       // Use APP_URL to redirect to custom domain in production
       const isDev = process.env.NODE_ENV !== 'production';
       const baseUrl = isDev
         ? 'http://localhost:5173'
         : process.env.APP_URL || '';
-      res.redirect(`${baseUrl}/?logged_in=1`);
+      res.redirect(`${baseUrl.replace(/\/$/, '')}${returnTo}`);
     });
   },
 );

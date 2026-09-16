@@ -7,6 +7,7 @@ import {
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { EventProvider } from './contexts/EventContext';
+import { adminLoader } from './loaders/adminLoader';
 
 const Home = lazy(() => import('./pages/Home'));
 const Judge = lazy(() => import('./pages/Judge'));
@@ -23,45 +24,51 @@ const AdminWithProvider = () => (
 
 const router = createBrowserRouter([
   {
-    path: "/",
-    element: <Home />
+    path: '/',
+    element: <Home />,
   },
   {
-    path: "/judge",
-    element: <Judge />
+    path: '/judge',
+    element: <Judge />,
   },
   {
-    path: "/scoresheet",
-    element: <Scoresheet />
+    path: '/scoresheet',
+    element: <Scoresheet />,
   },
   {
-    path: "/spectator",
-    element: <SpectatorEvents />
+    path: '/spectator',
+    element: <SpectatorEvents />,
   },
   {
-    path: "/spectator/events/:eventId/brackets/:bracketId",
-    element: <Spectator />
+    path: '/spectator/events/:eventId/brackets/:bracketId',
+    element: <Spectator />,
   },
   {
-    path: "/spectator/events/:eventId",
-    element: <Spectator />
+    path: '/spectator/events/:eventId',
+    element: <Spectator />,
   },
   {
-    path: "/admin",
-    element: <Navigate to="/admin/events" replace />
+    path: '/admin',
+    loader: adminLoader,
+    children: [
+      {
+        index: true,
+        element: <Navigate to="/admin/events" replace />,
+      },
+      {
+        path: 'events/:eventId/brackets/:bracketId',
+        element: <AdminWithProvider />,
+      },
+      {
+        path: 'events/:eventId',
+        element: <AdminWithProvider />,
+      },
+      {
+        path: 'events',
+        element: <AdminWithProvider />,
+      },
+    ],
   },
-  {
-    path: "/admin/events/:eventId/brackets/:bracketId",
-    element: <AdminWithProvider />
-  },
-  {
-    path: "/admin/events/:eventId",
-    element: <AdminWithProvider />
-  },
-  {
-    path: "/admin/events",
-    element: <AdminWithProvider />
-  }
 ]);
 
 function App() {

@@ -1,38 +1,8 @@
-import { useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
+import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import './Home.css';
 
 export default function Home() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const { user, loading } = useAuth();
-
-  // Handle redirect after OAuth login
-  useEffect(() => {
-    if (searchParams.get('logged_in') === '1' && !loading) {
-      // Clear the query param from URL
-      window.history.replaceState({}, '', '/');
-
-      if (user) {
-        // User is logged in, redirect to admin
-        navigate('/admin/events', { replace: true });
-      }
-    }
-  }, [searchParams, user, loading, navigate]);
-
-  const handleAdminClick = () => {
-    if (user) {
-      // Already logged in, go directly to admin
-      navigate('/admin/events');
-    } else {
-      // Not logged in, initiate OAuth
-      sessionStorage.setItem('loginIntent', 'admin');
-      window.location.href = '/auth/google';
-    }
-  };
-
   return (
     <div className="app">
       <Navbar />
@@ -60,18 +30,7 @@ export default function Home() {
             </ul>
           </Link>
 
-          <div
-            className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
-            onClick={handleAdminClick}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleAdminClick();
-              }
-            }}
-          >
+          <Link to="/admin/events" className="role-card role-card-clickable">
             <div className="role-icon">
               <img src="/images/KIPR-Logo-bk-tiny.jpg" alt="Admin Icon" />
             </div>
@@ -86,7 +45,7 @@ export default function Home() {
               <li>✓ Review and accept submissions</li>
               <li>✓ Run brackets and seeding</li>
             </ul>
-          </div>
+          </Link>
 
           <Link to="/spectator" className="role-card role-card-clickable">
             <div className="role-icon role-icon-text">
