@@ -3,13 +3,10 @@ import {
   redirectDocument,
   type LoaderFunctionArgs,
 } from 'react-router-dom';
+import type { User } from '../contexts/AuthContext';
 import type { Event } from '../utils/eventStatus';
 
 export const SELECTED_EVENT_STORAGE_KEY = 'colosseum_selected_event_id';
-
-interface AuthenticatedUser {
-  isAdmin: boolean;
-}
 
 export async function adminLoader({ request }: { request: Request }) {
   const response = await fetch('/auth/user', {
@@ -28,7 +25,7 @@ export async function adminLoader({ request }: { request: Request }) {
     throw response;
   }
 
-  const user = (await response.json()) as AuthenticatedUser;
+  const user = (await response.json()) as User;
   if (!user.isAdmin) {
     return redirectDocument('/auth/access-denied');
   }
@@ -37,7 +34,7 @@ export async function adminLoader({ request }: { request: Request }) {
     return adminIndexLoader();
   }
 
-  return null;
+  return user;
 }
 
 function parseEventId(value: string | null | undefined): number | null {

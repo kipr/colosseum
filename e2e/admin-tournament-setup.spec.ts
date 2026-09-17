@@ -87,6 +87,13 @@ test.describe('Admin Tournament Setup E2E', () => {
   /* ── 1. Create Event ────────────────────────────────────────────── */
 
   test('creates a new event via the admin Events tab', async ({ page }) => {
+    let authUserRequests = 0;
+    page.on('request', (request) => {
+      if (new URL(request.url()).pathname === '/auth/user') {
+        authUserRequests += 1;
+      }
+    });
+
     await loginAsAdmin(page);
     await page.goto('/admin/events');
 
@@ -94,6 +101,8 @@ test.describe('Admin Tournament Setup E2E', () => {
       name: '+ Create New Event',
     });
     await expect(createEventButton).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator('.user-info')).toHaveText(ADMIN_NAME);
+    expect(authUserRequests).toBe(1);
 
     await createEventButton.click();
 

@@ -87,10 +87,6 @@ export default function Admin() {
     );
   }
 
-  if (!user) {
-    return null;
-  }
-
   return (
     <div className="app">
       <Navbar />

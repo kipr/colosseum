@@ -1,6 +1,11 @@
 import { lazy, type ComponentType } from 'react';
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
-import { AuthProvider } from './contexts/AuthContext';
+import {
+  createBrowserRouter,
+  Outlet,
+  RouterProvider,
+  useLoaderData,
+} from 'react-router-dom';
+import { AuthProvider, type User } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { EventProvider } from './contexts/EventContext';
 import { adminEventLoader, adminLoader } from './loaders/adminLoader';
@@ -14,11 +19,23 @@ const SpectatorEvents = lazy(() => import('./pages/SpectatorEvents'));
 const Spectator = lazy(() => import('./pages/Spectator'));
 const Admin = lazy(() => import('./pages/Admin'));
 
-const AdminWithProvider = () => (
-  <EventProvider>
-    <Admin />
-  </EventProvider>
+const PublicWithAuth = () => (
+  <AuthProvider>
+    <Outlet />
+  </AuthProvider>
 );
+
+const AdminWithProviders = () => {
+  const user = useLoaderData() as User;
+
+  return (
+    <AuthProvider initialUser={user}>
+      <EventProvider>
+        <Admin />
+      </EventProvider>
+    </AuthProvider>
+  );
+};
 
 type DefaultComponentModule = { default: ComponentType };
 
@@ -32,32 +49,37 @@ function adminHandle(adminView: AdminView): AdminRouteHandle {
 
 const router = createBrowserRouter([
   {
-    path: '/',
-    element: <Home />,
-  },
-  {
-    path: '/judge',
-    element: <Judge />,
-  },
-  {
-    path: '/scoresheet',
-    element: <Scoresheet />,
-  },
-  {
-    path: '/spectator',
-    element: <SpectatorEvents />,
-  },
-  {
-    path: '/spectator/events/:eventId/brackets/:bracketId',
-    element: <Spectator />,
-  },
-  {
-    path: '/spectator/events/:eventId',
-    element: <Spectator />,
+    element: <PublicWithAuth />,
+    children: [
+      {
+        path: '/',
+        element: <Home />,
+      },
+      {
+        path: '/judge',
+        element: <Judge />,
+      },
+      {
+        path: '/scoresheet',
+        element: <Scoresheet />,
+      },
+      {
+        path: '/spectator',
+        element: <SpectatorEvents />,
+      },
+      {
+        path: '/spectator/events/:eventId/brackets/:bracketId',
+        element: <Spectator />,
+      },
+      {
+        path: '/spectator/events/:eventId',
+        element: <Spectator />,
+      },
+    ],
   },
   {
     path: '/admin',
-    element: <AdminWithProvider />,
+    element: <AdminWithProviders />,
     loader: adminLoader,
     errorElement: <AdminRouteError />,
     children: [
@@ -162,9 +184,7 @@ const router = createBrowserRouter([
 function App() {
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <RouterProvider router={router} />
-      </AuthProvider>
+      <RouterProvider router={router} />
     </ThemeProvider>
   );
 }

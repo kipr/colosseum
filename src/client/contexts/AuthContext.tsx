@@ -7,7 +7,7 @@ import {
   useRef,
 } from 'react';
 
-interface User {
+export interface User {
   id: number;
   email: string;
   name: string;
@@ -24,9 +24,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
+interface AuthProviderProps {
+  children: ReactNode;
+  initialUser?: User;
+}
+
+export function AuthProvider({ children, initialUser }: AuthProviderProps) {
+  const [user, setUser] = useState<User | null>(initialUser ?? null);
+  const [loading, setLoading] = useState(initialUser === undefined);
   const [serverAvailable, setServerAvailable] = useState(true);
   const retryTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -79,7 +84,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    checkAuth();
+    if (initialUser !== undefined) {
+      setUser(initialUser);
+      setLoading(false);
+      setServerAvailable(true);
+    } else {
+      checkAuth();
+    }
 
     // Cleanup retry timeout on unmount
     return () => {
@@ -87,7 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         clearTimeout(retryTimeoutRef.current);
       }
     };
-  }, []);
+  }, [initialUser]);
 
   // Wrapper to match the interface (no retry count parameter)
   const checkAuthPublic = async () => {

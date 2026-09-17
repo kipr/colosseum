@@ -19,17 +19,16 @@ describe('adminLoader', () => {
   });
 
   it('allows authenticated administrators through', async () => {
-    fetchMock.mockResolvedValue(
-      Response.json({
-        id: 1,
-        email: 'admin@example.com',
-        name: 'Admin',
-        isAdmin: true,
-      }),
-    );
+    const user = {
+      id: 1,
+      email: 'admin@example.com',
+      name: 'Admin',
+      isAdmin: true,
+    };
+    fetchMock.mockResolvedValue(Response.json(user));
     const request = new Request('https://colosseum.test/admin/events');
 
-    await expect(adminLoader({ request })).resolves.toBeNull();
+    await expect(adminLoader({ request })).resolves.toEqual(user);
     expect(fetchMock).toHaveBeenCalledWith('/auth/user', {
       credentials: 'include',
       signal: request.signal,
