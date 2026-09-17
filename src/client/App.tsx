@@ -45,6 +45,12 @@ const AdminLoading = () => (
   </main>
 );
 
+const SpectatorEventsLoading = () => (
+  <main className="app-loading" role="status" aria-live="polite">
+    <p>Loading spectator events…</p>
+  </main>
+);
+
 const PublicWithAuth = () => (
   <AuthProvider>
     <Outlet />
@@ -100,6 +106,7 @@ const router = createBrowserRouter([
           {
             index: true,
             element: <SpectatorEvents />,
+            HydrateFallback: SpectatorEventsLoading,
             loader: spectatorEventsLoader,
           },
           {
