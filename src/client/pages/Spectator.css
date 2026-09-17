@@ -34,6 +34,7 @@
   cursor: pointer;
   padding: 0.25rem 0;
   transition: opacity 0.2s;
+  text-decoration: none;
 }
 
 .spectator-back-btn:hover {
@@ -70,9 +71,15 @@
   font-weight: 500;
   cursor: pointer;
   color: var(--secondary-color);
+  text-decoration: none;
   transition:
     color 0.2s,
     background-color 0.2s;
+}
+
+.spectator-tab-btn[aria-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .spectator-tab-btn:hover {

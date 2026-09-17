@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLoaderData } from 'react-router-dom';
 import Navbar from '../components/Navbar';
+import type { PublicEvent } from '../loaders/spectatorLoaders';
 import {
   formatEventDate,
   getEventStatusClass,
@@ -10,34 +10,8 @@ import { spectatorEventPath } from '../utils/routes';
 import './SpectatorShared.css';
 import './SpectatorEvents.css';
 
-interface PublicEvent {
-  id: number;
-  name: string;
-  status: string;
-  event_date: string | null;
-  location: string | null;
-  seeding_rounds: number;
-  final_scores_available: boolean;
-}
-
 export default function SpectatorEvents() {
-  const [events, setEvents] = useState<PublicEvent[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/events/public');
-        if (!res.ok) throw new Error('Failed to fetch events');
-        const data: PublicEvent[] = await res.json();
-        setEvents(data);
-      } catch (error) {
-        console.error('Error loading events:', error);
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  const events = useLoaderData() as PublicEvent[];
 
   return (
     <div className="app">
@@ -48,9 +22,7 @@ export default function SpectatorEvents() {
           <p>Select an event to view live scores and results.</p>
         </div>
 
-        {loading ? (
-          <p>Loading events...</p>
-        ) : events.length === 0 ? (
+        {events.length === 0 ? (
           <div className="card">
             <p className="spectator-muted-message">
               No events are currently available.

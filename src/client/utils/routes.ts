@@ -24,13 +24,19 @@ export interface AdminRouteHandle {
 export const SPECTATOR_VIEWS = [
   'seeding',
   'double-seeding',
-  'bracket',
+  'brackets',
   'documentation',
   'awards',
+  'bracket-rankings',
   'overall',
 ] as const;
 
 export type SpectatorView = (typeof SPECTATOR_VIEWS)[number];
+export type SpectatorEventView = Exclude<SpectatorView, 'bracket-rankings'>;
+
+export interface SpectatorRouteHandle {
+  spectatorView: SpectatorView;
+}
 
 export const BRACKET_DETAIL_VIEWS = [
   'bracket',
@@ -117,9 +123,9 @@ export function adminBracketPath(
 
 export function spectatorEventPath(
   eventId: number | string,
-  view?: SpectatorView,
+  view: SpectatorEventView = 'seeding',
 ): string {
-  return `/spectator/events/${eventId}` + qs({ view });
+  return `/spectator/events/${eventId}/${view}`;
 }
 
 export function spectatorBracketPath(
@@ -128,7 +134,6 @@ export function spectatorBracketPath(
   view?: SpectatorBracketView,
   side?: BracketSideParam,
 ): string {
-  return (
-    `/spectator/events/${eventId}/brackets/${bracketId}` + qs({ view, side })
-  );
+  const rankingPath = view === 'rankings' ? '/rankings' : '';
+  return `/spectator/events/${eventId}/brackets/${bracketId}${rankingPath}${qs({ side })}`;
 }

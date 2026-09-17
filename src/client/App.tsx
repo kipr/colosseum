@@ -10,7 +10,27 @@ import { ThemeProvider } from './contexts/ThemeContext';
 import { EventProvider } from './contexts/EventContext';
 import { adminEventLoader, adminLoader } from './loaders/adminLoader';
 import AdminRouteError from './components/AdminRouteError';
-import type { AdminRouteHandle, AdminView } from './utils/routes';
+import SpectatorRouteError from './components/SpectatorRouteError';
+import {
+  spectatorAwardsLoader,
+  spectatorBracketIndexLoader,
+  spectatorBracketLoader,
+  spectatorBracketRankingsLoader,
+  spectatorDocumentationLoader,
+  spectatorDoubleSeedingLoader,
+  spectatorEventIndexLoader,
+  spectatorEventLoader,
+  spectatorEventsLoader,
+  spectatorOverallLoader,
+  spectatorSeedingLoader,
+  spectatorShouldRevalidate,
+} from './loaders/spectatorLoaders';
+import type {
+  AdminRouteHandle,
+  AdminView,
+  SpectatorRouteHandle,
+  SpectatorView,
+} from './utils/routes';
 
 const Home = lazy(() => import('./pages/Home'));
 const Judge = lazy(() => import('./pages/Judge'));
@@ -53,6 +73,10 @@ function adminHandle(adminView: AdminView): AdminRouteHandle {
   return { adminView };
 }
 
+function spectatorHandle(spectatorView: SpectatorView): SpectatorRouteHandle {
+  return { spectatorView };
+}
+
 const router = createBrowserRouter([
   {
     element: <PublicWithAuth />,
@@ -71,15 +95,106 @@ const router = createBrowserRouter([
       },
       {
         path: '/spectator',
-        element: <SpectatorEvents />,
-      },
-      {
-        path: '/spectator/events/:eventId/brackets/:bracketId',
-        element: <Spectator />,
-      },
-      {
-        path: '/spectator/events/:eventId',
-        element: <Spectator />,
+        errorElement: <SpectatorRouteError />,
+        children: [
+          {
+            index: true,
+            element: <SpectatorEvents />,
+            loader: spectatorEventsLoader,
+          },
+          {
+            id: 'spectator-event',
+            path: 'events/:eventId',
+            element: <Spectator />,
+            loader: spectatorEventLoader,
+            shouldRevalidate: spectatorShouldRevalidate,
+            children: [
+              {
+                index: true,
+                loader: spectatorEventIndexLoader,
+              },
+              {
+                path: 'seeding',
+                handle: spectatorHandle('seeding'),
+                loader: spectatorSeedingLoader,
+                lazy: async () => ({
+                  Component: (await import('./pages/SpectatorViews'))
+                    .SpectatorSeedingView,
+                }),
+              },
+              {
+                path: 'double-seeding',
+                handle: spectatorHandle('double-seeding'),
+                loader: spectatorDoubleSeedingLoader,
+                lazy: async () => ({
+                  Component: (await import('./pages/SpectatorViews'))
+                    .SpectatorDoubleSeedingView,
+                }),
+              },
+              {
+                path: 'brackets',
+                handle: spectatorHandle('brackets'),
+                loader: spectatorBracketIndexLoader,
+                lazy: async () => ({
+                  Component: (await import('./pages/SpectatorViews'))
+                    .SpectatorNoBracketsView,
+                }),
+              },
+              {
+                id: 'spectator-bracket',
+                path: 'brackets/:bracketId',
+                loader: spectatorBracketLoader,
+                shouldRevalidate: spectatorShouldRevalidate,
+                children: [
+                  {
+                    index: true,
+                    handle: spectatorHandle('brackets'),
+                    lazy: async () => ({
+                      Component: (await import('./pages/SpectatorViews'))
+                        .SpectatorBracketView,
+                    }),
+                  },
+                  {
+                    path: 'rankings',
+                    handle: spectatorHandle('bracket-rankings'),
+                    loader: spectatorBracketRankingsLoader,
+                    lazy: async () => ({
+                      Component: (await import('./pages/SpectatorViews'))
+                        .SpectatorBracketRankingsView,
+                    }),
+                  },
+                ],
+              },
+              {
+                path: 'documentation',
+                handle: spectatorHandle('documentation'),
+                loader: spectatorDocumentationLoader,
+                lazy: async () => ({
+                  Component: (await import('./pages/SpectatorViews'))
+                    .SpectatorDocumentationView,
+                }),
+              },
+              {
+                path: 'awards',
+                handle: spectatorHandle('awards'),
+                loader: spectatorAwardsLoader,
+                lazy: async () => ({
+                  Component: (await import('./pages/SpectatorViews'))
+                    .SpectatorAwardsView,
+                }),
+              },
+              {
+                path: 'overall',
+                handle: spectatorHandle('overall'),
+                loader: spectatorOverallLoader,
+                lazy: async () => ({
+                  Component: (await import('./pages/SpectatorViews'))
+                    .SpectatorOverallView,
+                }),
+              },
+            ],
+          },
+        ],
       },
     ],
   },
