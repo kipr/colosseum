@@ -4,6 +4,7 @@ import {
   adminTabPath,
   spectatorBracketPath,
   spectatorEventPath,
+  scoresheetPath,
 } from '../../src/client/utils/routes';
 
 describe('admin route helpers', () => {
@@ -22,6 +23,12 @@ describe('admin route helpers', () => {
     expect(adminBracketPath(42, 9, 'ranking', 'redemption')).toBe(
       '/admin/events/42/brackets/9?view=ranking&side=redemption',
     );
+  });
+});
+
+describe('scoresheet route helpers', () => {
+  it('builds the canonical template-addressed path', () => {
+    expect(scoresheetPath(42)).toBe('/scoresheets/42');
   });
 });
 

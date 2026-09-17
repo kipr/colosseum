@@ -137,3 +137,7 @@ export function spectatorBracketPath(
   const rankingPath = view === 'rankings' ? '/rankings' : '';
   return `/spectator/events/${eventId}/brackets/${bracketId}${rankingPath}${qs({ side })}`;
 }
+
+export function scoresheetPath(templateId: number | string): string {
+  return `/scoresheets/${templateId}`;
+}

@@ -66,7 +66,8 @@ export function isJudgeSessionValidForEvent(
  * Middleware that requires a valid judge session (created during access-code
  * verification) OR an authenticated admin user. Rejects with 401 when the
  * session is missing/expired and with 403 when the session doesn't match the
- * submitted templateId / eventId.
+ * submitted templateId / eventId. Read routes may supply `:templateId` as a
+ * path parameter instead of putting it in a request body.
  */
 export function requireJudgeSession(
   req: Request,
@@ -91,7 +92,8 @@ export function requireJudgeSession(
     });
   }
 
-  const { templateId, eventId } = req.body ?? {};
+  const templateId = req.body?.templateId ?? req.params.templateId;
+  const eventId = req.body?.eventId;
 
   if (templateId != null && judgeAuth.templateId !== Number(templateId)) {
     return res

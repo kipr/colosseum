@@ -221,9 +221,9 @@ test.describe('Judge Scoring E2E', () => {
     await expect(page).toHaveURL(/\/judge/);
   });
 
-  /* ── 3. Access-code verification + sessionStorage handoff ──────── */
+  /* ── 3. Access-code verification + route-addressed loading ─────── */
 
-  test('valid access code stores template in sessionStorage and navigates to /scoresheet', async ({
+  test('valid access code navigates to a refresh-safe scoresheet route', async ({
     page,
   }) => {
     await page.goto('/judge');
@@ -234,25 +234,19 @@ test.describe('Judge Scoring E2E', () => {
       .fill(ACCESS_CODE);
     await page.getByRole('button', { name: 'Access Scoresheet' }).click();
 
-    // Navigation to scoresheet with query params
-    await page.waitForURL(/\/scoresheet\?template=\d+&name=/);
+    await page.waitForURL(new RegExp(`/scoresheets/${templateId}$`));
 
-    // sessionStorage populated with parsed template
+    // The template is loaded from the authenticated endpoint, not browser storage.
     const stored = await page.evaluate(() =>
       sessionStorage.getItem('currentTemplate'),
     );
-    expect(stored).not.toBeNull();
-
-    const parsed = JSON.parse(stored!);
-    expect(parsed.id).toBe(templateId);
-    expect(parsed.schema).toBeDefined();
-    expect(Array.isArray(parsed.schema.fields)).toBe(true);
-    expect(parsed.schema.fields.length).toBeGreaterThan(0);
-
-    // access_code must NOT be leaked to the client
-    expect(parsed.access_code).toBeUndefined();
+    expect(stored).toBeNull();
 
     // Scoresheet form renders with the template title
+    await expect(page.locator('.scoresheet-form')).toBeVisible();
+
+    await page.reload();
+    await expect(page).toHaveURL(new RegExp(`/scoresheets/${templateId}$`));
     await expect(page.locator('.scoresheet-form')).toBeVisible();
   });
 

@@ -6,7 +6,7 @@ interface AccessCodeModalProps {
   templateId: number;
   templateName: string;
   onClose: () => void;
-  onSuccess: (template: any) => void;
+  onSuccess: () => void;
 }
 
 export default function AccessCodeModal({
@@ -46,8 +46,7 @@ export default function AccessCodeModal({
         return;
       }
 
-      const template = await response.json();
-      onSuccess(template);
+      onSuccess();
     } catch (error) {
       console.error('Error verifying access code:', error);
       setError('Failed to verify access code');

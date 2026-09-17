@@ -11,6 +11,11 @@ import { EventProvider } from './contexts/EventContext';
 import { adminEventLoader, adminLoader } from './loaders/adminLoader';
 import AdminRouteError from './components/AdminRouteError';
 import SpectatorRouteError from './components/SpectatorRouteError';
+import ScoresheetRouteError from './components/ScoresheetRouteError';
+import {
+  legacyScoresheetLoader,
+  scoresheetLoader,
+} from './loaders/scoresheetLoader';
 import {
   spectatorAwardsLoader,
   spectatorBracketIndexLoader,
@@ -97,7 +102,13 @@ const router = createBrowserRouter([
       },
       {
         path: '/scoresheet',
+        loader: legacyScoresheetLoader,
+      },
+      {
+        path: '/scoresheets/:templateId',
         element: <Scoresheet />,
+        loader: scoresheetLoader,
+        errorElement: <ScoresheetRouteError />,
       },
       {
         path: '/spectator',

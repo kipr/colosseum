@@ -1,9 +1,9 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import AccessCodeModal from '../components/AccessCodeModal';
 import { formatDate } from '../utils/dateUtils';
+import { scoresheetPath } from '../utils/routes';
 import './Judge.css';
 
 interface Template {
@@ -63,13 +63,10 @@ export default function Judge() {
     setSelectedTemplate({ id, name });
   };
 
-  const handleAccessGranted = (template: any) => {
-    sessionStorage.setItem('currentTemplate', JSON.stringify(template));
-    const urlName = selectedTemplate!.name
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/(^-|-$)/g, '');
-    navigate(`/scoresheet?template=${selectedTemplate!.id}&name=${urlName}`);
+  const handleAccessGranted = () => {
+    if (selectedTemplate) {
+      navigate(scoresheetPath(selectedTemplate.id));
+    }
   };
 
   // Get sorted group keys (by event date desc, then name; unassigned at end)

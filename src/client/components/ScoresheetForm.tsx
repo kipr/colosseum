@@ -1230,7 +1230,6 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           (data as { error?: string }).error ||
           'Session expired. Redirecting to scoresheet selection...';
         showNotification(msg, 'error');
-        sessionStorage.removeItem('currentTemplate');
         setTimeout(() => {
           window.location.href = '/judge';
         }, 2000);

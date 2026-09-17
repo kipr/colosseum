@@ -158,7 +158,14 @@ app.use('/awards', awardsRoutes);
 // In production, serve React app for all non-API routes
 if (process.env.NODE_ENV === 'production') {
   // These are the React SPA routes - serve index.html for these exact paths
-  const spaRoutes = ['/', '/admin', '/judge', '/scoresheet', '/spectator'];
+  const spaRoutes = [
+    '/',
+    '/admin',
+    '/judge',
+    '/scoresheet',
+    '/scoresheets',
+    '/spectator',
+  ];
 
   spaRoutes.forEach((route) => {
     app.get(route, (req: Request, res: Response) => {

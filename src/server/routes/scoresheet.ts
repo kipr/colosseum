@@ -4,6 +4,7 @@ import {
   requireAuth,
   AuthRequest,
   JUDGE_SESSION_TTL_MS,
+  requireJudgeSession,
 } from '../middleware/auth';
 import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
@@ -185,6 +186,37 @@ router.post(
     } catch (error) {
       console.error('Error verifying template access:', error);
       res.status(500).json({ error: 'Failed to verify access' });
+    }
+  },
+);
+
+// Read the template authorized by the access-code-created judge session.
+// This is deliberately separate from the admin endpoint below so a judge can
+// never receive access codes or template ownership metadata.
+router.get(
+  '/judge/templates/:templateId',
+  requireJudgeSession,
+  async (req: express.Request, res: express.Response) => {
+    try {
+      const { templateId } = req.params;
+      const db = await getDatabase();
+      const template = await db.get(
+        `SELECT id, name, description, schema
+         FROM scoresheet_templates
+         WHERE id = ? AND is_active IS TRUE`,
+        [templateId],
+      );
+
+      if (!template) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+
+      template.schema = JSON.parse(template.schema);
+
+      res.json(template);
+    } catch (error) {
+      console.error('Error fetching judge template:', error);
+      res.status(500).json({ error: 'Failed to fetch scoresheet template' });
     }
   },
 );

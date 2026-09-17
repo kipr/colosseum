@@ -321,6 +321,88 @@ describe('Scoresheet Templates Event Scope', () => {
     });
   });
 
+  describe('GET /scoresheet/judge/templates/:templateId', () => {
+    const judgeSession = (
+      templateId: number,
+      expiresAt = Date.now() + 60_000,
+    ) => ({
+      templateId,
+      eventIds: [],
+      conversationKey: 'judge-conversation',
+      issuedAt: Date.now(),
+      expiresAt,
+    });
+
+    async function requestAsJudge(
+      templateId: number,
+      sessionTemplateId?: number,
+      expiresAt?: number,
+    ) {
+      const app = createTestApp(
+        sessionTemplateId === undefined
+          ? {}
+          : {
+              judgeSession: judgeSession(sessionTemplateId, expiresAt),
+            },
+      );
+      app.use('/scoresheet', scoresheetRoutes);
+      const judgeServer = await startServer(app);
+
+      try {
+        return await http.get(
+          `${judgeServer.baseUrl}/scoresheet/judge/templates/${templateId}`,
+        );
+      } finally {
+        await judgeServer.close();
+      }
+    }
+
+    it('returns a sanitized template for its active judge session', async () => {
+      const template = await seedScoresheetTemplate(testDb.db, {
+        name: 'Route-addressed Judge Sheet',
+        schema: JSON.stringify({ fields: [{ id: 'score' }] }),
+        access_code: 'never-return-this',
+        created_by: authUser.id,
+      });
+
+      const res = await requestAsJudge(template.id, template.id);
+
+      expect(res.status).toBe(200);
+      expect(res.json).toMatchObject({
+        id: template.id,
+        name: 'Route-addressed Judge Sheet',
+        schema: { fields: [{ id: 'score' }] },
+      });
+      expect(res.json).not.toHaveProperty('access_code');
+      expect(res.json).not.toHaveProperty('created_by');
+    });
+
+    it('rejects requests without a judge session', async () => {
+      const template = await seedScoresheetTemplate(testDb.db);
+      const res = await requestAsJudge(template.id);
+
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects a judge session scoped to another template', async () => {
+      const template = await seedScoresheetTemplate(testDb.db);
+      const res = await requestAsJudge(template.id, template.id + 1);
+
+      expect(res.status).toBe(403);
+    });
+
+    it('rejects an expired judge session', async () => {
+      const template = await seedScoresheetTemplate(testDb.db);
+      const res = await requestAsJudge(
+        template.id,
+        template.id,
+        Date.now() - 1,
+      );
+
+      expect(res.status).toBe(401);
+    });
+  });
+
   describe('DELETE /scoresheet/templates/:id', () => {
     it('deletes template and returns success', async () => {
       const template = await seedScoresheetTemplate(testDb.db, {
