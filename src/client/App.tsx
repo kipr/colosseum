@@ -19,6 +19,12 @@ const SpectatorEvents = lazy(() => import('./pages/SpectatorEvents'));
 const Spectator = lazy(() => import('./pages/Spectator'));
 const Admin = lazy(() => import('./pages/Admin'));
 
+const AdminLoading = () => (
+  <main className="app-loading" role="status" aria-live="polite">
+    <p>Loading admin area…</p>
+  </main>
+);
+
 const PublicWithAuth = () => (
   <AuthProvider>
     <Outlet />
@@ -80,12 +86,10 @@ const router = createBrowserRouter([
   {
     path: '/admin',
     element: <AdminWithProviders />,
+    HydrateFallback: AdminLoading,
     loader: adminLoader,
     errorElement: <AdminRouteError />,
     children: [
-      {
-        index: true,
-      },
       {
         path: 'events',
         handle: adminHandle('events'),
