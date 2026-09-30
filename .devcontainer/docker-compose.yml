@@ -5,8 +5,12 @@ services:
     build:
       context: .
       dockerfile: .devcontainer/Dockerfile
-    volumes:
-      - .:/workspaces/colosseum:cached
+      args:
+        USERNAME: ${USER:-code}
+        USER_HOME: ${HOME:-/home/code}
+        USER_UID: ${LOCAL_UID:-1000}
+        USER_GID: ${LOCAL_GID:-1000}
+    # The workspace itself is bind-mounted at its host path via devcontainer.json "mounts".
     command: sleep infinity
     depends_on:
       postgres:
@@ -15,4 +19,5 @@ services:
       DATABASE_URL: postgres://colosseum:colosseum@postgres:5432/colosseum
       TEST_DATABASE_URL: postgres://colosseum:colosseum@postgres:5432/colosseum_test
     security_opt:
+      # SELinux hosts (Fedora): allow bind mounts without relabeling
       - label=disable
