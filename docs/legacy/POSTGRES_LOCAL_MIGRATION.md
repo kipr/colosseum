@@ -1,3 +1,7 @@
+> **Status: Legacy plan — largely implemented.**
+> Phases 0–4 are done; local dev, Vitest and Playwright all use PostgreSQL and the SQLite dialect is gone. Current setup instructions live in `AGENTS.md`, `README.md` and `.devcontainer/README.md`. Kept for design history and any unfinished phases.
+> Archived 2026-09-30; do not treat as current documentation.
+
 # Local PostgreSQL Migration — Design and Implementation Plan
 
 Status: Phases 0–4 implemented (1a Vitest + CI, 1b local Playwright, 2 Postgres-only local default, 3 SQLite dialect deleted, 4 adapter magic reduced). Work in numbered phases; each phase should be a mergeable PR.
@@ -186,7 +190,7 @@ Once nothing runs SQLite:
 - `runner.ts` keeps phases: tables → additive columns → constraints → updated_at triggers → extra triggers → indexes
 - Keep additive `columns` and idempotent `DO $$` constraint blocks — those are for **existing Cloud SQL instances**, not for SQLite
 - Postgres-only trigger functions stay (`update_updated_at_column`, `teams_clear_checked_in_at`)
-- Docs that say “edit both dialect blocks” (`docs/BRACKET_ORDER.md`, `docs/QUEUE_TRACKING.md`, `AGENTS.md`, Serena memories) get updated
+- Docs that say “edit both dialect blocks” (`docs/legacy/BRACKET_ORDER.md`, `docs/QUEUE_TRACKING.md`, `AGENTS.md`, Serena memories) get updated
 
 Mechanical diffs per file are large but boring: delete the `sqlite:` half of `events.ts`, `brackets.ts`, `scoring.ts`, and the rest.
 
