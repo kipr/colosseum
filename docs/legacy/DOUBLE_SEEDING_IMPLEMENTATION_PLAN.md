@@ -1,3 +1,7 @@
+> **Status: Legacy plan — implemented.**
+> The `double_seeding` match type exists (see `src/server/routes/doubleSeeding.ts` and `src/server/database/schema/doubleSeeding.ts`). Details below may have drifted from the shipped behavior; see `docs/QUEUE_TRACKING.md` for current queue behavior.
+> Archived 2026-09-30; do not treat as current documentation.
+
 # Double Seeding Implementation Plan
 
 ## Summary
