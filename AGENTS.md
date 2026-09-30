@@ -49,4 +49,4 @@ Colosseum is a tournament management and scoring platform (React 19 + Express 5 
 - **Test**: `npm run test:run` (all tests, single run) or `npm test` (watch mode)
 - **Build**: `npm run build` (cleans, then builds client + server)
 - **Dev** (outside the devcontainer): `npm run db:up && npm run db:wait && npm run dev` (starts both servers concurrently); inside the devcontainer just `npm run dev`
-- **Verify all**: `npm run pretty && npm run lint && npm run test:run && npm run build`
+- **Verify all**: `npm run pretty && npm run lint && npm run typecheck:client && npm run typecheck:server && npm run test:run && npm run build`
