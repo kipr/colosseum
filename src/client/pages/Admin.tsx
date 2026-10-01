@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, lazy, Suspense } from 'react';
+import { useEffect, useCallback, lazy, Suspense } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEvent } from '../contexts/EventContext';
@@ -96,11 +96,6 @@ export default function Admin() {
     ? 'brackets'
     : resolveView(searchParams.get('view'));
 
-  const [tokenStatus, setTokenStatus] = useState<{
-    valid: boolean;
-    message?: string;
-  } | null>(null);
-
   // Sync URL eventId to EventContext once events have loaded
   useEffect(() => {
     if (eventsLoading || events.length === 0) return;
@@ -147,28 +142,6 @@ export default function Admin() {
     }
   }, [user, loading, navigate]);
 
-  useEffect(() => {
-    if (!user) return;
-
-    const checkTokens = async () => {
-      try {
-        const response = await fetch('/auth/check-tokens');
-        const data = await response.json();
-        setTokenStatus(data);
-      } catch (error) {
-        console.error('Failed to check token status:', error);
-      }
-    };
-
-    checkTokens();
-    const interval = setInterval(checkTokens, 5 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, [user]);
-
-  const handleReauth = () => {
-    window.location.href = '/auth/google';
-  };
-
   if (loading || eventsLoading) {
     return (
       <div className="app">
@@ -187,18 +160,6 @@ export default function Admin() {
   return (
     <div className="app">
       <Navbar />
-
-      {tokenStatus && !tokenStatus.valid && (
-        <div className="reauth-banner">
-          <span>
-            ⚠️ Your Google authentication has expired. Please re-authenticate to
-            continue using admin features.
-          </span>
-          <button onClick={handleReauth} className="reauth-button">
-            Re-authenticate with Google
-          </button>
-        </div>
-      )}
 
       <main className="admin-container">
         <div className="admin-layout">
