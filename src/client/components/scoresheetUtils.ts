@@ -28,6 +28,21 @@ export interface DbBracketSource {
   bracketId?: number | null;
 }
 
+/**
+ * Per-side scores as submitted for bracket and double-seeding sheets:
+ * calculated side totals when the schema defines them, otherwise the direct
+ * side score fields.
+ */
+export function getSubmittedSideScores(
+  calculatedValues: Record<string, any>,
+  formData: Record<string, any>,
+): { teamA: any; teamB: any } {
+  return {
+    teamA: calculatedValues.team_a_total ?? formData.team_a_score ?? 0,
+    teamB: calculatedValues.team_b_total ?? formData.team_b_score ?? 0,
+  };
+}
+
 const REPEATABLE_GROUP_TEXT_TYPES = new Set(['text', 'dropdown', 'buttons']);
 
 function isBlankRepeatableGroupValue(value: any, field?: any): boolean {

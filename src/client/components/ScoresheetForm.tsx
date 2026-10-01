@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BracketGameOption,
   buildRepeatableGroupDerivedScoreEntries,
@@ -11,6 +11,7 @@ import {
   pruneRepeatableGroupRows,
   getBracketGameOptionValue,
   getBracketSourceEventId,
+  getSubmittedSideScores,
   isEventScopedBracketSource,
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
@@ -157,21 +158,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       })
     : [];
 
-  // Initials attest to one specific outcome: clear them whenever the match,
-  // team or result being submitted changes.
+  // Initials attest to everything the teams were shown: clear them whenever
+  // any entered value, selection or result changes. Initials live outside
+  // formData, so typing them does not invalidate the sign-off. The private DQ
+  // reason is not shown to teams and is deliberately excluded.
+  const attestedOutcomeKey = useMemo(
+    () => JSON.stringify({ formData, resultType, disqualifiedSide }),
+    [formData, resultType, disqualifiedSide],
+  );
   useEffect(() => {
     setTeamInitials({});
     setTeamInitialsErrors({});
-  }, [
-    formData.bracket_game_id,
-    formData.game_number,
-    formData.game_queue_id,
-    formData.double_seeding_match_id,
-    formData.team_number,
-    formData.winner,
-    resultType,
-    disqualifiedSide,
-  ]);
+  }, [attestedOutcomeKey]);
 
   const handleTeamInitialsChange = (slot: TeamInitialsSlot, value: string) => {
     setTeamInitials((previous) => ({ ...previous, [slot]: value }));
@@ -1185,10 +1183,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           type: 'number',
         };
       }
-      const team1Score =
-        submitCalculatedValues.team_a_total ?? formData.team_a_score ?? 0;
-      const team2Score =
-        submitCalculatedValues.team_b_total ?? formData.team_b_score ?? 0;
+      const { teamA: team1Score, teamB: team2Score } = getSubmittedSideScores(
+        submitCalculatedValues,
+        formData,
+      );
       scoreData.team1_score = {
         label: 'Team 1 Score',
         value: team1Score,
@@ -1220,10 +1218,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     if (isDbBackedDoubleSeeding) {
       // Side totals: each team only receives its own side's score
-      const teamATotal =
-        submitCalculatedValues.team_a_total ?? formData.team_a_score ?? 0;
-      const teamBTotal =
-        submitCalculatedValues.team_b_total ?? formData.team_b_score ?? 0;
+      const { teamA: teamATotal, teamB: teamBTotal } = getSubmittedSideScores(
+        submitCalculatedValues,
+        formData,
+      );
       scoreData.team_a_total = {
         label: 'Team A Total',
         value: teamATotal,
@@ -2107,8 +2105,11 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   const getTeamInitialsOutcomeSummary = (): string | undefined => {
     const teamANumber = formData.team_a_number || 'Team A';
     const teamBNumber = formData.team_b_number || 'Team B';
-    const teamATotal = calculatedValues['team_a_total'] || 0;
-    const teamBTotal = calculatedValues['team_b_total'] || 0;
+    // Same fallbacks as handleSubmit, so teams initial what is submitted.
+    const { teamA: teamATotal, teamB: teamBTotal } = getSubmittedSideScores(
+      calculatedValues,
+      formData,
+    );
 
     if (isHeadToHead) {
       if (resultType === 'disqualification') {

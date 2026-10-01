@@ -111,3 +111,9 @@
   color: var(--danger-color);
   font-size: 0.9rem;
 }
+
+.score-view-edit-notice {
+  color: var(--secondary-color);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}

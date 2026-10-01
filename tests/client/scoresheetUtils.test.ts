@@ -11,6 +11,7 @@ import {
   formatBracketGameOptionLabel,
   getBracketGameOptionValue,
   getRepeatableGroupRowKeys,
+  getSubmittedSideScores,
   isEventScopedBracketSource,
   isRepeatableGroupRowBlank,
   normalizeRepeatableGroupRows,
@@ -580,5 +581,26 @@ describe('scoresheetUtils', () => {
 
     expect(derivedByFieldId).toEqual({});
     expect(outputs).toEqual({});
+  });
+
+  describe('getSubmittedSideScores', () => {
+    it('prefers calculated side totals, including a calculated zero', () => {
+      expect(
+        getSubmittedSideScores(
+          { team_a_total: 0, team_b_total: 12 },
+          { team_a_score: 40, team_b_score: 15 },
+        ),
+      ).toEqual({ teamA: 0, teamB: 12 });
+    });
+
+    it('falls back to direct side scores without calculated totals', () => {
+      expect(
+        getSubmittedSideScores({}, { team_a_score: '40', team_b_score: 15 }),
+      ).toEqual({ teamA: '40', teamB: 15 });
+    });
+
+    it('defaults to zero when neither is present', () => {
+      expect(getSubmittedSideScores({}, {})).toEqual({ teamA: 0, teamB: 0 });
+    });
   });
 });

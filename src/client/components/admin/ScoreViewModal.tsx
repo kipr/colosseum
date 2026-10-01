@@ -988,6 +988,8 @@ export default function ScoreViewModal({
   const signoffSlots = (['team_a', 'team_b'] as const).filter(
     (slot) => recordedInitials[slot] || missingInitials.includes(slot),
   );
+  // Only a sheet someone actually initialed can be "edited after sign-off".
+  const hasRecordedInitials = Object.keys(recordedInitials).length > 0;
   const getSignoffTeamLabel = (slot: TeamInitialsSlot): string => {
     const data = score.score_data || {};
     if (score.score_type === 'seeding') {
@@ -1139,37 +1141,42 @@ export default function ScoreViewModal({
           </div>
         )}
 
-        {(signoffSlots.length > 0 || score.scores_edited_at) && (
+        {signoffSlots.length > 0 && (
           <div className="score-view-signoff-panel">
             <strong>Team sign-off</strong>
-            {signoffSlots.length > 0 && (
-              <div className="score-view-signoff-teams">
-                {signoffSlots.map((slot) => (
-                  <div key={slot} className="score-view-signoff-team">
-                    <span>{getSignoffTeamLabel(slot)}</span>
-                    {recordedInitials[slot] ? (
-                      <span className="score-view-signoff-initials">
-                        {recordedInitials[slot]}
-                      </span>
-                    ) : (
-                      <span className="badge badge-danger">No initials</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+            <div className="score-view-signoff-teams">
+              {signoffSlots.map((slot) => (
+                <div key={slot} className="score-view-signoff-team">
+                  <span>{getSignoffTeamLabel(slot)}</span>
+                  {recordedInitials[slot] ? (
+                    <span className="score-view-signoff-initials">
+                      {recordedInitials[slot]}
+                    </span>
+                  ) : (
+                    <span className="badge badge-danger">No initials</span>
+                  )}
+                </div>
+              ))}
+            </div>
             {missingInitials.length > 0 && (
               <div className="score-view-signoff-warning">
                 This score sheet requires team initials, but this submission is
                 missing them.
               </div>
             )}
-            {score.scores_edited_at && (
+            {score.scores_edited_at && hasRecordedInitials && (
               <div className="score-view-signoff-warning">
                 Scores edited after team sign-off (
                 {formatDateTime(score.scores_edited_at)})
               </div>
             )}
+          </div>
+        )}
+
+        {score.scores_edited_at && !hasRecordedInitials && (
+          <div className="score-view-edit-notice">
+            Scores edited by an admin after submission (
+            {formatDateTime(score.scores_edited_at)})
           </div>
         )}
 
