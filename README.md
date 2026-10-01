@@ -56,6 +56,8 @@ npm install
    - Authorized redirect URIs: `http://localhost:3000/auth/google/callback`
 4. Copy the Client ID and Client Secret
 
+The app requests only the `profile` and `email` scopes (login only; no Google API access, offline access, or stored tokens). Admin access is gated by the verified email's domain via `ALLOWED_EMAIL_DOMAINS` (default `kipr.org`), which is meant to be paired with an internal/organization-only OAuth consent screen. If that OAuth policy ever changes, review the domain allowlist in `src/server/config/passport.ts`, since it becomes the only gate.
+
 ### 3. Environment Configuration
 
 ```bash
@@ -258,7 +260,7 @@ The application uses PostgreSQL with the following tables:
 
 ### Core Tables
 
-- **users** - User accounts and OAuth tokens
+- **users** - Admin user accounts (Google login identity; OAuth tokens are not stored)
 - **events** - Tournament events with status tracking
 - **teams** - Participating teams per event with check-in status
 - **scoresheet_templates** - Score sheet template definitions
@@ -483,15 +485,15 @@ Public and abuse-prone API endpoints are protected by `express-rate-limit` with 
 
 ### Current Limits
 
-| Limiter | Endpoints | Window | Limit | Key |
-|---|---|---|---|---|
-| `oauthLimiter` | `GET /auth/google` | 15 min | 20 | IP |
-| `scoreSubmitLimiter` | `POST /api/scores/submit` | 1 min | 30 | IP |
-| `accessCodeLimiter` | `POST /scoresheet/templates/:id/verify` | 15 min | 10 | IP + template id |
-| `chatWriteLimiter` | `POST /chat/events/:eventId/messages` | 1 min | 15 | IP |
-| `chatReadLimiter` | `GET /chat/events/:eventId/messages` | 1 min | 120 | IP |
-| `queueSyncLimiter` | `GET /queue/event/:eventId` (sync=1 only) | 1 min | 60 | IP |
-| `publicExpensiveReadLimiter` | `GET /events/:id/overall/public`, `GET /documentation-scores/event/:eventId/public` | 1 min | 30 | IP |
+| Limiter                      | Endpoints                                                                           | Window | Limit | Key              |
+| ---------------------------- | ----------------------------------------------------------------------------------- | ------ | ----- | ---------------- |
+| `oauthLimiter`               | `GET /auth/google`                                                                  | 15 min | 20    | IP               |
+| `scoreSubmitLimiter`         | `POST /api/scores/submit`                                                           | 1 min  | 30    | IP               |
+| `accessCodeLimiter`          | `POST /scoresheet/templates/:id/verify`                                             | 15 min | 10    | IP + template id |
+| `chatWriteLimiter`           | `POST /chat/events/:eventId/messages`                                               | 1 min  | 15    | IP               |
+| `chatReadLimiter`            | `GET /chat/events/:eventId/messages`                                                | 1 min  | 120   | IP               |
+| `queueSyncLimiter`           | `GET /queue/event/:eventId` (sync=1 only)                                           | 1 min  | 60    | IP               |
+| `publicExpensiveReadLimiter` | `GET /events/:id/overall/public`, `GET /documentation-scores/event/:eventId/public` | 1 min  | 30    | IP               |
 
 ### Storage Constraints
 

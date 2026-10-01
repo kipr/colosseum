@@ -10,7 +10,6 @@ import type { JudgeAuth } from '../../../src/server/middleware/auth';
 export interface TestUser {
   id: number;
   is_admin: boolean;
-  access_token?: string;
   name?: string;
   email?: string;
 }

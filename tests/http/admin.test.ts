@@ -106,7 +106,7 @@ describe('Admin Routes', () => {
       }
     });
 
-    it('includes tokenValid field', async () => {
+    it('does not expose Google token fields', async () => {
       await seedUser(testDb.db, {
         name: 'Admin',
         email: 'admin@example.com',
@@ -120,9 +120,10 @@ describe('Admin Routes', () => {
       try {
         const res = await http.get(`${server.baseUrl}/api/admin/users`);
         expect(res.status).toBe(200);
-        const users = res.json as { tokenValid: boolean }[];
+        const users = res.json as Record<string, unknown>[];
         expect(users.length).toBe(1);
-        expect(typeof users[0].tokenValid).toBe('boolean');
+        expect(users[0]).not.toHaveProperty('tokenValid');
+        expect(users[0]).not.toHaveProperty('token_expires_at');
       } finally {
         await server.close();
       }
