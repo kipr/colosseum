@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   BracketGameOption,
   buildRepeatableGroupDerivedScoreEntries,
@@ -11,12 +11,24 @@ import {
   pruneRepeatableGroupRows,
   getBracketGameOptionValue,
   getBracketSourceEventId,
+  getSubmittedSideScores,
   isEventScopedBracketSource,
-  shouldHideSoloDoubleSeedingField,
   shouldAutoAppendRepeatableGroupRow,
 } from './scoresheetUtils';
 import { getFieldDefaultValue } from '../../shared/scoresheetSchema';
 import type { BracketResultType } from '../../shared/bracketResult';
+import {
+  getRequiredTeamInitialsSlots,
+  isLegacyTeamInitialsField,
+  isTeamInitialsRequired,
+  validateTeamInitials,
+  type TeamInitials,
+  type TeamInitialsSlot,
+} from '../../shared/teamInitials';
+import TeamInitialsSignoff, {
+  getTeamInitialsInputId,
+  type TeamInitialsSignoffTeam,
+} from './TeamInitialsSignoff';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -130,12 +142,55 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }>
   >([]);
 
-  const isSoloDoubleSeedingFieldHidden = (field: any): boolean => {
-    return shouldHideSoloDoubleSeedingField(
-      field.id,
-      formData,
-      isDoubleSeeding,
+  const [teamInitials, setTeamInitials] = useState<TeamInitials>({});
+  const [teamInitialsErrors, setTeamInitialsErrors] = useState<
+    Partial<Record<TeamInitialsSlot, string>>
+  >({});
+  const requiresTeamInitials = isTeamInitialsRequired(schema);
+  const requiredTeamInitialsSlots = requiresTeamInitials
+    ? getRequiredTeamInitialsSlots({
+        scoreType: isHeadToHead
+          ? 'bracket'
+          : isDoubleSeeding
+            ? 'double_seeding'
+            : 'seeding',
+        hasTeamB: formData.team_b_id != null,
+      })
+    : [];
+
+  // Initials attest to everything the teams were shown: clear them whenever
+  // any entered value, selection or result changes. Initials live outside
+  // formData, so typing them does not invalidate the sign-off. The private DQ
+  // reason is not shown to teams and is deliberately excluded.
+  const attestedOutcomeKey = useMemo(
+    () => JSON.stringify({ formData, resultType, disqualifiedSide }),
+    [formData, resultType, disqualifiedSide],
+  );
+  useEffect(() => {
+    setTeamInitials({});
+    setTeamInitialsErrors({});
+  }, [attestedOutcomeKey]);
+
+  const handleTeamInitialsChange = (slot: TeamInitialsSlot, value: string) => {
+    setTeamInitials((previous) => ({ ...previous, [slot]: value }));
+    setTeamInitialsErrors((previous) => {
+      if (!previous[slot]) return previous;
+      const next = { ...previous };
+      delete next[slot];
+      return next;
+    });
+  };
+
+  const showTeamInitialsErrors = (
+    errors: Partial<Record<TeamInitialsSlot, string>>,
+  ) => {
+    setTeamInitialsErrors(errors);
+    const firstInvalid = (['team_a', 'team_b'] as const).find(
+      (slot) => errors[slot],
     );
+    if (firstInvalid) {
+      document.getElementById(getTeamInitialsInputId(firstInvalid))?.focus();
+    }
   };
 
   // Show notification and auto-dismiss
@@ -169,6 +224,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       setFormData(getInitialFormData());
       setTouchedFields({});
       setCalculatedValues({});
+      setTeamInitials({});
+      setTeamInitialsErrors({});
       showNotification('Form has been reset', 'success');
     }
   };
@@ -939,6 +996,17 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
       return;
     }
 
+    // Initials are enforced here rather than through HTML `required`, because
+    // no-contest and DQ submissions skip native validation (noValidate).
+    const initialsResult = validateTeamInitials(
+      teamInitials,
+      requiredTeamInitialsSlots,
+    );
+    if (!initialsResult.ok) {
+      showTeamInitialsErrors(initialsResult.errors);
+      return;
+    }
+
     if (
       isHeadToHead &&
       resultType !== 'standard' &&
@@ -959,7 +1027,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     );
 
     schema.fields.forEach((field: any) => {
-      if (isSoloDoubleSeedingFieldHidden(field)) {
+      // Superseded by the built-in team sign-off block.
+      if (isLegacyTeamInitialsField(field)) {
         return;
       }
 
@@ -1114,10 +1183,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
           type: 'number',
         };
       }
-      const team1Score =
-        submitCalculatedValues.team_a_total ?? formData.team_a_score ?? 0;
-      const team2Score =
-        submitCalculatedValues.team_b_total ?? formData.team_b_score ?? 0;
+      const { teamA: team1Score, teamB: team2Score } = getSubmittedSideScores(
+        submitCalculatedValues,
+        formData,
+      );
       scoreData.team1_score = {
         label: 'Team 1 Score',
         value: team1Score,
@@ -1149,10 +1218,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
     if (isDbBackedDoubleSeeding) {
       // Side totals: each team only receives its own side's score
-      const teamATotal =
-        submitCalculatedValues.team_a_total ?? formData.team_a_score ?? 0;
-      const teamBTotal =
-        submitCalculatedValues.team_b_total ?? formData.team_b_score ?? 0;
+      const { teamA: teamATotal, teamB: teamBTotal } = getSubmittedSideScores(
+        submitCalculatedValues,
+        formData,
+      );
       scoreData.team_a_total = {
         label: 'Team A Total',
         value: teamATotal,
@@ -1221,6 +1290,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
             isDbBackedBracket && resultType === 'disqualification'
               ? resultNote.trim()
               : undefined,
+          teamInitials: requiresTeamInitials
+            ? initialsResult.initials
+            : undefined,
         }),
       });
 
@@ -1236,6 +1308,22 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         }, 2000);
         return;
       }
+      if (response.status === 400) {
+        const data = await response.json().catch(() => ({}));
+        const errors = (
+          data as {
+            teamInitialsErrors?: Partial<Record<TeamInitialsSlot, string>>;
+          }
+        ).teamInitialsErrors;
+        if (errors && Object.keys(errors).length > 0) {
+          showTeamInitialsErrors(errors);
+          showNotification(
+            (data as { error?: string }).error || 'Team initials are required.',
+            'error',
+          );
+          return;
+        }
+      }
       if (!response.ok) throw new Error('Failed to submit score');
 
       // Cache the round number for next submission (seeding only, not queue-based)
@@ -1245,6 +1333,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
       // Show success notification
       showNotification('Score submitted successfully!', 'success');
+      setTeamInitials({});
+      setTeamInitialsErrors({});
 
       // Reset form
       if (isHeadToHead) {
@@ -1408,7 +1498,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const renderField = (field: any) => {
-    if (isSoloDoubleSeedingFieldHidden(field)) {
+    // Superseded by the built-in team sign-off block.
+    if (isLegacyTeamInitialsField(field)) {
       return null;
     }
 
@@ -1969,6 +2060,86 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     );
   };
 
+  const formatTeamLabel = (
+    number: unknown,
+    name: unknown,
+    fallback: string,
+  ) => {
+    const parts = [number, name].filter(
+      (part) => part != null && String(part).trim() !== '',
+    );
+    return parts.length > 0 ? `Team ${parts.join(' – ')}` : fallback;
+  };
+
+  const getTeamInitialsSignoffTeams = (): TeamInitialsSignoffTeam[] =>
+    requiredTeamInitialsSlots.map((slot) => {
+      if (!isHeadToHead && !isDoubleSeeding) {
+        return {
+          slot,
+          teamLabel: formatTeamLabel(
+            formData.team_number,
+            formData.team_name,
+            'Team',
+          ),
+        };
+      }
+      return slot === 'team_a'
+        ? {
+            slot,
+            teamLabel: formatTeamLabel(
+              formData.team_a_number,
+              formData.team_a_name,
+              'Team A',
+            ),
+          }
+        : {
+            slot,
+            teamLabel: formatTeamLabel(
+              formData.team_b_number,
+              formData.team_b_name,
+              'Team B',
+            ),
+          };
+    });
+
+  const getTeamInitialsOutcomeSummary = (): string | undefined => {
+    const teamANumber = formData.team_a_number || 'Team A';
+    const teamBNumber = formData.team_b_number || 'Team B';
+    // Same fallbacks as handleSubmit, so teams initial what is submitted.
+    const { teamA: teamATotal, teamB: teamBTotal } = getSubmittedSideScores(
+      calculatedValues,
+      formData,
+    );
+
+    if (isHeadToHead) {
+      if (resultType === 'disqualification') {
+        if (!disqualifiedSide) return undefined;
+        const [dq, advancing] =
+          disqualifiedSide === 'team_a'
+            ? [teamANumber, teamBNumber]
+            : [teamBNumber, teamANumber];
+        return `${dq} disqualified – ${advancing} advances`;
+      }
+      if (!formData.winner) return undefined;
+      const winner = formData.winner === 'team_a' ? teamANumber : teamBNumber;
+      if (resultType === 'no_contest') {
+        return `No contest – ${winner} advances`;
+      }
+      return `${winner} wins (${teamATotal} – ${teamBTotal})`;
+    }
+
+    if (isDoubleSeeding) {
+      if (formData.double_seeding_match_id == null) return undefined;
+      const teamASummary = `${teamANumber}: ${teamATotal}`;
+      return formData.team_b_id != null
+        ? `${teamASummary} · ${teamBNumber}: ${teamBTotal}`
+        : teamASummary;
+    }
+
+    const grandTotal = calculatedValues['grand_total'];
+    return grandTotal != null ? `Total score: ${grandTotal}` : undefined;
+  };
+
   // Filter header fields - exclude auto-populated team fields in head-to-head mode
   // When using queue for seeding, exclude team_number, team_name, round (replaced by queue selector)
   const eventId = Number(schema.eventId);
@@ -2262,6 +2433,14 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
         {/* Render grand total if it exists (no column specified) */}
         {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
+
+        <TeamInitialsSignoff
+          teams={getTeamInitialsSignoffTeams()}
+          outcomeSummary={getTeamInitialsOutcomeSummary()}
+          values={teamInitials}
+          errors={teamInitialsErrors}
+          onChange={handleTeamInitialsChange}
+        />
 
         <div className="scoresheet-footer">
           <button type="submit" className="btn btn-primary btn-large">

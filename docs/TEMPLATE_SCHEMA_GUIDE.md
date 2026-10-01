@@ -344,14 +344,14 @@ Interactive fields may include an optional `defaultValue` that pre-fills the con
 
 Accepted shapes:
 
-| Field type | `defaultValue` type | Extra rules |
-| --- | --- | --- |
-| `text` | `string` | — |
-| `number` | finite `number` | Must respect `min` / `max` when set |
-| `dropdown` | `string` \| `number` \| `boolean` | Must match an `options[].value` when options are static |
-| `buttons` | `string` \| `number` \| `boolean` | Must match an `options[].value` |
-| `checkbox` | `boolean` | — |
-| `repeatableGroup` | array of row objects | Each cell is validated against the child field type |
+| Field type        | `defaultValue` type               | Extra rules                                             |
+| ----------------- | --------------------------------- | ------------------------------------------------------- |
+| `text`            | `string`                          | —                                                       |
+| `number`          | finite `number`                   | Must respect `min` / `max` when set                     |
+| `dropdown`        | `string` \| `number` \| `boolean` | Must match an `options[].value` when options are static |
+| `buttons`         | `string` \| `number` \| `boolean` | Must match an `options[].value`                         |
+| `checkbox`        | `boolean`                         | —                                                       |
+| `repeatableGroup` | array of row objects              | Each cell is validated against the child field type     |
 
 `defaultValue` is **not** allowed on `calculated`, `section_header`, `group_header`, or `winner-select` fields.
 
@@ -368,11 +368,26 @@ The legacy `startValue` property is no longer supported and will be rejected.
     { "id": "count", "label": "Count", "type": "number", "min": 0, "max": 5 },
     { "id": "notes", "label": "Notes", "type": "text" }
   ],
-  "defaultValue": [
-    { "count": 1, "notes": "Starter row" }
-  ]
+  "defaultValue": [{ "count": 1, "notes": "Starter row" }]
 }
 ```
+
+## Team Initials
+
+Team initials are a score-sheet-level setting, not a field. Set `"requireTeamInitials": true` on the schema (the Score Sheet Wizard does this by default) and the judge score sheet adds a built-in **Team Sign-off** block above the submit button:
+
+```json
+{
+  "requireTeamInitials": true,
+  "fields": []
+}
+```
+
+- A representative of every participating team must initial: one team on seeding sheets, both teams on bracket sheets, and team B on double-seeding sheets only when the match has a second team.
+- The requirement applies to every result type, including no contest and disqualification.
+- The server enforces it on submission (`teamInitials` in the request body); initials are 1–4 letters, stored uppercased on the submission, and are read-only for admins.
+
+Do not add initials as `text` fields. Legacy `side_a_team_initials` / `side_b_team_initials` fields (and their `team_a_` / `team_b_` counterparts) are ignored in favor of the sign-off block, and a schema that still contains them without an explicit `requireTeamInitials` is treated as requiring initials.
 
 ## Best Practices
 

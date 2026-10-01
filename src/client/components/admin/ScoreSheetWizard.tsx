@@ -5,6 +5,7 @@ import {
   buildDoubleEliminationSchema,
   buildDoubleSeedingSchema,
 } from '../scoresheetUtils';
+import { isLegacyTeamInitialsField } from '../../../shared/teamInitials';
 import '../Modal.css';
 
 interface FieldTemplate {
@@ -41,6 +42,7 @@ export default function ScoreSheetWizard({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [accessCode, setAccessCode] = useState('');
+  const [requireTeamInitials, setRequireTeamInitials] = useState(true);
 
   const { selectedEvent } = useEvent();
 
@@ -74,14 +76,24 @@ export default function ScoreSheetWizard({
   };
 
   const generateSchema = () => {
-    if (sheetType === 'seeding') {
-      return generateSeedingSchema();
-    } else if (sheetType === 'double_seeding') {
-      return generateDoubleSeedingSchema();
-    } else {
-      return generateDESchema();
-    }
+    const schema =
+      sheetType === 'seeding'
+        ? generateSeedingSchema()
+        : sheetType === 'double_seeding'
+          ? generateDoubleSeedingSchema()
+          : generateDESchema();
+    schema.requireTeamInitials = requireTeamInitials;
+    return schema;
   };
+
+  // Team initials are a built-in sign-off block, not template fields; drop the
+  // legacy initials text fields older field templates carry.
+  const getTemplateScoringFields = (): any[] | null =>
+    selectedTemplate?.fields
+      ? selectedTemplate.fields.filter(
+          (field: any) => !isLegacyTeamInitialsField(field),
+        )
+      : null;
 
   const generateSeedingSchema = () => {
     const schema: any = {
@@ -130,14 +142,9 @@ export default function ScoreSheetWizard({
     });
 
     // Add scoring fields from template if selected
-    if (selectedTemplate && selectedTemplate.fields) {
-      // Shared side A/B templates can carry one certification field per side for
-      // DE. Seeding only needs a single team certification, so keep the side A
-      // field and omit the side B counterpart when generating the seeding schema.
-      const seedingFields = selectedTemplate.fields.filter(
-        (field: any) => field.id !== 'side_b_team_initials',
-      );
-      schema.fields.push(...seedingFields);
+    const templateFields = getTemplateScoringFields();
+    if (templateFields) {
+      schema.fields.push(...templateFields);
 
       // Add grand total for seeding sheets (templates don't include this so it can be conditional)
       schema.fields.push({
@@ -199,7 +206,7 @@ export default function ScoreSheetWizard({
     return buildDoubleEliminationSchema({
       title: name || 'Double Elimination Score Sheet',
       eventId: selectedEvent?.id ?? null,
-      templateFields: selectedTemplate?.fields ?? null,
+      templateFields: getTemplateScoringFields(),
     });
   };
 
@@ -207,7 +214,7 @@ export default function ScoreSheetWizard({
     return buildDoubleSeedingSchema({
       title: name || 'Double Seeding Score Sheet',
       eventId: selectedEvent?.id ?? null,
-      templateFields: selectedTemplate?.fields ?? null,
+      templateFields: getTemplateScoringFields(),
     });
   };
 
@@ -509,6 +516,21 @@ export default function ScoreSheetWizard({
               />
               <small>Judges will need this code to fill out scores</small>
             </div>
+
+            <div className="form-group">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={requireTeamInitials}
+                  onChange={(e) => setRequireTeamInitials(e.target.checked)}
+                />{' '}
+                Require team initials
+              </label>
+              <small>
+                Each participating team&apos;s representative must initial every
+                submission, including no contests and disqualifications
+              </small>
+            </div>
           </div>
         )}
 
@@ -551,6 +573,10 @@ export default function ScoreSheetWizard({
               )}
               <div style={{ marginBottom: '0.75rem' }}>
                 <strong>Access Code:</strong> <code>{accessCode}</code>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <strong>Team Initials:</strong>{' '}
+                {requireTeamInitials ? 'Required' : 'Not required'}
               </div>
               <div style={{ marginBottom: '0.75rem' }}>
                 <strong>Field Template:</strong>{' '}

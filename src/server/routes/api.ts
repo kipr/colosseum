@@ -14,8 +14,23 @@ import {
   updateSeedingQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import {
+  getRequiredTeamInitialsSlots,
+  isTeamInitialsRequired,
+  validateTeamInitials,
+  type TeamInitials,
+} from '../../shared/teamInitials';
 
 const router = express.Router();
+
+function parseTemplateSchema(schema: unknown): unknown {
+  if (typeof schema !== 'string') return schema;
+  try {
+    return JSON.parse(schema);
+  } catch {
+    return null;
+  }
+}
 
 // Submit a score (requires judge session or admin auth)
 router.post(
@@ -39,6 +54,7 @@ router.post(
         resultType = 'standard',
         disqualifiedTeamId,
         resultNote,
+        teamInitials,
       } = req.body;
 
       if (!templateId || !scoreData) {
@@ -51,7 +67,7 @@ router.post(
 
       // Get the template
       const template = await db.get(
-        'SELECT id, name, created_by FROM scoresheet_templates WHERE id = ?',
+        'SELECT id, name, created_by, schema FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
 
@@ -149,9 +165,10 @@ router.post(
         scoreType === 'double_seeding' &&
         double_seeding_match_id != null;
       let isDbBackedDoubleSeeding = false;
+      let doubleSeedingMatchHasTeamB = false;
       if (attemptingDbBackedDoubleSeeding) {
-        const match = await db.get(
-          `SELECT id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
+        const match = await db.get<{ id: number; team2_id: number | null }>(
+          `SELECT id, team2_id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
           [double_seeding_match_id, eventId],
         );
         if (!match) {
@@ -161,6 +178,7 @@ router.post(
           });
         }
         isDbBackedDoubleSeeding = true;
+        doubleSeedingMatchHasTeamB = match.team2_id != null;
       }
 
       if (
@@ -209,6 +227,31 @@ router.post(
         });
       }
 
+      // Every participating team must initial the sheet when the score sheet
+      // requires it, whatever the result type (no contest and DQ included).
+      let recordedInitials: TeamInitials = {};
+      if (isTeamInitialsRequired(parseTemplateSchema(template.schema))) {
+        const requiredSlots = getRequiredTeamInitialsSlots({
+          scoreType: isDbBackedSeeding
+            ? 'seeding'
+            : isDbBackedBracket
+              ? 'bracket'
+              : 'double_seeding',
+          hasTeamB: doubleSeedingMatchHasTeamB,
+        });
+        const initialsResult = validateTeamInitials(
+          teamInitials,
+          requiredSlots,
+        );
+        if (!initialsResult.ok) {
+          return res.status(400).json({
+            error: 'Team initials are required for every participating team',
+            teamInitialsErrors: initialsResult.errors,
+          });
+        }
+        recordedInitials = initialsResult.initials;
+      }
+
       // Add metadata to score data for head-to-head
       const enrichedScoreData: Record<string, unknown> = {
         ...scoreData,
@@ -225,8 +268,8 @@ router.post(
 
       const result = await db.run(
         `INSERT INTO score_submissions 
-       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id, result_type, disqualified_team_id, result_note, team_a_initials, team_b_initials)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
         [
           null,
           templateId,
@@ -241,6 +284,8 @@ router.post(
           isDbBackedBracket ? resultType : 'standard',
           isDbBackedBracket ? (disqualifiedTeamId ?? null) : null,
           isDbBackedBracket ? (resultNote?.trim() ?? null) : null,
+          recordedInitials.team_a ?? null,
+          recordedInitials.team_b ?? null,
         ],
       );
 
@@ -268,6 +313,8 @@ router.post(
             result_type: submission.result_type,
             disqualified_team_id: submission.disqualified_team_id,
             result_note: submission.result_note,
+            team_a_initials: submission.team_a_initials,
+            team_b_initials: submission.team_b_initials,
           }),
           ip_address: req.ip ?? null,
         });

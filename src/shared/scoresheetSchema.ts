@@ -111,6 +111,8 @@ export interface ScoresheetSchema {
   layout?: string;
   mode?: string;
   scoreKind?: string;
+  /** Require each participating team to initial the sheet (see teamInitials.ts). */
+  requireTeamInitials?: boolean;
   fields?: ScoresheetField[];
   [key: string]: unknown;
 }
@@ -401,6 +403,17 @@ export function validateScoresheetSchema(
 ): SchemaValidationResult {
   if (!isPlainObject(schema)) {
     return { ok: false, errors: ['schema must be an object.'] };
+  }
+
+  if (
+    'requireTeamInitials' in schema &&
+    schema.requireTeamInitials !== undefined &&
+    typeof schema.requireTeamInitials !== 'boolean'
+  ) {
+    return {
+      ok: false,
+      errors: ['schema.requireTeamInitials must be a boolean.'],
+    };
   }
 
   if (!('fields' in schema) || schema.fields === undefined) {

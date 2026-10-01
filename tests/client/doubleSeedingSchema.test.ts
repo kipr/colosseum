@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildDoubleSeedingSchema,
-  shouldHideSoloDoubleSeedingField,
-} from '../../src/client/components/scoresheetUtils';
+import { buildDoubleSeedingSchema } from '../../src/client/components/scoresheetUtils';
+import { getRequiredTeamInitialsSlots } from '../../src/shared/teamInitials';
 
 interface SchemaField {
   id: string;
@@ -75,43 +73,18 @@ describe('buildDoubleSeedingSchema', () => {
     );
   });
 
-  it('hides only side-B initials for solo double-seeding matches', () => {
-    const soloFormData = {
-      double_seeding_match_id: 12,
-      team_a_id: 1,
-      team_b_id: undefined,
-    };
-
+  it('requires only team A initials for solo double-seeding matches', () => {
     expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        soloFormData,
-        true,
-      ),
-    ).toBe(true);
+      getRequiredTeamInitialsSlots({
+        scoreType: 'double_seeding',
+        hasTeamB: false,
+      }),
+    ).toEqual(['team_a']);
     expect(
-      shouldHideSoloDoubleSeedingField(
-        'side_b_team_initials',
-        soloFormData,
-        true,
-      ),
-    ).toBe(true);
-    expect(
-      shouldHideSoloDoubleSeedingField('team_b_score', soloFormData, true),
-    ).toBe(false);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        { ...soloFormData, team_b_id: 2 },
-        true,
-      ),
-    ).toBe(false);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        soloFormData,
-        false,
-      ),
-    ).toBe(false);
+      getRequiredTeamInitialsSlots({
+        scoreType: 'double_seeding',
+        hasTeamB: true,
+      }),
+    ).toEqual(['team_a', 'team_b']);
   });
 });

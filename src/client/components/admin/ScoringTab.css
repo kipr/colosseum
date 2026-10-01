@@ -77,3 +77,43 @@
   gap: 0.35rem;
   font-weight: 600;
 }
+
+.score-view-signoff-panel {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--bg-color);
+}
+
+.score-view-signoff-teams {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.score-view-signoff-team {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.score-view-signoff-initials {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.score-view-signoff-warning {
+  color: var(--danger-color);
+  font-size: 0.9rem;
+}
+
+.score-view-edit-notice {
+  color: var(--secondary-color);
+  font-size: 0.9rem;
+  margin-bottom: 1rem;
+}

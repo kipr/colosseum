@@ -13,6 +13,11 @@ import {
   shouldAutoAppendRepeatableGroupRow,
 } from '../scoresheetUtils';
 import type { BracketResultType } from '../../../shared/bracketResult';
+import {
+  getSubmissionTeamInitials,
+  isLegacyTeamInitialsField,
+  type TeamInitialsSlot,
+} from '../../../shared/teamInitials';
 
 interface ScoreViewModalProps {
   score: any;
@@ -331,6 +336,11 @@ export default function ScoreViewModal({
   };
 
   const renderField = (field: any) => {
+    // Initials are shown read-only in the team sign-off panel instead.
+    if (isLegacyTeamInitialsField(field)) {
+      return null;
+    }
+
     if (field.type === 'section_header') {
       return (
         <div key={field.id} className="section-header">
@@ -879,7 +889,7 @@ export default function ScoreViewModal({
               ([fieldId]: [string, any]) =>
                 !['team_number', 'team_name', 'round', 'grand_total'].includes(
                   fieldId,
-                ),
+                ) && !isLegacyTeamInitialsField({ id: fieldId }),
             )
             .map(([fieldId, data]: [string, any]) =>
               data.type === 'repeatableGroup' || Array.isArray(data.value) ? (
@@ -972,6 +982,39 @@ export default function ScoreViewModal({
         return null;
       })()
     : null;
+
+  const recordedInitials = getSubmissionTeamInitials(score);
+  const missingInitials: TeamInitialsSlot[] = score.missing_team_initials ?? [];
+  const signoffSlots = (['team_a', 'team_b'] as const).filter(
+    (slot) => recordedInitials[slot] || missingInitials.includes(slot),
+  );
+  // Only a sheet someone actually initialed can be "edited after sign-off".
+  const hasRecordedInitials = Object.keys(recordedInitials).length > 0;
+  const getSignoffTeamLabel = (slot: TeamInitialsSlot): string => {
+    const data = score.score_data || {};
+    if (score.score_type === 'seeding') {
+      return (
+        score.team_display_number ??
+        data.team_number?.value ??
+        score.participant_name ??
+        'Team'
+      );
+    }
+    if (slot === 'team_a') {
+      return (
+        score.bracket_team1_number ??
+        score.double_seeding_team1_number ??
+        data.team_a_number?.value ??
+        'Team A'
+      );
+    }
+    return (
+      score.bracket_team2_number ??
+      score.double_seeding_team2_number ??
+      data.team_b_number?.value ??
+      'Team B'
+    );
+  };
 
   return (
     <div className="modal show" onClick={onClose}>
@@ -1095,6 +1138,45 @@ export default function ScoreViewModal({
                 ? `Winner: ${winnerDisplay}`
                 : `Winner by ${resultLabel.toLowerCase()}: ${winnerDisplay}`}
             </span>
+          </div>
+        )}
+
+        {signoffSlots.length > 0 && (
+          <div className="score-view-signoff-panel">
+            <strong>Team sign-off</strong>
+            <div className="score-view-signoff-teams">
+              {signoffSlots.map((slot) => (
+                <div key={slot} className="score-view-signoff-team">
+                  <span>{getSignoffTeamLabel(slot)}</span>
+                  {recordedInitials[slot] ? (
+                    <span className="score-view-signoff-initials">
+                      {recordedInitials[slot]}
+                    </span>
+                  ) : (
+                    <span className="badge badge-danger">No initials</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {missingInitials.length > 0 && (
+              <div className="score-view-signoff-warning">
+                This score sheet requires team initials, but this submission is
+                missing them.
+              </div>
+            )}
+            {score.scores_edited_at && hasRecordedInitials && (
+              <div className="score-view-signoff-warning">
+                Scores edited after team sign-off (
+                {formatDateTime(score.scores_edited_at)})
+              </div>
+            )}
+          </div>
+        )}
+
+        {score.scores_edited_at && !hasRecordedInitials && (
+          <div className="score-view-edit-notice">
+            Scores edited by an admin after submission (
+            {formatDateTime(score.scores_edited_at)})
           </div>
         )}
 
