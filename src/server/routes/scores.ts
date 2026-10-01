@@ -1,4 +1,5 @@
 import express from 'express';
+import { isDeepStrictEqual } from 'node:util';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
 import { createAuditEntry } from './audit';
@@ -10,8 +11,44 @@ import {
   updateBracketQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import {
+  LEGACY_TEAM_INITIALS_FIELD_IDS,
+  getMissingTeamInitialsSlots,
+} from '../../shared/teamInitials';
 
 const router = express.Router();
+
+function parseScoreDataObject(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'string') return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Team initials attest to what the team saw at submission time, so admin edits
+ * can never add, change or remove them. Legacy sheets stored initials inside
+ * score_data; carry the stored entries over whatever the edit sent.
+ */
+function preserveLegacyTeamInitials(
+  previous: Record<string, unknown>,
+  next: Record<string, unknown>,
+): Record<string, unknown> {
+  const merged = { ...next };
+  LEGACY_TEAM_INITIALS_FIELD_IDS.forEach((fieldId) => {
+    if (fieldId in previous) {
+      merged[fieldId] = previous[fieldId];
+    } else {
+      delete merged[fieldId];
+    }
+  });
+  return merged;
+}
 
 // Get scores filtered by event (admin-only, paginated)
 router.get(
@@ -146,6 +183,40 @@ router.get(
             // Keep as string if invalid JSON
           }
         }
+      });
+
+      // Flag submissions whose score sheet requires team initials but that
+      // lack them (e.g. submitted before initials were enforced).
+      const templateIds = [
+        ...new Set(
+          scores
+            .map((score) => score.template_id)
+            .filter((templateId) => templateId != null),
+        ),
+      ];
+      const templateSchemas = new Map<number, unknown>();
+      if (templateIds.length > 0) {
+        const templateRows = await db.all<{ id: number; schema: string }>(
+          `SELECT id, schema FROM scoresheet_templates WHERE id IN (${templateIds
+            .map(() => '?')
+            .join(',')})`,
+          templateIds,
+        );
+        templateRows.forEach((row) => {
+          try {
+            templateSchemas.set(row.id, JSON.parse(row.schema));
+          } catch {
+            // Unparseable schema: treat as not requiring initials
+          }
+        });
+      }
+      scores.forEach((score) => {
+        score.missing_team_initials = getMissingTeamInitialsSlots({
+          schema: templateSchemas.get(score.template_id),
+          scoreType: score.score_type,
+          hasTeamB: score.double_seeding_team2_id != null,
+          submission: score,
+        });
       });
 
       res.json({
@@ -1294,15 +1365,35 @@ router.put(
         });
       }
 
+      const previousScoreData = parseScoreDataObject(oldScore.score_data);
+      const nextScoreData = preserveLegacyTeamInitials(
+        previousScoreData,
+        scoreData && typeof scoreData === 'object' && !Array.isArray(scoreData)
+          ? scoreData
+          : previousScoreData,
+      );
+      const storedResultNote = nextResultNote?.trim() ?? null;
+      const scoresEdited =
+        !isDeepStrictEqual(previousScoreData, nextScoreData) ||
+        nextResultType !== (oldScore.result_type ?? 'standard') ||
+        (nextDisqualifiedTeamId ?? null) !==
+          (oldScore.disqualified_team_id ?? null) ||
+        storedResultNote !== (oldScore.result_note ?? null);
+
+      // Initials columns are never written here; scores_edited_at records that
+      // the sheet changed after the teams signed off.
       await db.run(
         `UPDATE score_submissions 
-       SET score_data = ?, result_type = ?, disqualified_team_id = ?, result_note = ?, updated_at = CURRENT_TIMESTAMP
+       SET score_data = ?, result_type = ?, disqualified_team_id = ?, result_note = ?,
+           scores_edited_at = CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE scores_edited_at END,
+           updated_at = CURRENT_TIMESTAMP
        WHERE id = ?`,
         [
-          JSON.stringify(scoreData),
+          JSON.stringify(nextScoreData),
           nextResultType,
           nextDisqualifiedTeamId ?? null,
-          nextResultNote?.trim() ?? null,
+          storedResultNote,
+          scoresEdited,
           id,
         ],
       );

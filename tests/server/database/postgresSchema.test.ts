@@ -186,6 +186,16 @@ describe('Postgres schema', () => {
       );
       expect(await columnNames('score_submissions')).toContain('result_note');
     });
+
+    it('has team initials sign-off columns on submissions', async () => {
+      expect(await columnNames('score_submissions')).toEqual(
+        expect.arrayContaining([
+          'team_a_initials',
+          'team_b_initials',
+          'scores_edited_at',
+        ]),
+      );
+    });
   });
 
   describe('double seeding', () => {

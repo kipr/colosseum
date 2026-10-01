@@ -2,8 +2,26 @@
 import { useEffect, useState } from 'react';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
 import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
+import {
+  getRequiredTeamInitialsSlots,
+  isLegacyTeamInitialsField,
+  isTeamInitialsRequired,
+} from '../../../shared/teamInitials';
+import TeamInitialsSignoff from '../TeamInitialsSignoff';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
+
+function getPreviewTeamInitialsSlots(schema: any) {
+  return getRequiredTeamInitialsSlots({
+    scoreType:
+      schema.mode === 'head-to-head'
+        ? 'bracket'
+        : schema.scoreKind === 'double_seeding'
+          ? 'double_seeding'
+          : 'seeding',
+    hasTeamB: true,
+  });
+}
 
 interface TemplatePreviewModalProps {
   templateId: number;
@@ -166,6 +184,11 @@ export default function TemplatePreviewModal({
   };
 
   const renderField = (field: any) => {
+    // Superseded by the built-in team sign-off block.
+    if (isLegacyTeamInitialsField(field)) {
+      return null;
+    }
+
     if (field.type === 'section_header') {
       return (
         <div key={field.id} className="section-header">
@@ -319,6 +342,25 @@ export default function TemplatePreviewModal({
               {template.schema.fields
                 .filter((f: any) => f.isGrandTotal)
                 .map(renderField)}
+
+              {isTeamInitialsRequired(template.schema) && (
+                <TeamInitialsSignoff
+                  teams={getPreviewTeamInitialsSlots(template.schema).map(
+                    (slot) => ({
+                      slot,
+                      teamLabel:
+                        template.schema.mode === 'head-to-head' ||
+                        template.schema.scoreKind === 'double_seeding'
+                          ? slot === 'team_a'
+                            ? 'Team A'
+                            : 'Team B'
+                          : 'Team',
+                    }),
+                  )}
+                  values={{}}
+                  readOnly
+                />
+              )}
             </div>
           </div>
         ) : (

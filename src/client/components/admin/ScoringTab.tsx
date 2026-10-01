@@ -26,6 +26,11 @@ interface ScoreSubmission {
   result_type: BracketResultType;
   disqualified_team_id: number | null;
   result_note: string | null;
+  team_a_initials?: string | null;
+  team_b_initials?: string | null;
+  scores_edited_at?: string | null;
+  // Slots the score sheet required initials for but the submission lacks
+  missing_team_initials?: Array<'team_a' | 'team_b'>;
   // Event-scoped fields
   event_id?: number;
   score_type?: 'seeding' | 'bracket' | 'double_seeding';
@@ -553,6 +558,17 @@ export default function ScoringTab() {
     return { team1Label, team2Label, roundLabel, matchLabel, scoreLabel };
   };
 
+  const getMissingInitialsBadge = (score: ScoreSubmission) =>
+    score.missing_team_initials && score.missing_team_initials.length > 0 ? (
+      <span
+        className="badge badge-danger"
+        title="This score sheet requires team initials, but this submission is missing them"
+        style={{ marginLeft: '0.25rem' }}
+      >
+        No initials
+      </span>
+    ) : null;
+
   const getStatusBadge = (score: ScoreSubmission) => {
     const { status, reviewed_by } = score;
     switch (status) {
@@ -646,7 +662,12 @@ export default function ScoringTab() {
         kind: 'data',
         id: 'status',
         header: { full: 'Status' },
-        renderCell: (score) => getStatusBadge(score),
+        renderCell: (score) => (
+          <>
+            {getStatusBadge(score)}
+            {getMissingInitialsBadge(score)}
+          </>
+        ),
       },
       {
         kind: 'data',
@@ -738,7 +759,12 @@ export default function ScoringTab() {
         kind: 'data',
         id: 'status',
         header: { full: 'Status' },
-        renderCell: (score) => getStatusBadge(score),
+        renderCell: (score) => (
+          <>
+            {getStatusBadge(score)}
+            {getMissingInitialsBadge(score)}
+          </>
+        ),
       },
       {
         kind: 'data',
@@ -828,7 +854,12 @@ export default function ScoringTab() {
         kind: 'data',
         id: 'status',
         header: { full: 'Status' },
-        renderCell: (score) => getStatusBadge(score),
+        renderCell: (score) => (
+          <>
+            {getStatusBadge(score)}
+            {getMissingInitialsBadge(score)}
+          </>
+        ),
       },
       {
         kind: 'data',

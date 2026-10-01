@@ -25,6 +25,9 @@ export const scoringSchema: SchemaModule = {
           CHECK (result_type IN ('standard', 'no_contest', 'disqualification')),
         disqualified_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
         result_note TEXT,
+        team_a_initials TEXT,
+        team_b_initials TEXT,
+        scores_edited_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -112,6 +115,21 @@ export const scoringSchema: SchemaModule = {
       table: 'score_submissions',
       column: 'result_note',
       definition: 'TEXT',
+    },
+    {
+      table: 'score_submissions',
+      column: 'team_a_initials',
+      definition: 'TEXT',
+    },
+    {
+      table: 'score_submissions',
+      column: 'team_b_initials',
+      definition: 'TEXT',
+    },
+    {
+      table: 'score_submissions',
+      column: 'scores_edited_at',
+      definition: 'TIMESTAMP',
     },
   ],
   indexes: [
