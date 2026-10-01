@@ -1,7 +1,11 @@
 import type { Database } from '../database/connection';
 
 export interface TeamRestInfo {
-  /** Most recent completed appearance per team, normalized to UTC ISO. */
+  /**
+   * Most recent completed appearance per team, normalized to UTC ISO. Measured
+   * from when the score was submitted, falling back to when it was accepted
+   * for results without a linked submission (e.g. admin-entered scores).
+   */
   lastPlayedAt: Map<number, string>;
   /** Teams currently called, arrived, or on a table in this event. */
   busy: Set<number>;
@@ -53,26 +57,32 @@ export async function getTeamRest(
     `SELECT appearances.team_id,
             MAX(appearances.played_at) AS last_played_at
      FROM (
-       SELECT bg.team1_id AS team_id, bg.completed_at AS played_at
+       SELECT bg.team1_id AS team_id,
+              COALESCE(sub.created_at, bg.completed_at) AS played_at
        FROM bracket_games bg
        JOIN brackets b ON b.id = bg.bracket_id
+       LEFT JOIN score_submissions sub ON sub.id = bg.score_submission_id
        WHERE b.event_id = ?
          AND bg.status = 'completed'
          AND bg.completed_at IS NOT NULL
 
        UNION ALL
 
-       SELECT bg.team2_id AS team_id, bg.completed_at AS played_at
+       SELECT bg.team2_id AS team_id,
+              COALESCE(sub.created_at, bg.completed_at) AS played_at
        FROM bracket_games bg
        JOIN brackets b ON b.id = bg.bracket_id
+       LEFT JOIN score_submissions sub ON sub.id = bg.score_submission_id
        WHERE b.event_id = ?
          AND bg.status = 'completed'
          AND bg.completed_at IS NOT NULL
 
        UNION ALL
 
-       SELECT ss.team_id, ss.scored_at AS played_at
+       SELECT ss.team_id,
+              COALESCE(sub.created_at, ss.scored_at) AS played_at
        FROM seeding_scores ss
+       LEFT JOIN score_submissions sub ON sub.id = ss.score_submission_id
        JOIN teams t ON t.id = ss.team_id
        WHERE t.event_id = ?
          AND ss.score IS NOT NULL
@@ -80,16 +90,20 @@ export async function getTeamRest(
 
        UNION ALL
 
-       SELECT dsm.team1_id AS team_id, dsm.completed_at AS played_at
+       SELECT dsm.team1_id AS team_id,
+              COALESCE(sub.created_at, dsm.completed_at) AS played_at
        FROM double_seeding_matches dsm
+       LEFT JOIN score_submissions sub ON sub.id = dsm.score_submission_id
        WHERE dsm.event_id = ?
          AND dsm.status = 'completed'
          AND dsm.completed_at IS NOT NULL
 
        UNION ALL
 
-       SELECT dsm.team2_id AS team_id, dsm.completed_at AS played_at
+       SELECT dsm.team2_id AS team_id,
+              COALESCE(sub.created_at, dsm.completed_at) AS played_at
        FROM double_seeding_matches dsm
+       LEFT JOIN score_submissions sub ON sub.id = dsm.score_submission_id
        WHERE dsm.event_id = ?
          AND dsm.status = 'completed'
          AND dsm.completed_at IS NOT NULL
