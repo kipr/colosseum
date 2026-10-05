@@ -1,50 +1,51 @@
 # Colosseum devcontainer
 
-Node 24 (matches `engines`, CI and the production Dockerfile) plus a sibling
-`postgres:18` Compose service, matching CI and Cloud SQL.
+Node 24 (matches `engines`, `.nvmrc` and CI) plus a sibling `postgres:18`
+Compose service, matching CI and Cloud SQL. It needs nothing from the host
+except the repo checkout.
+
+## Layout
+
+| File | What it defines |
+|------|-----------------|
+| `../Dockerfile`, stage `dev` | The image. Built from the same `toolchain` stage as the production build, so the Node pin lives in one place. The default target is still the production image. |
+| `../docker-compose.yml` | The `postgres` service (shared with `npm run db:up` on the host). |
+| `docker-compose.yml` | Overlay adding the `app` service: workspace mount, database URLs, agent volumes, security options. |
+| `devcontainer.json` | Editor settings, forwarded ports, lifecycle commands. |
 
 ## What's in the image
 
-- Debian trixie (`node:24-trixie`), non-root user matching your host user
-  (name, UID/GID and **home path**), passwordless sudo, fish shell.
-- git, curl, openssh-client, ripgrep, fd, fzf, `postgresql-client`
+- Debian trixie (`node:24-trixie`), user `code` (UID/GID 1000, home
+  `/home/code`), passwordless sudo, fish shell. On hosts where your UID is not
+  1000 the devcontainer CLI / VS Code remaps it on start.
+- git, curl, wget, jq, openssh-client, ripgrep, fd, fzf, `postgresql-client`
   (`pg_isready`/`psql` against the `postgres` service).
-- Playwright Chromium and its OS libraries, baked in at `/opt/pw-browsers`
-  (pinned by `PLAYWRIGHT_VERSION` in the Dockerfile; keep it in sync with
-  `@playwright/test` in `package-lock.json`).
-- Claude Code (`claude`) and Codex (`codex`) CLIs.
-- `bubblewrap` for Codex's Linux command sandbox.
+- Playwright Chromium and its OS libraries, pinned by `PLAYWRIGHT_VERSION` in
+  the Dockerfile. Keep it in sync with `@playwright/test` in
+  `package-lock.json` and rebuild after a Playwright upgrade.
+- Claude Code (`claude`) and Codex (`codex`) CLIs, and `bubblewrap` for their
+  command sandbox.
 
-## Mounts
-
-| Host | Container | Why |
-|------|-----------|-----|
-| repo (`${localWorkspaceFolder}`) | same path | Host-identical path: `node_modules`, host LSPs and Claude sessions/memory (keyed by path) all line up. |
-| `~/.claude`, `~/.claude.json` | same paths | Claude settings, memory, sessions, plugins and login are shared live with the host. |
-| `~/.config/codex` | same path | Entire Codex config, login, skills, plugins and sessions, shared live with the host. |
-
-`initializeCommand` creates the host paths so Docker doesn't create them as root.
-Host and container Claude sessions write the same files at the same time.
-On macOS, Claude credentials live in the keychain; run `claude` login once inside the container.
-
-The Codex bind mount and `CODEX_HOME` are defined together in Compose, so they
-also work with plain `docker compose`. Keeping the host path preserves absolute
-paths in settings and plugin metadata. Changes inside the container also affect
-the host's Codex directory. The source must exist before starting the container;
-Compose fails rather than creating it as root.
-
-`node_modules` lives in the repo, so the host and container share it. Both are
-Linux/x86-64-style glibc environments, but if you switch architectures or OSes
-run `npm ci` again. Use clean build dirs (`npm run clean`) when switching
-between host and container.
+The repo is mounted at `/workspaces/colosseum`. `node_modules` lives in the
+repo, so the host and container share it; run `npm ci` again if you switch
+between a non-Linux host and the container, and `npm run clean` when switching
+build directories between them.
 
 ## Open it
 
 VS Code: "Dev Containers: Reopen in Container". CLI: `devcontainer up --workspace-folder .`.
-Rebuild the container after changing mounts, the Dockerfile or compose files.
 
-Postgres is already running as `postgres` and `DATABASE_URL` / `TEST_DATABASE_URL`
-are preset. Do **not** use `npm run db:up` / `db:wait` inside the container (no Docker CLI).
+Rebuild ("Dev Containers: Rebuild Container", or
+`devcontainer up --workspace-folder . --remove-existing-container`) after
+changing the Dockerfile, either compose file, or `devcontainer.json`.
+
+Postgres is already running as `postgres`, and `DATABASE_URL` /
+`TEST_DATABASE_URL` are preset in the Compose overlay (they take precedence
+over `.env`). Do **not** use `npm run db:up` / `db:wait` inside the container:
+there is no Docker CLI in it.
+
+Git identity and credentials need no setup: VS Code copies the host git config
+and forwards the credential helper and SSH agent.
 
 ## Commands (inside the container)
 
@@ -59,56 +60,60 @@ npm run test:e2e
 npm run dev
 ```
 
-## Standalone build
+## Standalone build and test
+
+From the repo root on the host, without VS Code:
 
 ```sh
-LOCAL_UID=$(id -u) LOCAL_GID=$(id -g) \
-  docker compose -f docker-compose.yml -f .devcontainer/docker-compose.yml build app
+docker build --target dev .
+
+alias dc='docker compose -f docker-compose.yml -f .devcontainer/docker-compose.yml'
+dc config --quiet
+dc build app
+dc run --rm -w /workspaces/colosseum app sh -c 'npm ci && npm run test:run && npm run build'
 ```
 
-The build args default to `$USER` and `$HOME`; `LOCAL_UID`/`LOCAL_GID` default to 1000.
+## Agent CLIs
 
-## Test Codex
+Agent state lives in two named Docker volumes, not in host directories:
 
-After changing this configuration, use VS Code's "Dev Containers: Rebuild Container"
-(or recreate it with `devcontainer up --workspace-folder . --remove-existing-container`).
-Then, from a host terminal at the repo root:
+| Agent | Volume | Mounted at |
+|-------|--------|------------|
+| Claude Code | `claude-config` | `/home/code/.claude` (`CLAUDE_CONFIG_DIR`) |
+| Codex | `codex-config` | `/home/code/.codex` (`CODEX_HOME`) |
+
+The volume names are fixed, so every devcontainer on the machine that follows
+this convention shares them: log in once per machine and the login survives
+rebuilds. First time:
 
 ```sh
-docker compose -f docker-compose.yml -f .devcontainer/docker-compose.yml exec app sh -c '
-  printf "CODEX_HOME=%s\n" "$CODEX_HOME"
-  test "$CODEX_HOME" = "$HOME/.config/codex" &&
-  test -r "$CODEX_HOME/config.toml" &&
-  test -w "$CODEX_HOME" &&
-  codex --version &&
-  codex login status &&
-  codex sandbox -- echo "Codex sandbox works"
-'
-docker compose -f docker-compose.yml -f .devcontainer/docker-compose.yml exec \
-  -w "$PWD" app codex
+claude          # then /login
+codex login
 ```
 
-Check that your settings, skills and plugins load, then send a short prompt.
-
-To smoke-test the Compose configuration before rebuilding the running devcontainer:
+Smoke test:
 
 ```sh
-mkdir -p "$HOME/.config/codex"
-docker compose -f docker-compose.yml -f .devcontainer/docker-compose.yml config --quiet
-docker compose -f docker-compose.yml -f .devcontainer/docker-compose.yml run --rm --no-deps \
-  app sh -c 'test "$CODEX_HOME" = "$HOME/.config/codex" && test -w "$CODEX_HOME" && codex --version && codex login status && codex sandbox -- true'
+claude --version && claude -p "say hi"
+codex --version && codex login status && codex sandbox -- echo "sandbox works"
 ```
 
-This uses the existing app image. Add `--build` to `run` if it has not been built.
-
-Host-configured MCP servers also need their executables installed inside the
-container. Sharing the Codex directory shares their configuration, not host binaries.
+Host-level agent config (user settings, skills, plugins, memories, sessions) is
+deliberately not shared with the container. Project-level config (`.claude/`,
+`AGENTS.md`) arrives with the workspace. MCP servers and hooks configured
+inside a volume need their executables in the image.
 
 ## Caveats
 
-- `label=disable` in the compose file is for SELinux hosts (bind mounts without relabeling).
-- `seccomp=unconfined` and `systempaths=unconfined` let Codex create its own
-  bubblewrap sandbox inside Docker. They disable Docker's syscall filter and
-  masked/read-only system paths for the app container.
+- `seccomp=unconfined` and `systempaths=unconfined` on the `app` service let
+  the agent CLIs create their bubblewrap sandbox. They disable Docker's syscall
+  filter and its masked/read-only system paths for that container.
+- Containers share the agent volumes live, so concurrent sessions in two
+  containers write the same files.
+- Compose warns that `claude-config` / `codex-config` "already exists but was
+  created for project …" when another project created them first. That is the
+  sharing working as intended.
 - Postgres is published on host port 5432; stop any local Postgres first.
-- After a Playwright upgrade, `postCreateCommand` fetches the matching Chromium; update the pinned version too.
+- SELinux hosts: with Docker the workspace mount works unlabeled. With Podman,
+  or a Docker daemon running with SELinux enabled, the workspace may be denied;
+  add `label=disable` to `security_opt` in the overlay if so.

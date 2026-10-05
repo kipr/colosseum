@@ -2,20 +2,14 @@
   "name": "colosseum-dev",
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
   "service": "app",
-  // Host-identical path so node_modules, LSPs and Claude sessions line up with the host.
-  "workspaceFolder": "${localWorkspaceFolder}",
-  "initializeCommand": "mkdir -p \"$HOME/.claude\" \"$HOME/.config/codex\" && touch \"$HOME/.claude.json\"",
-  "mounts": [
-    "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
-    "source=${localEnv:HOME}/.claude,target=${localEnv:HOME}/.claude,type=bind",
-    "source=${localEnv:HOME}/.claude.json,target=${localEnv:HOME}/.claude.json,type=bind"
-  ],
+  "workspaceFolder": "/workspaces/colosseum",
+  "remoteUser": "code",
   "customizations": {
     "vscode": {
       "extensions": [
-        "anthropic.claude-code",
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
+        "github.vscode-pull-request-github",
         "ms-playwright.playwright"
       ],
       "settings": {
@@ -27,13 +21,7 @@
       }
     }
   },
-  "forwardPorts": [3000, 5173, 3001, 5174, 5432],
-  "remoteUser": "${localEnv:USER}",
-  "updateRemoteUserUID": false,
-  "containerEnv": {
-    "DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum",
-    "TEST_DATABASE_URL": "postgres://colosseum:colosseum@postgres:5432/colosseum_test"
-  },
-  "postCreateCommand": "npm ci && npx playwright install chromium",
+  "forwardPorts": [3000, 5173, 3001, 5174],
+  "postCreateCommand": "npm ci",
   "postStartCommand": "sh -c 'until pg_isready -h postgres -U colosseum -d colosseum; do sleep 1; done'"
 }

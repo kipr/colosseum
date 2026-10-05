@@ -1,34 +1,32 @@
+# Overlay on the repo-root docker-compose.yml (first in devcontainer.json
+# "dockerComposeFile"). Relative paths here resolve against that file's
+# directory, i.e. the repo root.
 services:
   app:
-    # Paths are relative to the primary compose file (repo-root docker-compose.yml),
-    # which is first in devcontainer.json dockerComposeFile.
     build:
       context: .
-      dockerfile: .devcontainer/Dockerfile
-      args:
-        USERNAME: ${USER:-code}
-        USER_HOME: ${HOME:-/home/code}
-        USER_UID: ${LOCAL_UID:-1000}
-        USER_GID: ${LOCAL_GID:-1000}
-    # The workspace itself is bind-mounted at its host path via devcontainer.json "mounts".
-    volumes:
-      # Preserve absolute paths in Codex settings, skills and plugin metadata.
-      - type: bind
-        source: ${HOME}/.config/codex
-        target: ${HOME}/.config/codex
-        bind:
-          create_host_path: false
+      target: dev
     command: sleep infinity
     depends_on:
       postgres:
         condition: service_healthy
     environment:
-      CODEX_HOME: ${HOME}/.config/codex
       DATABASE_URL: postgres://colosseum:colosseum@postgres:5432/colosseum
       TEST_DATABASE_URL: postgres://colosseum:colosseum@postgres:5432/colosseum_test
+    volumes:
+      - .:/workspaces/colosseum
+      - claude-config:/home/code/.claude
+      - codex-config:/home/code/.codex
     security_opt:
-      # Codex's bubblewrap sandbox needs user namespaces and its own /proc mount.
+      # The agent CLIs' bubblewrap sandbox needs user namespaces (blocked by
+      # Docker's default seccomp profile) and its own /proc mount (blocked by
+      # the masked system paths).
       - seccomp=unconfined
       - systempaths=unconfined
-      # SELinux hosts (Fedora): allow bind mounts without relabeling
-      - label=disable
+
+volumes:
+  # Fixed names: agent logins are shared with every other devcontainer on this machine.
+  claude-config:
+    name: claude-config
+  codex-config:
+    name: codex-config
