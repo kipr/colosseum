@@ -17,6 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # postgresql-client: pg_isready / psql against the sibling Compose Postgres service
 RUN apt-get update \
   && apt-get install -y --no-install-recommends \
+    bubblewrap \
     ca-certificates \
     curl \
     fd-find \
@@ -43,9 +44,12 @@ RUN npm install -g @anthropic-ai/claude-code @openai/codex \
   && npm cache clean --force
 
 # Replace the image's built-in `node` user (UID/GID 1000) with the host-matching user.
+# Pre-create ~/.config so the ~/.config/codex bind mount doesn't make Docker create
+# it as root, which breaks dotfiles (chezmoi) and anything else writing there.
 RUN userdel -r node \
   && groupadd --gid "$USER_GID" "$USERNAME" \
   && useradd --uid "$USER_UID" --gid "$USER_GID" -d "$USER_HOME" -m -s /usr/bin/fish "$USERNAME" \
+  && install -d -o "$USER_UID" -g "$USER_GID" "$USER_HOME/.config" \
   && echo "$USERNAME ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME" \
   && chmod 0440 "/etc/sudoers.d/$USERNAME"
 

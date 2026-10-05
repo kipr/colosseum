@@ -8,8 +8,7 @@
   "mounts": [
     "source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind",
     "source=${localEnv:HOME}/.claude,target=${localEnv:HOME}/.claude,type=bind",
-    "source=${localEnv:HOME}/.claude.json,target=${localEnv:HOME}/.claude.json,type=bind",
-    "source=${localEnv:HOME}/.config/codex,target=${localEnv:HOME}/.codex,type=bind"
+    "source=${localEnv:HOME}/.claude.json,target=${localEnv:HOME}/.claude.json,type=bind"
   ],
   "customizations": {
     "vscode": {
