@@ -72,6 +72,22 @@ describe('isLegacyTeamInitialsField', () => {
     expect(isLegacyTeamInitialsField({ id: 'team_b_score' })).toBe(false);
     expect(isLegacyTeamInitialsField(null)).toBe(false);
   });
+
+  it('does not match inherited object property names', () => {
+    for (const id of [
+      'constructor',
+      'toString',
+      'hasOwnProperty',
+      '__proto__',
+    ]) {
+      expect(isLegacyTeamInitialsField({ id })).toBe(false);
+    }
+    expect(
+      isTeamInitialsRequired({
+        fields: [{ id: 'constructor', type: 'number', defaultValue: 0 }],
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('getRequiredTeamInitialsSlots', () => {

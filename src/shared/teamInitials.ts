@@ -44,7 +44,12 @@ const LEGACY_FIELD_SLOTS: Record<string, TeamInitialsSlot> = {
 export function isLegacyTeamInitialsField(field: unknown): boolean {
   if (!field || typeof field !== 'object') return false;
   const id = (field as { id?: unknown }).id;
-  return typeof id === 'string' && id in LEGACY_FIELD_SLOTS;
+  // Own-property check: `in` would also match inherited names such as
+  // `constructor`, which are valid custom field ids.
+  return (
+    typeof id === 'string' &&
+    Object.prototype.hasOwnProperty.call(LEGACY_FIELD_SLOTS, id)
+  );
 }
 
 export function normalizeTeamInitials(raw: unknown): string {
