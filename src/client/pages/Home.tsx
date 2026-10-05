@@ -51,17 +51,10 @@ export default function Home() {
         </div>
 
         <div className="role-selection">
-          <div
+          <button
+            type="button"
             className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
             onClick={handleJudgeClick}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleJudgeClick();
-              }
-            }}
           >
             <div className="role-icon">
               <img src="/images/botguy-red-trans-small.png" alt="Judge Icon" />
@@ -77,19 +70,12 @@ export default function Home() {
               <li>✓ Multiple scoresheet templates</li>
               <li>✓ Real-time scoring</li>
             </ul>
-          </div>
+          </button>
 
-          <div
+          <button
+            type="button"
             className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
             onClick={handleAdminClick}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleAdminClick();
-              }
-            }}
           >
             <div className="role-icon">
               <img src="/images/KIPR-Logo-bk-tiny.jpg" alt="Admin Icon" />
@@ -105,19 +91,12 @@ export default function Home() {
               <li>✓ Review and accept submissions</li>
               <li>✓ Run brackets and seeding</li>
             </ul>
-          </div>
+          </button>
 
-          <div
+          <button
+            type="button"
             className="role-card role-card-clickable"
-            role="button"
-            tabIndex={0}
             onClick={handleSpectatorClick}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleSpectatorClick();
-              }
-            }}
           >
             <div className="role-icon role-icon-text">
               <span>📊</span>
@@ -133,7 +112,7 @@ export default function Home() {
               <li>✓ No login required</li>
               <li>✓ Real-time updates</li>
             </ul>
-          </div>
+          </button>
         </div>
       </main>
     </div>

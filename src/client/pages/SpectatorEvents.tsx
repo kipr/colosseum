@@ -64,18 +64,11 @@ export default function SpectatorEvents() {
         ) : (
           <div className="spectator-events-grid">
             {events.map((event) => (
-              <div
+              <button
+                type="button"
                 key={event.id}
                 className="spectator-event-card"
-                role="button"
-                tabIndex={0}
                 onClick={() => handleEventClick(event.id)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleEventClick(event.id);
-                  }
-                }}
               >
                 <div className="spectator-event-card-header spectator-status-cluster">
                   <span
@@ -103,7 +96,7 @@ export default function SpectatorEvents() {
                     Final results available
                   </span>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}

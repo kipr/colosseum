@@ -24,6 +24,12 @@
 }
 
 .role-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  width: 100%;
+  font: inherit;
+  color: inherit;
   background-color: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 1rem;
@@ -41,6 +47,11 @@
   border-color: var(--primary-color);
   box-shadow: var(--shadow-lg);
   transform: translateY(-4px);
+}
+
+.role-card:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .role-icon {
@@ -77,7 +88,7 @@
 .role-features {
   list-style: none;
   padding: 0;
-  margin: 1.5rem 0;
+  margin: 0 0 1.5rem;
   text-align: left;
 }
 
@@ -174,7 +185,7 @@
   }
 
   .role-features {
-    margin: 1rem 0;
+    margin: 0 0 1rem;
   }
 
   .role-features li {
