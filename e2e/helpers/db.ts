@@ -13,6 +13,8 @@ import { Pool } from 'pg';
 import {
   createPostgresDatabase,
   Database,
+  POSTGRES_SESSION_OPTIONS,
+  postgresTypes,
 } from '../../src/server/database/connection';
 import { resolveTestDatabaseUrl } from '../../config/testDatabaseUrl';
 
@@ -27,7 +29,11 @@ let db: Database | null = null;
  */
 export function e2eDb(): Database {
   if (!db) {
-    pool = new Pool({ connectionString: resolveTestDatabaseUrl() });
+    pool = new Pool({
+      connectionString: resolveTestDatabaseUrl(),
+      options: POSTGRES_SESSION_OPTIONS,
+      types: postgresTypes,
+    });
     db = createPostgresDatabase(pool);
   }
   return db;

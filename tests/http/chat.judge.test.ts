@@ -18,6 +18,7 @@ import {
 } from './helpers/testServer';
 import { seedUser, seedEvent, seedScoresheetTemplate } from './helpers/seed';
 import chatRoutes from '../../src/server/routes/chat';
+import { withNodeTimeZone } from '../sql/helpers/timeZone';
 
 function judgeSession(overrides: Partial<JudgeAuth> = {}): JudgeAuth {
   const now = Date.now();
@@ -577,6 +578,47 @@ describe('Judge Chat Routes', () => {
       } finally {
         await server.close();
       }
+    });
+
+    it('reports current timestamps when Node runs outside the database time zone', async () => {
+      await seedJudgeChatMessage(testDb.db, {
+        event_id: eventId,
+        conversation_key: 'judge-A',
+        sender_role: 'judge',
+        sender_name: 'Judge A',
+        message: 'hi from A',
+      });
+
+      const user = await seedUser(testDb.db, { is_admin: true, name: 'Admin' });
+      await withNodeTimeZone('America/Chicago', async () => {
+        const app = createTestApp({
+          user: { id: user.id, is_admin: true, name: 'Admin' },
+        });
+        app.use('/chat', chatRoutes);
+        const server = await startServer(app);
+
+        try {
+          const convos = await http.get(
+            `${server.baseUrl}/chat/events/${eventId}/conversations`,
+          );
+          expect(convos.status).toBe(200);
+          const [convo] = convos.json as { lastActivity: string }[];
+          expect(
+            Math.abs(Date.now() - Date.parse(convo.lastActivity)),
+          ).toBeLessThan(60_000);
+
+          const messages = await http.get(
+            `${server.baseUrl}/chat/events/${eventId}/messages?conversationKey=judge-A`,
+          );
+          expect(messages.status).toBe(200);
+          const [message] = messages.json as { created_at: string }[];
+          expect(
+            Math.abs(Date.now() - Date.parse(message.created_at)),
+          ).toBeLessThan(60_000);
+        } finally {
+          await server.close();
+        }
+      });
     });
 
     it('returns 403 when a judge tries to list conversations', async () => {

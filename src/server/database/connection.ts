@@ -1,4 +1,44 @@
-import { Pool } from 'pg';
+import { Pool, types } from 'pg';
+import type { CustomTypesConfig } from 'pg';
+
+/**
+ * Every timestamp column is TIMESTAMP (no time zone), written with
+ * CURRENT_TIMESTAMP as wall-clock time in the Postgres session zone, while
+ * node-postgres by default reads it back in the Node process's local zone.
+ * Whenever the two differ (e.g. a dev server in US time against a UTC
+ * database) every timestamp shifts by the offset. Pinning the session to UTC
+ * and parsing TIMESTAMP as UTC makes both sides agree regardless of either
+ * process's configured zone. Pools that read or write app tables must use
+ * both `options` and `types` from here.
+ */
+export const POSTGRES_SESSION_OPTIONS = '-c TimeZone=UTC';
+
+const parseTimestamptz = types.getTypeParser(types.builtins.TIMESTAMPTZ);
+
+function parseUtcTimestamp(value: string): Date | number {
+  if (value === 'infinity' || value === '-infinity') {
+    return parseTimestamptz(value);
+  }
+  // Postgres puts the era after the offset: "0001-01-01 00:00:00+00 BC".
+  return parseTimestamptz(
+    value.endsWith(' BC') ? `${value.slice(0, -3)}+00 BC` : `${value}+00`,
+  );
+}
+
+/**
+ * Type parsers for app pools: TIMESTAMP is read as UTC, and DATE stays a
+ * `YYYY-MM-DD` string instead of a Date at Node-local midnight, which
+ * serialized to the previous day whenever Node ran east of UTC.
+ */
+export const postgresTypes: CustomTypesConfig = {
+  getTypeParser: ((oid: number, format?: 'text' | 'binary') => {
+    if (format !== 'binary') {
+      if (oid === types.builtins.TIMESTAMP) return parseUtcTimestamp;
+      if (oid === types.builtins.DATE) return (value: string) => value;
+    }
+    return types.getTypeParser(oid, format);
+  }) as CustomTypesConfig['getTypeParser'],
+};
 
 let pgPool: Pool | null = null;
 let pgUnreachableHint: 'db-up' | null = null;
@@ -114,7 +154,11 @@ function getPgPool(): Pool {
             host: config.host,
           };
 
-    pgPool = new Pool(connectionConfig);
+    pgPool = new Pool({
+      ...connectionConfig,
+      options: POSTGRES_SESSION_OPTIONS,
+      types: postgresTypes,
+    });
   }
   return pgPool;
 }
@@ -159,6 +203,8 @@ export interface Database {
 function normalizeParam(v: any): any {
   if (v === undefined) return null;
 
+  // Postgres drops the `Z` when casting to TIMESTAMP, which matches the UTC
+  // session zone pinned by POSTGRES_SESSION_OPTIONS.
   if (v instanceof Date) return v.toISOString();
 
   if (typeof v === 'boolean') return v;

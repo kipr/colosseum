@@ -509,9 +509,9 @@ describe('Events Routes', () => {
       };
       expect(event.name).toBe('Custom Event');
       expect(event.description).toBe('A description');
-      // event_date is a DATE column; pg returns a Date, which serializes to
-      // an ISO timestamp at UTC midnight.
-      expect(event.event_date).toBe('2026-03-15T00:00:00.000Z');
+      // event_date is a DATE column, read as a date-only string so it cannot
+      // shift with the server's time zone.
+      expect(event.event_date).toBe('2026-03-15');
       expect(event.location).toBe('Test Location');
       expect(event.status).toBe('active');
       expect(event.seeding_rounds).toBe(5);
