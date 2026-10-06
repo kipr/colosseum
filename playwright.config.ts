@@ -53,8 +53,9 @@ export default defineConfig({
         CLIENT_URL,
         SESSION_SECRET: E2E_SESSION_SECRET,
         COLOSSEUM_DISABLE_RATE_LIMIT: '1',
-        // pg parses DATE columns into a Date at local midnight, so serialized
-        // date-only values depend on the server's timezone.
+        // Keeps locale-formatted output deterministic. Database timestamps no
+        // longer depend on it (see POSTGRES_SESSION_OPTIONS), and regression
+        // tests that need a non-UTC Node zone set process.env.TZ themselves.
         TZ: 'UTC',
       },
     },

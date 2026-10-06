@@ -20,6 +20,8 @@ import { Pool } from 'pg';
 import {
   createPostgresDatabase,
   Database,
+  POSTGRES_SESSION_OPTIONS,
+  postgresTypes,
 } from '../../../src/server/database/connection';
 import { initializePostgres } from '../../../src/server/database/init';
 
@@ -52,7 +54,8 @@ function workerSchemaName(): string {
 export function createSchemaScopedPool(schema: string): Pool {
   return new Pool({
     connectionString: testDatabaseUrl(),
-    options: `-c search_path=${schema}`,
+    options: `${POSTGRES_SESSION_OPTIONS} -c search_path=${schema}`,
+    types: postgresTypes,
   });
 }
 

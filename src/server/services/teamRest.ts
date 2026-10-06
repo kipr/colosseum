@@ -75,16 +75,11 @@ export async function getTeamRest(
   // Rest is timed from when the judge submitted the score, not from when an
   // admin accepted it. Accepted results join back to their submission; rows
   // entered without one (manual admin edits) fall back to the accept time.
-  //
-  // These columns are TIMESTAMP without time zone, written as wall-clock time
-  // in the Postgres session zone. node-postgres would read them in the Node
-  // process's local zone instead, shifting them by the zone offset whenever
-  // the two differ (e.g. a dev server in local time against a UTC database),
-  // which pushes rest into the future and hides it. Casting to timestamptz
-  // resolves them in the session zone so the driver gets a real instant.
+  // The connection reads these TIMESTAMP columns as UTC; see
+  // POSTGRES_SESSION_OPTIONS in database/connection.ts.
   const lastPlayedRows = await db.all<LastPlayedRow>(
     `SELECT appearances.team_id,
-            MAX(appearances.played_at)::timestamptz AS last_played_at
+            MAX(appearances.played_at) AS last_played_at
      FROM (
        SELECT bg.team1_id AS team_id,
               COALESCE(sub.created_at, bg.completed_at) AS played_at
@@ -193,7 +188,7 @@ export async function getTeamRest(
   // Pending seeding submissions identify their team only inside score_data,
   // so they are parsed here the same way queue sync does.
   const pendingSeedingRows = await db.all<PendingSeedingRow>(
-    `SELECT sub.score_data, sub.created_at::timestamptz AS created_at
+    `SELECT sub.score_data, sub.created_at
      FROM score_submissions sub
      WHERE sub.event_id = ?
        AND sub.score_type = 'seeding'

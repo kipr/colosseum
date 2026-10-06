@@ -27,8 +27,9 @@ export default defineConfig({
     env: {
       NODE_ENV: 'test',
       TEST_DATABASE_URL,
-      // pg parses DATE columns into a Date at local midnight, so assertions on
-      // date-only columns depend on the runner's timezone.
+      // Keeps locale-formatted output deterministic. Database timestamps no
+      // longer depend on it (see POSTGRES_SESSION_OPTIONS), and regression
+      // tests that need a non-UTC Node zone set process.env.TZ themselves.
       TZ: 'UTC',
       // Keep the app's dialect selection inert. Tests inject a Postgres
       // adapter explicitly via __setTestDatabaseAdapter, so a DATABASE_URL
