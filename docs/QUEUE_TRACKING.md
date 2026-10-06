@@ -135,6 +135,12 @@ Team-rest calculations treat both participants in `called`, `arrived`, and
 `on_table` items as busy. This includes a called match where only one team has
 been confirmed present, because both teams still occupy the operational queue.
 
+A team's rest period starts when its score is submitted, not when an admin
+accepts it. Pending submissions count immediately; accepted results use their
+linked submission's `created_at`, falling back to the accept time
+(`completed_at` / `scored_at`) for results entered without a submission.
+Rejected submissions are ignored.
+
 ## Test coverage
 
 The feature is covered by:
