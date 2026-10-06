@@ -28,4 +28,36 @@ test.describe('Homepage', () => {
     await page.getByRole('heading', { name: 'Spectator' }).click();
     await expect(page).toHaveURL(/\/spectator/);
   });
+
+  test('role cards are links so they can open in a new tab', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    await expect(page.locator('.app-loading')).toHaveCount(0);
+
+    await expect(
+      page.getByRole('link', { name: /Judge \/ Scorer/ }),
+    ).toHaveAttribute('href', '/judge');
+    await expect(
+      page.getByRole('link', { name: /Administrator/ }),
+    ).toHaveAttribute('href', '/auth/google');
+    await expect(page.getByRole('link', { name: /Spectator/ })).toHaveAttribute(
+      'href',
+      '/spectator',
+    );
+  });
+
+  test('role cards do not overflow on a tablet-width viewport', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 900, height: 1000 });
+    await page.goto('/');
+    await expect(page.locator('.role-card')).toHaveCount(3);
+
+    const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+      scrollWidth: document.documentElement.scrollWidth,
+      clientWidth: document.documentElement.clientWidth,
+    }));
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+  });
 });

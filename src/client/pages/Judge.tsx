@@ -114,7 +114,8 @@ export default function Judge() {
                   {[...groupedTemplates[groupKey]]
                     .sort((a, b) => a.name.localeCompare(b.name))
                     .map((template) => (
-                      <div
+                      <button
+                        type="button"
                         key={template.id}
                         className="template-card"
                         onClick={() =>
@@ -126,7 +127,7 @@ export default function Judge() {
                         <small>
                           Created: {formatDate(template.created_at)}
                         </small>
-                      </div>
+                      </button>
                     ))}
                 </div>
               </div>

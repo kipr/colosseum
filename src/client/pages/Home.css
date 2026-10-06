@@ -16,7 +16,9 @@
 
 .role-selection {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* min() keeps the grid's minimum width from forcing three 280px columns
+     (and horizontal overflow) on tablet-width viewports. */
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 2rem;
   max-width: 1100px;
   margin: 0 auto;
@@ -24,6 +26,13 @@
 }
 
 .role-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  text-decoration: none;
   background-color: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 1rem;
@@ -41,6 +50,11 @@
   border-color: var(--primary-color);
   box-shadow: var(--shadow-lg);
   transform: translateY(-4px);
+}
+
+.role-card:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
 }
 
 .role-icon {
@@ -77,7 +91,7 @@
 .role-features {
   list-style: none;
   padding: 0;
-  margin: 1.5rem 0;
+  margin: 0 0 1.5rem;
   text-align: left;
 }
 
@@ -174,7 +188,7 @@
   }
 
   .role-features {
-    margin: 1rem 0;
+    margin: 0 0 1rem;
   }
 
   .role-features li {
