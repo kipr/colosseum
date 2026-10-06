@@ -8,7 +8,6 @@ interface AdminUser {
   is_admin: boolean;
   isActive: boolean;
   isRecentlyActive: boolean;
-  tokenValid: boolean;
   last_activity: string | null;
   created_at: string;
   updated_at: string;
@@ -171,13 +170,6 @@ export default function AdminsTab() {
                         {formatDate(admin.last_activity)}
                       </span>
                     )}
-                  </div>
-                  <div className="admin-meta">
-                    <span
-                      className={`token-status ${admin.tokenValid ? 'valid' : 'expired'}`}
-                    >
-                      {admin.tokenValid ? '🔑 Valid' : '⚠️ Expired'}
-                    </span>
                   </div>
                 </div>
               </div>

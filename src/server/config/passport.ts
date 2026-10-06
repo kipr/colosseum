@@ -9,6 +9,12 @@ import { getGoogleCallbackUrl } from './google';
 
 // Allowed email domains for admin access
 // Set via ALLOWED_EMAIL_DOMAINS env var (comma-separated) or defaults to kipr.org
+//
+// The Google OAuth client is currently an "Internal" app, so Google already
+// limits sign-in to kipr.org Workspace accounts and this check is a second
+// layer. If the client is ever made "External", this becomes the only gate
+// (anyone passing it is made an admin), so it must never be left open (empty)
+// in production. See "OAuth scopes and domain restriction" in README.md.
 function getAllowedDomains(): string[] {
   const envDomains = process.env.ALLOWED_EMAIL_DOMAINS;
   if (envDomains) {
@@ -43,9 +49,11 @@ export function setupPassport() {
         clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
         callbackURL: getGoogleCallbackUrl(),
       },
+      // Google tokens are not used after sign-in (no Google APIs are called),
+      // so they are discarded rather than stored.
       async (
-        accessToken: string,
-        refreshToken: string,
+        _accessToken: string,
+        _refreshToken: string,
         profile: Profile,
         done: VerifyCallback,
       ) => {
@@ -54,13 +62,6 @@ export function setupPassport() {
           const email = profile.emails?.[0]?.value;
           const name = profile.displayName;
           const googleId = profile.id;
-
-          // Log if we got a refresh token (for debugging)
-          if (!refreshToken) {
-            console.warn(
-              `Warning: No refresh token received for ${email}. User may need to revoke and re-authorize.`,
-            );
-          }
 
           // Check if email domain is allowed
           if (!isEmailAllowed(email)) {
@@ -77,45 +78,30 @@ export function setupPassport() {
             googleId,
           ]);
 
-          // Token expires in 1 hour (standard Google OAuth)
-          const tokenExpiresAt = Date.now() + 3600 * 1000;
-
           if (!user) {
             // Create new user - set is_admin = true since they passed the domain check
             const result = await db.run(
-              `INSERT INTO users (google_id, email, name, access_token, refresh_token, is_admin, token_expires_at) 
-               VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-              [
-                googleId,
-                email,
-                name,
-                accessToken,
-                refreshToken,
-                true,
-                tokenExpiresAt,
-              ],
+              `INSERT INTO users (google_id, email, name, is_admin)
+               VALUES (?, ?, ?, ?) RETURNING id`,
+              [googleId, email, name, true],
             );
             user = await db.get('SELECT * FROM users WHERE id = ?', [
               result.lastID,
             ]);
             console.log(`New admin user created: ${email}`);
           } else {
-            // Update tokens and ensure is_admin is set (fix for existing users)
+            // Refresh profile fields and ensure is_admin is set (fix for
+            // existing users). Clear any Google tokens stored by older
+            // versions, which requested Drive and Sheets access.
             await db.run(
-              `UPDATE users SET access_token = ?, refresh_token = ?, name = ?, email = ?, is_admin = ?, token_expires_at = ?
+              `UPDATE users SET name = ?, email = ?, is_admin = ?,
+                 access_token = NULL, refresh_token = NULL, token_expires_at = NULL
                WHERE google_id = ?`,
-              [
-                accessToken,
-                refreshToken || user.refresh_token,
-                name,
-                email,
-                true,
-                tokenExpiresAt,
-                googleId,
-              ],
+              [name, email, true, googleId],
             );
-            user.access_token = accessToken;
-            user.refresh_token = refreshToken || user.refresh_token;
+            user.access_token = null;
+            user.refresh_token = null;
+            user.token_expires_at = null;
             user.is_admin = true;
             console.log(`Admin user logged in: ${email}`);
           }
