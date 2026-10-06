@@ -71,6 +71,32 @@ describe('scoresheetUtils', () => {
     expect(schema.teamsDataSource.eventId).toBe(42);
   });
 
+  it('requires team initials by default and drops legacy initials fields', () => {
+    const schema = buildDoubleEliminationSchema({
+      title: 'Initials DE Sheet',
+      eventId: 42,
+      templateFields: [
+        { id: 'side_a_score', label: 'Side A Score', type: 'number' },
+        { id: 'side_a_team_initials', label: 'Team Initials', type: 'text' },
+        { id: 'side_b_team_initials', label: 'Team Initials', type: 'text' },
+      ],
+    });
+
+    const ids = schema.fields.map((field: { id: string }) => field.id);
+    expect(schema.teamInitials).toEqual({ required: true });
+    expect(ids).toContain('team_a_score');
+    expect(ids).not.toContain('team_a_team_initials');
+    expect(ids).not.toContain('team_b_team_initials');
+
+    expect(
+      buildDoubleEliminationSchema({
+        title: 'No Initials',
+        eventId: 42,
+        requireTeamInitials: false,
+      }).teamInitials,
+    ).toEqual({ required: false });
+  });
+
   it('adapts template fields from side A/B to team A/B', () => {
     const schema = buildDoubleEliminationSchema({
       title: 'Adapted DE Sheet',

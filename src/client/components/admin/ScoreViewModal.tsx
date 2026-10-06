@@ -13,6 +13,26 @@ import {
   shouldAutoAppendRepeatableGroupRow,
 } from '../scoresheetUtils';
 import type { BracketResultType } from '../../../shared/bracketResult';
+import {
+  isLegacyInitialsField,
+  requiresTeamInitials,
+  stripLegacyInitialsFields,
+  type TeamInitialsSide,
+} from '../../../shared/teamInitials';
+
+interface TeamInitialsRow {
+  key: string;
+  team: string;
+  initials: string;
+}
+
+// Where older sheets kept initials inside score_data.
+const LEGACY_INITIALS_SIDES: Record<string, TeamInitialsSide> = {
+  side_a_team_initials: 'team',
+  side_b_team_initials: 'team_b',
+  team_a_team_initials: 'team_a',
+  team_b_team_initials: 'team_b',
+};
 
 interface ScoreViewModalProps {
   score: any;
@@ -879,7 +899,7 @@ export default function ScoreViewModal({
               ([fieldId]: [string, any]) =>
                 !['team_number', 'team_name', 'round', 'grand_total'].includes(
                   fieldId,
-                ),
+                ) && !isLegacyInitialsField({ id: fieldId }),
             )
             .map(([fieldId, data]: [string, any]) =>
               data.type === 'repeatableGroup' || Array.isArray(data.value) ? (
@@ -939,7 +959,53 @@ export default function ScoreViewModal({
     );
   }
 
-  const schema = template?.schema;
+  // Initials are shown read-only in their own panel, never as editable fields.
+  const schema = template?.schema
+    ? {
+        ...template.schema,
+        fields: stripLegacyInitialsFields(template.schema.fields ?? []),
+      }
+    : undefined;
+
+  const getSideTeamLabel = (side: TeamInitialsSide): string => {
+    const data = score.score_data || {};
+    const number =
+      side === 'team'
+        ? (score.team_display_number ?? data.team_number?.value)
+        : side === 'team_a'
+          ? (score.bracket_team1_number ??
+            score.double_seeding_team1_number ??
+            data.team_a_number?.value)
+          : (score.bracket_team2_number ??
+            score.double_seeding_team2_number ??
+            data.team_b_number?.value);
+    if (number != null && number !== '') return `Team ${number}`;
+    return side === 'team_a' ? 'Team A' : side === 'team_b' ? 'Team B' : 'Team';
+  };
+
+  const teamInitialsRows: TeamInitialsRow[] =
+    Array.isArray(score.team_initials) && score.team_initials.length > 0
+      ? score.team_initials.map((row: any) => ({
+          key: row.side,
+          team:
+            row.team_number != null
+              ? `Team ${row.team_number}`
+              : getSideTeamLabel(row.side),
+          initials: row.initials,
+        }))
+      : Object.entries(score.score_data || {})
+          .filter(
+            ([fieldId, data]: [string, any]) =>
+              LEGACY_INITIALS_SIDES[fieldId] &&
+              String(data?.value ?? '').trim(),
+          )
+          .map(([fieldId, data]: [string, any]) => ({
+            key: fieldId,
+            team: getSideTeamLabel(LEGACY_INITIALS_SIDES[fieldId]),
+            initials: String(data.value).trim(),
+          }));
+  const showTeamInitials =
+    teamInitialsRows.length > 0 || requiresTeamInitials(template?.schema);
 
   // Derive winner display for bracket games
   const isBracket = score.score_type === 'bracket';
@@ -1095,6 +1161,23 @@ export default function ScoreViewModal({
                 ? `Winner: ${winnerDisplay}`
                 : `Winner by ${resultLabel.toLowerCase()}: ${winnerDisplay}`}
             </span>
+          </div>
+        )}
+
+        {showTeamInitials && (
+          <div className="score-view-initials-panel">
+            <strong>Team initials</strong>
+            {teamInitialsRows.length > 0 ? (
+              <ul>
+                {teamInitialsRows.map((row) => (
+                  <li key={row.key}>
+                    {row.team}: <span>{row.initials}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <span>Not recorded</span>
+            )}
           </div>
         )}
 

@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildDoubleSeedingSchema,
-  shouldHideSoloDoubleSeedingField,
-} from '../../src/client/components/scoresheetUtils';
+import { buildDoubleSeedingSchema } from '../../src/client/components/scoresheetUtils';
 
 interface SchemaField {
   id: string;
@@ -75,43 +72,31 @@ describe('buildDoubleSeedingSchema', () => {
     );
   });
 
-  it('hides only side-B initials for solo double-seeding matches', () => {
-    const soloFormData = {
-      double_seeding_match_id: 12,
-      team_a_id: 1,
-      team_b_id: undefined,
-    };
+  it('requires team initials by default and drops legacy initials fields', () => {
+    const schema = buildDoubleSeedingSchema({
+      title: 'Initials Sheet',
+      eventId: 7,
+      templateFields: [
+        { id: 'side_a_score', label: 'Side A Score', type: 'number' },
+        { id: 'side_a_team_initials', label: 'Team Initials', type: 'text' },
+        { id: 'side_b_team_initials', label: 'Team Initials', type: 'text' },
+      ],
+    });
 
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        soloFormData,
-        true,
-      ),
-    ).toBe(true);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'side_b_team_initials',
-        soloFormData,
-        true,
-      ),
-    ).toBe(true);
-    expect(
-      shouldHideSoloDoubleSeedingField('team_b_score', soloFormData, true),
-    ).toBe(false);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        { ...soloFormData, team_b_id: 2 },
-        true,
-      ),
-    ).toBe(false);
-    expect(
-      shouldHideSoloDoubleSeedingField(
-        'team_b_team_initials',
-        soloFormData,
-        false,
-      ),
-    ).toBe(false);
+    const fields = schema.fields as SchemaField[];
+    expect(schema.teamInitials).toEqual({ required: true });
+    expect(fields.some((f) => f.id === 'team_a_score')).toBe(true);
+    expect(fields.some((f) => f.id.endsWith('_team_initials'))).toBe(false);
+  });
+
+  it('can turn team initials off', () => {
+    const schema = buildDoubleSeedingSchema({
+      title: 'No Initials Sheet',
+      eventId: 7,
+      templateFields: null,
+      requireTeamInitials: false,
+    });
+
+    expect(schema.teamInitials).toEqual({ required: false });
   });
 });

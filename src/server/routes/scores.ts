@@ -115,7 +115,18 @@ router.get(
           dst1.display_name as double_seeding_team1_display,
           dst2.team_number as double_seeding_team2_number,
           dst2.team_name as double_seeding_team2_name,
-          dst2.display_name as double_seeding_team2_display
+          dst2.display_name as double_seeding_team2_display,
+          (SELECT COALESCE(
+              json_agg(json_build_object(
+                'side', sti.side,
+                'team_id', sti.team_id,
+                'team_number', it.team_number,
+                'initials', sti.initials
+              ) ORDER BY sti.side),
+              '[]'::json)
+           FROM score_team_initials sti
+           LEFT JOIN teams it ON sti.team_id = it.id
+           WHERE sti.score_submission_id = s.id) as team_initials
         FROM score_submissions s
         LEFT JOIN scoresheet_templates t ON s.template_id = t.id
         LEFT JOIN users submitter ON s.user_id = submitter.id

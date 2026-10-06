@@ -14,6 +14,13 @@ import {
   updateSeedingQueueItem,
   updateDoubleSeedingQueueItem,
 } from '../services/scoreAccept';
+import {
+  checkTeamInitials,
+  expectedTwoSidedInitials,
+  type CheckedTeamInitials,
+  type ExpectedTeamInitials,
+} from '../services/teamInitials';
+import { requiresTeamInitials } from '../../shared/teamInitials';
 
 const router = express.Router();
 
@@ -39,6 +46,7 @@ router.post(
         resultType = 'standard',
         disqualifiedTeamId,
         resultNote,
+        teamInitials,
       } = req.body;
 
       if (!templateId || !scoreData) {
@@ -51,13 +59,22 @@ router.post(
 
       // Get the template
       const template = await db.get(
-        'SELECT id, name, created_by FROM scoresheet_templates WHERE id = ?',
+        'SELECT id, name, created_by, schema FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
 
       if (!template) {
         return res.status(400).json({ error: 'Template not found' });
       }
+
+      let templateSchema: unknown = null;
+      try {
+        templateSchema = JSON.parse(template.schema);
+      } catch {
+        // An unparseable schema cannot declare initials; the rest of the
+        // submission does not depend on it.
+      }
+      const initialsRequired = requiresTeamInitials(templateSchema);
 
       // DB-backed (event-scoped) submission: resolve team_id if needed (seeding)
       const attemptingDbBackedSeeding = eventId && scoreType === 'seeding';
@@ -149,9 +166,12 @@ router.post(
         scoreType === 'double_seeding' &&
         double_seeding_match_id != null;
       let isDbBackedDoubleSeeding = false;
+      let doubleSeedingMatch:
+        | { id: number; team1_id: number | null; team2_id: number | null }
+        | undefined;
       if (attemptingDbBackedDoubleSeeding) {
         const match = await db.get(
-          `SELECT id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
+          `SELECT id, team1_id, team2_id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
           [double_seeding_match_id, eventId],
         );
         if (!match) {
@@ -160,6 +180,7 @@ router.post(
               'Double-seeding match not found or does not belong to this event. Invalid event.',
           });
         }
+        doubleSeedingMatch = match;
         isDbBackedDoubleSeeding = true;
       }
 
@@ -209,6 +230,45 @@ router.post(
         });
       }
 
+      // Every participating team signs off, whatever the result type: the
+      // participants come from the game/match/team resolved above, never from
+      // the client.
+      let initialsToStore: CheckedTeamInitials[] = [];
+      if (initialsRequired) {
+        const expected: ExpectedTeamInitials[] = isDbBackedBracket
+          ? expectedTwoSidedInitials(
+              bracketGame?.team1_id,
+              bracketGame?.team2_id,
+            )
+          : isDbBackedDoubleSeeding
+            ? expectedTwoSidedInitials(
+                doubleSeedingMatch?.team1_id,
+                doubleSeedingMatch?.team2_id,
+              )
+            : [{ side: 'team', teamId: Number(resolvedTeamId) }];
+
+        const teamIds = expected.map((participant) => participant.teamId);
+        const teams =
+          teamIds.length > 0
+            ? await db.all<{ id: number; team_number: number }>(
+                `SELECT id, team_number FROM teams WHERE id IN (${teamIds.map(() => '?').join(', ')})`,
+                teamIds,
+              )
+            : [];
+        const teamNumbers = new Map(
+          teams.map((team) => [team.id, team.team_number]),
+        );
+        const initialsCheck = checkTeamInitials(
+          expected,
+          teamInitials,
+          (teamId) => `team ${teamNumbers.get(teamId) ?? teamId}`,
+        );
+        if (!initialsCheck.ok) {
+          return res.status(400).json({ error: initialsCheck.error });
+        }
+        initialsToStore = initialsCheck.entries;
+      }
+
       // Add metadata to score data for head-to-head
       const enrichedScoreData: Record<string, unknown> = {
         ...scoreData,
@@ -223,30 +283,41 @@ router.post(
         };
       }
 
-      const result = await db.run(
-        `INSERT INTO score_submissions 
+      // The submission and its initials land together or not at all.
+      const submissionId = await db.transaction(async (tx) => {
+        const inserted = await tx.run(
+          `INSERT INTO score_submissions 
        (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-        [
-          null,
-          templateId,
-          participantName,
-          matchId,
-          JSON.stringify(enrichedScoreData),
-          isDbBacked ? eventId : null,
-          isDbBacked ? scoreType : null,
-          game_queue_id ?? null,
-          isDbBackedBracket ? bracket_game_id : null,
-          isDbBackedDoubleSeeding ? double_seeding_match_id : null,
-          isDbBackedBracket ? resultType : 'standard',
-          isDbBackedBracket ? (disqualifiedTeamId ?? null) : null,
-          isDbBackedBracket ? (resultNote?.trim() ?? null) : null,
-        ],
-      );
+          [
+            null,
+            templateId,
+            participantName,
+            matchId,
+            JSON.stringify(enrichedScoreData),
+            isDbBacked ? eventId : null,
+            isDbBacked ? scoreType : null,
+            game_queue_id ?? null,
+            isDbBackedBracket ? bracket_game_id : null,
+            isDbBackedDoubleSeeding ? double_seeding_match_id : null,
+            isDbBackedBracket ? resultType : 'standard',
+            isDbBackedBracket ? (disqualifiedTeamId ?? null) : null,
+            isDbBackedBracket ? (resultNote?.trim() ?? null) : null,
+          ],
+        );
+        for (const entry of initialsToStore) {
+          await tx.run(
+            `INSERT INTO score_team_initials (score_submission_id, team_id, side, initials)
+             VALUES (?, ?, ?, ?)`,
+            [inserted.lastID, entry.teamId, entry.side, entry.initials],
+          );
+        }
+        return inserted.lastID;
+      });
 
       const submission = await db.get(
         'SELECT * FROM score_submissions WHERE id = ?',
-        [result.lastID],
+        [submissionId],
       );
 
       // Audit event-scoped submissions
@@ -268,6 +339,11 @@ router.post(
             result_type: submission.result_type,
             disqualified_team_id: submission.disqualified_team_id,
             result_note: submission.result_note,
+            team_initials: initialsToStore.map((entry) => ({
+              side: entry.side,
+              team_id: entry.teamId,
+              initials: entry.initials,
+            })),
           }),
           ip_address: req.ip ?? null,
         });
