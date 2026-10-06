@@ -7,6 +7,7 @@ import {
 } from '../middleware/auth';
 import { accessCodeLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import { auditRequest } from './audit';
 import {
   formatSchemaValidationError,
   validateScoresheetSchema,
@@ -259,12 +260,16 @@ router.post(
       );
 
       const templateId = result.lastID!;
+      const linkedEventId =
+        eventId != null && Number.isInteger(Number(eventId))
+          ? Number(eventId)
+          : null;
 
-      if (eventId != null && Number.isInteger(Number(eventId))) {
+      if (linkedEventId !== null) {
         const templateType = inferTemplateType(schema);
         await db.run(
           `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?) RETURNING id`,
-          [Number(eventId), templateId, templateType],
+          [linkedEventId, templateId, templateType],
         );
       }
 
@@ -272,6 +277,13 @@ router.post(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [templateId],
       );
+      await auditRequest(db, req, {
+        event_id: linkedEventId,
+        action: 'scoresheet_template_created',
+        entity_type: 'scoresheet_template',
+        entity_id: templateId,
+        new_value: template,
+      });
       template.schema = JSON.parse(template.schema);
 
       res.json(template);
@@ -301,7 +313,16 @@ router.put(
         }
       }
 
+      const linkedEventId =
+        eventId != null && Number.isInteger(Number(eventId))
+          ? Number(eventId)
+          : null;
+
       const db = await getDatabase();
+      const oldTemplate = await db.get(
+        'SELECT * FROM scoresheet_templates WHERE id = ?',
+        [id],
+      );
       await db.transaction(async (tx) => {
         await tx.run(
           `UPDATE scoresheet_templates 
@@ -315,11 +336,11 @@ router.put(
           [id],
         );
 
-        if (eventId != null && Number.isInteger(Number(eventId))) {
+        if (linkedEventId !== null) {
           const templateType = inferTemplateType(schema);
           await tx.run(
             `INSERT INTO event_scoresheet_templates (event_id, template_id, template_type) VALUES (?, ?, ?) RETURNING id`,
-            [Number(eventId), id, templateType],
+            [linkedEventId, id, templateType],
           );
         }
       });
@@ -328,6 +349,16 @@ router.put(
         'SELECT * FROM scoresheet_templates WHERE id = ?',
         [id],
       );
+      if (oldTemplate) {
+        await auditRequest(db, req, {
+          event_id: linkedEventId,
+          action: 'scoresheet_template_updated',
+          entity_type: 'scoresheet_template',
+          entity_id: Number(id),
+          old_value: oldTemplate,
+          new_value: template,
+        });
+      }
       template.schema = JSON.parse(template.schema);
 
       res.json(template);
@@ -347,7 +378,26 @@ router.delete(
       const { id } = req.params;
       const db = await getDatabase();
 
+      const oldTemplate = await db.get(
+        'SELECT * FROM scoresheet_templates WHERE id = ?',
+        [id],
+      );
+      const link = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM event_scoresheet_templates WHERE template_id = ? ORDER BY id LIMIT 1',
+        [id],
+      );
+
       await db.run('DELETE FROM scoresheet_templates WHERE id = ?', [id]);
+
+      if (oldTemplate) {
+        await auditRequest(db, req, {
+          event_id: link?.event_id ?? null,
+          action: 'scoresheet_template_deleted',
+          entity_type: 'scoresheet_template',
+          entity_id: Number(id),
+          old_value: oldTemplate,
+        });
+      }
 
       res.json({ success: true });
     } catch (error) {

@@ -9,8 +9,7 @@ import {
 } from '../services/doubleSeedingMatches';
 import { recalculateDoubleSeedingRankings } from '../services/doubleSeedingRankings';
 import { isEventArchived } from '../utils/eventVisibility';
-import { createAuditEntry } from './audit';
-import { toAuditJson } from '../utils/auditJson';
+import { auditRequest } from './audit';
 import { markQueueDirty } from '../services/queueVersion';
 
 const router = express.Router();
@@ -118,15 +117,13 @@ router.post(
           return del;
         });
 
-        await createAuditEntry(db, {
+        await auditRequest(db, req, {
           event_id: eventIdNum,
-          user_id: req.user?.id ?? null,
           action: 'double_seeding_disabled',
           entity_type: 'event',
           entity_id: eventIdNum,
-          old_value: toAuditJson({ deleted: result.changes ?? 0 }),
-          new_value: toAuditJson({ rounds: 0 }),
-          ip_address: req.ip ?? null,
+          old_value: { deleted: result.changes ?? 0 },
+          new_value: { rounds: 0 },
         });
 
         await markQueueDirty(db, eventIdNum);
@@ -179,18 +176,15 @@ router.post(
         return res.status(400).json({ error: (genError as Error).message });
       }
 
-      await createAuditEntry(db, {
+      await auditRequest(db, req, {
         event_id: eventIdNum,
-        user_id: req.user?.id ?? null,
         action:
           matchCount > 0
             ? 'double_seeding_rounds_appended'
             : 'double_seeding_matches_generated',
         entity_type: 'event',
         entity_id: eventIdNum,
-        old_value: null,
-        new_value: toAuditJson(result),
-        ip_address: req.ip ?? null,
+        new_value: result,
       });
 
       // New matches join the double-seeding queue on the next queue read.
@@ -257,15 +251,12 @@ router.delete(
         return del;
       });
 
-      await createAuditEntry(db, {
+      await auditRequest(db, req, {
         event_id: eventIdNum,
-        user_id: req.user?.id ?? null,
         action: 'double_seeding_matches_deleted',
         entity_type: 'event',
         entity_id: eventIdNum,
-        old_value: toAuditJson({ deleted: result.changes ?? 0 }),
-        new_value: null,
-        ip_address: req.ip ?? null,
+        old_value: { deleted: result.changes ?? 0 },
       });
 
       // Queue rows cascaded away with the matches; bump so pollers refresh.
@@ -312,18 +303,16 @@ router.delete(
         return res.status(status).json({ error: message });
       }
 
-      await createAuditEntry(db, {
+      await auditRequest(db, req, {
         event_id: eventIdNum,
-        user_id: req.user?.id ?? null,
         action: 'double_seeding_round_deleted',
         entity_type: 'event',
         entity_id: eventIdNum,
-        old_value: toAuditJson({
+        old_value: {
           round: result.round,
           deleted: result.deleted,
-        }),
-        new_value: toAuditJson({ rounds: result.remainingRounds }),
-        ip_address: req.ip ?? null,
+        },
+        new_value: { rounds: result.remainingRounds },
       });
 
       await markQueueDirty(db, eventIdNum);
@@ -422,6 +411,14 @@ router.post(
       if (result.teamsRanked === 0 && result.teamsUnranked === 0) {
         return res.status(404).json({ error: 'No teams found for this event' });
       }
+
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'double_seeding_rankings_recalculated',
+        entity_type: 'event',
+        entity_id: Number(eventId),
+        new_value: result,
+      });
 
       const updatedRankings = await db.all(
         `SELECT dsr.*, t.team_number, t.team_name, t.display_name

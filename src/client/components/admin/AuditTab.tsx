@@ -55,6 +55,8 @@ const ENTITY_TYPE_TO_TAB: Record<string, AdminView> = {
   bracket: 'brackets',
   bracket_game: 'brackets',
   bracket_games: 'brackets',
+  bracket_entry: 'brackets',
+  bracket_template: 'brackets',
   score: 'scoring',
   score_submission: 'scoring',
   score_submissions: 'scoring',
@@ -63,6 +65,12 @@ const ENTITY_TYPE_TO_TAB: Record<string, AdminView> = {
   game_queue: 'queue',
   event: 'events',
   events: 'events',
+  scoresheet_template: 'scoresheets',
+  field_template: 'scoresheets',
+  documentation_category: 'documentation',
+  documentation_score: 'documentation',
+  award_template: 'awards',
+  event_award: 'awards',
 };
 
 export default function AuditTab({ onNavigateTab }: AuditTabProps) {

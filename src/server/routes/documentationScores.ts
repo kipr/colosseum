@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
-import { getDatabase } from '../database/connection';
+import { getDatabase, type Database } from '../database/connection';
+import { auditRequest } from './audit';
 import { isUniqueConstraintError } from '../database/constraintErrors';
 import { areFinalScoresReleased } from '../utils/eventVisibility';
 
@@ -85,6 +86,20 @@ router.get(
     }
   },
 );
+
+function getEventCategory(
+  db: Database,
+  eventId: number | string,
+  categoryId: number | string,
+) {
+  return db.get(
+    `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
+     FROM event_documentation_categories edc
+     JOIN documentation_categories dc ON edc.category_id = dc.id
+     WHERE edc.event_id = ? AND edc.category_id = ?`,
+    [eventId, categoryId],
+  );
+}
 
 // POST /documentation-scores/categories
 router.post(
@@ -180,13 +195,14 @@ router.post(
         );
       }
 
-      const category = await db.get(
-        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
-         FROM event_documentation_categories edc
-         JOIN documentation_categories dc ON edc.category_id = dc.id
-         WHERE edc.event_id = ? AND edc.category_id = ?`,
-        [event_id, categoryId],
-      );
+      const category = await getEventCategory(db, event_id, categoryId);
+      await auditRequest(db, req, {
+        event_id: Number(event_id),
+        action: 'documentation_category_created',
+        entity_type: 'documentation_category',
+        entity_id: categoryId,
+        new_value: category,
+      });
       res.status(201).json(category);
     } catch (error) {
       console.error('Error creating documentation category:', error);
@@ -232,6 +248,7 @@ router.patch(
 
       const db = await getDatabase();
 
+      const oldCategory = await getEventCategory(db, eventId, id);
       const result = await db.run(
         `UPDATE event_documentation_categories SET ordinal = ? WHERE event_id = ? AND category_id = ?`,
         [ord, eventId, id],
@@ -243,13 +260,15 @@ router.patch(
           .json({ error: 'Category not found for this event' });
       }
 
-      const category = await db.get(
-        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
-         FROM event_documentation_categories edc
-         JOIN documentation_categories dc ON edc.category_id = dc.id
-         WHERE edc.event_id = ? AND edc.category_id = ?`,
-        [eventId, id],
-      );
+      const category = await getEventCategory(db, eventId, id);
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'documentation_category_updated',
+        entity_type: 'documentation_category',
+        entity_id: Number(id),
+        old_value: oldCategory,
+        new_value: category,
+      });
       res.json(category);
     } catch (error) {
       console.error('Error updating documentation category:', error);
@@ -284,6 +303,7 @@ router.delete(
       const db = await getDatabase();
       let removedLink = false;
       const categoryId = parseInt(id, 10);
+      const oldCategory = await getEventCategory(db, eventId, categoryId);
 
       await db.transaction(async (tx) => {
         const result = await tx.run(
@@ -314,6 +334,13 @@ router.delete(
           .json({ error: 'Category not found for this event' });
       }
 
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'documentation_category_deleted',
+        entity_type: 'documentation_category',
+        entity_id: categoryId,
+        old_value: oldCategory,
+      });
       res.status(204).send();
     } catch (error) {
       console.error('Error deleting documentation category:', error);
@@ -572,7 +599,7 @@ router.put(
       const teamIdNum = parseInt(teamId, 10);
 
       const existing = await db.get<{ id: number }>(
-        'SELECT id FROM documentation_scores WHERE event_id = ? AND team_id = ?',
+        'SELECT * FROM documentation_scores WHERE event_id = ? AND team_id = ?',
         [eventIdNum, teamIdNum],
       );
 
@@ -648,10 +675,16 @@ router.put(
         [eventIdNum, docScore.id],
       );
 
-      res.json({
-        ...docScore,
-        sub_scores: subScores,
+      const saved = { ...docScore, sub_scores: subScores };
+      await auditRequest(db, req, {
+        event_id: eventIdNum,
+        action: 'documentation_score_saved',
+        entity_type: 'documentation_score',
+        entity_id: docScoreId,
+        old_value: existing,
+        new_value: saved,
       });
+      res.json(saved);
     } catch (error) {
       console.error('Error upserting documentation score:', error);
       const errMsg = (error as Error).message || '';
@@ -674,10 +707,25 @@ router.delete(
       const { eventId, teamId } = req.params;
       const db = await getDatabase();
 
+      const existing = await db.get<{ id: number }>(
+        'SELECT * FROM documentation_scores WHERE event_id = ? AND team_id = ?',
+        [eventId, teamId],
+      );
+
       await db.run(
         'DELETE FROM documentation_scores WHERE event_id = ? AND team_id = ?',
         [eventId, teamId],
       );
+
+      if (existing) {
+        await auditRequest(db, req, {
+          event_id: Number(eventId),
+          action: 'documentation_score_deleted',
+          entity_type: 'documentation_score',
+          entity_id: existing.id,
+          old_value: existing,
+        });
+      }
 
       res.status(204).send();
     } catch (error) {

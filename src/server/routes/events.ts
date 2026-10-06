@@ -10,6 +10,7 @@ import {
 import { computeOverallScores } from '../services/overallScores';
 import { calculateEventBracketRankingsIfReady } from '../services/bracketRankings';
 import { markQueueDirty } from '../services/queueVersion';
+import { auditRequest } from './audit';
 
 const PUBLIC_EVENT_FIELDS =
   'id, name, status, event_date, location, seeding_rounds, double_seeding_rounds, spectator_results_released';
@@ -216,6 +217,13 @@ router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
     const event = await db.get('SELECT * FROM events WHERE id = ?', [
       result.lastID,
     ]);
+    await auditRequest(db, req, {
+      event_id: result.lastID,
+      action: 'event_created',
+      entity_type: 'event',
+      entity_id: result.lastID,
+      new_value: event,
+    });
     res.status(201).json(event);
   } catch (error) {
     console.error('Error creating event:', error);
@@ -261,6 +269,7 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
     const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
     const values = updates.map(([, value]) => value);
 
+    const oldEvent = await db.get('SELECT * FROM events WHERE id = ?', [id]);
     const result = await db.run(`UPDATE events SET ${setClause} WHERE id = ?`, [
       ...values,
       id,
@@ -276,6 +285,14 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
     }
 
     const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+    await auditRequest(db, req, {
+      event_id: Number(id),
+      action: 'event_updated',
+      entity_type: 'event',
+      entity_id: Number(id),
+      old_value: oldEvent,
+      new_value: event,
+    });
     res.json(event);
   } catch (error) {
     console.error('Error updating event:', error);
@@ -293,8 +310,22 @@ router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    const oldEvent = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+
     // DELETE is idempotent - return 204 regardless of whether row existed
     await db.run('DELETE FROM events WHERE id = ?', [id]);
+
+    if (oldEvent) {
+      // audit_log.event_id references events, so the entry is reachable by
+      // entity (event #id) rather than by event.
+      await auditRequest(db, req, {
+        event_id: null,
+        action: 'event_deleted',
+        entity_type: 'event',
+        entity_id: Number(id),
+        old_value: oldEvent,
+      });
+    }
 
     res.status(204).send();
   } catch (error) {
