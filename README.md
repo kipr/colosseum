@@ -56,6 +56,16 @@ npm install
    - Authorized redirect URIs: `http://localhost:3000/auth/google/callback`
 4. Copy the Client ID and Client Secret
 
+#### OAuth scopes and domain restriction
+
+Colosseum uses Google only to sign admins in. It requests the basic `profile` and `email` scopes and nothing else: no offline access (refresh tokens) and no Google API scopes such as Drive or Sheets. Google tokens are not stored after sign-in. The OAuth consent screen only needs those two scopes, so remove any others listed there. Scopes granted to earlier versions stay on each user's Google account until revoked, either by the user at <https://myaccount.google.com/connections> or by a Workspace admin under Security → API controls.
+
+The production OAuth client is configured as an **Internal** app, so Google only lets `kipr.org` Workspace accounts sign in. The app also checks the signed-in email against `ALLOWED_EMAIL_DOMAINS` (default `kipr.org`), and every account that passes that check is created as an admin. If the OAuth client is ever switched to **External**:
+
+- `ALLOWED_EMAIL_DOMAINS` becomes the only gate on admin access, so it must stay set to the organization's domains in production. Setting it to an empty string would make any Google account an admin.
+- The domain check reads the account's email address. With an External client, consider also checking the verified Workspace domain (the `hd` claim) rather than the email domain alone.
+- Because only basic sign-in scopes are requested, an External client does not need Google's sensitive-scope verification.
+
 ### 3. Environment Configuration
 
 ```bash
@@ -258,7 +268,7 @@ The application uses PostgreSQL with the following tables:
 
 ### Core Tables
 
-- **users** - User accounts and OAuth tokens
+- **users** - Admin accounts (Google account id, email, name)
 - **events** - Tournament events with status tracking
 - **teams** - Participating teams per event with check-in status
 - **scoresheet_templates** - Score sheet template definitions
@@ -483,15 +493,15 @@ Public and abuse-prone API endpoints are protected by `express-rate-limit` with 
 
 ### Current Limits
 
-| Limiter | Endpoints | Window | Limit | Key |
-|---|---|---|---|---|
-| `oauthLimiter` | `GET /auth/google` | 15 min | 20 | IP |
-| `scoreSubmitLimiter` | `POST /api/scores/submit` | 1 min | 30 | IP |
-| `accessCodeLimiter` | `POST /scoresheet/templates/:id/verify` | 15 min | 10 | IP + template id |
-| `chatWriteLimiter` | `POST /chat/events/:eventId/messages` | 1 min | 15 | IP |
-| `chatReadLimiter` | `GET /chat/events/:eventId/messages` | 1 min | 120 | IP |
-| `queueSyncLimiter` | `GET /queue/event/:eventId` (sync=1 only) | 1 min | 60 | IP |
-| `publicExpensiveReadLimiter` | `GET /events/:id/overall/public`, `GET /documentation-scores/event/:eventId/public` | 1 min | 30 | IP |
+| Limiter                      | Endpoints                                                                           | Window | Limit | Key              |
+| ---------------------------- | ----------------------------------------------------------------------------------- | ------ | ----- | ---------------- |
+| `oauthLimiter`               | `GET /auth/google`                                                                  | 15 min | 20    | IP               |
+| `scoreSubmitLimiter`         | `POST /api/scores/submit`                                                           | 1 min  | 30    | IP               |
+| `accessCodeLimiter`          | `POST /scoresheet/templates/:id/verify`                                             | 15 min | 10    | IP + template id |
+| `chatWriteLimiter`           | `POST /chat/events/:eventId/messages`                                               | 1 min  | 15    | IP               |
+| `chatReadLimiter`            | `GET /chat/events/:eventId/messages`                                                | 1 min  | 120   | IP               |
+| `queueSyncLimiter`           | `GET /queue/event/:eventId` (sync=1 only)                                           | 1 min  | 60    | IP               |
+| `publicExpensiveReadLimiter` | `GET /events/:id/overall/public`, `GET /documentation-scores/event/:eventId/public` | 1 min  | 30    | IP               |
 
 ### Storage Constraints
 

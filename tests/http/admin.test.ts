@@ -107,28 +107,6 @@ describe('Admin Routes', () => {
       }
     });
 
-    it('includes tokenValid field', async () => {
-      await seedUser(testDb.db, {
-        name: 'Admin',
-        email: 'admin@example.com',
-        is_admin: true,
-      });
-
-      const app = createTestApp({ user: { id: 1, is_admin: true } });
-      app.use('/api/admin', adminRoutes);
-      const server = await startServer(app);
-
-      try {
-        const res = await http.get(`${server.baseUrl}/api/admin/users`);
-        expect(res.status).toBe(200);
-        const users = res.json as { tokenValid: boolean }[];
-        expect(users.length).toBe(1);
-        expect(typeof users[0].tokenValid).toBe('boolean');
-      } finally {
-        await server.close();
-      }
-    });
-
     it('times activity correctly when Node runs outside the database time zone', async () => {
       const admin = await seedUser(testDb.db, { is_admin: true });
       await testDb.db.run(

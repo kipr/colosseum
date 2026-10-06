@@ -1,30 +1,25 @@
 import express, { Request, Response } from 'express';
 import passport from 'passport';
 import { oauthLimiter } from '../middleware/rateLimit';
-import { getValidAccessToken } from '../services/tokenRefresh';
 
 const router = express.Router();
 
 // Initiate Google OAuth
-// Note: accessType and prompt must be passed exactly as Google expects
-router.get('/google', oauthLimiter, (req, res, next) => {
-  passport.authenticate('google', {
-    scope: [
-      'profile',
-      'email',
-      'https://www.googleapis.com/auth/drive.readonly',
-      'https://www.googleapis.com/auth/spreadsheets',
-    ],
-    // These ensure we get a refresh token that lasts longer
-    accessType: 'offline',
-    prompt: 'consent', // Forces re-consent to ensure we get a fresh refresh token
-    includeGrantedScopes: true,
-  } as passport.AuthenticateOptions & {
-    accessType?: string;
-    prompt?: string;
-    includeGrantedScopes?: boolean;
-  })(req, res, next);
-});
+// Only the basic sign-in scopes are requested: `profile` supplies the display
+// name and Google account id, `email` supplies the address checked against
+// ALLOWED_EMAIL_DOMAINS. No Google API is called on the user's behalf, so no
+// offline access (refresh token) or additional scopes are requested.
+//
+// OAuth policy note: the Google OAuth client is currently configured as an
+// "Internal" app, so Google itself only lets kipr.org Workspace accounts sign
+// in. If that client is ever switched to "External", ALLOWED_EMAIL_DOMAINS in
+// config/passport.ts becomes the only gate, and every account that passes it is
+// made an admin. See "OAuth scopes and domain restriction" in README.md.
+router.get(
+  '/google',
+  oauthLimiter,
+  passport.authenticate('google', { scope: ['profile', 'email'] }),
+);
 
 // Google OAuth callback
 router.get(
@@ -170,34 +165,6 @@ router.get('/user', (req: Request, res: Response) => {
     });
   } else {
     res.status(401).json({ error: 'Not authenticated' });
-  }
-});
-
-// Check if current user's tokens are valid (for admin notification)
-router.get('/check-tokens', async (req: Request, res: Response) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-
-  const user = req.user as { id: number };
-
-  try {
-    // Try to get a valid token - this will refresh if needed
-    await getValidAccessToken(user.id);
-
-    res.json({
-      valid: true,
-      message: 'Tokens are valid',
-    });
-  } catch (error: unknown) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error';
-    console.error('Token check failed:', errorMessage);
-    res.json({
-      valid: false,
-      message: errorMessage,
-      needsReauth: true,
-    });
   }
 });
 

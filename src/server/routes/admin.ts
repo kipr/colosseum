@@ -16,7 +16,6 @@ router.get('/users', requireAuth, async (req: AuthRequest, res: Response) => {
         email, 
         name, 
         is_admin,
-        token_expires_at,
         last_activity,
         created_at,
         updated_at
@@ -55,7 +54,6 @@ router.get('/users', requireAuth, async (req: AuthRequest, res: Response) => {
           : null,
         isActive,
         isRecentlyActive,
-        tokenValid: user.token_expires_at ? user.token_expires_at > now : false,
       };
     });
 
