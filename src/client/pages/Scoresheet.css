@@ -668,6 +668,53 @@ select.score-input {
   width: 100%;
 }
 
+.team-initials-container {
+  background: var(--card-bg);
+  border: 2px solid var(--border-color);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin: 1.5rem 0;
+  text-align: center;
+}
+
+.team-initials-help,
+.team-initials-summary {
+  color: var(--secondary-color);
+  margin: 0 0 0.75rem;
+}
+
+.team-initials-summary {
+  color: var(--text-color);
+  font-weight: 600;
+}
+
+.team-initials-stale {
+  color: var(--danger-color);
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
+.team-initials-inputs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.team-initials-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  font-weight: 600;
+  min-width: 200px;
+}
+
+.team-initials-input {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
 .winner-select-container {
   background: linear-gradient(135deg, var(--card-bg) 0%, var(--bg-color) 100%);
   border: 2px solid var(--primary-color);

@@ -40,6 +40,17 @@ export const scoringSchema: SchemaModule = {
       )
     `,
     `
+      CREATE TABLE IF NOT EXISTS score_team_initials (
+        id SERIAL PRIMARY KEY,
+        score_submission_id INTEGER NOT NULL REFERENCES score_submissions(id) ON DELETE CASCADE,
+        team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+        side TEXT NOT NULL CHECK (side IN ('team', 'team_a', 'team_b')),
+        initials TEXT NOT NULL CHECK (char_length(initials) BETWEEN 2 AND 5),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(score_submission_id, side)
+      )
+    `,
+    `
       CREATE TABLE IF NOT EXISTS event_scoresheet_templates (
         id SERIAL PRIMARY KEY,
         event_id INTEGER NOT NULL REFERENCES events(id) ON DELETE CASCADE,

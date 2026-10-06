@@ -93,6 +93,71 @@ describe('Schema Constraints', () => {
     });
   });
 
+  describe('score_team_initials table', () => {
+    async function seedSubmission() {
+      const event = await testDb.db.run(
+        `INSERT INTO events (name) VALUES ('Initials Event') RETURNING id`,
+      );
+      const team = await testDb.db.run(
+        `INSERT INTO teams (event_id, team_number, team_name) VALUES (?, 1, 'Alpha') RETURNING id`,
+        [event.lastID],
+      );
+      const template = await testDb.db.run(
+        `INSERT INTO scoresheet_templates (name, schema, access_code)
+         VALUES ('Sheet', '{}', 'code') RETURNING id`,
+      );
+      const submission = await testDb.db.run(
+        `INSERT INTO score_submissions (template_id, score_data, event_id)
+         VALUES (?, '{}', ?) RETURNING id`,
+        [template.lastID, event.lastID],
+      );
+      return { teamId: team.lastID!, submissionId: submission.lastID! };
+    }
+
+    const insertInitials = (
+      submissionId: number,
+      teamId: number,
+      side: string,
+      initials: string,
+    ) =>
+      testDb.db.run(
+        `INSERT INTO score_team_initials (score_submission_id, team_id, side, initials)
+         VALUES (?, ?, ?, ?) RETURNING id`,
+        [submissionId, teamId, side, initials],
+      );
+
+    it('checks side and initials length', async () => {
+      const { teamId, submissionId } = await seedSubmission();
+
+      await expect(
+        insertInitials(submissionId, teamId, 'referee', 'AB'),
+      ).rejects.toThrow(/violates check constraint/);
+      await expect(
+        insertInitials(submissionId, teamId, 'team', 'A'),
+      ).rejects.toThrow(/violates check constraint/);
+      await expect(
+        insertInitials(submissionId, teamId, 'team', 'ABCDEF'),
+      ).rejects.toThrow(/violates check constraint/);
+    });
+
+    it('allows one row per side and cascades with the submission', async () => {
+      const { teamId, submissionId } = await seedSubmission();
+      await insertInitials(submissionId, teamId, 'team', 'AB');
+
+      await expect(
+        insertInitials(submissionId, teamId, 'team', 'CD'),
+      ).rejects.toThrow(/duplicate key/);
+
+      await testDb.db.run('DELETE FROM score_submissions WHERE id = ?', [
+        submissionId,
+      ]);
+      const remaining = await testDb.db.get<{ count: string }>(
+        'SELECT COUNT(*) AS count FROM score_team_initials',
+      );
+      expect(Number(remaining?.count)).toBe(0);
+    });
+  });
+
   describe('event rest configuration schema', () => {
     it('creates min_rest_minutes with a default and non-negative check', async () => {
       const column = await testDb.db.get<{

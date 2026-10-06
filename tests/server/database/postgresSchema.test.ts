@@ -35,6 +35,7 @@ const EXPECTED_TABLES = [
   'queue_versions',
   'score_details',
   'score_submissions',
+  'score_team_initials',
   'scoresheet_field_templates',
   'scoresheet_templates',
   'seeding_rankings',

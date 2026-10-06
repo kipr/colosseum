@@ -23,6 +23,19 @@ describe('scoresheetSchema defaultValue validation', () => {
     expect(validateScoresheetFields('nope').ok).toBe(false);
   });
 
+  it('validates the teamInitials setting', () => {
+    expect(
+      validateScoresheetSchema({ teamInitials: { required: true } }),
+    ).toEqual({ ok: true, errors: [] });
+    expect(
+      validateScoresheetSchema({
+        teamInitials: { required: 'yes' },
+        fields: [],
+      }).errors,
+    ).toEqual(['teamInitials must be an object with a boolean "required".']);
+    expect(validateScoresheetSchema({ teamInitials: true }).ok).toBe(false);
+  });
+
   it('accepts valid typed defaults for interactive fields', () => {
     const result = validateScoresheetSchema({
       fields: [

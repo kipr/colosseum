@@ -2,6 +2,7 @@
 import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
 import { scoreBotballStartBoxCubes } from '../scoring/botballStartBoxCubes';
 import { getBlankFieldValue } from '../../shared/scoresheetSchema';
+import { stripLegacyInitialsFields } from '../../shared/teamInitials';
 
 export interface BracketTeamDisplay {
   teamNumber: string;
@@ -26,24 +27,6 @@ export interface DbBracketSource {
   scope?: 'event';
   eventId?: number | null;
   bracketId?: number | null;
-}
-
-export function shouldHideSoloDoubleSeedingField(
-  fieldId: string | undefined,
-  formData: Record<string, any>,
-  isDoubleSeeding: boolean,
-): boolean {
-  if (
-    !isDoubleSeeding ||
-    formData.double_seeding_match_id == null ||
-    formData.team_b_id != null
-  ) {
-    return false;
-  }
-
-  return ['team_b_team_initials', 'side_b_team_initials'].includes(
-    fieldId ?? '',
-  );
 }
 
 const REPEATABLE_GROUP_TEXT_TYPES = new Set(['text', 'dropdown', 'buttons']);
@@ -489,14 +472,20 @@ export function buildDoubleEliminationSchema(options: {
   title: string;
   eventId: number | null;
   templateFields?: any[] | null;
+  requireTeamInitials?: boolean;
 }): any {
-  const { title, eventId, templateFields } = options;
+  const { title, eventId, requireTeamInitials = true } = options;
+  // Initials are collected by the built-in panel, not template fields.
+  const templateFields = options.templateFields
+    ? stripLegacyInitialsFields(options.templateFields)
+    : null;
   const schema: any = {
     layout: 'two-column',
     mode: 'head-to-head',
     title: title || 'Double Elimination Score Sheet',
     eventId,
     scoreDestination: 'db',
+    teamInitials: { required: requireTeamInitials },
     bracketSource: buildEventScopedBracketSource(eventId),
     teamsDataSource: {
       type: 'db',
@@ -640,14 +629,20 @@ export function buildDoubleSeedingSchema(options: {
   title: string;
   eventId: number | null;
   templateFields?: any[] | null;
+  requireTeamInitials?: boolean;
 }): any {
-  const { title, eventId, templateFields } = options;
+  const { title, eventId, requireTeamInitials = true } = options;
+  // Initials are collected by the built-in panel, not template fields.
+  const templateFields = options.templateFields
+    ? stripLegacyInitialsFields(options.templateFields)
+    : null;
   const schema: any = {
     layout: 'two-column',
     scoreKind: 'double_seeding',
     title: title || 'Double Seeding Score Sheet',
     eventId,
     scoreDestination: 'db',
+    teamInitials: { required: requireTeamInitials },
     teamsDataSource: {
       type: 'db',
       eventId,

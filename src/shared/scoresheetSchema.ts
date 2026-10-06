@@ -111,6 +111,8 @@ export interface ScoresheetSchema {
   layout?: string;
   mode?: string;
   scoreKind?: string;
+  /** Built-in team sign-off; see src/shared/teamInitials.ts. */
+  teamInitials?: { required: boolean };
   fields?: ScoresheetField[];
   [key: string]: unknown;
 }
@@ -403,15 +405,30 @@ export function validateScoresheetSchema(
     return { ok: false, errors: ['schema must be an object.'] };
   }
 
+  const teamInitialsErrors = validateTeamInitialsSetting(schema.teamInitials);
+
   if (!('fields' in schema) || schema.fields === undefined) {
-    return { ok: true, errors: [] };
+    return { ok: teamInitialsErrors.length === 0, errors: teamInitialsErrors };
   }
 
   if (!Array.isArray(schema.fields)) {
-    return { ok: false, errors: ['schema.fields must be an array.'] };
+    return {
+      ok: false,
+      errors: [...teamInitialsErrors, 'schema.fields must be an array.'],
+    };
   }
 
-  return validateScoresheetFields(schema.fields);
+  const fieldResult = validateScoresheetFields(schema.fields);
+  const errors = [...teamInitialsErrors, ...fieldResult.errors];
+  return { ok: errors.length === 0, errors };
+}
+
+function validateTeamInitialsSetting(setting: unknown): string[] {
+  if (setting === undefined) return [];
+  if (!isPlainObject(setting) || typeof setting.required !== 'boolean') {
+    return ['teamInitials must be an object with a boolean "required".'];
+  }
+  return [];
 }
 
 export function formatSchemaValidationError(errors: string[]): string {

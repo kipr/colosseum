@@ -11,6 +11,7 @@ import { formatDateTime } from '../../utils/dateUtils';
 import '../Modal.css';
 import './ScoringTab.css';
 import type { BracketResultType } from '../../../shared/bracketResult';
+import type { TeamInitialsSide } from '../../../shared/teamInitials';
 
 interface ScoreSubmission {
   id: number;
@@ -26,6 +27,12 @@ interface ScoreSubmission {
   result_type: BracketResultType;
   disqualified_team_id: number | null;
   result_note: string | null;
+  team_initials?: Array<{
+    side: TeamInitialsSide;
+    team_id: number | null;
+    team_number: number | null;
+    initials: string;
+  }>;
   // Event-scoped fields
   event_id?: number;
   score_type?: 'seeding' | 'bracket' | 'double_seeding';

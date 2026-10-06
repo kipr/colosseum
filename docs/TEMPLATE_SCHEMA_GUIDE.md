@@ -338,6 +338,23 @@ Boolean (true/false) field.
 }
 ```
 
+## Team Initials
+
+Score sheets can require each participating team to initial a submission. The judge form shows a built-in **Team Initials** panel above the submit button: one entry for the seeding team, or one per team in a bracket game or double-seeding match. The server rejects any submission that is missing a team's initials, for every result type, including no contest and disqualification.
+
+```json
+{
+  "teamInitials": { "required": true },
+  "fields": []
+}
+```
+
+- The score sheet wizard sets this for you (on by default).
+- Initials are 2–5 letters after spaces, periods, and hyphens are removed, and are stored uppercase.
+- If the judge changes the sheet after a team has initialed, that team's initials clear and must be entered again.
+- Initials are stored separately from `score_data` and appear read-only in the admin score view.
+- Sheets without a `teamInitials` setting still require initials if they contain the older initials fields (`side_a_team_initials`, `side_b_team_initials`, `team_a_team_initials`, `team_b_team_initials`). Those fields are replaced by the panel and no longer render. Set `"teamInitials": { "required": false }` to turn initials off for such a sheet.
+
 ## Default Values
 
 Interactive fields may include an optional `defaultValue` that pre-fills the control when a scoresheet is opened (and when a portable scoresheet is reset).
