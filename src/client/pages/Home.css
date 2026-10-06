@@ -16,7 +16,9 @@
 
 .role-selection {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* min() keeps the grid's minimum width from forcing three 280px columns
+     (and horizontal overflow) on tablet-width viewports. */
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 2rem;
   max-width: 1100px;
   margin: 0 auto;
@@ -30,6 +32,7 @@
   width: 100%;
   font: inherit;
   color: inherit;
+  text-decoration: none;
   background-color: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 1rem;

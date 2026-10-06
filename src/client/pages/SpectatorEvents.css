@@ -34,6 +34,7 @@
   font: inherit;
   color: inherit;
   text-align: left;
+  text-decoration: none;
   background-color: var(--card-bg);
   border: 2px solid var(--border-color);
   border-radius: 1rem;

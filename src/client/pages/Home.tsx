@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import Navbar from '../components/Navbar';
 import './Home.css';
@@ -22,25 +22,6 @@ export default function Home() {
     }
   }, [searchParams, user, loading, navigate]);
 
-  const handleJudgeClick = () => {
-    navigate('/judge');
-  };
-
-  const handleSpectatorClick = () => {
-    navigate('/spectator');
-  };
-
-  const handleAdminClick = () => {
-    if (user) {
-      // Already logged in, go directly to admin
-      navigate('/admin/events');
-    } else {
-      // Not logged in, initiate OAuth
-      sessionStorage.setItem('loginIntent', 'admin');
-      window.location.href = '/auth/google';
-    }
-  };
-
   return (
     <div className="app">
       <Navbar />
@@ -51,11 +32,7 @@ export default function Home() {
         </div>
 
         <div className="role-selection">
-          <button
-            type="button"
-            className="role-card role-card-clickable"
-            onClick={handleJudgeClick}
-          >
+          <Link to="/judge" className="role-card role-card-clickable">
             <div className="role-icon">
               <img src="/images/botguy-red-trans-small.png" alt="Judge Icon" />
             </div>
@@ -70,12 +47,14 @@ export default function Home() {
               <li>✓ Multiple scoresheet templates</li>
               <li>✓ Real-time scoring</li>
             </ul>
-          </button>
+          </Link>
 
-          <button
-            type="button"
+          {/* Logged-out admins go through the server's OAuth route, so that
+              link needs a full page load rather than client-side routing. */}
+          <Link
+            to={user ? '/admin/events' : '/auth/google'}
+            reloadDocument={!user}
             className="role-card role-card-clickable"
-            onClick={handleAdminClick}
           >
             <div className="role-icon">
               <img src="/images/KIPR-Logo-bk-tiny.jpg" alt="Admin Icon" />
@@ -91,13 +70,9 @@ export default function Home() {
               <li>✓ Review and accept submissions</li>
               <li>✓ Run brackets and seeding</li>
             </ul>
-          </button>
+          </Link>
 
-          <button
-            type="button"
-            className="role-card role-card-clickable"
-            onClick={handleSpectatorClick}
-          >
+          <Link to="/spectator" className="role-card role-card-clickable">
             <div className="role-icon role-icon-text">
               <span>📊</span>
             </div>
@@ -112,7 +87,7 @@ export default function Home() {
               <li>✓ No login required</li>
               <li>✓ Real-time updates</li>
             </ul>
-          </button>
+          </Link>
         </div>
       </main>
     </div>
