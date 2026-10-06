@@ -275,6 +275,54 @@ describe('team rest service', () => {
     expect(rest.lastPlayedAt.has(otherTeam.id)).toBe(false);
   });
 
+  it('reads timestamps correctly when Node runs outside the database time zone', async () => {
+    const originalTz = process.env.TZ;
+    process.env.TZ = 'America/Chicago';
+    try {
+      const event = await seedEvent(testDb.db);
+      const template = await seedScoresheetTemplate(testDb.db);
+      const bracketTeam = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 101,
+      });
+      const seedingTeam = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 102,
+      });
+
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      const bracketGame = await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+        team1_id: bracketTeam.id,
+        status: 'completed',
+      });
+      await testDb.db.run(
+        'UPDATE bracket_games SET completed_at = CURRENT_TIMESTAMP WHERE id = ?',
+        [bracketGame.id],
+      );
+      await seedScoreSubmission(testDb.db, {
+        template_id: template.id,
+        event_id: event.id,
+        score_type: 'seeding',
+        score_data: JSON.stringify({
+          team_id: { value: seedingTeam.id },
+          round: { value: 1 },
+        }),
+      });
+
+      const rest = await getTeamRest(testDb.db, event.id);
+      const now = Date.now();
+      for (const teamId of [bracketTeam.id, seedingTeam.id]) {
+        const playedAt = Date.parse(rest.lastPlayedAt.get(teamId)!);
+        expect(Math.abs(now - playedAt)).toBeLessThan(60_000);
+      }
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
+  });
+
   it('excludes byes, null scores, and unfinished matches', async () => {
     const event = await seedEvent(testDb.db);
     const team = await seedTeam(testDb.db, {
