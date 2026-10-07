@@ -85,8 +85,11 @@ export async function apiRequest<T = unknown>(
       data && typeof data === 'object' && 'error' in data
         ? (data as { error?: unknown }).error
         : undefined;
+    // Server 5xx bodies are deliberately generic, so a caller-supplied
+    // fallback describes the failure better.
+    const preferFallback = response.status >= 500 && fallbackError;
     const message =
-      typeof serverError === 'string' && serverError
+      !preferFallback && typeof serverError === 'string' && serverError
         ? serverError
         : (fallbackError ?? `Request failed (${response.status})`);
     throw new ApiError(message, response.status, data);

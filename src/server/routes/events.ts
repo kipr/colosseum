@@ -33,26 +33,21 @@ const ALLOWED_UPDATE_FIELDS = [
 
 // GET /events - List all events
 router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const db = await getDatabase();
-    const { status } = req.query;
+  const db = await getDatabase();
+  const { status } = req.query;
 
-    let query = 'SELECT * FROM events';
-    const params: string[] = [];
+  let query = 'SELECT * FROM events';
+  const params: string[] = [];
 
-    if (status) {
-      query += ' WHERE status = ?';
-      params.push(status as string);
-    }
-
-    query += ' ORDER BY event_date DESC, created_at DESC';
-
-    const events = await db.all(query, params);
-    res.json(events);
-  } catch (error) {
-    console.error('Error fetching events:', error);
-    res.status(500).json({ error: 'Failed to fetch events' });
+  if (status) {
+    query += ' WHERE status = ?';
+    params.push(status as string);
   }
+
+  query += ' ORDER BY event_date DESC, created_at DESC';
+
+  const events = await db.all(query, params);
+  res.json(events);
 });
 
 function toPublicEvent(row: Record<string, unknown>) {
@@ -66,42 +61,32 @@ function toPublicEvent(row: Record<string, unknown>) {
 
 // GET /events/public - List non-archived events (public, for spectators)
 router.get('/public', async (req: Request, res: Response) => {
-  try {
-    const db = await getDatabase();
-    const events = await db.all(
-      `SELECT ${PUBLIC_EVENT_FIELDS} FROM events
-       WHERE status != 'archived'
-       ORDER BY event_date DESC, created_at DESC`,
-    );
-    res.setHeader('Cache-Control', 'public, max-age=30');
-    res.json(events.map(toPublicEvent));
-  } catch (error) {
-    console.error('Error fetching public events:', error);
-    res.status(500).json({ error: 'Failed to fetch events' });
-  }
+  const db = await getDatabase();
+  const events = await db.all(
+    `SELECT ${PUBLIC_EVENT_FIELDS} FROM events
+     WHERE status != 'archived'
+     ORDER BY event_date DESC, created_at DESC`,
+  );
+  res.setHeader('Cache-Control', 'public, max-age=30');
+  res.json(events.map(toPublicEvent));
 });
 
 // GET /events/:id/public - Get single event public info (public, for spectators)
 router.get('/:id/public', async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    if (await isEventArchived(id)) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-    const db = await getDatabase();
-    const event = await db.get(
-      `SELECT ${PUBLIC_EVENT_FIELDS} FROM events WHERE id = ?`,
-      [id],
-    );
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-    res.setHeader('Cache-Control', 'public, max-age=30');
-    res.json(toPublicEvent(event));
-  } catch (error) {
-    console.error('Error fetching public event:', error);
-    res.status(500).json({ error: 'Failed to fetch event' });
+  const { id } = req.params;
+  if (await isEventArchived(id)) {
+    return res.status(404).json({ error: 'Event not found' });
   }
+  const db = await getDatabase();
+  const event = await db.get(
+    `SELECT ${PUBLIC_EVENT_FIELDS} FROM events WHERE id = ?`,
+    [id],
+  );
+  if (!event) {
+    return res.status(404).json({ error: 'Event not found' });
+  }
+  res.setHeader('Cache-Control', 'public, max-age=30');
+  res.json(toPublicEvent(event));
 });
 
 // GET /events/:id/overall - Admin overall scores (single request, auth required)
@@ -109,23 +94,18 @@ router.get(
   '/:id/overall',
   requireAuth,
   async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const db = await getDatabase();
-      const event = await db.get('SELECT id FROM events WHERE id = ?', [
-        parseInt(id, 10),
-      ]);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-      const eventId = parseInt(id, 10);
-      await calculateEventBracketRankingsIfReady(eventId);
-      const rows = await computeOverallScores(eventId);
-      res.json(rows);
-    } catch (error) {
-      console.error('Error fetching overall scores:', error);
-      res.status(500).json({ error: 'Failed to fetch overall scores' });
+    const { id } = req.params;
+    const db = await getDatabase();
+    const event = await db.get('SELECT id FROM events WHERE id = ?', [
+      parseInt(id, 10),
+    ]);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
     }
+    const eventId = parseInt(id, 10);
+    await calculateEventBracketRankingsIfReady(eventId);
+    const rows = await computeOverallScores(eventId);
+    res.json(rows);
   },
 );
 
@@ -134,101 +114,86 @@ router.get(
   '/:id/overall/public',
   publicExpensiveReadLimiter,
   async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      if (!(await areFinalScoresReleased(id))) {
-        return res.status(404).json({ error: 'Not found' });
-      }
-      const eventId = parseInt(id, 10);
-      await calculateEventBracketRankingsIfReady(eventId);
-      const rows = await computeOverallScores(eventId);
-      res.json(rows);
-    } catch (error) {
-      console.error('Error fetching public overall scores:', error);
-      res.status(500).json({ error: 'Failed to fetch overall scores' });
+    const { id } = req.params;
+    if (!(await areFinalScoresReleased(id))) {
+      return res.status(404).json({ error: 'Not found' });
     }
+    const eventId = parseInt(id, 10);
+    await calculateEventBracketRankingsIfReady(eventId);
+    const rows = await computeOverallScores(eventId);
+    res.json(rows);
   },
 );
 
 // GET /events/:id - Get single event
 router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
+  const { id } = req.params;
+  const db = await getDatabase();
 
-    const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+  const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
 
-    if (!event) {
-      return res.status(404).json({ error: 'Event not found' });
-    }
-
-    res.json(event);
-  } catch (error) {
-    console.error('Error fetching event:', error);
-    res.status(500).json({ error: 'Failed to fetch event' });
+  if (!event) {
+    return res.status(404).json({ error: 'Event not found' });
   }
+
+  res.json(event);
 });
 
 // POST /events - Create event (admin only)
 router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const {
-      name,
-      description,
-      event_date,
-      location,
-      status,
-      seeding_rounds,
-      min_rest_minutes,
-      score_accept_mode,
-    } = req.body;
+  const {
+    name,
+    description,
+    event_date,
+    location,
+    status,
+    seeding_rounds,
+    min_rest_minutes,
+    score_accept_mode,
+  } = req.body;
 
-    if (!name) {
-      return res.status(400).json({ error: 'Event name is required' });
-    }
-
-    if (
-      min_rest_minutes !== undefined &&
-      (!Number.isInteger(min_rest_minutes) || min_rest_minutes < 0)
-    ) {
-      return res.status(400).json({
-        error: 'min_rest_minutes must be a non-negative integer',
-      });
-    }
-
-    const db = await getDatabase();
-
-    const result = await db.run(
-      `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, min_rest_minutes, score_accept_mode, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [
-        name,
-        description || null,
-        event_date || null,
-        location || null,
-        status || 'setup',
-        seeding_rounds ?? 3,
-        min_rest_minutes ?? 3,
-        score_accept_mode || 'manual',
-        req.user?.id || null,
-      ],
-    );
-
-    const event = await db.get('SELECT * FROM events WHERE id = ?', [
-      result.lastID,
-    ]);
-    await auditRequest(db, req, {
-      event_id: result.lastID,
-      action: 'event_created',
-      entity_type: 'event',
-      entity_id: result.lastID,
-      new_value: event,
-    });
-    res.status(201).json(event);
-  } catch (error) {
-    console.error('Error creating event:', error);
-    res.status(500).json({ error: 'Failed to create event' });
+  if (!name) {
+    return res.status(400).json({ error: 'Event name is required' });
   }
+
+  if (
+    min_rest_minutes !== undefined &&
+    (!Number.isInteger(min_rest_minutes) || min_rest_minutes < 0)
+  ) {
+    return res.status(400).json({
+      error: 'min_rest_minutes must be a non-negative integer',
+    });
+  }
+
+  const db = await getDatabase();
+
+  const result = await db.run(
+    `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, min_rest_minutes, score_accept_mode, created_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [
+      name,
+      description || null,
+      event_date || null,
+      location || null,
+      status || 'setup',
+      seeding_rounds ?? 3,
+      min_rest_minutes ?? 3,
+      score_accept_mode || 'manual',
+      req.user?.id || null,
+    ],
+  );
+
+  const event = await db.get('SELECT * FROM events WHERE id = ?', [
+    result.lastID,
+  ]);
+  await auditRequest(db, req, {
+    event_id: result.lastID,
+    action: 'event_created',
+    entity_type: 'event',
+    entity_id: result.lastID,
+    new_value: event,
+  });
+  res.status(201).json(event);
 });
 
 // PATCH /events/:id - Update event (partial, admin only)
@@ -306,32 +271,27 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
 
 // DELETE /events/:id - Delete event (admin only)
 router.delete('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const { id } = req.params;
-    const db = await getDatabase();
+  const { id } = req.params;
+  const db = await getDatabase();
 
-    const oldEvent = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+  const oldEvent = await db.get('SELECT * FROM events WHERE id = ?', [id]);
 
-    // DELETE is idempotent - return 204 regardless of whether row existed
-    await db.run('DELETE FROM events WHERE id = ?', [id]);
+  // DELETE is idempotent - return 204 regardless of whether row existed
+  await db.run('DELETE FROM events WHERE id = ?', [id]);
 
-    if (oldEvent) {
-      // audit_log.event_id references events, so the entry is reachable by
-      // entity (event #id) rather than by event.
-      await auditRequest(db, req, {
-        event_id: null,
-        action: 'event_deleted',
-        entity_type: 'event',
-        entity_id: Number(id),
-        old_value: oldEvent,
-      });
-    }
-
-    res.status(204).send();
-  } catch (error) {
-    console.error('Error deleting event:', error);
-    res.status(500).json({ error: 'Failed to delete event' });
+  if (oldEvent) {
+    // audit_log.event_id references events, so the entry is reachable by
+    // entity (event #id) rather than by event.
+    await auditRequest(db, req, {
+      event_id: null,
+      action: 'event_deleted',
+      entity_type: 'event',
+      entity_id: Number(id),
+      old_value: oldEvent,
+    });
   }
+
+  res.status(204).send();
 });
 
 export default router;

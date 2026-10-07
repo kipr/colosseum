@@ -30,393 +30,384 @@ router.post(
   scoreSubmitLimiter,
   requireJudgeSession,
   async (req: express.Request, res: express.Response) => {
+    const {
+      templateId,
+      participantName,
+      matchId,
+      scoreData,
+      isHeadToHead,
+      bracketSource,
+      eventId,
+      scoreType,
+      game_queue_id,
+      bracket_game_id,
+      double_seeding_match_id,
+      resultType = 'standard',
+      disqualifiedTeamId,
+      resultNote,
+      teamInitials,
+    } = req.body;
+
+    if (!templateId || !scoreData) {
+      return res
+        .status(400)
+        .json({ error: 'Template ID and score data are required' });
+    }
+
+    const db = await getDatabase();
+
+    // Get the template
+    const template = await db.get(
+      'SELECT id, name, created_by, schema FROM scoresheet_templates WHERE id = ?',
+      [templateId],
+    );
+
+    if (!template) {
+      return res.status(400).json({ error: 'Template not found' });
+    }
+
+    let templateSchema: unknown = null;
     try {
-      const {
-        templateId,
-        participantName,
-        matchId,
-        scoreData,
-        isHeadToHead,
-        bracketSource,
-        eventId,
-        scoreType,
-        game_queue_id,
-        bracket_game_id,
-        double_seeding_match_id,
-        resultType = 'standard',
-        disqualifiedTeamId,
-        resultNote,
-        teamInitials,
-      } = req.body;
+      templateSchema = JSON.parse(template.schema);
+    } catch {
+      // An unparseable schema cannot declare initials; the rest of the
+      // submission does not depend on it.
+    }
+    const initialsRequired = requiresTeamInitials(templateSchema);
 
-      if (!templateId || !scoreData) {
-        return res
-          .status(400)
-          .json({ error: 'Template ID and score data are required' });
-      }
-
-      const db = await getDatabase();
-
-      // Get the template
-      const template = await db.get(
-        'SELECT id, name, created_by, schema FROM scoresheet_templates WHERE id = ?',
-        [templateId],
+    // DB-backed (event-scoped) submission: resolve team_id if needed (seeding)
+    const attemptingDbBackedSeeding = eventId && scoreType === 'seeding';
+    let resolvedTeamId = scoreData.team_id?.value;
+    if (
+      attemptingDbBackedSeeding &&
+      !resolvedTeamId &&
+      scoreData.team_number?.value
+    ) {
+      const team = await db.get(
+        'SELECT id FROM teams WHERE event_id = ? AND team_number = ?',
+        [eventId, scoreData.team_number.value],
       );
+      resolvedTeamId = team?.id;
+    }
+    const isDbBackedSeeding = attemptingDbBackedSeeding && resolvedTeamId;
 
-      if (!template) {
-        return res.status(400).json({ error: 'Template not found' });
-      }
-
-      let templateSchema: unknown = null;
-      try {
-        templateSchema = JSON.parse(template.schema);
-      } catch {
-        // An unparseable schema cannot declare initials; the rest of the
-        // submission does not depend on it.
-      }
-      const initialsRequired = requiresTeamInitials(templateSchema);
-
-      // DB-backed (event-scoped) submission: resolve team_id if needed (seeding)
-      const attemptingDbBackedSeeding = eventId && scoreType === 'seeding';
-      let resolvedTeamId = scoreData.team_id?.value;
-      if (
-        attemptingDbBackedSeeding &&
-        !resolvedTeamId &&
-        scoreData.team_number?.value
-      ) {
-        const team = await db.get(
-          'SELECT id FROM teams WHERE event_id = ? AND team_number = ?',
-          [eventId, scoreData.team_number.value],
-        );
-        resolvedTeamId = team?.id;
-      }
-      const isDbBackedSeeding = attemptingDbBackedSeeding && resolvedTeamId;
-
-      // DB-backed bracket submission: validate bracket_game_id belongs to event
-      // (game query JOINs brackets/events, so event existence is validated implicitly)
-      const attemptingDbBackedBracket =
-        eventId && scoreType === 'bracket' && bracket_game_id != null;
-      let isDbBackedBracket = false;
-      let bracketGame:
-        | { id: number; team1_id: number | null; team2_id: number | null }
-        | undefined;
-      if (attemptingDbBackedBracket) {
-        bracketGame = await db.get(
-          `SELECT bg.id, bg.team1_id, bg.team2_id FROM bracket_games bg
-           JOIN brackets b ON bg.bracket_id = b.id
-           WHERE bg.id = ? AND b.event_id = ?`,
-          [bracket_game_id, eventId],
-        );
-        if (!bracketGame) {
-          return res.status(400).json({
-            error:
-              'Bracket game not found or does not belong to this event. Invalid event.',
-          });
-        }
-
-        const participants = [
-          bracketGame.team1_id,
-          bracketGame.team2_id,
-        ].filter((teamId): teamId is number => teamId != null);
-        if (resultType === 'disqualification') {
-          if (!participants.includes(disqualifiedTeamId!)) {
-            return res.status(400).json({
-              error: 'Disqualified team must be a participant in the game',
-            });
-          }
-          const winnerTeamId = participants.find(
-            (teamId) => teamId !== disqualifiedTeamId,
-          );
-          if (winnerTeamId == null) {
-            return res.status(400).json({
-              error: 'A disqualification requires two participating teams',
-            });
-          }
-          scoreData.winner_team_id = {
-            label: 'Winner Team ID',
-            value: winnerTeamId,
-            type: 'number',
-          };
-        } else {
-          const winnerEntry = scoreData.winner_team_id ?? scoreData.winner_id;
-          const winnerTeamId =
-            winnerEntry &&
-            typeof winnerEntry === 'object' &&
-            'value' in winnerEntry
-              ? Number(winnerEntry.value)
-              : null;
-          if (winnerTeamId == null || !participants.includes(winnerTeamId)) {
-            return res
-              .status(400)
-              .json({ error: 'Winner must be a participant in the game' });
-          }
-        }
-        isDbBackedBracket = true;
-      }
-
-      if (eventId && scoreType === 'bracket' && bracket_game_id == null) {
-        return res.status(400).json({
-          error: 'bracket_game_id is required for DB-backed bracket submission',
-        });
-      }
-
-      // DB-backed double-seeding submission: validate the match belongs to the event
-      const attemptingDbBackedDoubleSeeding =
-        eventId &&
-        scoreType === 'double_seeding' &&
-        double_seeding_match_id != null;
-      let isDbBackedDoubleSeeding = false;
-      let doubleSeedingMatch:
-        | { id: number; team1_id: number | null; team2_id: number | null }
-        | undefined;
-      if (attemptingDbBackedDoubleSeeding) {
-        const match = await db.get(
-          `SELECT id, team1_id, team2_id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
-          [double_seeding_match_id, eventId],
-        );
-        if (!match) {
-          return res.status(400).json({
-            error:
-              'Double-seeding match not found or does not belong to this event. Invalid event.',
-          });
-        }
-        doubleSeedingMatch = match;
-        isDbBackedDoubleSeeding = true;
-      }
-
-      if (
-        eventId &&
-        scoreType === 'double_seeding' &&
-        double_seeding_match_id == null
-      ) {
+    // DB-backed bracket submission: validate bracket_game_id belongs to event
+    // (game query JOINs brackets/events, so event existence is validated implicitly)
+    const attemptingDbBackedBracket =
+      eventId && scoreType === 'bracket' && bracket_game_id != null;
+    let isDbBackedBracket = false;
+    let bracketGame:
+      | { id: number; team1_id: number | null; team2_id: number | null }
+      | undefined;
+    if (attemptingDbBackedBracket) {
+      bracketGame = await db.get(
+        `SELECT bg.id, bg.team1_id, bg.team2_id FROM bracket_games bg
+         JOIN brackets b ON bg.bracket_id = b.id
+         WHERE bg.id = ? AND b.event_id = ?`,
+        [bracket_game_id, eventId],
+      );
+      if (!bracketGame) {
         return res.status(400).json({
           error:
-            'double_seeding_match_id is required for DB-backed double-seeding submission',
+            'Bracket game not found or does not belong to this event. Invalid event.',
         });
       }
 
-      const isDbBacked =
-        isDbBackedSeeding || isDbBackedBracket || isDbBackedDoubleSeeding;
-
-      // Single event validation for seeding (bracket already validated via game query)
-      if (attemptingDbBackedSeeding) {
-        const event = await db.get('SELECT id FROM events WHERE id = ?', [
-          eventId,
-        ]);
-        if (!event) {
-          return res.status(400).json({ error: 'Invalid event' });
-        }
-        if (!resolvedTeamId) {
-          return res
-            .status(400)
-            .json({ error: 'Team not found for event. Check team number.' });
-        }
-        // Enforce team belongs to event (prevents cross-event submission via team_id)
-        const team = await db.get(
-          'SELECT id FROM teams WHERE id = ? AND event_id = ?',
-          [resolvedTeamId, eventId],
-        );
-        if (!team) {
+      const participants = [bracketGame.team1_id, bracketGame.team2_id].filter(
+        (teamId): teamId is number => teamId != null,
+      );
+      if (resultType === 'disqualification') {
+        if (!participants.includes(disqualifiedTeamId!)) {
           return res.status(400).json({
-            error: 'Team not found or does not belong to this event.',
+            error: 'Disqualified team must be a participant in the game',
           });
         }
-      }
-
-      if (!isDbBacked) {
-        return res.status(400).json({
-          error:
-            'Event-scoped submission is required. Provide eventId and scoreType (seeding, bracket, or double_seeding) with bracket_game_id for bracket scores and double_seeding_match_id for double-seeding scores.',
-        });
-      }
-
-      // Every participating team signs off, whatever the result type: the
-      // participants come from the game/match/team resolved above, never from
-      // the client.
-      let initialsToStore: CheckedTeamInitials[] = [];
-      if (initialsRequired) {
-        const expected: ExpectedTeamInitials[] = isDbBackedBracket
-          ? expectedTwoSidedInitials(
-              bracketGame?.team1_id,
-              bracketGame?.team2_id,
-            )
-          : isDbBackedDoubleSeeding
-            ? expectedTwoSidedInitials(
-                doubleSeedingMatch?.team1_id,
-                doubleSeedingMatch?.team2_id,
-              )
-            : [{ side: 'team', teamId: Number(resolvedTeamId) }];
-
-        const teamIds = expected.map((participant) => participant.teamId);
-        const teams =
-          teamIds.length > 0
-            ? await db.all<{ id: number; team_number: number }>(
-                `SELECT id, team_number FROM teams WHERE id IN (${teamIds.map(() => '?').join(', ')})`,
-                teamIds,
-              )
-            : [];
-        const teamNumbers = new Map(
-          teams.map((team) => [team.id, team.team_number]),
+        const winnerTeamId = participants.find(
+          (teamId) => teamId !== disqualifiedTeamId,
         );
-        const initialsCheck = checkTeamInitials(
-          expected,
-          teamInitials,
-          (teamId) => `team ${teamNumbers.get(teamId) ?? teamId}`,
-        );
-        if (!initialsCheck.ok) {
-          return res.status(400).json({ error: initialsCheck.error });
+        if (winnerTeamId == null) {
+          return res.status(400).json({
+            error: 'A disqualification requires two participating teams',
+          });
         }
-        initialsToStore = initialsCheck.entries;
-      }
-
-      // Add metadata to score data for head-to-head
-      const enrichedScoreData: Record<string, unknown> = {
-        ...scoreData,
-        _isHeadToHead: { value: isHeadToHead || false, type: 'boolean' },
-        _bracketSource: { value: bracketSource || null, type: 'object' },
-      };
-      if (isDbBacked && resolvedTeamId) {
-        enrichedScoreData.team_id = {
-          label: 'Team ID',
-          value: resolvedTeamId,
+        scoreData.winner_team_id = {
+          label: 'Winner Team ID',
+          value: winnerTeamId,
           type: 'number',
         };
-      }
-
-      // The submission and its initials land together or not at all.
-      const submissionId = await db.transaction(async (tx) => {
-        const inserted = await tx.run(
-          `INSERT INTO score_submissions 
-       (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-          [
-            null,
-            templateId,
-            participantName,
-            matchId,
-            JSON.stringify(enrichedScoreData),
-            isDbBacked ? eventId : null,
-            isDbBacked ? scoreType : null,
-            game_queue_id ?? null,
-            isDbBackedBracket ? bracket_game_id : null,
-            isDbBackedDoubleSeeding ? double_seeding_match_id : null,
-            isDbBackedBracket ? resultType : 'standard',
-            isDbBackedBracket ? (disqualifiedTeamId ?? null) : null,
-            isDbBackedBracket ? (resultNote?.trim() ?? null) : null,
-          ],
-        );
-        for (const entry of initialsToStore) {
-          await tx.run(
-            `INSERT INTO score_team_initials (score_submission_id, team_id, side, initials)
-             VALUES (?, ?, ?, ?)`,
-            [inserted.lastID, entry.teamId, entry.side, entry.initials],
-          );
+      } else {
+        const winnerEntry = scoreData.winner_team_id ?? scoreData.winner_id;
+        const winnerTeamId =
+          winnerEntry &&
+          typeof winnerEntry === 'object' &&
+          'value' in winnerEntry
+            ? Number(winnerEntry.value)
+            : null;
+        if (winnerTeamId == null || !participants.includes(winnerTeamId)) {
+          return res
+            .status(400)
+            .json({ error: 'Winner must be a participant in the game' });
         }
-        return inserted.lastID;
+      }
+      isDbBackedBracket = true;
+    }
+
+    if (eventId && scoreType === 'bracket' && bracket_game_id == null) {
+      return res.status(400).json({
+        error: 'bracket_game_id is required for DB-backed bracket submission',
+      });
+    }
+
+    // DB-backed double-seeding submission: validate the match belongs to the event
+    const attemptingDbBackedDoubleSeeding =
+      eventId &&
+      scoreType === 'double_seeding' &&
+      double_seeding_match_id != null;
+    let isDbBackedDoubleSeeding = false;
+    let doubleSeedingMatch:
+      | { id: number; team1_id: number | null; team2_id: number | null }
+      | undefined;
+    if (attemptingDbBackedDoubleSeeding) {
+      const match = await db.get(
+        `SELECT id, team1_id, team2_id FROM double_seeding_matches WHERE id = ? AND event_id = ?`,
+        [double_seeding_match_id, eventId],
+      );
+      if (!match) {
+        return res.status(400).json({
+          error:
+            'Double-seeding match not found or does not belong to this event. Invalid event.',
+        });
+      }
+      doubleSeedingMatch = match;
+      isDbBackedDoubleSeeding = true;
+    }
+
+    if (
+      eventId &&
+      scoreType === 'double_seeding' &&
+      double_seeding_match_id == null
+    ) {
+      return res.status(400).json({
+        error:
+          'double_seeding_match_id is required for DB-backed double-seeding submission',
+      });
+    }
+
+    const isDbBacked =
+      isDbBackedSeeding || isDbBackedBracket || isDbBackedDoubleSeeding;
+
+    // Single event validation for seeding (bracket already validated via game query)
+    if (attemptingDbBackedSeeding) {
+      const event = await db.get('SELECT id FROM events WHERE id = ?', [
+        eventId,
+      ]);
+      if (!event) {
+        return res.status(400).json({ error: 'Invalid event' });
+      }
+      if (!resolvedTeamId) {
+        return res
+          .status(400)
+          .json({ error: 'Team not found for event. Check team number.' });
+      }
+      // Enforce team belongs to event (prevents cross-event submission via team_id)
+      const team = await db.get(
+        'SELECT id FROM teams WHERE id = ? AND event_id = ?',
+        [resolvedTeamId, eventId],
+      );
+      if (!team) {
+        return res.status(400).json({
+          error: 'Team not found or does not belong to this event.',
+        });
+      }
+    }
+
+    if (!isDbBacked) {
+      return res.status(400).json({
+        error:
+          'Event-scoped submission is required. Provide eventId and scoreType (seeding, bracket, or double_seeding) with bracket_game_id for bracket scores and double_seeding_match_id for double-seeding scores.',
+      });
+    }
+
+    // Every participating team signs off, whatever the result type: the
+    // participants come from the game/match/team resolved above, never from
+    // the client.
+    let initialsToStore: CheckedTeamInitials[] = [];
+    if (initialsRequired) {
+      const expected: ExpectedTeamInitials[] = isDbBackedBracket
+        ? expectedTwoSidedInitials(bracketGame?.team1_id, bracketGame?.team2_id)
+        : isDbBackedDoubleSeeding
+          ? expectedTwoSidedInitials(
+              doubleSeedingMatch?.team1_id,
+              doubleSeedingMatch?.team2_id,
+            )
+          : [{ side: 'team', teamId: Number(resolvedTeamId) }];
+
+      const teamIds = expected.map((participant) => participant.teamId);
+      const teams =
+        teamIds.length > 0
+          ? await db.all<{ id: number; team_number: number }>(
+              `SELECT id, team_number FROM teams WHERE id IN (${teamIds.map(() => '?').join(', ')})`,
+              teamIds,
+            )
+          : [];
+      const teamNumbers = new Map(
+        teams.map((team) => [team.id, team.team_number]),
+      );
+      const initialsCheck = checkTeamInitials(
+        expected,
+        teamInitials,
+        (teamId) => `team ${teamNumbers.get(teamId) ?? teamId}`,
+      );
+      if (!initialsCheck.ok) {
+        return res.status(400).json({ error: initialsCheck.error });
+      }
+      initialsToStore = initialsCheck.entries;
+    }
+
+    // Add metadata to score data for head-to-head
+    const enrichedScoreData: Record<string, unknown> = {
+      ...scoreData,
+      _isHeadToHead: { value: isHeadToHead || false, type: 'boolean' },
+      _bracketSource: { value: bracketSource || null, type: 'object' },
+    };
+    if (isDbBacked && resolvedTeamId) {
+      enrichedScoreData.team_id = {
+        label: 'Team ID',
+        value: resolvedTeamId,
+        type: 'number',
+      };
+    }
+
+    // The submission and its initials land together or not at all.
+    const submissionId = await db.transaction(async (tx) => {
+      const inserted = await tx.run(
+        `INSERT INTO score_submissions 
+     (user_id, template_id, participant_name, match_id, score_data, event_id, score_type, game_queue_id, bracket_game_id, double_seeding_match_id, result_type, disqualified_team_id, result_note)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        [
+          null,
+          templateId,
+          participantName,
+          matchId,
+          JSON.stringify(enrichedScoreData),
+          isDbBacked ? eventId : null,
+          isDbBacked ? scoreType : null,
+          game_queue_id ?? null,
+          isDbBackedBracket ? bracket_game_id : null,
+          isDbBackedDoubleSeeding ? double_seeding_match_id : null,
+          isDbBackedBracket ? resultType : 'standard',
+          isDbBackedBracket ? (disqualifiedTeamId ?? null) : null,
+          isDbBackedBracket ? (resultNote?.trim() ?? null) : null,
+        ],
+      );
+      for (const entry of initialsToStore) {
+        await tx.run(
+          `INSERT INTO score_team_initials (score_submission_id, team_id, side, initials)
+           VALUES (?, ?, ?, ?)`,
+          [inserted.lastID, entry.teamId, entry.side, entry.initials],
+        );
+      }
+      return inserted.lastID;
+    });
+
+    const submission = await db.get(
+      'SELECT * FROM score_submissions WHERE id = ?',
+      [submissionId],
+    );
+
+    // Audit event-scoped submissions
+    if (isDbBacked && submission) {
+      const scopedEventId = Number(eventId);
+      await createAuditEntry(db, {
+        event_id: scopedEventId,
+        user_id: null,
+        action: 'score_submitted',
+        entity_type: 'score_submission',
+        entity_id: submission.id,
+        old_value: null,
+        new_value: toAuditJson({
+          id: submission.id,
+          event_id: submission.event_id,
+          score_type: submission.score_type,
+          status: submission.status,
+          score_data: submission.score_data,
+          result_type: submission.result_type,
+          disqualified_team_id: submission.disqualified_team_id,
+          result_note: submission.result_note,
+          team_initials: initialsToStore.map((entry) => ({
+            side: entry.side,
+            team_id: entry.teamId,
+            initials: entry.initials,
+          })),
+        }),
+        ip_address: req.ip ?? null,
       });
 
-      const submission = await db.get(
-        'SELECT * FROM score_submissions WHERE id = ?',
-        [submissionId],
-      );
-
-      // Audit event-scoped submissions
-      if (isDbBacked && submission) {
-        const scopedEventId = Number(eventId);
-        await createAuditEntry(db, {
-          event_id: scopedEventId,
-          user_id: null,
-          action: 'score_submitted',
-          entity_type: 'score_submission',
-          entity_id: submission.id,
-          old_value: null,
-          new_value: toAuditJson({
-            id: submission.id,
-            event_id: submission.event_id,
-            score_type: submission.score_type,
-            status: submission.status,
-            score_data: submission.score_data,
-            result_type: submission.result_type,
-            disqualified_team_id: submission.disqualified_team_id,
-            result_note: submission.result_note,
-            team_initials: initialsToStore.map((entry) => ({
-              side: entry.side,
-              team_id: entry.teamId,
-              initials: entry.initials,
-            })),
-          }),
-          ip_address: req.ip ?? null,
-        });
-
-        // Mark queue as scored (pending submission) as soon as the score is submitted.
-        // On accept, the queue row is removed; reject/revert restores to queued.
-        if (scoreType === 'seeding' && resolvedTeamId) {
-          const roundNumber =
-            scoreData.round?.value ?? scoreData.round_number?.value;
-          if (roundNumber != null) {
-            await updateSeedingQueueItem(
-              db,
-              scopedEventId,
-              resolvedTeamId,
-              Number(roundNumber),
-              true,
-            );
-          }
-        } else if (scoreType === 'bracket' && bracket_game_id != null) {
-          await updateBracketQueueItem(
+      // Mark queue as scored (pending submission) as soon as the score is submitted.
+      // On accept, the queue row is removed; reject/revert restores to queued.
+      if (scoreType === 'seeding' && resolvedTeamId) {
+        const roundNumber =
+          scoreData.round?.value ?? scoreData.round_number?.value;
+        if (roundNumber != null) {
+          await updateSeedingQueueItem(
             db,
             scopedEventId,
-            Number(bracket_game_id),
-            true,
-          );
-        } else if (
-          scoreType === 'double_seeding' &&
-          double_seeding_match_id != null
-        ) {
-          await updateDoubleSeedingQueueItem(
-            db,
-            scopedEventId,
-            Number(double_seeding_match_id),
+            resolvedTeamId,
+            Number(roundNumber),
             true,
           );
         }
-
-        // Auto-accept when event's score_accept_mode matches (force=false, reviewed_by=null)
-        const event = await db.get<{ score_accept_mode?: string }>(
-          'SELECT score_accept_mode FROM events WHERE id = ?',
-          [scopedEventId],
+      } else if (scoreType === 'bracket' && bracket_game_id != null) {
+        await updateBracketQueueItem(
+          db,
+          scopedEventId,
+          Number(bracket_game_id),
+          true,
         );
-        const mode = event?.score_accept_mode ?? 'manual';
-        const shouldAutoAccept =
-          mode === 'auto_accept_all' ||
-          (mode === 'auto_accept_seeding' && scoreType === 'seeding');
-
-        if (shouldAutoAccept) {
-          const acceptResult = await acceptEventScore({
-            db,
-            submissionId: submission.id,
-            force: false,
-            reviewedBy: null,
-            ipAddress: req.ip ?? null,
-          });
-
-          if (acceptResult.ok) {
-            const updated = await db.get(
-              'SELECT * FROM score_submissions WHERE id = ?',
-              [submission.id],
-            );
-            res.json(updated);
-            return;
-          }
-          // Conflict or other error: leave as pending, return original submission
-        }
+      } else if (
+        scoreType === 'double_seeding' &&
+        double_seeding_match_id != null
+      ) {
+        await updateDoubleSeedingQueueItem(
+          db,
+          scopedEventId,
+          Number(double_seeding_match_id),
+          true,
+        );
       }
 
-      res.json(submission);
-    } catch (error) {
-      console.error('Error submitting score:', error);
-      res.status(500).json({ error: 'Failed to submit score' });
+      // Auto-accept when event's score_accept_mode matches (force=false, reviewed_by=null)
+      const event = await db.get<{ score_accept_mode?: string }>(
+        'SELECT score_accept_mode FROM events WHERE id = ?',
+        [scopedEventId],
+      );
+      const mode = event?.score_accept_mode ?? 'manual';
+      const shouldAutoAccept =
+        mode === 'auto_accept_all' ||
+        (mode === 'auto_accept_seeding' && scoreType === 'seeding');
+
+      if (shouldAutoAccept) {
+        const acceptResult = await acceptEventScore({
+          db,
+          submissionId: submission.id,
+          force: false,
+          reviewedBy: null,
+          ipAddress: req.ip ?? null,
+        });
+
+        if (acceptResult.ok) {
+          const updated = await db.get(
+            'SELECT * FROM score_submissions WHERE id = ?',
+            [submission.id],
+          );
+          res.json(updated);
+          return;
+        }
+        // Conflict or other error: leave as pending, return original submission
+      }
     }
+
+    res.json(submission);
   },
 );
 
@@ -425,28 +416,23 @@ router.get(
   '/scores/history',
   requireAuth,
   async (req: AuthRequest, res: express.Response) => {
-    try {
-      const db = await getDatabase();
-      const scores = await db.all(
-        `SELECT s.*, t.name as template_name 
-       FROM score_submissions s
-       JOIN scoresheet_templates t ON s.template_id = t.id
-       WHERE s.user_id = ?
-       ORDER BY s.created_at DESC
-       LIMIT 50`,
-        [req.user.id],
-      );
+    const db = await getDatabase();
+    const scores = await db.all(
+      `SELECT s.*, t.name as template_name 
+     FROM score_submissions s
+     JOIN scoresheet_templates t ON s.template_id = t.id
+     WHERE s.user_id = ?
+     ORDER BY s.created_at DESC
+     LIMIT 50`,
+      [req.user.id],
+    );
 
-      // Parse score_data JSON
-      scores.forEach((score) => {
-        score.score_data = JSON.parse(score.score_data);
-      });
+    // Parse score_data JSON
+    scores.forEach((score) => {
+      score.score_data = JSON.parse(score.score_data);
+    });
 
-      res.json(scores);
-    } catch (error) {
-      console.error('Error fetching score history:', error);
-      res.status(500).json({ error: 'Failed to fetch score history' });
-    }
+    res.json(scores);
   },
 );
 

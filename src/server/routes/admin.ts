@@ -6,62 +6,57 @@ const router = express.Router();
 
 // Get all admin users with activity status
 router.get('/users', requireAuth, async (req: AuthRequest, res: Response) => {
-  try {
-    const db = await getDatabase();
+  const db = await getDatabase();
 
-    // Get all admin users with last activity
-    const users = await db.all(`
-      SELECT 
-        id, 
-        email, 
-        name, 
-        is_admin,
-        last_activity,
-        created_at,
-        updated_at
-      FROM users 
-      WHERE is_admin IS TRUE
-      ORDER BY last_activity DESC NULLS LAST
-    `);
+  // Get all admin users with last activity
+  const users = await db.all(`
+    SELECT 
+      id, 
+      email, 
+      name, 
+      is_admin,
+      last_activity,
+      created_at,
+      updated_at
+    FROM users 
+    WHERE is_admin IS TRUE
+    ORDER BY last_activity DESC NULLS LAST
+  `);
 
-    // Add activity status to each user
-    const now = Date.now();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const usersWithStatus = users.map((user: any) => {
-      // pg returns Date; JSON-serialized timestamps arrive as strings.
-      let lastActivityTime: number | null = null;
-      if (user.last_activity) {
-        if (user.last_activity instanceof Date) {
-          lastActivityTime = user.last_activity.getTime();
-        } else {
-          lastActivityTime = new Date(user.last_activity).getTime();
-        }
+  // Add activity status to each user
+  const now = Date.now();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const usersWithStatus = users.map((user: any) => {
+    // pg returns Date; JSON-serialized timestamps arrive as strings.
+    let lastActivityTime: number | null = null;
+    if (user.last_activity) {
+      if (user.last_activity instanceof Date) {
+        lastActivityTime = user.last_activity.getTime();
+      } else {
+        lastActivityTime = new Date(user.last_activity).getTime();
       }
+    }
 
-      // Consider "active" if activity within last 5 minutes
-      const isActive = lastActivityTime
-        ? now - lastActivityTime < 5 * 60 * 1000
-        : false;
-      // Consider "recently active" if within last hour
-      const isRecentlyActive = lastActivityTime
-        ? now - lastActivityTime < 60 * 60 * 1000
-        : false;
+    // Consider "active" if activity within last 5 minutes
+    const isActive = lastActivityTime
+      ? now - lastActivityTime < 5 * 60 * 1000
+      : false;
+    // Consider "recently active" if within last hour
+    const isRecentlyActive = lastActivityTime
+      ? now - lastActivityTime < 60 * 60 * 1000
+      : false;
 
-      return {
-        ...user,
-        last_activity: lastActivityTime
-          ? new Date(lastActivityTime).toISOString()
-          : null,
-        isActive,
-        isRecentlyActive,
-      };
-    });
+    return {
+      ...user,
+      last_activity: lastActivityTime
+        ? new Date(lastActivityTime).toISOString()
+        : null,
+      isActive,
+      isRecentlyActive,
+    };
+  });
 
-    res.json(usersWithStatus);
-  } catch (error) {
-    console.error('Error fetching admin users:', error);
-    res.status(500).json({ error: 'Failed to fetch admin users' });
-  }
+  res.json(usersWithStatus);
 });
 
 export default router;
