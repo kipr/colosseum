@@ -7,6 +7,7 @@ import {
   getEventStatusLabel,
 } from '../utils/eventStatus';
 import { spectatorEventPath } from '../utils/routes';
+import { apiFetch } from '../utils/api';
 import './SpectatorShared.css';
 import './SpectatorEvents.css';
 
@@ -27,9 +28,9 @@ export default function SpectatorEvents() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/events/public');
-        if (!res.ok) throw new Error('Failed to fetch events');
-        const data: PublicEvent[] = await res.json();
+        const data = await apiFetch<PublicEvent[]>('/events/public', {
+          fallbackError: 'Failed to fetch events',
+        });
         setEvents(data);
       } catch (error) {
         console.error('Error loading events:', error);

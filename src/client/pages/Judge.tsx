@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import AccessCodeModal from '../components/AccessCodeModal';
 import { formatDate } from '../utils/dateUtils';
+import { apiFetch } from '../utils/api';
 import './Judge.css';
 
 interface Template {
@@ -32,9 +33,9 @@ export default function Judge() {
 
   const loadTemplates = async () => {
     try {
-      const response = await fetch('/scoresheet/templates');
-      if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
+      const data = await apiFetch<Template[]>('/scoresheet/templates', {
+        fallbackError: 'Failed to load templates',
+      });
       setTemplates(data);
     } catch (error) {
       console.error('Error loading templates:', error);

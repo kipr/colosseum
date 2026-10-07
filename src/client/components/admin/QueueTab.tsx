@@ -4,12 +4,17 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatCalledAt } from '../../utils/dateUtils';
+import { apiFetch, apiRequest } from '../../utils/api';
 import {
   describeRestDuration,
   formatRestDuration,
   getQueueRestWarnings,
+  type QueueType,
   type TeamRestWarning,
 } from '../../utils/queueRest';
+import type { Bracket, BracketGame } from '../../types/brackets';
+import type { TeamSummary } from '../../types/teams';
+import { QUEUE_STATUSES, type QueueStatus } from '@shared/queueStatus';
 import '../Modal.css';
 import './QueueTab.css';
 
@@ -20,7 +25,7 @@ interface QueueItem {
   seeding_team_id: number | null;
   seeding_round: number | null;
   double_seeding_match_id: number | null;
-  queue_type: 'seeding' | 'bracket' | 'double_seeding';
+  queue_type: QueueType;
   queue_position: number;
   status: QueueStatus;
   table_number: number | null;
@@ -73,45 +78,8 @@ interface QueueParticipant {
   teamNumber: number | null;
 }
 
-interface Bracket {
-  id: number;
-  name: string;
-  bracket_size: number;
-  status: string;
-}
+const STATUS_ORDER: readonly QueueStatus[] = QUEUE_STATUSES;
 
-interface BracketGame {
-  id: number;
-  game_number: number;
-  round_name: string | null;
-  bracket_side: string | null;
-  team1_id: number | null;
-  team2_id: number | null;
-  team1_number: number | null;
-  team1_name: string | null;
-  team2_number: number | null;
-  team2_name: string | null;
-  status: string;
-}
-
-interface Team {
-  id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
-
-type QueueStatus = 'queued' | 'called' | 'arrived' | 'on_table' | 'scored';
-
-const STATUS_ORDER: QueueStatus[] = [
-  'queued',
-  'called',
-  'arrived',
-  'on_table',
-  'scored',
-];
-
-type QueueType = 'seeding' | 'bracket' | 'double_seeding';
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
 type SortDirection = 'asc' | 'desc';
 
@@ -235,7 +203,7 @@ export default function QueueTab() {
 
   // Add seeding modal state
   const [showAddSeedingModal, setShowAddSeedingModal] = useState(false);
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [selectedTeamId, setSelectedTeamId] = useState<number | null>(null);
   const [selectedRound, setSelectedRound] = useState<number>(1);
   const [addingSeeding, setAddingSeeding] = useState(false);
@@ -281,16 +249,14 @@ export default function QueueTab() {
         }
 
         const url = `/queue/event/${selectedEventId}${params.toString() ? `?${params}` : ''}`;
-        const response = await fetch(url, { credentials: 'include' });
-        if (!response.ok) {
-          throw new Error('Failed to fetch queue');
-        }
+        const { data, response } = await apiRequest<QueueItem[]>(url, {
+          fallbackError: 'Failed to fetch queue',
+        });
         const etag = response.headers.get('ETag');
         const fetchKey = etag ? `${url}::${etag}` : null;
         if (background && fetchKey && lastFetchKeyRef.current === fetchKey) {
           return;
         }
-        const data: QueueItem[] = await response.json();
         lastFetchKeyRef.current = fetchKey;
         setQueue(data);
       } catch (error) {
@@ -332,11 +298,10 @@ export default function QueueTab() {
 
     setBrackets([]);
     try {
-      const response = await fetch(`/brackets/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch brackets');
-      const data: Bracket[] = await response.json();
+      const data = await apiFetch<Bracket[]>(
+        `/brackets/event/${selectedEventId}`,
+        { fallbackError: 'Failed to fetch brackets' },
+      );
       setBrackets(data);
     } catch (error) {
       console.error('Error fetching brackets:', error);
@@ -348,11 +313,10 @@ export default function QueueTab() {
     if (!selectedEventId) return;
 
     try {
-      const response = await fetch(`/teams/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch teams');
-      const data: Team[] = await response.json();
+      const data = await apiFetch<TeamSummary[]>(
+        `/teams/event/${selectedEventId}`,
+        { fallbackError: 'Failed to fetch teams' },
+      );
       setTeams(data);
       if (data.length > 0) {
         setSelectedTeamId(data[0].id);
@@ -365,11 +329,10 @@ export default function QueueTab() {
   // Fetch bracket games for add bracket modal
   const fetchBracketGames = useCallback(async (bracketId: number) => {
     try {
-      const response = await fetch(`/brackets/${bracketId}/games`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to fetch bracket games');
-      const data: BracketGame[] = await response.json();
+      const data = await apiFetch<BracketGame[]>(
+        `/brackets/${bracketId}/games`,
+        { fallbackError: 'Failed to fetch bracket games' },
+      );
       // Filter to games with both teams assigned
       const eligibleGames = data.filter(
         (g) => g.team1_id && g.team2_id && g.status !== 'completed',
@@ -401,21 +364,14 @@ export default function QueueTab() {
 
     setPopulating(true);
     try {
-      const response = await fetch('/queue/populate-from-bracket', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          event_id: selectedEventId,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to populate queue');
-      }
-
-      const data = await response.json();
+      const data = await apiFetch<{ created: number }>(
+        '/queue/populate-from-bracket',
+        {
+          method: 'POST',
+          body: { event_id: selectedEventId },
+          fallbackError: 'Failed to populate queue',
+        },
+      );
       toast.success(`Added ${data.created} games to the queue`);
       setShowPopulateModal(false);
       await fetchQueue();
@@ -444,21 +400,14 @@ export default function QueueTab() {
 
     setPopulatingSeeding(true);
     try {
-      const response = await fetch('/queue/populate-from-seeding', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          event_id: selectedEventId,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to populate queue');
-      }
-
-      const data = await response.json();
+      const data = await apiFetch<{ created: number }>(
+        '/queue/populate-from-seeding',
+        {
+          method: 'POST',
+          body: { event_id: selectedEventId },
+          fallbackError: 'Failed to populate queue',
+        },
+      );
       toast.success(`Added ${data.created} seeding rounds to the queue`);
       setShowPopulateSeedingModal(false);
       await fetchQueue();
@@ -488,22 +437,16 @@ export default function QueueTab() {
 
     setAddingSeeding(true);
     try {
-      const response = await fetch('/queue', {
+      await apiFetch('/queue', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           event_id: selectedEventId,
           queue_type: 'seeding',
           seeding_team_id: selectedTeamId,
           seeding_round: selectedRound,
-        }),
+        },
+        fallbackError: 'Failed to add to queue',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add to queue');
-      }
 
       toast.success('Seeding round added to queue');
       setShowAddSeedingModal(false);
@@ -534,21 +477,15 @@ export default function QueueTab() {
 
     setAddingBracket(true);
     try {
-      const response = await fetch('/queue', {
+      await apiFetch('/queue', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           event_id: selectedEventId,
           queue_type: 'bracket',
           bracket_game_id: selectedGameId,
-        }),
+        },
+        fallbackError: 'Failed to add to queue',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add to queue');
-      }
 
       toast.success('Bracket game added to queue');
       setShowAddBracketModal(false);
@@ -613,34 +550,18 @@ export default function QueueTab() {
     }
 
     try {
-      let response: Response;
-
-      if (
+      const isCall =
         direction === 'next' &&
         item.status === 'queued' &&
-        targetStatus === 'called'
-      ) {
-        response = await fetch(`/queue/${item.id}/call`, {
+        targetStatus === 'called';
+      const updatedItem = await apiFetch<QueueItem>(
+        isCall ? `/queue/${item.id}/call` : `/queue/${item.id}`,
+        {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({}),
-        });
-      } else {
-        response = await fetch(`/queue/${item.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ status: targetStatus }),
-        });
-      }
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update status');
-      }
-
-      const updatedItem = (await response.json()) as QueueItem;
+          body: isCall ? {} : { status: targetStatus },
+          fallbackError: 'Failed to update status',
+        },
+      );
       setQueue((prev) =>
         prev.map((q) =>
           q.id === item.id
@@ -683,22 +604,13 @@ export default function QueueTab() {
   ) => {
     setPresenceUpdatingIds((prev) => new Set(prev).add(item.id));
     try {
-      const response = await fetch(`/queue/${item.id}/presence`, {
+      const updatedItem = await apiFetch<
+        Pick<QueueItem, 'id' | 'status' | 'team1_present' | 'team2_present'>
+      >(`/queue/${item.id}/presence`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ team_id: participant.id, present }),
+        body: { team_id: participant.id, present },
+        fallbackError: 'Failed to update team presence',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update team presence');
-      }
-
-      const updatedItem = (await response.json()) as Pick<
-        QueueItem,
-        'id' | 'status' | 'team1_present' | 'team2_present'
-      >;
       setQueue((prev) =>
         prev.map((queueItem) =>
           queueItem.id === item.id

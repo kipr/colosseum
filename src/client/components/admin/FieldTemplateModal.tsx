@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from 'react';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 
 interface FieldTemplateModalProps {
@@ -44,11 +45,9 @@ export default function FieldTemplateModal({
 
   const loadTemplate = async () => {
     try {
-      const response = await fetch(`/field-templates/${templateId}`, {
-        credentials: 'include',
+      const template = await apiFetch<any>(`/field-templates/${templateId}`, {
+        fallbackError: 'Failed to load template',
       });
-      if (!response.ok) throw new Error('Failed to load template');
-      const template = await response.json();
 
       setName(template.name);
       setDescription(template.description || '');
@@ -78,21 +77,15 @@ export default function FieldTemplateModal({
         ? `/field-templates/${templateId}`
         : '/field-templates';
 
-      const response = await fetch(url, {
+      await apiFetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           name,
           description,
           fields: parsedFields,
-        }),
+        },
+        fallbackError: 'Failed to save template',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save template');
-      }
 
       showSuccessMessage(
         templateId ? 'Field template updated!' : 'Field template created!',

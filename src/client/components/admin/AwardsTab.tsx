@@ -16,6 +16,8 @@ import {
   type AwardType,
 } from '@shared/awards';
 import AwardRecipientModal from './AwardRecipientModal';
+import { apiFetch } from '../../utils/api';
+import type { TeamSummary } from '../../types/teams';
 import '../Modal.css';
 import './AwardsTab.css';
 
@@ -63,12 +65,6 @@ interface EventAward {
   individual_recipients: IndividualRecipient[];
 }
 
-interface Team {
-  id: number;
-  team_number: number;
-  team_name: string;
-}
-
 /** Matches server AUTO_AWARD_NAME_PREFIX in automaticAwards.ts */
 const AUTO_AWARD_NAME_PREFIX = 'Auto: ';
 const MAX_INDIVIDUAL_RECIPIENT_NAME_LENGTH = 200;
@@ -102,7 +98,7 @@ export default function AwardsTab() {
 
   const [templates, setTemplates] = useState<AwardTemplate[]>([]);
   const [eventAwards, setEventAwards] = useState<EventAward[]>([]);
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Template modal
@@ -158,9 +154,11 @@ export default function AwardsTab() {
 
   const fetchTemplates = useCallback(async () => {
     try {
-      const res = await fetch('/awards/templates', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch templates');
-      setTemplates(await res.json());
+      setTemplates(
+        await apiFetch<AwardTemplate[]>('/awards/templates', {
+          fallbackError: 'Failed to fetch templates',
+        }),
+      );
     } catch (err) {
       console.error(err);
       toast.error('Failed to load award templates');
@@ -173,11 +171,10 @@ export default function AwardsTab() {
       return;
     }
     try {
-      const res = await fetch(`/awards/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch event awards');
-      const awards = (await res.json()) as EventAward[];
+      const awards = await apiFetch<EventAward[]>(
+        `/awards/event/${selectedEventId}`,
+        { fallbackError: 'Failed to fetch event awards' },
+      );
       setEventAwards(awards.map(normalizeEventAward));
     } catch (err) {
       console.error(err);
@@ -191,11 +188,11 @@ export default function AwardsTab() {
       return;
     }
     try {
-      const res = await fetch(`/teams/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch teams');
-      setTeams(await res.json());
+      setTeams(
+        await apiFetch<TeamSummary[]>(`/teams/event/${selectedEventId}`, {
+          fallbackError: 'Failed to fetch teams',
+        }),
+      );
     } catch (err) {
       console.error(err);
       toast.error('Failed to load teams');
@@ -249,22 +246,18 @@ export default function AwardsTab() {
         award_type: templateForm.award_type,
       };
       if (editingTemplate) {
-        const res = await fetch(`/awards/templates/${editingTemplate.id}`, {
+        await apiFetch(`/awards/templates/${editingTemplate.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
+          body,
+          fallbackError: 'Failed to save',
         });
-        if (!res.ok) throw new Error((await res.json()).error);
         toast.success('Template updated');
       } else {
-        const res = await fetch('/awards/templates', {
+        await apiFetch('/awards/templates', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
+          body,
+          fallbackError: 'Failed to save',
         });
-        if (!res.ok) throw new Error((await res.json()).error);
         toast.success('Template created');
       }
       setShowTemplateModal(false);
@@ -285,11 +278,10 @@ export default function AwardsTab() {
     });
     if (!ok) return;
     try {
-      const res = await fetch(`/awards/templates/${t.id}`, {
+      await apiFetch(`/awards/templates/${t.id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        fallbackError: 'Failed to delete',
       });
-      if (!res.ok) throw new Error('Failed to delete');
       toast.success('Template deleted');
       await fetchTemplates();
     } catch (err) {
@@ -342,13 +334,11 @@ export default function AwardsTab() {
           description: awardForm.description.trim() || null,
           award_type: awardForm.award_type,
         };
-        const res = await fetch(`/awards/event-awards/${editingAward.id}`, {
+        await apiFetch(`/awards/event-awards/${editingAward.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
+          body,
+          fallbackError: 'Failed to save',
         });
-        if (!res.ok) throw new Error((await res.json()).error);
         toast.success('Award updated');
       } else {
         const body: Record<string, unknown> = {
@@ -360,13 +350,11 @@ export default function AwardsTab() {
           body.name = awardForm.name.trim();
           body.description = awardForm.description.trim() || null;
         }
-        const res = await fetch(`/awards/event/${selectedEventId}`, {
+        await apiFetch(`/awards/event/${selectedEventId}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
+          body,
+          fallbackError: 'Failed to save',
         });
-        if (!res.ok) throw new Error((await res.json()).error);
         toast.success('Award added');
       }
       setShowAwardModal(false);
@@ -393,16 +381,10 @@ export default function AwardsTab() {
             settings.per_bracket_overall_award_type,
           seeding_award_type: settings.seeding_award_type,
         });
-        const res = await fetch(
+        const data = await apiFetch<AutomaticAwardsPreviewResponse>(
           `/awards/event/${selectedEventId}/automatic/preview?${params}`,
-          { credentials: 'include' },
+          { fallbackError: 'Failed to preview automatic awards' },
         );
-        const data = (await res.json()) as AutomaticAwardsPreviewResponse & {
-          error?: string;
-        };
-        if (!res.ok) {
-          throw new Error(data.error ?? 'Failed to preview automatic awards');
-        }
         setAutomaticPreview(data);
       } catch (err) {
         setAutomaticPreview(null);
@@ -425,18 +407,10 @@ export default function AwardsTab() {
     setAutomaticPreviewError(null);
     setLoadingAutomaticPreview(true);
     try {
-      const res = await fetch(
+      const data = await apiFetch<AutomaticAwardsPreviewResponse>(
         `/awards/event/${selectedEventId}/automatic/preview`,
-        { credentials: 'include' },
+        { fallbackError: 'Failed to load automatic award settings' },
       );
-      const data = (await res.json()) as AutomaticAwardsPreviewResponse & {
-        error?: string;
-      };
-      if (!res.ok) {
-        throw new Error(
-          data.error ?? 'Failed to load automatic award settings',
-        );
-      }
       setAutomaticForm({ ...data.settings });
       setAutomaticPreview(data);
     } catch (err) {
@@ -475,24 +449,18 @@ export default function AwardsTab() {
     if (!selectedEventId) return;
     setApplyingAutomatic(true);
     try {
-      const res = await fetch(`/awards/event/${selectedEventId}/automatic`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          ...automaticForm,
-          acknowledge_warnings: Boolean(automaticPreview?.hasWarnings),
-        }),
-      });
-      const data = (await res.json()) as {
+      const data = await apiFetch<{
         created?: number;
         removed?: number;
-        error?: string;
         requires_acknowledgement?: boolean;
-      };
-      if (!res.ok) {
-        throw new Error(data.error ?? 'Failed to apply automatic awards');
-      }
+      }>(`/awards/event/${selectedEventId}/automatic`, {
+        method: 'POST',
+        body: {
+          ...automaticForm,
+          acknowledge_warnings: Boolean(automaticPreview?.hasWarnings),
+        },
+        fallbackError: 'Failed to apply automatic awards',
+      });
       const created = data.created ?? 0;
       const removed = data.removed ?? 0;
       if (created === 0) {
@@ -528,11 +496,10 @@ export default function AwardsTab() {
     });
     if (!ok) return;
     try {
-      const res = await fetch(`/awards/event-awards/${a.id}`, {
+      await apiFetch(`/awards/event-awards/${a.id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        fallbackError: 'Failed to delete',
       });
-      if (!res.ok) throw new Error('Failed to delete');
       toast.success('Award deleted');
       await fetchEventAwards();
     } catch (err) {
@@ -552,17 +519,13 @@ export default function AwardsTab() {
     const other = group[swapIdx];
     try {
       await Promise.all([
-        fetch(`/awards/event-awards/${award.id}`, {
+        apiFetch(`/awards/event-awards/${award.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ sort_order: other.sort_order }),
+          body: { sort_order: other.sort_order },
         }),
-        fetch(`/awards/event-awards/${other.id}`, {
+        apiFetch(`/awards/event-awards/${other.id}`, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ sort_order: award.sort_order }),
+          body: { sort_order: award.sort_order },
         }),
       ]);
       await fetchEventAwards();
@@ -575,11 +538,10 @@ export default function AwardsTab() {
 
   const handleRemoveRecipient = async (awardId: number, teamId: number) => {
     try {
-      const res = await fetch(
-        `/awards/event-awards/${awardId}/recipients/${teamId}`,
-        { method: 'DELETE', credentials: 'include' },
-      );
-      if (!res.ok) throw new Error('Failed to remove');
+      await apiFetch(`/awards/event-awards/${awardId}/recipients/${teamId}`, {
+        method: 'DELETE',
+        fallbackError: 'Failed to remove',
+      });
       toast.success('Recipient removed');
       await fetchEventAwards();
     } catch (err) {
@@ -598,19 +560,11 @@ export default function AwardsTab() {
       if (individualTeamId) {
         body.team_id = Number(individualTeamId);
       }
-      const res = await fetch(
-        `/awards/event-awards/${awardId}/individual-recipients`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        },
-      );
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error);
-      }
+      await apiFetch(`/awards/event-awards/${awardId}/individual-recipients`, {
+        method: 'POST',
+        body,
+        fallbackError: 'Failed to add',
+      });
       toast.success('Individual added');
       setIndividualName('');
       setIndividualTeamId('');
@@ -626,11 +580,10 @@ export default function AwardsTab() {
     recipientId: number,
   ) => {
     try {
-      const res = await fetch(
+      await apiFetch(
         `/awards/event-awards/${awardId}/individual-recipients/${recipientId}`,
-        { method: 'DELETE', credentials: 'include' },
+        { method: 'DELETE', fallbackError: 'Failed to remove' },
       );
-      if (!res.ok) throw new Error('Failed to remove');
       toast.success('Individual removed');
       await fetchEventAwards();
     } catch (err) {

@@ -20,6 +20,7 @@ import {
   formatEventDate,
   isEventActive,
 } from '../../utils/eventStatus';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 
 interface EventFormData {
@@ -115,11 +116,9 @@ export default function EventsTab() {
       const url = editingEvent ? `/events/${editingEvent.id}` : '/events';
       const method = editingEvent ? 'PATCH' : 'POST';
 
-      const response = await fetch(url, {
+      const savedEvent = await apiFetch<Event>(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           name: formData.name.trim(),
           description: formData.description.trim() || null,
           event_date: formData.event_date || null,
@@ -127,15 +126,9 @@ export default function EventsTab() {
           seeding_rounds: formData.seeding_rounds,
           min_rest_minutes: formData.min_rest_minutes,
           score_accept_mode: formData.score_accept_mode,
-        }),
+        },
+        fallbackError: 'Failed to save event',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save event');
-      }
-
-      const savedEvent = await response.json();
       toast.success(editingEvent ? 'Event updated!' : 'Event created!');
       handleCloseModal();
       await refreshEvents();
@@ -167,17 +160,11 @@ export default function EventsTab() {
     }
 
     try {
-      const response = await fetch(`/events/${event.id}`, {
+      await apiFetch(`/events/${event.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: newStatus }),
+        body: { status: newStatus },
+        fallbackError: 'Failed to update event status',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update event status');
-      }
 
       toast.success(`Event ${getEventStatusLabel(newStatus).toLowerCase()}!`);
       await refreshEvents();
@@ -193,18 +180,13 @@ export default function EventsTab() {
     const releasing = !event.spectator_results_released;
     setTogglingRelease(true);
     try {
-      const response = await fetch(`/events/${event.id}`, {
+      await apiFetch(`/events/${event.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           spectator_results_released: releasing ? 1 : 0,
-        }),
+        },
+        fallbackError: 'Failed to update release state',
       });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update release state');
-      }
       toast.success(
         releasing
           ? 'Final scores released to spectators!'
@@ -248,21 +230,10 @@ export default function EventsTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/events/${event.id}`, {
+      await apiFetch(`/events/${event.id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        fallbackError: 'Failed to delete event',
       });
-
-      if (!response.ok) {
-        let errorMessage = 'Failed to delete event';
-        try {
-          const errorData = await response.json();
-          errorMessage = errorData.error || errorMessage;
-        } catch {
-          // 204/empty and non-json responses are fine; keep default message.
-        }
-        throw new Error(errorMessage);
-      }
 
       const fallbackEventId = isDeletingSelected
         ? getFallbackSelectionAfterDelete(event.id)

@@ -5,14 +5,8 @@ import {
   compareNullableNumber,
 } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import type { TeamSummary } from '../../types/teams';
 import './SeedingTables.css';
-
-export interface Team {
-  id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-}
 
 export interface SeedingScore {
   id: number;
@@ -138,13 +132,13 @@ export const DOUBLE_SEEDING_TABLE_CONFIG: SeedingTableConfig<DoubleSeedingRankin
   };
 
 export interface TeamRowData<S extends RoundScore, R extends RankingBase> {
-  team: Team;
+  team: TeamSummary;
   scores: Map<number, S | null>;
   ranking: R | null;
 }
 
 export function buildTeamRowData<S extends RoundScore, R extends RankingBase>(
-  teams: Team[],
+  teams: TeamSummary[],
   scores: S[],
   rankings: R[],
   effectiveRounds: number,

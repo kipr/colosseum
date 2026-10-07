@@ -6,6 +6,7 @@ import * as Diff from 'diff';
 import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import { formatDateTime } from '../../utils/dateUtils';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 import './AuditTab.css';
 
@@ -151,12 +152,10 @@ export default function AuditTab({ onNavigateTab }: AuditTabProps) {
         if (appliedEntityType) params.set('entity_type', appliedEntityType);
 
         const url = `/audit/event/${selectedEventId}?${params.toString()}`;
-        const response = await fetch(url, {
-          credentials: 'include',
+        const data = await apiFetch<AuditLogEntry[]>(url, {
           signal,
+          fallbackError: 'Failed to fetch audit log',
         });
-        if (!response.ok) throw new Error('Failed to fetch audit log');
-        const data: AuditLogEntry[] = await response.json();
 
         if (currentGen !== fetchGenerationRef.current) return;
 
@@ -600,9 +599,9 @@ function EntityHistoryModal({
     const load = async () => {
       try {
         const url = `/audit/entity/${encodeURIComponent(entityType)}/${entityId}?limit=50`;
-        const response = await fetch(url, { credentials: 'include' });
-        if (!response.ok) throw new Error('Failed to fetch');
-        const data: AuditLogEntry[] = await response.json();
+        const data = await apiFetch<AuditLogEntry[]>(url, {
+          fallbackError: 'Failed to fetch',
+        });
         if (!cancelled) setLogs(data);
       } catch (error) {
         console.error('Error fetching entity audit:', error);

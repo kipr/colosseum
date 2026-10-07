@@ -10,17 +10,18 @@ import { getBracketWinner } from '../components/bracket/bracketUtils';
 import {
   SEEDING_TABLE_CONFIG,
   DOUBLE_SEEDING_TABLE_CONFIG,
-  type Team,
   type SeedingScore,
   type SeedingRanking,
   type DoubleSeedingScore,
   type DoubleSeedingRanking,
 } from '../components/seeding/SeedingScoresTable';
+import type { TeamSummary } from '../types/teams';
 import type {
   Bracket,
   BracketGame,
   BracketEntryWithRank,
   BracketSide,
+  BracketDetail,
 } from '../types/brackets';
 import type {
   DocCategoryDisplay,
@@ -41,6 +42,7 @@ import {
   paramToBracketSide,
   bracketSideToParam,
 } from '../utils/routes';
+import { apiFetch } from '../utils/api';
 import '../components/bracket/BracketDisplay.css';
 import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
@@ -83,7 +85,7 @@ export default function Spectator() {
   const [eventsLoading, setEventsLoading] = useState(true);
 
   // Seeding state
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [scores, setScores] = useState<SeedingScore[]>([]);
   const [rankings, setRankings] = useState<SeedingRanking[]>([]);
   const [seedingLoading, setSeedingLoading] = useState(false);
@@ -229,9 +231,9 @@ export default function Spectator() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/events/public');
-        if (!res.ok) throw new Error('Failed to fetch events');
-        const data: PublicEvent[] = await res.json();
+        const data = await apiFetch<PublicEvent[]>('/events/public', {
+          fallbackError: 'Failed to fetch events',
+        });
         setEvents(data);
       } catch (error) {
         console.error('Error loading events:', error);
@@ -277,17 +279,16 @@ export default function Spectator() {
     }
     setSeedingLoading(true);
     try {
-      const [teamsRes, scoresRes, rankingsRes] = await Promise.all([
-        fetch(`/teams/event/${selectedEventId}`),
-        fetch(`/seeding/scores/event/${selectedEventId}`),
-        fetch(`/seeding/rankings/event/${selectedEventId}`),
+      const [teamsData, scoresData, rankingsData] = await Promise.all([
+        apiFetch<TeamSummary[]>(`/teams/event/${selectedEventId}`),
+        apiFetch<SeedingScore[]>(`/seeding/scores/event/${selectedEventId}`),
+        apiFetch<SeedingRanking[]>(
+          `/seeding/rankings/event/${selectedEventId}`,
+        ),
       ]);
-      if (!teamsRes.ok || !scoresRes.ok || !rankingsRes.ok) {
-        throw new Error('Failed to fetch seeding data');
-      }
-      setTeams(await teamsRes.json());
-      setScores(await scoresRes.json());
-      setRankings(await rankingsRes.json());
+      setTeams(teamsData);
+      setScores(scoresData);
+      setRankings(rankingsData);
     } catch (error) {
       console.error('Error loading seeding data:', error);
     } finally {
@@ -309,13 +310,16 @@ export default function Spectator() {
       return;
     setDoubleSeedingLoading(true);
     Promise.all([
-      fetch(`/double-seeding/scores/event/${selectedEventId}`),
-      fetch(`/double-seeding/rankings/event/${selectedEventId}`),
+      apiFetch<DoubleSeedingScore[]>(
+        `/double-seeding/scores/event/${selectedEventId}`,
+      ),
+      apiFetch<DoubleSeedingRanking[]>(
+        `/double-seeding/rankings/event/${selectedEventId}`,
+      ),
     ])
-      .then(async ([scoresRes, rankingsRes]) => {
-        if (!scoresRes.ok || !rankingsRes.ok) throw new Error('Failed');
-        setDoubleSeedingScores(await scoresRes.json());
-        setDoubleSeedingRankings(await rankingsRes.json());
+      .then(([scoresData, rankingsData]) => {
+        setDoubleSeedingScores(scoresData);
+        setDoubleSeedingRankings(rankingsData);
         setDoubleSeedingLoaded(true);
       })
       .catch((err) => console.error('Error loading double-seeding data:', err))
@@ -330,9 +334,10 @@ export default function Spectator() {
     }
     (async () => {
       try {
-        const res = await fetch(`/brackets/event/${selectedEventId}`);
-        if (!res.ok) throw new Error('Failed to fetch brackets');
-        const data: Bracket[] = await res.json();
+        const data = await apiFetch<Bracket[]>(
+          `/brackets/event/${selectedEventId}`,
+          { fallbackError: 'Failed to fetch brackets' },
+        );
         setBrackets(data);
       } catch (error) {
         console.error('Error loading brackets:', error);
@@ -348,9 +353,12 @@ export default function Spectator() {
     }
     setBracketLoading(true);
     try {
-      const res = await fetch(`/brackets/${selectedBracketId}`);
-      if (!res.ok) throw new Error('Failed to fetch bracket');
-      const data = await res.json();
+      const data = await apiFetch<BracketDetail>(
+        `/brackets/${selectedBracketId}`,
+        {
+          fallbackError: 'Failed to fetch bracket',
+        },
+      );
       setBracketGames(data.games ?? []);
     } catch (error) {
       console.error('Error loading bracket games:', error);
@@ -373,10 +381,10 @@ export default function Spectator() {
     )
       return;
     setDocLoading(true);
-    fetch(`/documentation-scores/event/${selectedEventId}/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
+    apiFetch<{ categories: DocCategoryDisplay[]; scores: DocScoreDisplay[] }>(
+      `/documentation-scores/event/${selectedEventId}/public`,
+    )
+      .then((data) => {
         setDocCategories(data.categories);
         setDocScores(data.scores);
         setDocLoaded(true);
@@ -395,13 +403,11 @@ export default function Spectator() {
     )
       return;
     setAwardsLoading(true);
-    fetch(`/awards/event/${selectedEventId}/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data: {
-          manual: PublicManualAward[];
-          automatic: AutomaticAwardsPublic;
-        } = await res.json();
+    apiFetch<{
+      manual: PublicManualAward[];
+      automatic: AutomaticAwardsPublic;
+    }>(`/awards/event/${selectedEventId}/public`)
+      .then((data) => {
         setManualAwards(
           (data.manual ?? []).map((award) => ({
             ...award,
@@ -426,10 +432,10 @@ export default function Spectator() {
     )
       return;
     setBracketRankingsLoading(true);
-    fetch(`/brackets/${selectedBracketId}/rankings/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
+    apiFetch<{ weight: number; entries: BracketEntryWithRank[] }>(
+      `/brackets/${selectedBracketId}/rankings/public`,
+    )
+      .then((data) => {
         setBracketRankings(data.entries);
         setBracketRankingsWeight(data.weight);
         setBracketRankingsLoadedForId(selectedBracketId);
@@ -453,10 +459,8 @@ export default function Spectator() {
     )
       return;
     setOverallLoading(true);
-    fetch(`/events/${selectedEventId}/overall/public`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
+    apiFetch<OverallRow[]>(`/events/${selectedEventId}/overall/public`)
+      .then((data) => {
         setOverallRows(data);
         setOverallLoaded(true);
       })

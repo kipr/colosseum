@@ -6,6 +6,7 @@ import {
   buildDoubleSeedingSchema,
 } from '../scoresheetUtils';
 import { stripLegacyInitialsFields } from '../../../shared/teamInitials';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 
 interface FieldTemplate {
@@ -59,11 +60,9 @@ export default function ScoreSheetWizard({
 
   const loadFieldTemplates = async () => {
     try {
-      const response = await fetch('/field-templates', {
-        credentials: 'include',
+      const data = await apiFetch<any[]>('/field-templates', {
+        fallbackError: 'Failed to load templates',
       });
-      if (!response.ok) throw new Error('Failed to load templates');
-      const data = await response.json();
       // Parse fields_json for each template
       const templatesWithParsedFields = data.map((t: any) => ({
         ...t,

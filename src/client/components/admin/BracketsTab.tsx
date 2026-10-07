@@ -26,6 +26,7 @@ import BracketListTable from '../bracket/BracketListTable';
 import BracketDetailView from '../bracket/BracketDetailView';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
+import { ApiError, apiFetch } from '../../utils/api';
 import '../Modal.css';
 import './BracketsTab.css';
 
@@ -154,13 +155,10 @@ export default function BracketsTab() {
 
     setLoading(true);
     try {
-      const response = await fetch(`/brackets/event/${selectedEventId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) {
-        throw new Error('Failed to fetch brackets');
-      }
-      const data: Bracket[] = await response.json();
+      const data = await apiFetch<Bracket[]>(
+        `/brackets/event/${selectedEventId}`,
+        { fallbackError: 'Failed to fetch brackets' },
+      );
       setBrackets(data);
     } catch (error) {
       console.error('Error fetching brackets:', error);
@@ -174,25 +172,17 @@ export default function BracketsTab() {
     async (bracketId: number) => {
       setDetailLoading(true);
       try {
-        const [detailRes, rankingsRes] = await Promise.all([
-          fetch(`/brackets/${bracketId}`, { credentials: 'include' }),
-          fetch(`/brackets/${bracketId}/rankings`, { credentials: 'include' }),
-        ]);
-        if (!detailRes.ok) {
-          if (detailRes.status === 404 && selectedEventId) {
-            navigate(adminEventPath(selectedEventId, 'brackets'), {
-              replace: true,
-            });
-            return;
-          }
-          throw new Error('Failed to fetch bracket details');
-        }
-        const data: BracketDetail = await detailRes.json();
-        if (rankingsRes.ok) {
-          const rankingsBody = (await rankingsRes.json()) as {
+        const [data, rankingsBody] = await Promise.all([
+          apiFetch<BracketDetail>(`/brackets/${bracketId}`, {
+            fallbackError: 'Failed to fetch bracket details',
+          }),
+          // Rankings are optional; the detail view renders without them.
+          apiFetch<{
             weight: number;
             entries: BracketEntryWithRank[];
-          };
+          }>(`/brackets/${bracketId}/rankings`).catch(() => null),
+        ]);
+        if (rankingsBody) {
           data.rankings = rankingsBody.entries;
           setRankings(rankingsBody.entries);
           setRankingsWeight(rankingsBody.weight);
@@ -201,6 +191,16 @@ export default function BracketsTab() {
         }
         setBracketDetail(data);
       } catch (error) {
+        if (
+          error instanceof ApiError &&
+          error.status === 404 &&
+          selectedEventId
+        ) {
+          navigate(adminEventPath(selectedEventId, 'brackets'), {
+            replace: true,
+          });
+          return;
+        }
         console.error('Error fetching bracket detail:', error);
         toast.error('Failed to load bracket details');
       } finally {
@@ -227,18 +227,16 @@ export default function BracketsTab() {
   const fetchRankings = useCallback(async (bracketId: number) => {
     setRankingsLoading(true);
     try {
-      await fetch(`/brackets/${bracketId}/rankings/calculate`, {
+      // A failed recalculation still shows the stored rankings.
+      await apiFetch(`/brackets/${bracketId}/rankings/calculate`, {
         method: 'POST',
-        credentials: 'include',
-      });
-      const res = await fetch(`/brackets/${bracketId}/rankings`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch rankings');
-      const body = (await res.json()) as {
+      }).catch(() => undefined);
+      const body = await apiFetch<{
         weight: number;
         entries: BracketEntryWithRank[];
-      };
+      }>(`/brackets/${bracketId}/rankings`, {
+        fallbackError: 'Failed to fetch rankings',
+      });
       setRankings(body.entries);
       setRankingsWeight(body.weight);
     } catch (error) {
@@ -257,32 +255,25 @@ export default function BracketsTab() {
     setCreateDataLoading(true);
     setSelectedTeamIds(new Set());
     Promise.all([
-      fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
-      fetch(`/seeding/rankings/event/${selectedEventId}`, {
-        credentials: 'include',
+      apiFetch<CreateModalTeam[]>(`/teams/event/${selectedEventId}`, {
+        fallbackError: 'Failed to fetch teams',
       }),
+      apiFetch<CreateModalRanking[]>(
+        `/seeding/rankings/event/${selectedEventId}`,
+        { fallbackError: 'Failed to fetch rankings' },
+      ),
       doubleSeedingEnabled
-        ? fetch(`/double-seeding/rankings/event/${selectedEventId}`, {
-            credentials: 'include',
-          })
-        : null,
-      fetch(`/brackets/event/${selectedEventId}/assigned-teams`, {
-        credentials: 'include',
-      }),
+        ? apiFetch<CreateModalDoubleSeedingRanking[]>(
+            `/double-seeding/rankings/event/${selectedEventId}`,
+            { fallbackError: 'Failed to fetch double-seeding rankings' },
+          )
+        : [],
+      apiFetch<AssignedTeam[]>(
+        `/brackets/event/${selectedEventId}/assigned-teams`,
+        { fallbackError: 'Failed to fetch assigned teams' },
+      ),
     ])
-      .then(async ([teamsRes, rankingsRes, dsRankingsRes, assignedRes]) => {
-        if (cancelled) return;
-        if (!teamsRes.ok) throw new Error('Failed to fetch teams');
-        if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
-        if (dsRankingsRes && !dsRankingsRes.ok)
-          throw new Error('Failed to fetch double-seeding rankings');
-        if (!assignedRes.ok) throw new Error('Failed to fetch assigned teams');
-        const [teams, rankings, dsRankings, assigned] = await Promise.all([
-          teamsRes.json(),
-          rankingsRes.json(),
-          dsRankingsRes?.json() ?? [],
-          assignedRes.json(),
-        ]);
+      .then(([teams, rankings, dsRankings, assigned]) => {
         if (cancelled) return;
         setCreateTeams(teams);
         setCreateRankings(rankings);
@@ -322,34 +313,16 @@ export default function BracketsTab() {
 
     setSaving(true);
     try {
-      const response = await fetch('/brackets', {
+      const data = await apiFetch<{ id?: number }>('/brackets', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           event_id: selectedEventId,
           name: formData.name.trim(),
           team_ids: teamIds,
           weight: formData.weight ? parseFloat(formData.weight) : undefined,
-        }),
+        },
+        fallbackError: 'Failed to create bracket',
       });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        if (response.status === 409 && data.conflicts?.length) {
-          const names = data.conflicts
-            .map(
-              (c: { team_name: string; bracket_name: string }) =>
-                `${c.team_name} (in ${c.bracket_name})`,
-            )
-            .join(', ');
-          throw new Error(
-            `Teams already in another bracket: ${names}. Remove them from selection.`,
-          );
-        }
-        throw new Error(data.error || 'Failed to create bracket');
-      }
 
       toast.success('Bracket created!');
       setShowCreateModal(false);
@@ -361,9 +334,26 @@ export default function BracketsTab() {
       }
     } catch (error) {
       console.error('Error creating bracket:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to create bracket',
-      );
+      const conflicts =
+        error instanceof ApiError && error.status === 409
+          ? (
+              error.data as {
+                conflicts?: { team_name: string; bracket_name: string }[];
+              } | null
+            )?.conflicts
+          : undefined;
+      if (conflicts?.length) {
+        const names = conflicts
+          .map((c) => `${c.team_name} (in ${c.bracket_name})`)
+          .join(', ');
+        toast.error(
+          `Teams already in another bracket: ${names}. Remove them from selection.`,
+        );
+      } else {
+        toast.error(
+          error instanceof Error ? error.message : 'Failed to create bracket',
+        );
+      }
     } finally {
       setSaving(false);
     }
@@ -401,17 +391,11 @@ export default function BracketsTab() {
         }
       }
 
-      const response = await fetch(`/brackets/${bracketDetail.id}`, {
+      await apiFetch(`/brackets/${bracketDetail.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
+        body,
+        fallbackError: 'Failed to update bracket',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update bracket');
-      }
 
       toast.success('Bracket updated!');
       setShowEditModal(false);
@@ -438,15 +422,10 @@ export default function BracketsTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/brackets/${bracket.id}`, {
+      await apiFetch(`/brackets/${bracket.id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        fallbackError: 'Failed to delete bracket',
       });
-
-      if (!response.ok && response.status !== 204) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete bracket');
-      }
 
       toast.success('Bracket deleted');
       if (selectedBracketId === bracket.id) {
@@ -482,17 +461,13 @@ export default function BracketsTab() {
     setGeneratingEntries(true);
     try {
       const url = `/brackets/${bracketDetail.id}/entries/generate${hasEntries ? '?force=true' : ''}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate entries');
-      }
-
-      const data = await response.json();
+      const data = await apiFetch<{ entriesCreated: number; byeCount: number }>(
+        url,
+        {
+          method: 'POST',
+          fallbackError: 'Failed to generate entries',
+        },
+      );
       toast.success(
         `Generated ${data.entriesCreated} entries (${data.byeCount} byes)`,
       );
@@ -525,17 +500,10 @@ export default function BracketsTab() {
     setGeneratingGames(true);
     try {
       const url = `/brackets/${bracketDetail.id}/games/generate${hasGames ? '?force=true' : ''}`;
-      const response = await fetch(url, {
+      const data = await apiFetch<{ gamesCreated: number }>(url, {
         method: 'POST',
-        credentials: 'include',
+        fallbackError: 'Failed to generate games',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to generate games');
-      }
-
-      const data = await response.json();
       toast.success(`Generated ${data.gamesCreated} games`);
       await fetchBracketDetail(bracketDetail.id);
     } catch (error) {
@@ -552,17 +520,11 @@ export default function BracketsTab() {
     if (!bracketDetail) return;
 
     try {
-      const response = await fetch(`/brackets/${bracketDetail.id}`, {
+      await apiFetch(`/brackets/${bracketDetail.id}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ status: newStatus }),
+        body: { status: newStatus },
+        fallbackError: 'Failed to update status',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update status');
-      }
 
       toast.success(`Bracket status updated to ${STATUS_LABELS[newStatus]}`);
       await fetchBrackets();

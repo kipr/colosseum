@@ -4,22 +4,10 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
+import type { Team, TeamStatus } from '../../types/teams';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 import './TeamsTab.css';
-
-interface Team {
-  id: number;
-  event_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
-  status: TeamStatus;
-  checked_in_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-type TeamStatus = 'registered' | 'checked_in' | 'no_show' | 'withdrawn';
 
 interface TeamFormData {
   team_number: string;
@@ -214,11 +202,9 @@ export default function TeamsTab() {
       if (filterStatus !== 'all') {
         url += `?status=${filterStatus}`;
       }
-      const response = await fetch(url, { credentials: 'include' });
-      if (!response.ok) {
-        throw new Error('Failed to fetch teams');
-      }
-      const data: Team[] = await response.json();
+      const data = await apiFetch<Team[]>(url, {
+        fallbackError: 'Failed to fetch teams',
+      });
       setTeams(data);
     } catch (error) {
       console.error('Error fetching teams:', error);
@@ -354,17 +340,11 @@ export default function TeamsTab() {
         body.event_id = selectedEventId;
       }
 
-      const response = await fetch(url, {
+      await apiFetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
+        body,
+        fallbackError: 'Failed to save team',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to save team');
-      }
 
       toast.success(editingTeam ? 'Team updated!' : 'Team created!');
       handleCloseModal();
@@ -381,15 +361,10 @@ export default function TeamsTab() {
 
   const handleCheckIn = async (team: Team) => {
     try {
-      const response = await fetch(`/teams/${team.id}/check-in`, {
+      await apiFetch(`/teams/${team.id}/check-in`, {
         method: 'PATCH',
-        credentials: 'include',
+        fallbackError: 'Failed to check in team',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to check in team');
-      }
 
       toast.success(`Team ${team.team_number} checked in!`);
       await fetchTeams();
@@ -412,15 +387,10 @@ export default function TeamsTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/teams/${team.id}`, {
+      await apiFetch(`/teams/${team.id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        fallbackError: 'Failed to delete team',
       });
-
-      if (!response.ok && response.status !== 204) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete team');
-      }
 
       toast.success('Team deleted');
       await fetchTeams();
@@ -455,22 +425,17 @@ export default function TeamsTab() {
     setBulkResults(null);
 
     try {
-      const response = await fetch('/teams/bulk', {
+      const data = await apiFetch<{
+        created: number;
+        errors?: BulkImportError[];
+      }>('/teams/bulk', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           event_id: selectedEventId,
           teams: bulkParsed,
-        }),
+        },
+        fallbackError: 'Failed to import teams',
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to import teams');
-      }
-
-      const data = await response.json();
       const importErrors: BulkImportError[] = data.errors || [];
       setBulkResults({
         created: data.created,
@@ -549,24 +514,16 @@ export default function TeamsTab() {
 
     setBulkCheckingIn(true);
     try {
-      const response = await fetch(
+      const data = await apiFetch<{ updated: number }>(
         `/teams/event/${selectedEventId}/check-in/bulk`,
         {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
+          body: {
             team_numbers: Array.from(bulkCheckInSelected),
-          }),
+          },
+          fallbackError: 'Failed to check in teams',
         },
       );
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to check in teams');
-      }
-
-      const data = await response.json();
       toast.success(`Checked in ${data.updated} team(s)`);
       handleCloseBulkCheckIn();
       await fetchTeams();

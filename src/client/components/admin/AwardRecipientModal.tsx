@@ -10,6 +10,7 @@ import {
   compareByAwardLoad,
   type TeamAwardCounts,
 } from '@shared/awards';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 import './AwardsTab.css';
 interface AwardRecipientModalProps {
@@ -67,13 +68,9 @@ export default function AwardRecipientModal({
     let cancelled = false;
     setLoading(true);
     setSelectedTeamIds(new Set());
-    fetch(`/awards/event/${eventId}/team-award-counts`, {
-      credentials: 'include',
+    apiFetch<TeamAwardCounts[]>(`/awards/event/${eventId}/team-award-counts`, {
+      fallbackError: 'Failed to load team award counts',
     })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to load team award counts');
-        return (await res.json()) as TeamAwardCounts[];
-      })
       .then((data) => {
         if (!cancelled) setRows(data);
       })
@@ -244,16 +241,11 @@ export default function AwardRecipientModal({
     if (selectedTeamIds.size === 0) return;
     setSaving(true);
     try {
-      const res = await fetch(`/awards/event-awards/${awardId}/recipients`, {
+      await apiFetch(`/awards/event-awards/${awardId}/recipients`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ team_ids: Array.from(selectedTeamIds) }),
+        body: { team_ids: Array.from(selectedTeamIds) },
+        fallbackError: 'Failed to add recipients',
       });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? 'Failed to add recipients');
-      }
       onSuccess(
         selectedTeamIds.size === 1
           ? 'Recipient added'

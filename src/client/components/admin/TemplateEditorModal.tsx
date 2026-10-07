@@ -4,6 +4,8 @@ import {
   getBracketSourceEventId,
   isEventScopedBracketSource,
 } from '../scoresheetUtils';
+import { apiFetch } from '../../utils/api';
+import type { Bracket } from '../../types/brackets';
 import '../Modal.css';
 
 interface TemplateEditorModalProps {
@@ -17,12 +19,6 @@ interface TemplateEditorModalProps {
     accessCode: string;
     schema: any;
   };
-}
-
-interface Bracket {
-  id: number;
-  name: string;
-  bracket_size: number;
 }
 
 export default function TemplateEditorModal({
@@ -65,11 +61,9 @@ export default function TemplateEditorModal({
 
   const loadBrackets = async () => {
     try {
-      const response = await fetch(`/brackets/event/${eventId}`, {
-        credentials: 'include',
+      const data = await apiFetch<Bracket[]>(`/brackets/event/${eventId}`, {
+        fallbackError: 'Failed to load brackets',
       });
-      if (!response.ok) throw new Error('Failed to load brackets');
-      const data = await response.json();
       setBrackets(data);
     } catch (error) {
       console.error('Error loading brackets:', error);
@@ -122,11 +116,12 @@ export default function TemplateEditorModal({
 
   const loadTemplate = async () => {
     try {
-      const response = await fetch(`/scoresheet/templates/${templateId}`, {
-        credentials: 'include',
-      });
-      if (!response.ok) throw new Error('Failed to load template');
-      const template = await response.json();
+      const template = await apiFetch<any>(
+        `/scoresheet/templates/${templateId}`,
+        {
+          fallbackError: 'Failed to load template',
+        },
+      );
 
       setName(template.name);
       setDescription(template.description || '');
@@ -207,20 +202,17 @@ export default function TemplateEditorModal({
         ? `/scoresheet/templates/${templateId}`
         : '/scoresheet/templates';
 
-      const response = await fetch(url, {
+      await apiFetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           name,
           description,
           accessCode,
           schema: parsedSchema,
           eventId,
-        }),
+        },
+        fallbackError: 'Failed to save template',
       });
-
-      if (!response.ok) throw new Error('Failed to save template');
 
       showSuccessMessage(
         templateId

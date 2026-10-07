@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { apiFetch } from '../../utils/api';
 import './AdminsTab.css';
 
 interface AdminUser {
@@ -21,11 +22,9 @@ export default function AdminsTab() {
   const loadAdmins = async () => {
     try {
       setError(null);
-      const response = await fetch('/api/admin/users', {
-        credentials: 'include',
+      const data = await apiFetch<AdminUser[]>('/api/admin/users', {
+        fallbackError: 'Failed to load admins',
       });
-      if (!response.ok) throw new Error('Failed to load admins');
-      const data = await response.json();
       setAdmins(data);
     } catch (err) {
       console.error('Error loading admins:', err);
