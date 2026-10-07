@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../Toast';
 import { useConfirm } from '../ConfirmModal';
 import { useEvent } from '../../contexts/EventContext';
-import type { Team } from '../seeding/SeedingScoresTable';
-import type {
-  DoubleSeedingScore,
-  DoubleSeedingRanking,
-} from '../doubleSeeding/DoubleSeedingScoresTable';
-import DoubleSeedingDisplay from '../doubleSeeding/DoubleSeedingDisplay';
+import {
+  DOUBLE_SEEDING_TABLE_CONFIG,
+  type Team,
+  type DoubleSeedingScore,
+  type DoubleSeedingRanking,
+} from '../seeding/SeedingScoresTable';
+import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 
 interface DoubleSeedingMatch {
@@ -345,11 +346,12 @@ export default function DoubleSeedingTab() {
       ) : (
         <>
           {effectiveRounds > 0 ? (
-            <DoubleSeedingDisplay
+            <SeedingDisplay
               teams={teams}
               scores={scores}
               rankings={rankings}
               effectiveRounds={effectiveRounds}
+              config={DOUBLE_SEEDING_TABLE_CONFIG}
             />
           ) : (
             <div className="card">

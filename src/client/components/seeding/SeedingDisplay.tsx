@@ -1,25 +1,31 @@
 import SeedingScoresTable, {
   buildTeamRowData,
   type Team,
-  type SeedingScore,
-  type SeedingRanking,
+  type RoundScore,
+  type RankingBase,
+  type SeedingTableConfig,
 } from './SeedingScoresTable';
 
-interface SeedingDisplayProps {
+interface SeedingDisplayProps<S extends RoundScore, R extends RankingBase> {
   teams: Team[];
-  scores: SeedingScore[];
-  rankings: SeedingRanking[];
+  scores: S[];
+  rankings: R[];
   effectiveRounds: number;
+  config: SeedingTableConfig<R>;
   variant?: 'default' | 'spectator';
 }
 
-export default function SeedingDisplay({
+export default function SeedingDisplay<
+  S extends RoundScore,
+  R extends RankingBase,
+>({
   teams,
   scores,
   rankings,
   effectiveRounds,
+  config,
   variant = 'default',
-}: SeedingDisplayProps) {
+}: SeedingDisplayProps<S, R>) {
   const teamRowData = buildTeamRowData(
     teams,
     scores,
@@ -42,6 +48,7 @@ export default function SeedingDisplay({
       <SeedingScoresTable
         teamRowData={teamRowData}
         effectiveRounds={effectiveRounds}
+        config={config}
         variant={variant}
       />
 
