@@ -28,6 +28,7 @@ import TeamInitialsPanel, {
   teamInitialsInputId,
   type TeamInitialsParticipant,
 } from './TeamInitialsPanel';
+import { ApiError, apiFetch, apiRequest } from '../utils/api';
 import '../pages/Scoresheet.css';
 import { JudgeChatProvider } from '../contexts/JudgeChatContext';
 import JudgeChatButton from './judgeChat/JudgeChatButton';
@@ -398,17 +399,18 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         status: statuses,
       });
       const url = `/queue/event/${schema.eventId}?${params.toString()}`;
-      const response = await fetch(url);
-      if (!response.ok) return;
+      const { data, response } = await apiRequest<typeof queueItems>(url);
       // Version-based ETag: skip the state update (and re-render) when the
       // queue has not changed since the last poll.
       const etag = response.headers.get('ETag');
       if (etag && etag === lastQueueEtagRef.current) return;
-      const data = await response.json();
       lastQueueEtagRef.current = etag;
       setQueueItems(data);
     } catch (error) {
-      console.error('Error loading queue:', error);
+      // Error responses are ignored; the next poll tries again.
+      if (!(error instanceof ApiError)) {
+        console.error('Error loading queue:', error);
+      }
     }
   };
 
@@ -422,20 +424,14 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         isEventScopedBracket &&
         bracketSourceEventId
       ) {
-        const response = await fetch(
+        const { data: dbGames, response } = await apiRequest<any[]>(
           `/brackets/event/${bracketSourceEventId}/games?eligible=scoreable`,
-          { credentials: 'include' },
+          { fallbackError: 'Failed to load bracket games from DB' },
         );
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Failed to load bracket games from DB:', errorData);
-          return;
-        }
         // Version-based ETag: skip re-render when nothing changed.
         const etag = response.headers.get('ETag');
         if (etag && etag === lastBracketEtagRef.current) return;
         lastBracketEtagRef.current = etag;
-        const dbGames = await response.json();
         const mapped: BracketGameOption[] = dbGames.map((g: any) => {
           const team1 =
             g.team1_id != null && (g.team1_number != null || g.team1_name)
@@ -468,16 +464,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         });
         setBracketGames(mapped);
       } else if (bracketSource.type === 'db' && bracketSource.bracketId) {
-        const response = await fetch(
+        const dbGames = await apiFetch<any[]>(
           `/brackets/${bracketSource.bracketId}/games`,
-          { credentials: 'include' },
+          { fallbackError: 'Failed to load bracket games from DB' },
         );
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error('Failed to load bracket games from DB:', errorData);
-          return;
-        }
-        const dbGames = await response.json();
         const mapped: BracketGameOption[] = dbGames.map((g: any) => {
           const team1 =
             g.team1_id != null && (g.team1_number != null || g.team1_name)
@@ -521,14 +511,10 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
       // DB backend: load teams from event
       if (teamsConfig?.type === 'db' && teamsConfig?.eventId) {
-        const response = await fetch(`/teams/event/${teamsConfig.eventId}`, {
-          credentials: 'include',
-        });
-        if (!response.ok) {
-          console.error('Failed to load teams data from DB');
-          return;
-        }
-        const data = await response.json();
+        const data = await apiFetch<any[]>(
+          `/teams/event/${teamsConfig.eventId}`,
+          { fallbackError: 'Failed to load teams data from DB' },
+        );
         setTeamsData(data);
       }
     } catch (error) {
@@ -608,14 +594,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
 
         // DB backend: load teams from event for dropdown
         if (ds.type === 'db' && ds.eventId) {
-          const response = await fetch(`/teams/event/${ds.eventId}`, {
-            credentials: 'include',
+          let data = await apiFetch<any[]>(`/teams/event/${ds.eventId}`, {
+            fallbackError: `Failed to load ${field.id} from DB`,
           });
-          if (!response.ok) {
-            console.error(`Failed to load ${field.id} from DB`);
-            continue;
-          }
-          let data = await response.json();
           const labelField = ds.labelField || 'team_number';
           const valueField = ds.valueField || 'team_number';
 
@@ -1370,10 +1351,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     try {
-      const response = await fetch('/api/scores/submit', {
+      await apiFetch('/api/scores/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           templateId: template.id,
           participantName,
           matchId,
@@ -1405,22 +1385,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
               ? resultNote.trim()
               : undefined,
           teamInitials: initialsRequired ? submittedInitials : undefined,
-        }),
+        },
       });
-
-      if (response.status === 401 || response.status === 403) {
-        const data = await response.json().catch(() => ({}));
-        const msg =
-          (data as { error?: string }).error ||
-          'Session expired. Redirecting to scoresheet selection...';
-        showNotification(msg, 'error');
-        sessionStorage.removeItem('currentTemplate');
-        setTimeout(() => {
-          window.location.href = '/judge';
-        }, 2000);
-        return;
-      }
-      if (!response.ok) throw new Error('Failed to submit score');
 
       // Cache the round number for next submission (seeding only, not queue-based)
       if (!isHeadToHead && !useQueueForSeeding && scoreData['round']?.value) {
@@ -1450,6 +1416,20 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
         setFormData({ round: currentRound });
       }
     } catch (error) {
+      if (
+        error instanceof ApiError &&
+        (error.status === 401 || error.status === 403)
+      ) {
+        const msg =
+          (error.data as { error?: string } | null)?.error ||
+          'Session expired. Redirecting to scoresheet selection...';
+        showNotification(msg, 'error');
+        sessionStorage.removeItem('currentTemplate');
+        setTimeout(() => {
+          window.location.href = '/judge';
+        }, 2000);
+        return;
+      }
       console.error('Error submitting score:', error);
       showNotification('Failed to submit score. Please try again.', 'error');
     }

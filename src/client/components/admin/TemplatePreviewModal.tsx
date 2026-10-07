@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
 import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 
@@ -23,11 +24,9 @@ export default function TemplatePreviewModal({
 
   const loadTemplate = async () => {
     try {
-      const response = await fetch(`/scoresheet/templates/${templateId}`, {
-        credentials: 'include',
+      const data = await apiFetch(`/scoresheet/templates/${templateId}`, {
+        fallbackError: 'Failed to load template',
       });
-      if (!response.ok) throw new Error('Failed to load template');
-      const data = await response.json();
       setTemplate(data);
     } catch (error) {
       console.error('Error loading template:', error);

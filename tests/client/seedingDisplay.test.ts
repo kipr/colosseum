@@ -9,10 +9,10 @@ import {
   type DoubleSeedingScore,
   type SeedingRanking,
   type SeedingScore,
-  type Team,
 } from '../../src/client/components/seeding/SeedingScoresTable';
+import type { TeamSummary } from '../../src/client/types/teams';
 
-const teams: Team[] = [
+const teams: TeamSummary[] = [
   { id: 1, team_number: 101, team_name: 'Alpha', display_name: null },
   { id: 2, team_number: 102, team_name: 'Beta', display_name: null },
 ];

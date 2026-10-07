@@ -8,6 +8,8 @@ import {
   buildBulkImportSubScores,
   parseDocScoresText,
 } from './documentationBulkImport';
+import { ApiError, apiFetch } from '../../utils/api';
+import type { Team } from '../../types/teams';
 import '../Modal.css';
 import './DocumentationTab.css';
 
@@ -46,14 +48,6 @@ interface DocScore {
   overall_score: number | null;
   scored_at: string | null;
   sub_scores?: DocSubScore[];
-}
-
-interface Team {
-  id: number;
-  event_id: number;
-  team_number: number;
-  team_name: string;
-  display_name: string | null;
 }
 
 interface CategoryFormData {
@@ -119,12 +113,10 @@ export default function DocumentationTab() {
       return;
     }
     try {
-      const res = await fetch(
+      const data = await apiFetch<DocCategory[]>(
         `/documentation-scores/categories/event/${selectedEventId}`,
-        { credentials: 'include' },
+        { fallbackError: 'Failed to fetch categories' },
       );
-      if (!res.ok) throw new Error('Failed to fetch categories');
-      const data: DocCategory[] = await res.json();
       setCategories(data);
     } catch (err) {
       console.error(err);
@@ -134,11 +126,10 @@ export default function DocumentationTab() {
 
   const fetchGlobalCategories = useCallback(async () => {
     try {
-      const res = await fetch('/documentation-scores/global-categories', {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch global categories');
-      const data: GlobalCategory[] = await res.json();
+      const data = await apiFetch<GlobalCategory[]>(
+        '/documentation-scores/global-categories',
+        { fallbackError: 'Failed to fetch global categories' },
+      );
       setGlobalCategories(data);
     } catch (err) {
       console.error(err);
@@ -152,11 +143,9 @@ export default function DocumentationTab() {
       return;
     }
     try {
-      const res = await fetch(`/teams/event/${selectedEventId}`, {
-        credentials: 'include',
+      const data = await apiFetch<Team[]>(`/teams/event/${selectedEventId}`, {
+        fallbackError: 'Failed to fetch teams',
       });
-      if (!res.ok) throw new Error('Failed to fetch teams');
-      const data: Team[] = await res.json();
       setTeams(data);
     } catch (err) {
       console.error(err);
@@ -170,12 +159,10 @@ export default function DocumentationTab() {
       return;
     }
     try {
-      const res = await fetch(
+      const data = await apiFetch<DocScore[]>(
         `/documentation-scores/event/${selectedEventId}`,
-        { credentials: 'include' },
+        { fallbackError: 'Failed to fetch scores' },
       );
-      if (!res.ok) throw new Error('Failed to fetch scores');
-      const data: DocScore[] = await res.json();
       setScores(data);
     } catch (err) {
       console.error(err);
@@ -338,52 +325,37 @@ export default function DocumentationTab() {
     try {
       if (editingCategory) {
         const url = `/documentation-scores/categories/${editingCategory.id}?event_id=${selectedEventId}`;
-        const res = await fetch(url, {
+        await apiFetch(url, {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ ordinal: ord }),
+          body: { ordinal: ord },
+          fallbackError: 'Failed to save category',
         });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to save category');
-        }
         toast.success('Category updated!');
       } else if (isLink) {
-        const res = await fetch('/documentation-scores/categories', {
+        await apiFetch('/documentation-scores/categories', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
+          body: {
             event_id: selectedEventId,
             ordinal: ord,
             category_id: selectedGlobalCategoryId,
-          }),
+          },
+          fallbackError: 'Failed to link category',
         });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to link category');
-        }
         toast.success('Category linked!');
       } else if (isCreateNew) {
         const weight = parseFloat(categoryForm.weight);
         const maxScore = parseFloat(categoryForm.max_score);
-        const res = await fetch('/documentation-scores/categories', {
+        await apiFetch('/documentation-scores/categories', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
+          body: {
             event_id: selectedEventId,
             ordinal: ord,
             name: categoryForm.name.trim(),
             weight,
             max_score: maxScore,
-          }),
+          },
+          fallbackError: 'Failed to create category',
         });
-        if (!res.ok) {
-          const data = await res.json();
-          throw new Error(data.error || 'Failed to create category');
-        }
         toast.success('Category created!');
       }
       handleCloseCategoryModal();
@@ -407,14 +379,10 @@ export default function DocumentationTab() {
     if (!ok) return;
 
     try {
-      const res = await fetch(
+      await apiFetch(
         `/documentation-scores/categories/${cat.id}?event_id=${selectedEventId}`,
-        {
-          method: 'DELETE',
-          credentials: 'include',
-        },
+        { method: 'DELETE', fallbackError: 'Failed to remove category' },
       );
-      if (!res.ok) throw new Error('Failed to remove category');
       toast.success('Category removed');
       await fetchCategories();
     } catch (err) {
@@ -464,20 +432,14 @@ export default function DocumentationTab() {
 
     setSavingTeamId(team.id);
     try {
-      const res = await fetch(
+      await apiFetch(
         `/documentation-scores/event/${selectedEventId}/team/${team.id}`,
         {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ sub_scores }),
+          body: { sub_scores },
+          fallbackError: 'Failed to save score',
         },
       );
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to save score');
-      }
 
       toast.success('Score saved!');
       setInlineEdits((prev) => {
@@ -517,11 +479,10 @@ export default function DocumentationTab() {
     if (!ok) return;
 
     try {
-      const res = await fetch(
+      await apiFetch(
         `/documentation-scores/event/${selectedEventId}/team/${team.id}`,
-        { method: 'DELETE', credentials: 'include' },
+        { method: 'DELETE', fallbackError: 'Failed to clear score' },
       );
-      if (!res.ok) throw new Error('Failed to clear score');
       toast.success('Score cleared');
       await fetchScores();
     } catch (err) {
@@ -721,28 +682,22 @@ export default function DocumentationTab() {
       });
 
       try {
-        const res = await fetch(
+        await apiFetch(
           `/documentation-scores/event/${selectedEventId}/team/${team.id}`,
           {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ sub_scores }),
+            body: { sub_scores },
+            fallbackError: `Team ${row.team_number}: request failed`,
           },
         );
-        if (!res.ok) {
-          const data = await res.json();
-          errors.push({
-            index: i,
-            error: data.error || `Team ${row.team_number}: request failed`,
-          });
-        } else {
-          success++;
-        }
-      } catch {
+        success++;
+      } catch (error) {
         errors.push({
           index: i,
-          error: `Team ${row.team_number}: network error`,
+          error:
+            error instanceof ApiError
+              ? error.message
+              : `Team ${row.team_number}: network error`,
         });
       }
     }

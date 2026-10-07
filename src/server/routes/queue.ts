@@ -6,7 +6,7 @@ import {
   isCheckConstraintError,
   isForeignKeyConstraintError,
 } from '../database/constraintErrors';
-import { isValidQueueStatus } from '../constants/queueStatus';
+import { isValidQueueStatus } from '../../shared/queueStatus';
 import {
   ensureQueueFresh,
   scheduleQueueRepair,

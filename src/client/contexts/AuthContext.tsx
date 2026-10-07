@@ -6,6 +6,7 @@ import {
   ReactNode,
   useRef,
 } from 'react';
+import { ApiError, apiFetch } from '../utils/api';
 
 interface User {
   id: number;
@@ -32,20 +33,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const checkAuth = async (retryCount = 0): Promise<void> => {
     try {
-      const response = await fetch('/auth/user', {
-        credentials: 'include',
-      });
-
-      if (response.ok) {
-        const userData = await response.json();
-        setUser(userData);
-        setServerAvailable(true);
-      } else {
+      setUser(await apiFetch<User>('/auth/user'));
+      setServerAvailable(true);
+      setLoading(false);
+    } catch (error) {
+      // The server answered, but not with a user: treat as logged out.
+      if (error instanceof ApiError) {
         setUser(null);
         setServerAvailable(true);
+        setLoading(false);
+        return;
       }
-      setLoading(false);
-    } catch {
+
       // Server is unavailable (likely restarting)
       setServerAvailable(false);
 

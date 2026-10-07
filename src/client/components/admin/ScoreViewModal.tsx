@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
+import { apiFetch } from '../../utils/api';
 import '../Modal.css';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -74,9 +75,9 @@ export default function ScoreViewModal({
 
   const loadTemplate = async () => {
     try {
-      const response = await fetch('/scoresheet/templates');
-      if (!response.ok) throw new Error('Failed to load templates');
-      const templates = await response.json();
+      const templates = await apiFetch<any[]>('/scoresheet/templates', {
+        fallbackError: 'Failed to load templates',
+      });
 
       // Find template by ID first (more reliable), then fall back to name
       let foundTemplate = templates.find(
@@ -324,21 +325,18 @@ export default function ScoreViewModal({
         ),
       );
 
-      const response = await fetch(`/scores/${score.id}`, {
+      await apiFetch(`/scores/${score.id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
+        body: {
           scoreData: updatedScoreData,
           resultType,
           disqualifiedTeamId:
             resultType === 'disqualification' ? disqualifiedTeamId : null,
           resultNote:
             resultType === 'disqualification' ? resultNote.trim() : null,
-        }),
+        },
+        fallbackError: 'Failed to update score',
       });
-
-      if (!response.ok) throw new Error('Failed to update score');
 
       alert('Score updated successfully!');
       onSave();

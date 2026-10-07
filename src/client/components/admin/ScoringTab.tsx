@@ -8,6 +8,7 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
+import { ApiError, apiFetch } from '../../utils/api';
 import '../Modal.css';
 import './ScoringTab.css';
 import type { BracketResultType } from '../../../shared/bracketResult';
@@ -171,13 +172,10 @@ export default function ScoringTab() {
       if (eventFilterStatus) params.set('status', eventFilterStatus);
       if (eventFilterType) params.set('score_type', eventFilterType);
 
-      const response = await fetch(
+      const data = await apiFetch<EventScoresResponse>(
         `/scores/by-event/${selectedEventId}?${params.toString()}`,
-        { credentials: 'include' },
+        { fallbackError: 'Failed to load event scores' },
       );
-      if (!response.ok) throw new Error('Failed to load event scores');
-
-      const data: EventScoresResponse = await response.json();
       setScores(data.rows);
       setEventTotalPages(data.totalPages);
       setEventTotalCount(data.totalCount);
@@ -192,17 +190,28 @@ export default function ScoringTab() {
   // Accept event-scoped score
   const handleAcceptEvent = async (id: number, force = false) => {
     try {
-      const response = await fetch(`/scores/${id}/accept-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ force }),
-      });
+      const data = await apiFetch<{ advanced?: boolean; advancedTo?: number }>(
+        `/scores/${id}/accept-event`,
+        {
+          method: 'POST',
+          body: { force },
+          fallbackError: 'Failed to accept score',
+        },
+      );
 
-      const data = await response.json();
+      if (data.advanced) {
+        toast.success(
+          `Score accepted. Winner advanced to game ${data.advancedTo || 'next round'}.`,
+        );
+      } else {
+        toast.success('Score accepted successfully');
+      }
 
-      if (response.status === 409 && !force) {
+      loadEventScores(false);
+    } catch (error: any) {
+      if (error instanceof ApiError && error.status === 409 && !force) {
         // Conflict - ask user to confirm override
+        const data = (error.data ?? {}) as Record<string, any>;
         const existingDescription = data.existingResultType
           ? `${data.existingResultType} (winner ${data.existingWinnerId})`
           : (data.existingScore ?? data.existingWinnerId);
@@ -220,21 +229,6 @@ export default function ScoringTab() {
         }
         return;
       }
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to accept score');
-      }
-
-      if (data.advanced) {
-        toast.success(
-          `Score accepted. Winner advanced to game ${data.advancedTo || 'next round'}.`,
-        );
-      } else {
-        toast.success('Score accepted successfully');
-      }
-
-      loadEventScores(false);
-    } catch (error: any) {
       console.error('Error accepting event score:', error);
       toast.error(error.message || 'Failed to accept score');
     }
@@ -244,18 +238,14 @@ export default function ScoringTab() {
   const handleRevertEvent = async (id: number, confirm_revert = false) => {
     try {
       // First, do a dry-run to check for cascading effects
-      const dryRunResponse = await fetch(`/scores/${id}/revert-event`, {
+      const dryRunData = await apiFetch<{
+        requiresConfirmation?: boolean;
+        affectedGames?: AffectedGame[];
+      }>(`/scores/${id}/revert-event`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ dryRun: true }),
+        body: { dryRun: true },
+        fallbackError: 'Failed to check revert',
       });
-
-      const dryRunData = await dryRunResponse.json();
-
-      if (!dryRunResponse.ok) {
-        throw new Error(dryRunData.error || 'Failed to check revert');
-      }
 
       // If cascade confirmation is required
       if (dryRunData.requiresConfirmation && !confirm_revert) {
@@ -287,18 +277,14 @@ export default function ScoringTab() {
       }
 
       // Apply the revert
-      const response = await fetch(`/scores/${id}/revert-event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ confirm: true }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to revert score');
-      }
+      const data = await apiFetch<{ revertedGames?: number }>(
+        `/scores/${id}/revert-event`,
+        {
+          method: 'POST',
+          body: { confirm: true },
+          fallbackError: 'Failed to revert score',
+        },
+      );
 
       if (data.revertedGames && data.revertedGames > 1) {
         toast.success(`Score reverted. ${data.revertedGames} games affected.`);
@@ -323,11 +309,10 @@ export default function ScoringTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/scores/${id}/reject`, {
+      await apiFetch(`/scores/${id}/reject`, {
         method: 'POST',
-        credentials: 'include',
+        fallbackError: 'Failed to reject score',
       });
-      if (!response.ok) throw new Error('Failed to reject score');
       loadEventScores(false);
     } catch (error) {
       console.error('Error rejecting score:', error);
@@ -375,24 +360,16 @@ export default function ScoringTab() {
 
     setBulkAccepting(true);
     try {
-      const response = await fetch(
-        `/scores/event/${selectedEventId}/accept/bulk`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            score_ids: Array.from(bulkAcceptSelected),
-          }),
+      const data = await apiFetch<{
+        accepted: number;
+        skipped?: { id: number; reason: string }[];
+      }>(`/scores/event/${selectedEventId}/accept/bulk`, {
+        method: 'POST',
+        body: {
+          score_ids: Array.from(bulkAcceptSelected),
         },
-      );
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to accept scores');
-      }
-
-      const data = await response.json();
+        fallbackError: 'Failed to accept scores',
+      });
       toast.success(`Accepted ${data.accepted} score(s)`);
       if (data.skipped && data.skipped.length > 0) {
         toast.warning(`${data.skipped.length} score(s) skipped (conflicts)`);

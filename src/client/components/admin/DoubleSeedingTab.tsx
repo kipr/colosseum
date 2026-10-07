@@ -4,10 +4,11 @@ import { useConfirm } from '../ConfirmModal';
 import { useEvent } from '../../contexts/EventContext';
 import {
   DOUBLE_SEEDING_TABLE_CONFIG,
-  type Team,
   type DoubleSeedingScore,
   type DoubleSeedingRanking,
 } from '../seeding/SeedingScoresTable';
+import type { TeamSummary } from '../../types/teams';
+import { apiFetch } from '../../utils/api';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 
@@ -42,7 +43,7 @@ export default function DoubleSeedingTab() {
   const selectedEventId = selectedEvent?.id ?? null;
   const configuredRounds = selectedEvent?.double_seeding_rounds ?? 0;
 
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [scores, setScores] = useState<DoubleSeedingScore[]>([]);
   const [rankings, setRankings] = useState<DoubleSeedingRanking[]>([]);
   const [matches, setMatches] = useState<DoubleSeedingMatch[]>([]);
@@ -80,30 +81,29 @@ export default function DoubleSeedingTab() {
 
     setLoading(true);
     try {
-      const [teamsRes, scoresRes, rankingsRes, matchesRes] = await Promise.all([
-        fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
-        fetch(`/double-seeding/scores/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-        fetch(`/double-seeding/rankings/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-        fetch(`/double-seeding/matches/event/${selectedEventId}`, {
-          credentials: 'include',
-        }),
-      ]);
+      const [teamsData, scoresData, rankingsData, matchesData] =
+        await Promise.all([
+          apiFetch<TeamSummary[]>(`/teams/event/${selectedEventId}`, {
+            fallbackError: 'Failed to fetch teams',
+          }),
+          apiFetch<DoubleSeedingScore[]>(
+            `/double-seeding/scores/event/${selectedEventId}`,
+            { fallbackError: 'Failed to fetch double-seeding scores' },
+          ),
+          apiFetch<DoubleSeedingRanking[]>(
+            `/double-seeding/rankings/event/${selectedEventId}`,
+            { fallbackError: 'Failed to fetch rankings' },
+          ),
+          apiFetch<DoubleSeedingMatch[]>(
+            `/double-seeding/matches/event/${selectedEventId}`,
+            { fallbackError: 'Failed to fetch double-seeding matches' },
+          ),
+        ]);
 
-      if (!teamsRes.ok) throw new Error('Failed to fetch teams');
-      if (!scoresRes.ok)
-        throw new Error('Failed to fetch double-seeding scores');
-      if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
-      if (!matchesRes.ok)
-        throw new Error('Failed to fetch double-seeding matches');
-
-      setTeams(await teamsRes.json());
-      setScores(await scoresRes.json());
-      setRankings(await rankingsRes.json());
-      setMatches(await matchesRes.json());
+      setTeams(teamsData);
+      setScores(scoresData);
+      setRankings(rankingsData);
+      setMatches(matchesData);
     } catch (error) {
       console.error('Error loading double-seeding data:', error);
       toast.error('Failed to load double-seeding data');
@@ -155,21 +155,14 @@ export default function DoubleSeedingTab() {
 
     setGenerating(true);
     try {
-      const response = await fetch(
+      const data = await apiFetch<{ message?: string; rounds: number }>(
         `/double-seeding/matches/generate/${selectedEventId}`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            rounds: roundsInput,
-          }),
+          body: { rounds: roundsInput },
+          fallbackError: 'Failed to generate matches',
         },
       );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate matches');
-      }
       toast.success(
         data.message ||
           `Updated double seeding to ${data.rounds} round${data.rounds === 1 ? '' : 's'}`,
@@ -196,14 +189,10 @@ export default function DoubleSeedingTab() {
 
     setDeletingRound(round);
     try {
-      const response = await fetch(
+      const data = await apiFetch<{ round: number }>(
         `/double-seeding/matches/event/${selectedEventId}/round/${round}`,
-        { method: 'DELETE', credentials: 'include' },
+        { method: 'DELETE', fallbackError: 'Failed to remove round' },
       );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to remove round');
-      }
       toast.success(`Removed round ${data.round}`);
       await loadData();
       refreshEvents();
@@ -218,14 +207,13 @@ export default function DoubleSeedingTab() {
   const handleRecalculate = async () => {
     if (!selectedEventId) return;
     try {
-      const response = await fetch(
-        `/double-seeding/rankings/recalculate/${selectedEventId}`,
-        { method: 'POST', credentials: 'include' },
-      );
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to recalculate rankings');
-      }
+      const data = await apiFetch<{
+        teamsRanked: number;
+        teamsUnranked: number;
+      }>(`/double-seeding/rankings/recalculate/${selectedEventId}`, {
+        method: 'POST',
+        fallbackError: 'Failed to recalculate rankings',
+      });
       toast.success(
         `Rankings recalculated (${data.teamsRanked} ranked, ${data.teamsUnranked} unranked)`,
       );

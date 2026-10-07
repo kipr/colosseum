@@ -3,6 +3,7 @@ import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import OverallScoresDisplay from '../overall/OverallScoresDisplay';
 import type { OverallRow } from '../overall/OverallScoresDisplay';
+import { apiFetch } from '../../utils/api';
 import './DocumentationTab.css';
 
 export default function OverallTab() {
@@ -22,11 +23,12 @@ export default function OverallTab() {
 
     setLoading(true);
     try {
-      const res = await fetch(`/events/${selectedEventId}/overall`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('Failed to fetch overall scores');
-      const data = await res.json();
+      const data = await apiFetch<OverallRow[]>(
+        `/events/${selectedEventId}/overall`,
+        {
+          fallbackError: 'Failed to fetch overall scores',
+        },
+      );
       setRows(data);
     } catch (err) {
       console.error(err);

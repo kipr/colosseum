@@ -26,6 +26,7 @@ import {
   pageMayHaveOlderMessages,
   hasOlderMessagesForConversation,
 } from '../utils/judgeChatUtils';
+import { ApiError, apiFetch } from '../utils/api';
 
 export type JudgeChatMode = 'judge' | 'admin';
 
@@ -193,32 +194,32 @@ export function JudgeChatProvider({
   const fetchConversations = useCallback(
     async (silent = false) => {
       try {
-        const response = await fetch(`/chat/events/${eventId}/conversations`, {
-          credentials: 'include',
-        });
-        if (response.ok) {
-          const data = (await response.json()) as JudgeChatConversation[];
-          if (
-            mode === 'admin' &&
-            selectedConversationWasRemoved(data, selectedKeyRef.current)
-          ) {
-            const removedKey = selectedKeyRef.current;
-            fetchGenerationRef.current += 1;
-            selectedKeyRef.current = null;
-            messagesRef.current = [];
-            setSelectedConversationKey(null);
-            setMessages([]);
-            setHasOlderMessages(removedKey, false);
-          }
-          if (!conversationsEqual(data, conversationsRef.current)) {
-            setConversations(data);
-            if (!silent) {
-              setAdminSeenMap(getAdminSeenMap());
-            }
+        const data = await apiFetch<JudgeChatConversation[]>(
+          `/chat/events/${eventId}/conversations`,
+        );
+        if (
+          mode === 'admin' &&
+          selectedConversationWasRemoved(data, selectedKeyRef.current)
+        ) {
+          const removedKey = selectedKeyRef.current;
+          fetchGenerationRef.current += 1;
+          selectedKeyRef.current = null;
+          messagesRef.current = [];
+          setSelectedConversationKey(null);
+          setMessages([]);
+          setHasOlderMessages(removedKey, false);
+        }
+        if (!conversationsEqual(data, conversationsRef.current)) {
+          setConversations(data);
+          if (!silent) {
+            setAdminSeenMap(getAdminSeenMap());
           }
         }
       } catch (err) {
-        console.error('Failed to load conversations:', err);
+        // Error responses are ignored; the next poll tries again.
+        if (!(err instanceof ApiError)) {
+          console.error('Failed to load conversations:', err);
+        }
       }
     },
     [eventId, mode, setHasOlderMessages],
@@ -247,16 +248,9 @@ export function JudgeChatProvider({
         const qs = params.toString();
         if (qs) url += `?${qs}`;
 
-        const response = await fetch(url, { credentials: 'include' });
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(
-            (data as { error?: string }).error || 'Failed to load messages',
-          );
-        }
-
-        const data = (await response.json()) as JudgeChatMessage[];
-        return data;
+        return await apiFetch<JudgeChatMessage[]>(url, {
+          fallbackError: 'Failed to load messages',
+        });
       } catch (err) {
         if (!silent) {
           setError(
@@ -372,21 +366,14 @@ export function JudgeChatProvider({
           body.senderName = judgeName;
         }
 
-        const response = await fetch(`/chat/events/${eventId}/messages`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(body),
-        });
-
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(
-            (data as { error?: string }).error || 'Failed to send message',
-          );
-        }
-
-        const newMessage = (await response.json()) as JudgeChatMessage;
+        const newMessage = await apiFetch<JudgeChatMessage>(
+          `/chat/events/${eventId}/messages`,
+          {
+            method: 'POST',
+            body,
+            fallbackError: 'Failed to send message',
+          },
+        );
         setMessages((prev) => [...prev, newMessage]);
         updateUnreadFromMessages([...messagesRef.current, newMessage], true);
 
@@ -407,17 +394,10 @@ export function JudgeChatProvider({
   const deleteConversation = useCallback(
     async (conversationKey: string): Promise<boolean> => {
       try {
-        const response = await fetch(
+        await apiFetch(
           `/chat/events/${eventId}/conversations/${encodeURIComponent(conversationKey)}`,
-          { method: 'DELETE', credentials: 'include' },
+          { method: 'DELETE', fallbackError: 'Failed to delete conversation' },
         );
-        if (!response.ok) {
-          const data = await response.json().catch(() => ({}));
-          throw new Error(
-            (data as { error?: string }).error ||
-              'Failed to delete conversation',
-          );
-        }
         setConversations((prev) =>
           prev.filter((c) => c.conversationKey !== conversationKey),
         );

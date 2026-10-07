@@ -9,6 +9,7 @@ import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDate } from '../../utils/dateUtils';
+import { apiFetch } from '../../utils/api';
 
 interface ScoreSheet {
   id: number;
@@ -53,12 +54,10 @@ export default function ScoreSheetsTab() {
 
   const loadScoreSheets = async (eventId: number) => {
     try {
-      const response = await fetch(
+      const data = await apiFetch<ScoreSheet[]>(
         `/scoresheet/templates/admin?eventId=${eventId}`,
-        { credentials: 'include' },
+        { fallbackError: 'Failed to load score sheets' },
       );
-      if (!response.ok) throw new Error('Failed to load score sheets');
-      const data = await response.json();
       setScoreSheets(data);
     } catch (error) {
       console.error('Error loading score sheets:', error);
@@ -67,15 +66,9 @@ export default function ScoreSheetsTab() {
 
   const loadFieldTemplates = async () => {
     try {
-      const response = await fetch('/field-templates', {
-        credentials: 'include',
+      const data = await apiFetch<FieldTemplate[]>('/field-templates', {
+        fallbackError: 'Failed to load field templates',
       });
-
-      if (!response.ok) {
-        throw new Error(`Failed to load field templates: ${response.status}`);
-      }
-
-      const data = await response.json();
       setFieldTemplates(data);
     } catch (error: any) {
       console.error('Error loading field templates:', error.message || error);
@@ -108,11 +101,10 @@ export default function ScoreSheetsTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/scoresheet/templates/${id}`, {
+      await apiFetch(`/scoresheet/templates/${id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        fallbackError: 'Failed to delete score sheet',
       });
-      if (!response.ok) throw new Error('Failed to delete score sheet');
       if (selectedEvent?.id != null) loadScoreSheets(selectedEvent.id);
     } catch (error) {
       console.error('Error deleting score sheet:', error);
@@ -146,11 +138,10 @@ export default function ScoreSheetsTab() {
     if (!confirmed) return;
 
     try {
-      const response = await fetch(`/field-templates/${id}`, {
+      await apiFetch(`/field-templates/${id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        fallbackError: 'Failed to delete template',
       });
-      if (!response.ok) throw new Error('Failed to delete template');
       loadFieldTemplates();
     } catch (error) {
       console.error('Error deleting template:', error);

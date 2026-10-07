@@ -3,10 +3,11 @@ import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import {
   SEEDING_TABLE_CONFIG,
-  type Team,
   type SeedingScore,
   type SeedingRanking,
 } from '../seeding/SeedingScoresTable';
+import type { TeamSummary } from '../../types/teams';
+import { apiFetch } from '../../utils/api';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 
@@ -14,7 +15,7 @@ export default function SeedingTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
   const seedingRounds = selectedEvent?.seeding_rounds ?? 3;
-  const [teams, setTeams] = useState<Team[]>([]);
+  const [teams, setTeams] = useState<TeamSummary[]>([]);
   const [scores, setScores] = useState<SeedingScore[]>([]);
   const [rankings, setRankings] = useState<SeedingRanking[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,23 +34,18 @@ export default function SeedingTab() {
 
     setLoading(true);
     try {
-      const [teamsRes, scoresRes, rankingsRes] = await Promise.all([
-        fetch(`/teams/event/${selectedEventId}`, { credentials: 'include' }),
-        fetch(`/seeding/scores/event/${selectedEventId}`, {
-          credentials: 'include',
+      const [teamsData, scoresData, rankingsData] = await Promise.all([
+        apiFetch<TeamSummary[]>(`/teams/event/${selectedEventId}`, {
+          fallbackError: 'Failed to fetch teams',
         }),
-        fetch(`/seeding/rankings/event/${selectedEventId}`, {
-          credentials: 'include',
+        apiFetch<SeedingScore[]>(`/seeding/scores/event/${selectedEventId}`, {
+          fallbackError: 'Failed to fetch seeding scores',
         }),
+        apiFetch<SeedingRanking[]>(
+          `/seeding/rankings/event/${selectedEventId}`,
+          { fallbackError: 'Failed to fetch rankings' },
+        ),
       ]);
-
-      if (!teamsRes.ok) throw new Error('Failed to fetch teams');
-      if (!scoresRes.ok) throw new Error('Failed to fetch seeding scores');
-      if (!rankingsRes.ok) throw new Error('Failed to fetch rankings');
-
-      const teamsData: Team[] = await teamsRes.json();
-      const scoresData: SeedingScore[] = await scoresRes.json();
-      const rankingsData: SeedingRanking[] = await rankingsRes.json();
 
       setTeams(teamsData);
       setScores(scoresData);

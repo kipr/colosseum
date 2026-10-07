@@ -1,13 +1,13 @@
 import SeedingScoresTable, {
   buildTeamRowData,
-  type Team,
   type RoundScore,
   type RankingBase,
   type SeedingTableConfig,
 } from './SeedingScoresTable';
+import type { TeamSummary } from '../../types/teams';
 
 interface SeedingDisplayProps<S extends RoundScore, R extends RankingBase> {
-  teams: Team[];
+  teams: TeamSummary[];
   scores: S[];
   rankings: R[];
   effectiveRounds: number;

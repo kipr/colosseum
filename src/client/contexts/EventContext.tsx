@@ -8,6 +8,7 @@ import {
 } from 'react';
 import { useAuth } from './AuthContext';
 import { Event, isEventActive } from '../utils/eventStatus';
+import { apiFetch } from '../utils/api';
 
 interface EventContextType {
   selectedEvent: Event | null;
@@ -42,15 +43,9 @@ export function EventProvider({ children }: { children: ReactNode }) {
     try {
       setError(null);
       setLoading(true);
-      const response = await fetch('/events', {
-        credentials: 'include',
+      const data = await apiFetch<Event[]>('/events', {
+        fallbackError: 'Failed to fetch events',
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch events');
-      }
-
-      const data: Event[] = await response.json();
       setEvents(data);
       return data;
     } catch (err) {

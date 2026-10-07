@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
+import { ApiError, apiFetch } from '../utils/api';
 import './Modal.css';
 
 interface AccessCodeModalProps {
@@ -28,28 +29,19 @@ export default function AccessCodeModal({
     }
 
     try {
-      const response = await fetch(
+      const template = await apiFetch(
         `/scoresheet/templates/${templateId}/verify`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ accessCode }),
-        },
+        { method: 'POST', body: { accessCode } },
       );
-
-      if (!response.ok) {
-        if (response.status === 403) {
-          setError('Invalid access code');
-        } else {
-          setError('Failed to verify access code');
-        }
-        return;
-      }
-
-      const template = await response.json();
       onSuccess(template);
     } catch (error) {
-      console.error('Error verifying access code:', error);
+      if (error instanceof ApiError && error.status === 403) {
+        setError('Invalid access code');
+        return;
+      }
+      if (!(error instanceof ApiError)) {
+        console.error('Error verifying access code:', error);
+      }
       setError('Failed to verify access code');
     }
   };
