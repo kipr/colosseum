@@ -101,6 +101,42 @@ function getEventCategory(
   );
 }
 
+function getSubScores(
+  db: Database,
+  eventId: number | string,
+  docScoreId: number,
+) {
+  return db.all(
+    `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
+     FROM documentation_sub_scores dss
+     JOIN documentation_categories dc ON dss.category_id = dc.id
+     JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
+     WHERE dss.documentation_score_id = ?
+     ORDER BY edc.ordinal ASC`,
+    [eventId, docScoreId],
+  );
+}
+
+/** A team's documentation score with its sub-scores, or undefined if unscored. */
+async function getDocumentationScoreSnapshot(
+  db: Database,
+  eventId: number | string,
+  teamId: number | string,
+) {
+  const docScore = await db.get<{ id: number } & Record<string, unknown>>(
+    `SELECT ds.*, t.team_number, t.team_name, t.display_name
+     FROM documentation_scores ds
+     JOIN teams t ON ds.team_id = t.id
+     WHERE ds.event_id = ? AND ds.team_id = ?`,
+    [eventId, teamId],
+  );
+  if (!docScore) return undefined;
+  return {
+    ...docScore,
+    sub_scores: await getSubScores(db, eventId, docScore.id),
+  };
+}
+
 // POST /documentation-scores/categories
 router.post(
   '/categories',
@@ -432,16 +468,11 @@ router.get(
 
       // Attach sub-scores for each
       for (const row of scores) {
-        const subScores = await db.all(
-          `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
-           FROM documentation_sub_scores dss
-           JOIN documentation_categories dc ON dss.category_id = dc.id
-           JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
-           WHERE dss.documentation_score_id = ?
-           ORDER BY edc.ordinal ASC`,
-          [eventId, row.id],
+        (row as Record<string, unknown>).sub_scores = await getSubScores(
+          db,
+          eventId,
+          row.id,
         );
-        (row as Record<string, unknown>).sub_scores = subScores;
       }
 
       res.json(scores);
@@ -485,15 +516,7 @@ router.get(
       }
 
       const teamRow = team as { id: number; event_id: number };
-      const subScores = await db.all(
-        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
-         FROM documentation_sub_scores dss
-         JOIN documentation_categories dc ON dss.category_id = dc.id
-         JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
-         WHERE dss.documentation_score_id = ?
-         ORDER BY edc.ordinal ASC`,
-        [teamRow.event_id, docScore.id],
-      );
+      const subScores = await getSubScores(db, teamRow.event_id, docScore.id);
 
       res.json({
         team,
@@ -598,9 +621,11 @@ router.put(
       const eventIdNum = parseInt(eventId, 10);
       const teamIdNum = parseInt(teamId, 10);
 
-      const existing = await db.get<{ id: number }>(
-        'SELECT * FROM documentation_scores WHERE event_id = ? AND team_id = ?',
-        [eventIdNum, teamIdNum],
+      // Snapshot before the sub-scores are replaced, for the audit entry.
+      const existing = await getDocumentationScoreSnapshot(
+        db,
+        eventIdNum,
+        teamIdNum,
       );
 
       let docScoreId: number;
@@ -657,25 +682,11 @@ router.put(
         }
       }
 
-      const docScore = await db.get(
-        `SELECT ds.*, t.team_number, t.team_name, t.display_name
-         FROM documentation_scores ds
-         JOIN teams t ON ds.team_id = t.id
-         WHERE ds.event_id = ? AND ds.team_id = ?`,
-        [eventIdNum, teamIdNum],
+      const saved = await getDocumentationScoreSnapshot(
+        db,
+        eventIdNum,
+        teamIdNum,
       );
-
-      const subScores = await db.all(
-        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
-         FROM documentation_sub_scores dss
-         JOIN documentation_categories dc ON dss.category_id = dc.id
-         JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
-         WHERE dss.documentation_score_id = ?
-         ORDER BY edc.ordinal ASC`,
-        [eventIdNum, docScore.id],
-      );
-
-      const saved = { ...docScore, sub_scores: subScores };
       await auditRequest(db, req, {
         event_id: eventIdNum,
         action: 'documentation_score_saved',
@@ -707,10 +718,7 @@ router.delete(
       const { eventId, teamId } = req.params;
       const db = await getDatabase();
 
-      const existing = await db.get<{ id: number }>(
-        'SELECT * FROM documentation_scores WHERE event_id = ? AND team_id = ?',
-        [eventId, teamId],
-      );
+      const existing = await getDocumentationScoreSnapshot(db, eventId, teamId);
 
       await db.run(
         'DELETE FROM documentation_scores WHERE event_id = ? AND team_id = ?',
