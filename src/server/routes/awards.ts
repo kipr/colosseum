@@ -1,7 +1,8 @@
 import express, { Response } from 'express';
 import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
-import { getDatabase } from '../database/connection';
+import { getDatabase, type Database } from '../database/connection';
+import { auditRequest } from './audit';
 import { areFinalScoresReleased } from '../utils/eventVisibility';
 import {
   computeAutomaticAwards,
@@ -142,6 +143,12 @@ router.post(
         'SELECT id, name, description, award_type, created_at, updated_at FROM award_templates WHERE id = ?',
         [result.lastID],
       );
+      await auditRequest(db, req, {
+        action: 'award_template_created',
+        entity_type: 'award_template',
+        entity_id: result.lastID,
+        new_value: created,
+      });
       res.status(201).json(created);
     } catch (error) {
       console.error('Error creating award template:', error);
@@ -160,7 +167,7 @@ router.patch(
       const { name, description, award_type } = req.body;
       const db = await getDatabase();
       const existing = await db.get(
-        'SELECT id FROM award_templates WHERE id = ?',
+        'SELECT * FROM award_templates WHERE id = ?',
         [id],
       );
       if (!existing) {
@@ -201,6 +208,13 @@ router.patch(
         'SELECT id, name, description, award_type, created_at, updated_at FROM award_templates WHERE id = ?',
         [id],
       );
+      await auditRequest(db, req, {
+        action: 'award_template_updated',
+        entity_type: 'award_template',
+        entity_id: Number(id),
+        old_value: existing,
+        new_value: updated,
+      });
       res.json(updated);
     } catch (error) {
       console.error('Error updating award template:', error);
@@ -218,13 +232,19 @@ router.delete(
       const { id } = req.params;
       const db = await getDatabase();
       const existing = await db.get(
-        'SELECT id FROM award_templates WHERE id = ?',
+        'SELECT * FROM award_templates WHERE id = ?',
         [id],
       );
       if (!existing) {
         return res.status(404).json({ error: 'Award template not found' });
       }
       await db.run('DELETE FROM award_templates WHERE id = ?', [id]);
+      await auditRequest(db, req, {
+        action: 'award_template_deleted',
+        entity_type: 'award_template',
+        entity_id: Number(id),
+        old_value: existing,
+      });
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting award template:', error);
@@ -468,6 +488,13 @@ router.post(
         effectiveSettings,
         { acknowledgeWarnings },
       );
+      await auditRequest(db, req, {
+        event_id: eventIdNum,
+        action: 'automatic_awards_applied',
+        entity_type: 'event',
+        entity_id: eventIdNum,
+        new_value: { settings: effectiveSettings, result },
+      });
       res.json(result);
     } catch (error) {
       if (error instanceof AutomaticAwardsValidationError) {
@@ -615,6 +642,13 @@ router.post(
       const created = await db.get('SELECT * FROM event_awards WHERE id = ?', [
         result.lastID,
       ]);
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'event_award_created',
+        entity_type: 'event_award',
+        entity_id: result.lastID,
+        new_value: created,
+      });
       res.status(201).json({
         ...(created as object),
         recipients: [],
@@ -636,10 +670,9 @@ router.patch(
       const { id } = req.params;
       const { name, description, sort_order, award_type } = req.body;
       const db = await getDatabase();
-      const existing = await db.get(
-        'SELECT id FROM event_awards WHERE id = ?',
-        [id],
-      );
+      const existing = await db.get('SELECT * FROM event_awards WHERE id = ?', [
+        id,
+      ]);
       if (!existing) {
         return res.status(404).json({ error: 'Event award not found' });
       }
@@ -681,6 +714,14 @@ router.patch(
       const updated = await db.get('SELECT * FROM event_awards WHERE id = ?', [
         id,
       ]);
+      await auditRequest(db, req, {
+        event_id: existing.event_id,
+        action: 'event_award_updated',
+        entity_type: 'event_award',
+        entity_id: Number(id),
+        old_value: existing,
+        new_value: updated,
+      });
       res.json(updated);
     } catch (error) {
       console.error('Error updating event award:', error);
@@ -697,14 +738,20 @@ router.delete(
     try {
       const { id } = req.params;
       const db = await getDatabase();
-      const existing = await db.get(
-        'SELECT id FROM event_awards WHERE id = ?',
-        [id],
-      );
+      const existing = await db.get('SELECT * FROM event_awards WHERE id = ?', [
+        id,
+      ]);
       if (!existing) {
         return res.status(404).json({ error: 'Event award not found' });
       }
       await db.run('DELETE FROM event_awards WHERE id = ?', [id]);
+      await auditRequest(db, req, {
+        event_id: existing.event_id,
+        action: 'event_award_deleted',
+        entity_type: 'event_award',
+        entity_id: Number(id),
+        old_value: existing,
+      });
       res.json({ success: true });
     } catch (error) {
       console.error('Error deleting event award:', error);
@@ -716,6 +763,27 @@ router.delete(
 // ============================================================================
 // EVENT AWARD RECIPIENTS
 // ============================================================================
+
+/** Recipient changes are audited against their award. */
+async function auditRecipientChange(
+  db: Database,
+  req: AuthRequest,
+  awardId: number | string,
+  action: string,
+  change: { old_value?: unknown; new_value?: unknown },
+) {
+  const award = await db.get<{ event_id: number }>(
+    'SELECT event_id FROM event_awards WHERE id = ?',
+    [awardId],
+  );
+  await auditRequest(db, req, {
+    event_id: award?.event_id ?? null,
+    action,
+    entity_type: 'event_award',
+    entity_id: Number(awardId),
+    ...change,
+  });
+}
 
 // POST /awards/event-awards/:id/recipients
 // Accepts either { team_id } (single) or { team_ids: number[] } (bulk).
@@ -799,6 +867,13 @@ router.post(
          ORDER BY t.team_number ASC`,
         [id, ...uniqueIds],
       );
+      await auditRequest(db, req, {
+        event_id: awardEventId,
+        action: 'award_recipients_added',
+        entity_type: 'event_award',
+        entity_id: Number(id),
+        new_value: recipients,
+      });
 
       if (Array.isArray(team_ids)) {
         res.status(201).json(recipients);
@@ -833,6 +908,9 @@ router.delete(
       if (!result.changes) {
         return res.status(404).json({ error: 'Recipient not found' });
       }
+      await auditRecipientChange(db, req, awardId, 'award_recipient_removed', {
+        old_value: { team_id: Number(teamId) },
+      });
       res.json({ success: true });
     } catch (error) {
       console.error('Error removing award recipient:', error);
@@ -909,6 +987,13 @@ router.post(
          WHERE eair.id = ?`,
         [result.lastID],
       );
+      await auditRecipientChange(
+        db,
+        req,
+        id,
+        'award_individual_recipient_added',
+        { new_value: recipient },
+      );
       res.status(201).json(recipient);
     } catch (error) {
       console.error('Error adding individual award recipient:', error);
@@ -927,6 +1012,10 @@ router.delete(
     try {
       const { awardId, recipientId } = req.params;
       const db = await getDatabase();
+      const recipient = await db.get(
+        'SELECT * FROM event_award_individual_recipients WHERE id = ?',
+        [recipientId],
+      );
       const result = await db.run(
         `DELETE FROM event_award_individual_recipients
          WHERE event_award_id = ? AND id = ?`,
@@ -935,6 +1024,13 @@ router.delete(
       if (!result.changes) {
         return res.status(404).json({ error: 'Recipient not found' });
       }
+      await auditRecipientChange(
+        db,
+        req,
+        awardId,
+        'award_individual_recipient_removed',
+        { old_value: recipient },
+      );
       res.json({ success: true });
     } catch (error) {
       console.error('Error removing individual award recipient:', error);

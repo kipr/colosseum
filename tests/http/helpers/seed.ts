@@ -117,6 +117,25 @@ export async function seedBracket(
   return { id: result.lastID! };
 }
 
+export interface SeedBracketEntryData {
+  bracket_id: number;
+  seed_position: number;
+  team_id?: number | null;
+}
+
+export async function seedBracketEntry(
+  db: Database,
+  data: SeedBracketEntryData,
+): Promise<{ id: number }> {
+  const teamId = data.team_id ?? null;
+  const result = await db.run(
+    `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye)
+     VALUES (?, ?, ?, ?) RETURNING id`,
+    [data.bracket_id, teamId, data.seed_position, teamId === null],
+  );
+  return { id: result.lastID! };
+}
+
 export interface SeedBracketGameData {
   bracket_id: number;
   game_number: number;
@@ -241,6 +260,23 @@ export async function seedScoresheetTemplate(
       data.access_code ?? 'test-access-code',
       data.created_by ?? null,
     ],
+  );
+  return { id: result.lastID! };
+}
+
+export interface SeedFieldTemplateData {
+  name?: string;
+  fields_json?: string;
+}
+
+export async function seedFieldTemplate(
+  db: Database,
+  data: SeedFieldTemplateData = {},
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO scoresheet_field_templates (name, fields_json)
+     VALUES (?, ?) RETURNING id`,
+    [data.name ?? 'Test Field Template', data.fields_json ?? '[]'],
   );
   return { id: result.lastID! };
 }
@@ -584,6 +620,34 @@ export async function seedEventAwardIndividualRecipient(
     `INSERT INTO event_award_individual_recipients (event_award_id, name, team_id)
      VALUES (?, ?, ?) RETURNING id`,
     [data.event_award_id, data.name, data.team_id ?? null],
+  );
+  return { id: result.lastID! };
+}
+
+// ── Judge chat ──
+
+export interface SeedChatMessageData {
+  event_id: number;
+  conversation_key: string;
+  sender_role?: 'judge' | 'admin';
+  sender_name?: string;
+  message?: string;
+}
+
+export async function seedChatMessage(
+  db: Database,
+  data: SeedChatMessageData,
+): Promise<{ id: number }> {
+  const result = await db.run(
+    `INSERT INTO judge_chat_messages (event_id, conversation_key, sender_role, sender_name, message)
+     VALUES (?, ?, ?, ?, ?) RETURNING id`,
+    [
+      data.event_id,
+      data.conversation_key,
+      data.sender_role ?? 'judge',
+      data.sender_name ?? 'Judge',
+      data.message ?? 'Hello',
+    ],
   );
   return { id: result.lastID! };
 }

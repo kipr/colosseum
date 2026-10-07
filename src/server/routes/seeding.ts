@@ -8,6 +8,7 @@ import {
 import { recalculateSeedingRankings } from '../services/seedingRankings';
 import { isEventArchived } from '../utils/eventVisibility';
 import { markQueueDirty } from '../services/queueVersion';
+import { auditRequest } from './audit';
 
 const router = express.Router();
 
@@ -74,6 +75,11 @@ router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
 
     const db = await getDatabase();
 
+    const oldScore = await db.get(
+      'SELECT * FROM seeding_scores WHERE team_id = ? AND round_number = ?',
+      [team_id, round_number],
+    );
+
     const result = await db.run(
       `INSERT INTO seeding_scores (team_id, round_number, score, score_submission_id, scored_at)
        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -94,6 +100,14 @@ router.post('/scores', requireAdmin, async (req: Request, res: Response) => {
       'SELECT event_id FROM teams WHERE id = ?',
       [team_id],
     );
+    await auditRequest(db, req, {
+      event_id: team?.event_id ?? null,
+      action: 'seeding_score_submitted',
+      entity_type: 'seeding_score',
+      entity_id: seedingScore?.id ?? result.lastID,
+      old_value: oldScore,
+      new_value: seedingScore,
+    });
     if (team) {
       // Scored rounds leave the seeding queue on the next queue read.
       await markQueueDirty(db, team.event_id);
@@ -135,6 +149,10 @@ router.patch(
       const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
       const values = updates.map(([, value]) => value);
 
+      const oldScore = await db.get(
+        'SELECT * FROM seeding_scores WHERE id = ?',
+        [id],
+      );
       const result = await db.run(
         `UPDATE seeding_scores SET ${setClause} WHERE id = ?`,
         [...values, id],
@@ -153,6 +171,14 @@ router.patch(
           'SELECT event_id FROM teams WHERE id = ?',
           [score.team_id],
         );
+        await auditRequest(db, req, {
+          event_id: team?.event_id ?? null,
+          action: 'seeding_score_updated',
+          entity_type: 'seeding_score',
+          entity_id: Number(id),
+          old_value: oldScore,
+          new_value: score,
+        });
         if (team) {
           await markQueueDirty(db, team.event_id);
         }
@@ -176,7 +202,7 @@ router.delete(
       const db = await getDatabase();
 
       const existing = await db.get<{ team_id: number }>(
-        'SELECT team_id FROM seeding_scores WHERE id = ?',
+        'SELECT * FROM seeding_scores WHERE id = ?',
         [id],
       );
 
@@ -188,6 +214,13 @@ router.delete(
           'SELECT event_id FROM teams WHERE id = ?',
           [existing.team_id],
         );
+        await auditRequest(db, req, {
+          event_id: team?.event_id ?? null,
+          action: 'seeding_score_deleted',
+          entity_type: 'seeding_score',
+          entity_id: Number(id),
+          old_value: existing,
+        });
         if (team) {
           // Deleted score re-queues the round on the next queue read.
           await markQueueDirty(db, team.event_id);
@@ -242,6 +275,14 @@ router.post(
       if (result.teamsRanked === 0 && result.teamsUnranked === 0) {
         return res.status(404).json({ error: 'No teams found for this event' });
       }
+
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'seeding_rankings_recalculated',
+        entity_type: 'event',
+        entity_id: Number(eventId),
+        new_value: result,
+      });
 
       // Fetch and return updated rankings
       const updatedRankings = await db.all(

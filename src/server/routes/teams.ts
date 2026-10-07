@@ -6,8 +6,7 @@ import {
   isForeignKeyConstraintError,
   isUniqueConstraintError,
 } from '../database/constraintErrors';
-import { createAuditEntry } from './audit';
-import { toAuditJson } from '../utils/auditJson';
+import { auditRequest } from './audit';
 import { isEventArchived } from '../utils/eventVisibility';
 import { markQueueDirty } from '../services/queueVersion';
 
@@ -97,15 +96,12 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       result.lastID,
     ]);
 
-    await createAuditEntry(db, {
+    await auditRequest(db, req, {
       event_id: event_id,
-      user_id: req.user?.id ?? null,
       action: 'team_added',
       entity_type: 'team',
       entity_id: team?.id ?? result.lastID ?? null,
-      old_value: null,
-      new_value: toAuditJson(team),
-      ip_address: req.ip ?? null,
+      new_value: team,
     });
 
     // New team gets seeding queue slots on the next queue read.
@@ -232,19 +228,16 @@ router.post('/bulk', requireAuth, async (req: AuthRequest, res: Response) => {
           }
         });
 
-        await createAuditEntry(db, {
+        await auditRequest(db, req, {
           event_id,
-          user_id: req.user?.id ?? null,
           action: 'teams_bulk_added',
           entity_type: 'teams',
           entity_id: null,
-          old_value: null,
-          new_value: toAuditJson({
+          new_value: {
             created_count: teamsToInsert.length,
             created_team_ids: createdTeamIds,
             errors: errors.length > 0 ? errors : undefined,
-          }),
-          ip_address: req.ip ?? null,
+          },
         });
 
         await markQueueDirty(db, Number(event_id));
@@ -300,15 +293,13 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
 
-    await createAuditEntry(db, {
+    await auditRequest(db, req, {
       event_id: oldTeam.event_id,
-      user_id: req.user?.id ?? null,
       action: 'team_updated',
       entity_type: 'team',
       entity_id: Number(id),
-      old_value: toAuditJson(oldTeam),
-      new_value: toAuditJson(team),
-      ip_address: req.ip ?? null,
+      old_value: oldTeam,
+      new_value: team,
     });
 
     // Team names/numbers are denormalized into queue responses.
@@ -354,15 +345,13 @@ router.patch(
 
       const team = await db.get('SELECT * FROM teams WHERE id = ?', [id]);
 
-      await createAuditEntry(db, {
+      await auditRequest(db, req, {
         event_id: oldTeam.event_id,
-        user_id: req.user?.id ?? null,
         action: 'team_checked_in',
         entity_type: 'team',
         entity_id: Number(id),
-        old_value: toAuditJson(oldTeam),
-        new_value: toAuditJson(team),
-        ip_address: req.ip ?? null,
+        old_value: oldTeam,
+        new_value: team,
       });
 
       res.json(team);
@@ -420,19 +409,16 @@ router.patch(
           }
         });
 
-        await createAuditEntry(db, {
+        await auditRequest(db, req, {
           event_id: Number(eventId),
-          user_id: req.user?.id ?? null,
           action: 'teams_bulk_checked_in',
           entity_type: 'teams',
           entity_id: null,
-          old_value: null,
-          new_value: toAuditJson({
+          new_value: {
             updated_count: existingTeams.length,
             updated_team_ids: existingTeams.map((t) => t.id),
             not_found: notFound.length > 0 ? notFound : undefined,
-          }),
-          ip_address: req.ip ?? null,
+          },
         });
       }
 
@@ -459,15 +445,12 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     await db.run('DELETE FROM teams WHERE id = ?', [id]);
 
     if (oldTeam) {
-      await createAuditEntry(db, {
+      await auditRequest(db, req, {
         event_id: oldTeam.event_id,
-        user_id: req.user?.id ?? null,
         action: 'team_deleted',
         entity_type: 'team',
         entity_id: Number(id),
-        old_value: toAuditJson(oldTeam),
-        new_value: null,
-        ip_address: req.ip ?? null,
+        old_value: oldTeam,
       });
 
       // Queue rows for the team cascade away; repair on next read.

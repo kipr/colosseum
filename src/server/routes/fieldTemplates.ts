@@ -1,6 +1,7 @@
 import express, { Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase } from '../database/connection';
+import { auditRequest } from './audit';
 import {
   formatSchemaValidationError,
   validateScoresheetFields,
@@ -79,6 +80,12 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       'SELECT * FROM scoresheet_field_templates WHERE id = ?',
       [result.lastID],
     );
+    await auditRequest(db, req, {
+      action: 'field_template_created',
+      entity_type: 'field_template',
+      entity_id: result.lastID,
+      new_value: template,
+    });
 
     res.json(template);
   } catch (error: unknown) {
@@ -113,6 +120,10 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     }
 
     const db = await getDatabase();
+    const oldTemplate = await db.get(
+      'SELECT * FROM scoresheet_field_templates WHERE id = ?',
+      [id],
+    );
     await db.run(
       `UPDATE scoresheet_field_templates 
        SET name = ?, description = ?, fields_json = ?, updated_at = CURRENT_TIMESTAMP
@@ -124,6 +135,15 @@ router.put('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       'SELECT * FROM scoresheet_field_templates WHERE id = ?',
       [id],
     );
+    if (oldTemplate) {
+      await auditRequest(db, req, {
+        action: 'field_template_updated',
+        entity_type: 'field_template',
+        entity_id: Number(id),
+        old_value: oldTemplate,
+        new_value: template,
+      });
+    }
 
     res.json(template);
   } catch (error) {
@@ -138,7 +158,19 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const db = await getDatabase();
 
+    const oldTemplate = await db.get(
+      'SELECT * FROM scoresheet_field_templates WHERE id = ?',
+      [id],
+    );
     await db.run('DELETE FROM scoresheet_field_templates WHERE id = ?', [id]);
+    if (oldTemplate) {
+      await auditRequest(db, req, {
+        action: 'field_template_deleted',
+        entity_type: 'field_template',
+        entity_id: Number(id),
+        old_value: oldTemplate,
+      });
+    }
 
     res.json({ success: true });
   } catch (error) {

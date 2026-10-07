@@ -7,6 +7,7 @@ import {
 } from '../middleware/auth';
 import { chatWriteLimiter, chatReadLimiter } from '../middleware/rateLimit';
 import { getDatabase } from '../database/connection';
+import { auditRequest } from './audit';
 
 const router = express.Router();
 
@@ -353,6 +354,18 @@ router.delete(
         `DELETE FROM judge_chat_messages WHERE event_id = ? AND conversation_key = ?`,
         [eventId, conversationKey],
       );
+
+      if (result.changes) {
+        await auditRequest(db, req, {
+          event_id: eventId,
+          action: 'chat_conversation_deleted',
+          entity_type: 'chat_conversation',
+          old_value: {
+            conversation_key: conversationKey,
+            messages: result.changes,
+          },
+        });
+      }
 
       res.json({
         success: true,

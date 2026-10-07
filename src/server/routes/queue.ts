@@ -19,6 +19,7 @@ import {
   mergeBracketQueueItems,
 } from '../services/bracketQueueOrder';
 import { getTeamRest } from '../services/teamRest';
+import { auditRequest } from './audit';
 
 const router = express.Router();
 
@@ -83,9 +84,7 @@ async function getQueuePresenceSource(
   id: string | number,
 ): Promise<QueuePresenceSource | undefined> {
   return db.get<QueuePresenceSource>(
-    `SELECT gq.id, gq.event_id, gq.queue_type, gq.status,
-            gq.present_team1_id, gq.present_team2_id,
-            bg.team1_id, bg.team2_id,
+    `SELECT gq.*, bg.team1_id, bg.team2_id,
             dsm.team1_id AS double_seeding_team1_id,
             dsm.team2_id AS double_seeding_team2_id
      FROM game_queue gq
@@ -365,6 +364,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
     const queueItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
       result.lastID,
     ]);
+    await auditRequest(db, req, {
+      event_id: Number(event_id),
+      action: 'queue_item_added',
+      entity_type: 'game_queue',
+      entity_id: result.lastID,
+      new_value: queueItem,
+    });
     res.status(201).json(queueItem);
   } catch (error) {
     console.error('Error adding to queue:', error);
@@ -566,11 +572,23 @@ router.post(
         await bumpQueueVersion(db, eventId);
       }
 
-      res.json({
+      const summary = {
         message: 'Queue populated from brackets',
         created: eligibleGames.length,
         bracketGamesTotal: eligibleGames.length,
+      };
+      await auditRequest(db, req, {
+        event_id: eventId,
+        action: 'queue_populated_from_bracket',
+        entity_type: 'event',
+        entity_id: eventId,
+        new_value: {
+          bracket_id: bracketId,
+          removed: deletedRows.length,
+          ...summary,
+        },
       });
+      res.json(summary);
     } catch (error) {
       console.error('Error populating queue from bracket:', error);
       res.status(500).json({ error: 'Failed to populate queue from bracket' });
@@ -660,12 +678,20 @@ router.post(
 
       await bumpQueueVersion(db, Number(event_id));
 
-      res.json({
+      const summary = {
         message: 'Queue populated from seeding',
         created,
         totalTeams: teams.length,
         totalRounds: seedingRounds,
+      };
+      await auditRequest(db, req, {
+        event_id: Number(event_id),
+        action: 'queue_populated_from_seeding',
+        entity_type: 'event',
+        entity_id: Number(event_id),
+        new_value: summary,
       });
+      res.json(summary);
     } catch (error) {
       console.error('Error populating queue from seeding:', error);
       res.status(500).json({ error: 'Failed to populate queue from seeding' });
@@ -759,6 +785,14 @@ router.patch(
       if (!updated) {
         return res.status(404).json({ error: 'Queue item not found' });
       }
+      await auditRequest(db, req, {
+        event_id: source.event_id,
+        action: 'queue_presence_updated',
+        entity_type: 'game_queue',
+        entity_id: Number(id),
+        old_value: source,
+        new_value: updated,
+      });
       res.json({
         id: updated.id,
         status: updated.status,
@@ -856,6 +890,14 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     ]);
     if (queueItem) {
       await bumpQueueVersion(db, queueItem.event_id);
+      await auditRequest(db, req, {
+        event_id: queueItem.event_id,
+        action: 'queue_item_updated',
+        entity_type: 'game_queue',
+        entity_id: Number(id),
+        old_value: current,
+        new_value: queueItem,
+      });
     }
     res.json(queueItem);
   } catch (error) {
@@ -890,6 +932,9 @@ router.patch(
       query += ' WHERE id = ?';
       params.push(id);
 
+      const oldItem = await db.get('SELECT * FROM game_queue WHERE id = ?', [
+        id,
+      ]);
       const result = await db.run(query, params);
 
       if (result.changes === 0) {
@@ -901,6 +946,14 @@ router.patch(
       ]);
       if (queueItem) {
         await bumpQueueVersion(db, queueItem.event_id);
+        await auditRequest(db, req, {
+          event_id: queueItem.event_id,
+          action: 'queue_item_called',
+          entity_type: 'game_queue',
+          entity_id: Number(id),
+          old_value: oldItem,
+          new_value: queueItem,
+        });
       }
       res.json(queueItem);
     } catch (error) {
@@ -917,7 +970,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const db = await getDatabase();
 
     const existing = await db.get<{ event_id: number }>(
-      'SELECT event_id FROM game_queue WHERE id = ?',
+      'SELECT * FROM game_queue WHERE id = ?',
       [id],
     );
 
@@ -925,6 +978,13 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 
     if (existing) {
       await bumpQueueVersion(db, existing.event_id);
+      await auditRequest(db, req, {
+        event_id: existing.event_id,
+        action: 'queue_item_removed',
+        entity_type: 'game_queue',
+        entity_id: Number(id),
+        old_value: existing,
+      });
     }
 
     res.status(204).send();

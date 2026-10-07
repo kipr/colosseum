@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
-import { getDatabase } from '../database/connection';
+import { getDatabase, type Database } from '../database/connection';
 import {
   isCheckConstraintError,
   isForeignKeyConstraintError,
@@ -22,6 +22,7 @@ import {
   BRACKET_OVERALL_JOINS_SQL,
 } from '../services/overallScores';
 import { ensureQueueFresh, scheduleQueueRepair } from '../services/queueSync';
+import { auditRequest } from './audit';
 import {
   bumpQueueVersion,
   markQueueDirty,
@@ -385,6 +386,20 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const db = await getDatabase();
 
+    const respondCreated = async (bracketId: number) => {
+      const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
+        bracketId,
+      ]);
+      await auditRequest(db, req, {
+        event_id: Number(event_id),
+        action: 'bracket_created',
+        entity_type: 'bracket',
+        entity_id: bracketId,
+        new_value: bracket,
+      });
+      return res.status(201).json(bracket);
+    };
+
     if (
       weight !== undefined &&
       (typeof weight !== 'number' || weight <= 0 || weight > 1)
@@ -670,10 +685,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       // the shared ETag and repair the derived queue before the next poll.
       await markQueueDirty(db, Number(event_id));
 
-      const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
-        bracketId,
-      ]);
-      return res.status(201).json(bracket);
+      return respondCreated(bracketId);
     }
 
     // Legacy flow: bracket_size required
@@ -697,10 +709,7 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
       ],
     );
 
-    const bracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
-      result.lastID,
-    ]);
-    res.status(201).json(bracket);
+    return respondCreated(result.lastID!);
   } catch (error) {
     console.error('Error creating bracket:', error);
     if (isForeignKeyConstraintError(error)) {
@@ -741,6 +750,9 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
     const values = updates.map(([, value]) => value);
 
+    const oldBracket = await db.get('SELECT * FROM brackets WHERE id = ?', [
+      id,
+    ]);
     const result = await db.run(
       `UPDATE brackets SET ${setClause} WHERE id = ?`,
       [...values, id],
@@ -757,6 +769,14 @@ router.patch('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Bracket not found' });
     }
     await bumpQueueVersion(db, bracket.event_id);
+    await auditRequest(db, req, {
+      event_id: bracket.event_id,
+      action: 'bracket_updated',
+      entity_type: 'bracket',
+      entity_id: Number(id),
+      old_value: oldBracket,
+      new_value: bracket,
+    });
     res.json(bracket);
   } catch (error) {
     console.error('Error updating bracket:', error);
@@ -776,7 +796,7 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     const db = await getDatabase();
 
     const bracket = await db.get<{ event_id: number }>(
-      'SELECT event_id FROM brackets WHERE id = ?',
+      'SELECT * FROM brackets WHERE id = ?',
       [id],
     );
 
@@ -785,6 +805,13 @@ router.delete('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
     if (bracket) {
       // Queue rows for the bracket's games cascade away; repair on next read.
       await markQueueDirty(db, bracket.event_id);
+      await auditRequest(db, req, {
+        event_id: bracket.event_id,
+        action: 'bracket_deleted',
+        entity_type: 'bracket',
+        entity_id: Number(id),
+        old_value: bracket,
+      });
     }
 
     res.status(204).send();
@@ -806,14 +833,22 @@ router.post(
       }
 
       const db = await getDatabase();
-      const bracket = await db.get('SELECT id FROM brackets WHERE id = ?', [
-        id,
-      ]);
+      const bracket = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM brackets WHERE id = ?',
+        [id],
+      );
       if (!bracket) {
         return res.status(404).json({ error: 'Bracket not found' });
       }
 
       const result = await calculateBracketRankings(id);
+      await auditRequest(db, req, {
+        event_id: bracket.event_id,
+        action: 'bracket_rankings_calculated',
+        entity_type: 'bracket',
+        entity_id: id,
+        new_value: result,
+      });
       res.json(result);
     } catch (error) {
       const errMsg = (error as Error).message || '';
@@ -845,16 +880,16 @@ router.post(
 
       const db = await getDatabase();
 
+      const bracket = await db.get<{ event_id: number }>(
+        'SELECT event_id FROM brackets WHERE id = ?',
+        [bracketId],
+      );
+      if (!bracket) {
+        return res.status(404).json({ error: 'Bracket not found' });
+      }
+
       // Application-level constraint: team must belong to same event as bracket
       if (team_id) {
-        const bracket = await db.get(
-          'SELECT event_id FROM brackets WHERE id = ?',
-          [bracketId],
-        );
-        if (!bracket) {
-          return res.status(404).json({ error: 'Bracket not found' });
-        }
-
         const team = await db.get('SELECT event_id FROM teams WHERE id = ?', [
           team_id,
         ]);
@@ -884,6 +919,13 @@ router.post(
       const entry = await db.get('SELECT * FROM bracket_entries WHERE id = ?', [
         result.lastID,
       ]);
+      await auditRequest(db, req, {
+        event_id: bracket.event_id,
+        action: 'bracket_entry_added',
+        entity_type: 'bracket_entry',
+        entity_id: result.lastID,
+        new_value: entry,
+      });
       res.status(201).json(entry);
     } catch (error) {
       console.error('Error adding bracket entry:', error);
@@ -912,7 +954,25 @@ router.delete(
       const { entryId } = req.params;
       const db = await getDatabase();
 
+      const entry = await db.get<{ event_id: number }>(
+        `SELECT be.*, b.event_id
+         FROM bracket_entries be
+         JOIN brackets b ON be.bracket_id = b.id
+         WHERE be.id = ?`,
+        [entryId],
+      );
+
       await db.run('DELETE FROM bracket_entries WHERE id = ?', [entryId]);
+
+      if (entry) {
+        await auditRequest(db, req, {
+          event_id: entry.event_id,
+          action: 'bracket_entry_removed',
+          entity_type: 'bracket_entry',
+          entity_id: Number(entryId),
+          old_value: entry,
+        });
+      }
 
       res.status(204).send();
     } catch (error) {
@@ -1017,13 +1077,22 @@ router.post(
         id,
       ]);
 
-      res.json({
+      const summary = {
         message: 'Entries generated successfully',
         entriesCreated,
         byeCount,
         totalEntries: entriesCreated + byeCount,
         actualTeamCount: teamCount,
+      };
+      await auditRequest(db, req, {
+        event_id: bracket.event_id,
+        action: 'bracket_entries_generated',
+        entity_type: 'bracket',
+        entity_id: Number(id),
+        old_value: { entries: existingEntries.length },
+        new_value: summary,
       });
+      res.json(summary);
     } catch (error) {
       console.error('Error generating bracket entries:', error);
       res.status(500).json({ error: 'Failed to generate bracket entries' });
@@ -1143,6 +1212,13 @@ router.post(
       const game = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
         result.lastID,
       ]);
+      await auditRequest(db, req, {
+        event_id: bracket.event_id,
+        action: 'bracket_game_created',
+        entity_type: 'bracket_game',
+        entity_id: result.lastID,
+        new_value: game,
+      });
       res.status(201).json(game);
     } catch (error) {
       console.error('Error creating bracket game:', error);
@@ -1180,7 +1256,7 @@ router.patch(
 
       // Application-level constraint: teams must belong to same event as bracket
       const game = await db.get(
-        `SELECT bg.bracket_id, b.event_id
+        `SELECT bg.*, b.event_id
          FROM bracket_games bg
          JOIN brackets b ON bg.bracket_id = b.id
          WHERE bg.id = ?`,
@@ -1224,6 +1300,14 @@ router.patch(
         'SELECT * FROM bracket_games WHERE id = ?',
         [id],
       );
+      await auditRequest(db, req, {
+        event_id: game.event_id,
+        action: 'bracket_game_updated',
+        entity_type: 'bracket_game',
+        entity_id: Number(id),
+        old_value: game,
+        new_value: updatedGame,
+      });
       res.json(updatedGame);
     } catch (error) {
       console.error('Error updating bracket game:', error);
@@ -1236,6 +1320,26 @@ router.patch(
     }
   },
 );
+
+async function auditWinnerAdvanced(
+  db: Database,
+  req: AuthRequest,
+  game: { id: number },
+  eventId: number | undefined,
+  updates: { gameId: number; slot: string; teamId: number }[],
+) {
+  const updatedGame = await db.get('SELECT * FROM bracket_games WHERE id = ?', [
+    game.id,
+  ]);
+  await auditRequest(db, req, {
+    event_id: eventId ?? null,
+    action: 'bracket_winner_advanced',
+    entity_type: 'bracket_game',
+    entity_id: game.id,
+    old_value: game,
+    new_value: { ...updatedGame, advanced_to: updates },
+  });
+}
 
 // POST /brackets/games/:id/advance - Advance winner to next game
 router.post(
@@ -1304,6 +1408,7 @@ router.post(
         await markQueueDirty(db, owner.event_id);
       }
 
+      await auditWinnerAdvanced(db, req, game, owner?.event_id, updates);
       res.json({ message: 'Winner advanced', updates, byeResolution });
     } catch (error) {
       console.error('Error advancing winner:', error);
@@ -1502,6 +1607,14 @@ router.post(
 
       await markQueueDirty(db, bracket.event_id);
 
+      await auditRequest(db, req, {
+        event_id: bracket.event_id,
+        action: 'bracket_games_generated',
+        entity_type: 'bracket',
+        entity_id: Number(id),
+        old_value: { games: existingGames.length },
+        new_value: { gamesCreated: templates.length, byeResolution },
+      });
       res.json({
         message: 'Games generated successfully',
         gamesCreated: templates.length,
@@ -1633,6 +1746,7 @@ router.post(
         await markQueueDirty(db, owner.event_id);
       }
 
+      await auditWinnerAdvanced(db, req, game, owner?.event_id, updates);
       res.json({
         message: 'Winner advanced successfully',
         winner_id,
@@ -1721,6 +1835,12 @@ router.post(
         'SELECT * FROM bracket_templates WHERE id = ?',
         [result.lastID],
       );
+      await auditRequest(db, req, {
+        action: 'bracket_template_created',
+        entity_type: 'bracket_template',
+        entity_id: result.lastID,
+        new_value: template,
+      });
       res.status(201).json(template);
     } catch (error) {
       console.error('Error creating bracket template:', error);

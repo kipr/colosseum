@@ -1,7 +1,8 @@
 import express, { Request, Response } from 'express';
 import { requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
-import { getDatabase } from '../database/connection';
+import { getDatabase, type Database } from '../database/connection';
+import { auditRequest } from './audit';
 import { isUniqueConstraintError } from '../database/constraintErrors';
 import { areFinalScoresReleased } from '../utils/eventVisibility';
 
@@ -85,6 +86,68 @@ router.get(
     }
   },
 );
+
+function getEventCategory(
+  db: Database,
+  eventId: number | string,
+  categoryId: number | string,
+) {
+  return db.get(
+    `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
+     FROM event_documentation_categories edc
+     JOIN documentation_categories dc ON edc.category_id = dc.id
+     WHERE edc.event_id = ? AND edc.category_id = ?`,
+    [eventId, categoryId],
+  );
+}
+
+/**
+ * Sub-scores of a documentation score. Reads show only categories still
+ * linked to the event; `includeUnlinked` also returns sub-scores whose
+ * category was removed from the event (with a null ordinal).
+ */
+function getSubScores(
+  db: Database,
+  eventId: number | string,
+  docScoreId: number,
+  { includeUnlinked = false } = {},
+) {
+  return db.all(
+    `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
+     FROM documentation_sub_scores dss
+     JOIN documentation_categories dc ON dss.category_id = dc.id
+     ${includeUnlinked ? 'LEFT JOIN' : 'JOIN'} event_documentation_categories edc
+       ON edc.event_id = ? AND edc.category_id = dc.id
+     WHERE dss.documentation_score_id = ?
+     ORDER BY edc.ordinal ASC, dss.category_id ASC`,
+    [eventId, docScoreId],
+  );
+}
+
+/**
+ * A team's documentation score with every stored sub-score, or undefined if
+ * unscored. Used for audit snapshots, so unlinked sub-scores are included.
+ */
+async function getDocumentationScoreSnapshot(
+  db: Database,
+  eventId: number | string,
+  teamId: number | string,
+) {
+  const docScore = await db.get<{ id: number } & Record<string, unknown>>(
+    `SELECT ds.*, t.team_number, t.team_name, t.display_name
+     FROM documentation_scores ds
+     JOIN teams t ON ds.team_id = t.id
+     WHERE ds.event_id = ? AND ds.team_id = ?`,
+    [eventId, teamId],
+  );
+  if (!docScore) return undefined;
+  return {
+    ...docScore,
+    sub_scores: await getSubScores(db, eventId, docScore.id, {
+      includeUnlinked: true,
+    }),
+  };
+}
 
 // POST /documentation-scores/categories
 router.post(
@@ -180,13 +243,14 @@ router.post(
         );
       }
 
-      const category = await db.get(
-        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
-         FROM event_documentation_categories edc
-         JOIN documentation_categories dc ON edc.category_id = dc.id
-         WHERE edc.event_id = ? AND edc.category_id = ?`,
-        [event_id, categoryId],
-      );
+      const category = await getEventCategory(db, event_id, categoryId);
+      await auditRequest(db, req, {
+        event_id: Number(event_id),
+        action: 'documentation_category_created',
+        entity_type: 'documentation_category',
+        entity_id: categoryId,
+        new_value: category,
+      });
       res.status(201).json(category);
     } catch (error) {
       console.error('Error creating documentation category:', error);
@@ -232,6 +296,7 @@ router.patch(
 
       const db = await getDatabase();
 
+      const oldCategory = await getEventCategory(db, eventId, id);
       const result = await db.run(
         `UPDATE event_documentation_categories SET ordinal = ? WHERE event_id = ? AND category_id = ?`,
         [ord, eventId, id],
@@ -243,13 +308,15 @@ router.patch(
           .json({ error: 'Category not found for this event' });
       }
 
-      const category = await db.get(
-        `SELECT dc.id, edc.event_id, edc.ordinal, dc.name, dc.weight, dc.max_score
-         FROM event_documentation_categories edc
-         JOIN documentation_categories dc ON edc.category_id = dc.id
-         WHERE edc.event_id = ? AND edc.category_id = ?`,
-        [eventId, id],
-      );
+      const category = await getEventCategory(db, eventId, id);
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'documentation_category_updated',
+        entity_type: 'documentation_category',
+        entity_id: Number(id),
+        old_value: oldCategory,
+        new_value: category,
+      });
       res.json(category);
     } catch (error) {
       console.error('Error updating documentation category:', error);
@@ -284,6 +351,7 @@ router.delete(
       const db = await getDatabase();
       let removedLink = false;
       const categoryId = parseInt(id, 10);
+      const oldCategory = await getEventCategory(db, eventId, categoryId);
 
       await db.transaction(async (tx) => {
         const result = await tx.run(
@@ -314,6 +382,13 @@ router.delete(
           .json({ error: 'Category not found for this event' });
       }
 
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'documentation_category_deleted',
+        entity_type: 'documentation_category',
+        entity_id: categoryId,
+        old_value: oldCategory,
+      });
       res.status(204).send();
     } catch (error) {
       console.error('Error deleting documentation category:', error);
@@ -405,16 +480,11 @@ router.get(
 
       // Attach sub-scores for each
       for (const row of scores) {
-        const subScores = await db.all(
-          `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
-           FROM documentation_sub_scores dss
-           JOIN documentation_categories dc ON dss.category_id = dc.id
-           JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
-           WHERE dss.documentation_score_id = ?
-           ORDER BY edc.ordinal ASC`,
-          [eventId, row.id],
+        (row as Record<string, unknown>).sub_scores = await getSubScores(
+          db,
+          eventId,
+          row.id,
         );
-        (row as Record<string, unknown>).sub_scores = subScores;
       }
 
       res.json(scores);
@@ -458,15 +528,7 @@ router.get(
       }
 
       const teamRow = team as { id: number; event_id: number };
-      const subScores = await db.all(
-        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
-         FROM documentation_sub_scores dss
-         JOIN documentation_categories dc ON dss.category_id = dc.id
-         JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
-         WHERE dss.documentation_score_id = ?
-         ORDER BY edc.ordinal ASC`,
-        [teamRow.event_id, docScore.id],
-      );
+      const subScores = await getSubScores(db, teamRow.event_id, docScore.id);
 
       res.json({
         team,
@@ -571,9 +633,11 @@ router.put(
       const eventIdNum = parseInt(eventId, 10);
       const teamIdNum = parseInt(teamId, 10);
 
-      const existing = await db.get<{ id: number }>(
-        'SELECT id FROM documentation_scores WHERE event_id = ? AND team_id = ?',
-        [eventIdNum, teamIdNum],
+      // Snapshot before the sub-scores are replaced, for the audit entry.
+      const existing = await getDocumentationScoreSnapshot(
+        db,
+        eventIdNum,
+        teamIdNum,
       );
 
       let docScoreId: number;
@@ -630,28 +694,20 @@ router.put(
         }
       }
 
-      const docScore = await db.get(
-        `SELECT ds.*, t.team_number, t.team_name, t.display_name
-         FROM documentation_scores ds
-         JOIN teams t ON ds.team_id = t.id
-         WHERE ds.event_id = ? AND ds.team_id = ?`,
-        [eventIdNum, teamIdNum],
+      const saved = await getDocumentationScoreSnapshot(
+        db,
+        eventIdNum,
+        teamIdNum,
       );
-
-      const subScores = await db.all(
-        `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
-         FROM documentation_sub_scores dss
-         JOIN documentation_categories dc ON dss.category_id = dc.id
-         JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
-         WHERE dss.documentation_score_id = ?
-         ORDER BY edc.ordinal ASC`,
-        [eventIdNum, docScore.id],
-      );
-
-      res.json({
-        ...docScore,
-        sub_scores: subScores,
+      await auditRequest(db, req, {
+        event_id: eventIdNum,
+        action: 'documentation_score_saved',
+        entity_type: 'documentation_score',
+        entity_id: docScoreId,
+        old_value: existing,
+        new_value: saved,
       });
+      res.json(saved);
     } catch (error) {
       console.error('Error upserting documentation score:', error);
       const errMsg = (error as Error).message || '';
@@ -674,10 +730,22 @@ router.delete(
       const { eventId, teamId } = req.params;
       const db = await getDatabase();
 
+      const existing = await getDocumentationScoreSnapshot(db, eventId, teamId);
+
       await db.run(
         'DELETE FROM documentation_scores WHERE event_id = ? AND team_id = ?',
         [eventId, teamId],
       );
+
+      if (existing) {
+        await auditRequest(db, req, {
+          event_id: Number(eventId),
+          action: 'documentation_score_deleted',
+          entity_type: 'documentation_score',
+          entity_id: existing.id,
+          old_value: existing,
+        });
+      }
 
       res.status(204).send();
     } catch (error) {

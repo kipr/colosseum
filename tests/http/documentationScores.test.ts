@@ -37,6 +37,56 @@ describe('Documentation Scores Routes', () => {
     testDb.close();
   });
 
+  /** The single audit entry for `action`, with old/new values parsed. */
+  async function readAudit(action: string) {
+    const rows = await testDb.db.all<{
+      old_value: string | null;
+      new_value: string | null;
+    }>('SELECT old_value, new_value FROM audit_log WHERE action = ?', [action]);
+    expect(rows).toHaveLength(1);
+    return {
+      old_value: JSON.parse(rows[0].old_value ?? 'null'),
+      new_value: JSON.parse(rows[0].new_value ?? 'null'),
+    };
+  }
+
+  /**
+   * A team's sub-score in a category shared with another event, after the
+   * category is unlinked from the team's event (the sub-score stays stored).
+   */
+  async function seedUnlinkedSubScore() {
+    const event = await seedEvent(testDb.db);
+    const otherEvent = await seedEvent(testDb.db);
+    const team = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: 1,
+    });
+    const shared = { ordinal: 1, name: 'Shared', max_score: 10 };
+    const cat = await seedDocumentationScoreCategory(testDb.db, {
+      event_id: event.id,
+      ...shared,
+    });
+    await seedDocumentationScoreCategory(testDb.db, {
+      event_id: otherEvent.id,
+      ...shared,
+    });
+    const docScore = await seedDocumentationScore(testDb.db, {
+      event_id: event.id,
+      team_id: team.id,
+      overall_score: 0.5,
+    });
+    await seedDocumentationSubScore(testDb.db, {
+      documentation_score_id: docScore.id,
+      category_id: cat.id,
+      score: 5,
+    });
+    await testDb.db.run(
+      'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
+      [event.id, cat.id],
+    );
+    return { event, team, cat };
+  }
+
   // ==========================================================================
   // Authentication Boundaries (requireAdmin)
   // ==========================================================================
@@ -507,6 +557,17 @@ describe('Documentation Scores Routes', () => {
       expect(res.status).toBe(404);
     });
 
+    it('omits sub-scores whose category was unlinked from the event', async () => {
+      const { event } = await seedUnlinkedSubScore();
+
+      const res = await http.get(
+        `${server.baseUrl}/documentation-scores/event/${event.id}`,
+      );
+      expect(res.status).toBe(200);
+      const [score] = res.json as { sub_scores: unknown[] }[];
+      expect(score.sub_scores).toEqual([]);
+    });
+
     it('returns empty array when no scores exist', async () => {
       const event = await seedEvent(testDb.db);
 
@@ -826,6 +887,37 @@ describe('Documentation Scores Routes', () => {
       const data = res.json as { overall_score: number };
       // (8/10)*1 = 0.8
       expect(data.overall_score).toBeCloseTo(0.8, 5);
+
+      // The audit entry shows the category-level change, not just additions.
+      const audit = await readAudit('documentation_score_saved');
+      expect(audit.old_value.sub_scores).toEqual([
+        expect.objectContaining({ category_id: cat.id, score: 5 }),
+      ]);
+      expect(audit.new_value.sub_scores).toEqual([
+        expect.objectContaining({ category_id: cat.id, score: 8 }),
+      ]);
+    });
+
+    it('audits replaced sub-scores whose category was unlinked from the event', async () => {
+      const { event, team, cat } = await seedUnlinkedSubScore();
+
+      const res = await http.put(
+        `${server.baseUrl}/documentation-scores/event/${event.id}/team/${team.id}`,
+        { sub_scores: [] },
+      );
+      expect(res.status).toBe(200);
+      // A PUT replaces every stored sub-score, unlinked ones included.
+      expect((res.json as { sub_scores: unknown[] }).sub_scores).toEqual([]);
+
+      const audit = await readAudit('documentation_score_saved');
+      expect(audit.old_value.sub_scores).toEqual([
+        expect.objectContaining({
+          category_id: cat.id,
+          score: 5,
+          ordinal: null,
+        }),
+      ]);
+      expect(audit.new_value.sub_scores).toEqual([]);
     });
   });
 
@@ -862,6 +954,57 @@ describe('Documentation Scores Routes', () => {
         `${server.baseUrl}/documentation-scores/event/${event.id}/team/${team.id}`,
       );
       expect(res.status).toBe(204);
+    });
+
+    it('audits the deleted sub-scores', async () => {
+      const event = await seedEvent(testDb.db);
+      const team = await seedTeam(testDb.db, {
+        event_id: event.id,
+        team_number: 1,
+      });
+      const cat = await seedDocumentationScoreCategory(testDb.db, {
+        event_id: event.id,
+        ordinal: 1,
+        max_score: 10,
+      });
+      const docScore = await seedDocumentationScore(testDb.db, {
+        event_id: event.id,
+        team_id: team.id,
+        overall_score: 0.5,
+      });
+      await seedDocumentationSubScore(testDb.db, {
+        documentation_score_id: docScore.id,
+        category_id: cat.id,
+        score: 5,
+      });
+
+      const res = await http.delete(
+        `${server.baseUrl}/documentation-scores/event/${event.id}/team/${team.id}`,
+      );
+      expect(res.status).toBe(204);
+
+      const audit = await readAudit('documentation_score_deleted');
+      expect(audit.old_value.sub_scores).toEqual([
+        expect.objectContaining({ category_id: cat.id, score: 5 }),
+      ]);
+    });
+
+    it('audits sub-scores whose category was unlinked from the event', async () => {
+      const { event, team, cat } = await seedUnlinkedSubScore();
+
+      const res = await http.delete(
+        `${server.baseUrl}/documentation-scores/event/${event.id}/team/${team.id}`,
+      );
+      expect(res.status).toBe(204);
+
+      const audit = await readAudit('documentation_score_deleted');
+      expect(audit.old_value.sub_scores).toEqual([
+        expect.objectContaining({
+          category_id: cat.id,
+          score: 5,
+          ordinal: null,
+        }),
+      ]);
     });
 
     it('returns 204 when score does not exist (idempotent)', async () => {

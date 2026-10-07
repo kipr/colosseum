@@ -1,6 +1,7 @@
-import express, { Response } from 'express';
+import express, { Request, Response } from 'express';
 import { requireAuth, AuthRequest } from '../middleware/auth';
 import { getDatabase, Database } from '../database/connection';
+import { toAuditJson } from '../utils/auditJson';
 
 const router = express.Router();
 
@@ -126,6 +127,31 @@ export async function createAuditEntry(
   return result.lastID;
 }
 
+/**
+ * Audit an operation performed by the request's user: fills user_id and
+ * ip_address from the request and serializes old/new values with toAuditJson.
+ */
+export function auditRequest(
+  db: Database,
+  req: Request,
+  entry: {
+    event_id?: number | null;
+    action: string;
+    entity_type: string;
+    entity_id?: number | null;
+    old_value?: unknown;
+    new_value?: unknown;
+  },
+): Promise<number | undefined> {
+  return createAuditEntry(db, {
+    ...entry,
+    user_id: (req as AuthRequest).user?.id ?? null,
+    old_value: toAuditJson(entry.old_value),
+    new_value: toAuditJson(entry.new_value),
+    ip_address: req.ip ?? null,
+  });
+}
+
 // POST /audit - Create audit entry (internal use, but exposed for flexibility)
 // Note: This endpoint requires auth but is primarily for internal/admin use
 router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
@@ -141,15 +167,13 @@ router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
 
     const db = await getDatabase();
 
-    const id = await createAuditEntry(db, {
+    const id = await auditRequest(db, req, {
       event_id,
-      user_id: req.user?.id,
       action,
       entity_type,
       entity_id,
-      old_value: old_value ? JSON.stringify(old_value) : null,
-      new_value: new_value ? JSON.stringify(new_value) : null,
-      ip_address: req.ip || null,
+      old_value: old_value || null,
+      new_value: new_value || null,
     });
 
     res.status(201).json({ id, message: 'Audit entry created' });
