@@ -1,22 +1,10 @@
 import { useMemo } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
-import { Bracket, BracketStatus, STATUS_LABELS } from '../../types/brackets';
+import { Bracket, STATUS_LABELS } from '../../types/brackets';
 import { formatDateTime } from '../../utils/dateUtils';
+import { getStatusClass } from './bracketUtils';
 import './BracketDisplay.css';
-
-function getStatusClass(status: BracketStatus): string {
-  switch (status) {
-    case 'setup':
-      return 'status-setup';
-    case 'in_progress':
-      return 'status-in-progress';
-    case 'completed':
-      return 'status-completed';
-    default:
-      return '';
-  }
-}
 
 interface BracketListTableProps {
   brackets: Bracket[];

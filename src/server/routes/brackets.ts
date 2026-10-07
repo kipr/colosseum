@@ -28,6 +28,7 @@ import {
   markQueueDirty,
   queueEtag,
 } from '../services/queueVersion';
+import { nextPowerOfTwo } from '../../shared/bracketSize';
 
 const router = express.Router();
 
@@ -364,12 +365,6 @@ router.get(
     }
   },
 );
-
-function nextPowerOfTwo(n: number): number {
-  if (n <= 0) return 4;
-  const p = Math.pow(2, Math.ceil(Math.log2(n)));
-  return Math.max(4, Math.min(64, p));
-}
 
 // POST /brackets - Create bracket
 router.post('/', requireAuth, async (req: AuthRequest, res: Response) => {
