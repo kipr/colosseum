@@ -101,23 +101,33 @@ function getEventCategory(
   );
 }
 
+/**
+ * Sub-scores of a documentation score. Reads show only categories still
+ * linked to the event; `includeUnlinked` also returns sub-scores whose
+ * category was removed from the event (with a null ordinal).
+ */
 function getSubScores(
   db: Database,
   eventId: number | string,
   docScoreId: number,
+  { includeUnlinked = false } = {},
 ) {
   return db.all(
     `SELECT dss.*, dc.name as category_name, edc.ordinal, dc.max_score, dc.weight
      FROM documentation_sub_scores dss
      JOIN documentation_categories dc ON dss.category_id = dc.id
-     JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
+     ${includeUnlinked ? 'LEFT JOIN' : 'JOIN'} event_documentation_categories edc
+       ON edc.event_id = ? AND edc.category_id = dc.id
      WHERE dss.documentation_score_id = ?
-     ORDER BY edc.ordinal ASC`,
+     ORDER BY edc.ordinal ASC, dss.category_id ASC`,
     [eventId, docScoreId],
   );
 }
 
-/** A team's documentation score with its sub-scores, or undefined if unscored. */
+/**
+ * A team's documentation score with every stored sub-score, or undefined if
+ * unscored. Used for audit snapshots, so unlinked sub-scores are included.
+ */
 async function getDocumentationScoreSnapshot(
   db: Database,
   eventId: number | string,
@@ -133,7 +143,9 @@ async function getDocumentationScoreSnapshot(
   if (!docScore) return undefined;
   return {
     ...docScore,
-    sub_scores: await getSubScores(db, eventId, docScore.id),
+    sub_scores: await getSubScores(db, eventId, docScore.id, {
+      includeUnlinked: true,
+    }),
   };
 }
 
