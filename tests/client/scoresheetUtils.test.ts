@@ -4,6 +4,7 @@ import {
   buildEventScopedBracketSource,
   buildRepeatableGroupDerivedScoreEntries,
   buildRepeatableGroupScoreEntry,
+  calculateFormulaValues,
   calculateRepeatableGroupDerivedRows,
   calculateRepeatableGroupDerivedValues,
   createBlankRepeatableGroupRow,
@@ -606,5 +607,122 @@ describe('scoresheetUtils', () => {
 
     expect(derivedByFieldId).toEqual({});
     expect(outputs).toEqual({});
+  });
+});
+
+describe('calculateFormulaValues', () => {
+  const fields = [
+    { id: 'a', label: 'A', type: 'number' },
+    { id: 'b', label: 'B', type: 'number' },
+    { id: 'flag', label: 'Flag', type: 'checkbox' },
+    { id: 'mult', label: 'Mult', type: 'buttons' },
+    { id: 'first', label: 'First', type: 'calculated', formula: 'a * 2 + b' },
+    {
+      id: 'second',
+      label: 'Second',
+      type: 'calculated',
+      formula: 'first + (flag ? 10 : 0)',
+    },
+    {
+      id: 'third',
+      label: 'Third',
+      type: 'calculated',
+      formula: "mult === '1' ? second * 2 : second",
+    },
+  ];
+
+  it('coerces inputs and chains calculated fields in schema order', () => {
+    expect(
+      calculateFormulaValues(fields, { a: '3', b: '', flag: true, mult: '1' }),
+    ).toEqual({
+      calculated: { first: 6, second: 16, third: 32 },
+      derivedByFieldId: {},
+    });
+  });
+
+  it('treats missing values as zero', () => {
+    expect(calculateFormulaValues(fields, {}).calculated).toEqual({
+      first: 0,
+      second: 0,
+      third: 0,
+    });
+  });
+
+  it('does not see calculated fields declared later', () => {
+    expect(
+      calculateFormulaValues(
+        [
+          {
+            id: 'early',
+            label: 'Early',
+            type: 'calculated',
+            formula: 'later + 1',
+          },
+          { id: 'later', label: 'Later', type: 'calculated', formula: '5' },
+        ],
+        {},
+      ).calculated,
+    ).toEqual({ early: 1, later: 5 });
+  });
+
+  it('returns zero for a formula that does not evaluate', () => {
+    expect(
+      calculateFormulaValues(
+        [{ id: 'bad', label: 'Bad', type: 'calculated', formula: 'a +' }],
+        { a: 1 },
+      ).calculated,
+    ).toEqual({ bad: 0 });
+  });
+
+  it('returns no values when the fields are not loaded', () => {
+    expect(calculateFormulaValues(undefined, { a: 1 })).toEqual({
+      calculated: {},
+      derivedByFieldId: {},
+    });
+  });
+
+  it('feeds repeatable group derived outputs into formulas', () => {
+    const cubeFields = [
+      {
+        id: 'cubes',
+        label: 'Cubes',
+        type: 'repeatableGroup',
+        pruneBlankRows: true,
+        fields: [
+          { id: 'cube_type', label: 'Cube Type', type: 'buttons' },
+          { id: 'quantity', label: 'Qty', type: 'number' },
+          { id: 'on_pallet', label: 'Pallet', type: 'checkbox' },
+        ],
+        derived: {
+          type: 'botballStartBoxCubes',
+          outputs: { subtotal: 'cube_points' },
+        },
+      },
+      { id: 'poms', label: 'Poms', type: 'number' },
+      { id: 'drum_mult', label: 'Drum', type: 'buttons' },
+      {
+        id: 'total',
+        label: 'Total',
+        type: 'calculated',
+        formula: "(poms * 2 + cube_points) * (drum_mult === '1' ? 2 : 1)",
+      },
+    ];
+
+    const { calculated, derivedByFieldId } = calculateFormulaValues(
+      cubeFields,
+      {
+        cubes: [
+          { cube_type: 'small', quantity: '2', on_pallet: false },
+          { cube_type: 'large_brown', quantity: 1, on_pallet: true },
+          { cube_type: '', quantity: '', on_pallet: false },
+        ],
+        poms: '3',
+        drum_mult: '1',
+      },
+    );
+
+    // (3 poms * 2 + 90 cube points) * drum multiplier 2
+    expect(calculated.total).toBe(192);
+    expect(derivedByFieldId.cubes.subtotal).toBe(90);
   });
 });
