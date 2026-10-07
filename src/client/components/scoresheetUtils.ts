@@ -279,7 +279,7 @@ export function calculateRepeatableGroupDerivedValues(
   return { derivedByFieldId, outputs };
 }
 
-export function evaluateFormula(
+function evaluateFormula(
   formula: string,
   data: Record<string, any>,
   calculated: Record<string, number>,
@@ -316,49 +316,44 @@ export function evaluateFormula(
   try {
     const result = eval(expression);
     return Number(result) || 0;
-  } catch (error) {
-    console.error(
-      'Formula evaluation error:',
-      error,
-      'Formula:',
-      formula,
-      'Expression:',
-      expression,
-    );
+  } catch {
     return 0;
   }
 }
 
 // Evaluates every calculated field in schema order, so a formula can use
 // calculated fields declared before it and repeatable-group derived outputs.
+// Also returns the derived group values so callers saving a score sheet do
+// not have to compute them again.
 export function calculateFormulaValues(
   fields: any[] | undefined,
   data: Record<string, any>,
-): Record<string, number> {
+): {
+  calculated: Record<string, number>;
+  derivedByFieldId: Record<string, any>;
+} {
   if (!Array.isArray(fields)) {
-    return {};
+    return { calculated: {}, derivedByFieldId: {} };
   }
 
   const calculated: Record<string, number> = {};
-  const { outputs } = calculateRepeatableGroupDerivedValues(fields, data);
+  const { derivedByFieldId, outputs } = calculateRepeatableGroupDerivedValues(
+    fields,
+    data,
+  );
   const formulaData = { ...data, ...outputs };
 
   fields.forEach((field: any) => {
     if (field.type === 'calculated' && field.formula) {
-      try {
-        calculated[field.id] = evaluateFormula(
-          field.formula,
-          formulaData,
-          calculated,
-        );
-      } catch (error) {
-        console.error(`Error calculating ${field.id}:`, error);
-        calculated[field.id] = 0;
-      }
+      calculated[field.id] = evaluateFormula(
+        field.formula,
+        formulaData,
+        calculated,
+      );
     }
   });
 
-  return calculated;
+  return { calculated, derivedByFieldId };
 }
 
 export function buildRepeatableGroupDerivedOutputScoreEntries(

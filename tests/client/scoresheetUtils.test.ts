@@ -1,5 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
-import gcerFields from '../../templates/botball-gcer-2026-scoring-fields.json';
+import { describe, expect, it } from 'vitest';
 import {
   buildDoubleEliminationSchema,
   buildEventScopedBracketSource,
@@ -635,11 +634,14 @@ describe('calculateFormulaValues', () => {
   it('coerces inputs and chains calculated fields in schema order', () => {
     expect(
       calculateFormulaValues(fields, { a: '3', b: '', flag: true, mult: '1' }),
-    ).toEqual({ first: 6, second: 16, third: 32 });
+    ).toEqual({
+      calculated: { first: 6, second: 16, third: 32 },
+      derivedByFieldId: {},
+    });
   });
 
   it('treats missing values as zero', () => {
-    expect(calculateFormulaValues(fields, {})).toEqual({
+    expect(calculateFormulaValues(fields, {}).calculated).toEqual({
       first: 0,
       second: 0,
       third: 0,
@@ -659,43 +661,68 @@ describe('calculateFormulaValues', () => {
           { id: 'later', label: 'Later', type: 'calculated', formula: '5' },
         ],
         {},
-      ),
+      ).calculated,
     ).toEqual({ early: 1, later: 5 });
   });
 
   it('returns zero for a formula that does not evaluate', () => {
-    const consoleError = vi
-      .spyOn(console, 'error')
-      .mockImplementation(() => {});
-    try {
-      expect(
-        calculateFormulaValues(
-          [{ id: 'bad', label: 'Bad', type: 'calculated', formula: 'a +' }],
-          { a: 1 },
-        ),
-      ).toEqual({ bad: 0 });
-    } finally {
-      consoleError.mockRestore();
-    }
+    expect(
+      calculateFormulaValues(
+        [{ id: 'bad', label: 'Bad', type: 'calculated', formula: 'a +' }],
+        { a: 1 },
+      ).calculated,
+    ).toEqual({ bad: 0 });
   });
 
   it('returns no values when the fields are not loaded', () => {
-    expect(calculateFormulaValues(undefined, { a: 1 })).toEqual({});
+    expect(calculateFormulaValues(undefined, { a: 1 })).toEqual({
+      calculated: {},
+      derivedByFieldId: {},
+    });
   });
 
   it('feeds repeatable group derived outputs into formulas', () => {
-    const values = calculateFormulaValues(gcerFields, {
-      side_a_ls_cube_stacks: [
-        { cube_type: 'small', quantity: '2', on_pallet: false },
-        { cube_type: 'large_brown', quantity: 1, on_pallet: true },
-        { cube_type: '', quantity: '', on_pallet: false },
-      ],
-      side_a_ls_poms: '3',
-      side_a_ls_drum_mult: '1',
-      side_a_ls_botguy_mult: '0',
-    });
+    const cubeFields = [
+      {
+        id: 'cubes',
+        label: 'Cubes',
+        type: 'repeatableGroup',
+        pruneBlankRows: true,
+        fields: [
+          { id: 'cube_type', label: 'Cube Type', type: 'buttons' },
+          { id: 'quantity', label: 'Qty', type: 'number' },
+          { id: 'on_pallet', label: 'Pallet', type: 'checkbox' },
+        ],
+        derived: {
+          type: 'botballStartBoxCubes',
+          outputs: { subtotal: 'cube_points' },
+        },
+      },
+      { id: 'poms', label: 'Poms', type: 'number' },
+      { id: 'drum_mult', label: 'Drum', type: 'buttons' },
+      {
+        id: 'total',
+        label: 'Total',
+        type: 'calculated',
+        formula: "(poms * 2 + cube_points) * (drum_mult === '1' ? 2 : 1)",
+      },
+    ];
+
+    const { calculated, derivedByFieldId } = calculateFormulaValues(
+      cubeFields,
+      {
+        cubes: [
+          { cube_type: 'small', quantity: '2', on_pallet: false },
+          { cube_type: 'large_brown', quantity: 1, on_pallet: true },
+          { cube_type: '', quantity: '', on_pallet: false },
+        ],
+        poms: '3',
+        drum_mult: '1',
+      },
+    );
 
     // (3 poms * 2 + 90 cube points) * drum multiplier 2
-    expect(values.side_a_ls_subtotal).toBe(192);
+    expect(calculated.total).toBe(192);
+    expect(derivedByFieldId.cubes.subtotal).toBe(90);
   });
 });

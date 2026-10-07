@@ -5,7 +5,6 @@ import {
   buildRepeatableGroupDerivedScoreEntries,
   calculateRepeatableGroupDerived,
   calculateFormulaValues,
-  calculateRepeatableGroupDerivedValues,
   findBracketGameBySelection,
   formatBracketGameOptionLabel,
   normalizeRepeatableGroupRows,
@@ -967,7 +966,9 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
   };
 
   const calculateAllFormulas = () => {
-    setCalculatedValues(calculateFormulaValues(schema.fields, formData));
+    setCalculatedValues(
+      calculateFormulaValues(schema.fields, formData).calculated,
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1044,14 +1045,8 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
     }
 
     const scoreData: Record<string, any> = {};
-    const submitCalculatedValues = calculateFormulaValues(
-      schema.fields,
-      formData,
-    );
-    const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
-      schema.fields,
-      formData,
-    );
+    const { calculated: submitCalculatedValues, derivedByFieldId } =
+      calculateFormulaValues(schema.fields, formData);
 
     schema.fields.forEach((field: any) => {
       if (field.type === 'section_header' || field.type === 'group_header') {

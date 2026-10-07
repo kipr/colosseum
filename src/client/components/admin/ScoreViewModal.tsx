@@ -9,7 +9,6 @@ import {
   buildRepeatableGroupDerivedScoreEntries,
   buildRepeatableGroupScoreEntry,
   calculateFormulaValues,
-  calculateRepeatableGroupDerivedValues,
   getRepeatableGroupRowKeys,
   normalizeRepeatableGroupRows,
   shouldAutoAppendRepeatableGroupRow,
@@ -123,7 +122,7 @@ export default function ScoreViewModal({
 
   const calculateAllFormulas = () => {
     setCalculatedValues(
-      calculateFormulaValues(template?.schema?.fields, formData),
+      calculateFormulaValues(template?.schema?.fields, formData).calculated,
     );
   };
 
@@ -213,14 +212,8 @@ export default function ScoreViewModal({
       const fieldsById = new Map<string, any>(
         (template?.schema?.fields || []).map((field: any) => [field.id, field]),
       );
-      const saveCalculatedValues = calculateFormulaValues(
-        template?.schema?.fields,
-        formData,
-      );
-      const { derivedByFieldId } = calculateRepeatableGroupDerivedValues(
-        template?.schema?.fields || [],
-        formData,
-      );
+      const { calculated: saveCalculatedValues, derivedByFieldId } =
+        calculateFormulaValues(template?.schema?.fields || [], formData);
 
       Object.entries(score.score_data).forEach(
         ([fieldId, fieldData]: [string, any]) => {
