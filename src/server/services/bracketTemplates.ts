@@ -24,13 +24,35 @@ export interface BracketTemplate {
 
 type BracketTemplateDefinition = Omit<BracketTemplate, 'play_order'>;
 
+type Slot = BracketTemplate['winner_slot'];
+
+/**
+ * [game_number, team1_source, team2_source,
+ *  winner_advances_to, winner_slot, loser_advances_to, loser_slot]
+ */
+type GameRow = readonly [
+  number,
+  string,
+  string,
+  number | null,
+  Slot,
+  number | null,
+  Slot,
+];
+
+interface RoundRows {
+  name: string;
+  number: number;
+  side: BracketTemplate['bracket_side'];
+  games: readonly GameRow[];
+}
+
 interface CachedPlayOrder {
   order: readonly number[];
   ranks: ReadonlyMap<number, number>;
 }
 
 const playOrderCache = new Map<number, CachedPlayOrder>();
-const supportedBracketSizes = new Set([4, 8, 16, 32, 64]);
 
 /**
  * Generate double-elimination bracket templates for a given bracket size.
@@ -67,20 +89,39 @@ export function getPlayOrderMap(bracketSize: number): Map<number, number> {
 function generateDEBracketTemplateDefinitions(
   bracketSize: number,
 ): BracketTemplateDefinition[] {
-  switch (bracketSize) {
-    case 4:
-      return generate4TeamDE();
-    case 8:
-      return generate8TeamDE();
-    case 16:
-      return generate16TeamDE();
-    case 32:
-      return generate32TeamDE();
-    case 64:
-      return generate64TeamDE();
-    default:
-      throw new Error(`Unsupported bracket size: ${bracketSize}`);
+  const layout = DE_BRACKET_LAYOUTS.get(bracketSize);
+  if (!layout) {
+    throw new Error(`Unsupported bracket size: ${bracketSize}`);
   }
+
+  return layout.flatMap((roundRows) =>
+    roundRows.games.map(
+      ([
+        gameNumber,
+        team1Source,
+        team2Source,
+        winnerAdvancesTo,
+        winnerSlot,
+        loserAdvancesTo,
+        loserSlot,
+      ]) => ({
+        bracket_size: bracketSize,
+        game_number: gameNumber,
+        round_name: roundRows.name,
+        round_number: roundRows.number,
+        bracket_side: roundRows.side,
+        team1_source: team1Source,
+        team2_source: team2Source,
+        winner_advances_to: winnerAdvancesTo,
+        loser_advances_to: loserAdvancesTo,
+        winner_slot: winnerSlot,
+        loser_slot: loserSlot,
+        is_championship: roundRows.name === 'Championship Reset',
+        is_grand_final: roundRows.name === 'Grand Final',
+        is_reset_game: roundRows.name === 'Championship Reset',
+      }),
+    ),
+  );
 }
 
 function getCachedPlayOrder(
@@ -273,7 +314,7 @@ export async function backfillBracketGamePlayOrders(
   let skippedCount = 0;
 
   for (const game of games) {
-    if (!supportedBracketSizes.has(game.bracket_size)) {
+    if (!DE_BRACKET_LAYOUTS.has(game.bracket_size)) {
       skippedCount++;
       continue;
     }
@@ -311,1432 +352,425 @@ export async function backfillBracketGamePlayOrders(
   }
 }
 
-/**
- * Cross Winners R2 losers into the opposite half of Redemption R2.
- * This keeps a team away from the opponent it may have just beaten in
- * Winners R1 until the redemption bracket has narrowed further.
- */
-function crossBracketPosition(position: number, gameCount: number): number {
-  return (position + gameCount / 2) % gameCount;
+// =============================================================================
+// DOUBLE-ELIMINATION LAYOUTS
+// =============================================================================
+// One row per game, grouped by round in emission order. Every layout follows
+// the same shape, shown here for 4 teams:
+//
+//   Winners R1: G1, G2
+//   Winners Final (G3): winner of G1 vs winner of G2
+//   Redemption R1 (G4): loser of G1 vs loser of G2
+//   Redemption Final (G5): loser of G3 vs winner of G4
+//   Grand Final (G6): winner of G3 vs winner of G5
+//   Championship Reset (G7): if loser of G6 came from winners bracket
+//
+// Winners R1 uses standard seeding (1 vs N, N/2 vs N/2+1, ...). From Winners
+// R2 on, a winners round's losers drop into the opposite half of the
+// redemption round they join, so a team does not meet an opponent it may have
+// just beaten until the redemption bracket has narrowed further.
+//
+// These rows were frozen from the original generators and are checked against
+// tests/server/services/__fixtures__/bracketTemplates.golden.json. Seeded
+// template rows are upserted on play_order only, so a structural edit here
+// would not reach existing databases.
+
+function round(
+  name: string,
+  number: number,
+  side: RoundRows['side'],
+  games: readonly GameRow[],
+): RoundRows {
+  return { name, number, side, games };
 }
 
-// =============================================================================
-// 4-TEAM DOUBLE ELIMINATION
-// =============================================================================
-// Structure:
-// Winners R1: G1, G2
-// Winners Final (G3): winner of G1 vs winner of G2
-// Redemption R1 (G4): loser of G1 vs loser of G2
-// Redemption Final (G5): loser of G3 vs winner of G4
-// Grand Final (G6): winner of G3 vs winner of G5
-// Reset (G7): if loser of G6 came from winners bracket
-
-function generate4TeamDE(): BracketTemplateDefinition[] {
-  return [
-    // Winners R1
-    {
-      bracket_size: 4,
-      game_number: 1,
-      round_name: 'Winners R1',
-      round_number: 1,
-      bracket_side: 'winners',
-      team1_source: 'seed:1',
-      team2_source: 'seed:4',
-      winner_advances_to: 3,
-      loser_advances_to: 4,
-      winner_slot: 'team1',
-      loser_slot: 'team1',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    },
-    {
-      bracket_size: 4,
-      game_number: 2,
-      round_name: 'Winners R1',
-      round_number: 1,
-      bracket_side: 'winners',
-      team1_source: 'seed:2',
-      team2_source: 'seed:3',
-      winner_advances_to: 3,
-      loser_advances_to: 4,
-      winner_slot: 'team2',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    },
-    // Winners Final
-    {
-      bracket_size: 4,
-      game_number: 3,
-      round_name: 'Winners Final',
-      round_number: 2,
-      bracket_side: 'winners',
-      team1_source: 'winner:1',
-      team2_source: 'winner:2',
-      winner_advances_to: 6,
-      loser_advances_to: 5,
-      winner_slot: 'team1',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    },
-    // Redemption R1
-    {
-      bracket_size: 4,
-      game_number: 4,
-      round_name: 'Redemption R1',
-      round_number: 1,
-      bracket_side: 'losers',
-      team1_source: 'loser:1',
-      team2_source: 'loser:2',
-      winner_advances_to: 5,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    },
-    // Redemption Final
-    {
-      bracket_size: 4,
-      game_number: 5,
-      round_name: 'Redemption Final',
-      round_number: 2,
-      bracket_side: 'losers',
-      team1_source: 'winner:4',
-      team2_source: 'loser:3',
-      winner_advances_to: 6,
-      loser_advances_to: null,
-      winner_slot: 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    },
-    // Grand Final
-    {
-      bracket_size: 4,
-      game_number: 6,
-      round_name: 'Grand Final',
-      round_number: 3,
-      bracket_side: 'finals',
-      team1_source: 'winner:3',
-      team2_source: 'winner:5',
-      winner_advances_to: 7,
-      loser_advances_to: 7,
-      winner_slot: 'team1',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: true,
-      is_reset_game: false,
-    },
-    // Reset (if needed)
-    {
-      bracket_size: 4,
-      game_number: 7,
-      round_name: 'Championship Reset',
-      round_number: 4,
-      bracket_side: 'finals',
-      team1_source: 'winner:6',
-      team2_source: 'loser:6',
-      winner_advances_to: null,
-      loser_advances_to: null,
-      winner_slot: null,
-      loser_slot: null,
-      is_championship: true,
-      is_grand_final: false,
-      is_reset_game: true,
-    },
-  ];
-}
-
-// =============================================================================
-// 8-TEAM DOUBLE ELIMINATION
-// =============================================================================
-
-function generate8TeamDE(): BracketTemplateDefinition[] {
-  const templates: BracketTemplateDefinition[] = [];
-  const winnersR2GameCount = 2;
-  const redemptionR2Start = 9;
-
-  // Winners R1 (Games 1-4)
-  const winnersR1Seeds = [
-    [1, 8],
-    [4, 5],
-    [2, 7],
-    [3, 6],
-  ];
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 8,
-      game_number: i + 1,
-      round_name: 'Winners R1',
-      round_number: 1,
-      bracket_side: 'winners',
-      team1_source: `seed:${winnersR1Seeds[i][0]}`,
-      team2_source: `seed:${winnersR1Seeds[i][1]}`,
-      winner_advances_to: 5 + Math.floor(i / 2),
-      loser_advances_to: 7 + Math.floor(i / 2),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: i % 2 === 0 ? 'team1' : 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners Semi (Games 5-6)
-  templates.push({
-    bracket_size: 8,
-    game_number: 5,
-    round_name: 'Winners Semi',
-    round_number: 2,
-    bracket_side: 'winners',
-    team1_source: 'winner:1',
-    team2_source: 'winner:2',
-    winner_advances_to: 13,
-    loser_advances_to:
-      redemptionR2Start + crossBracketPosition(0, winnersR2GameCount),
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-  templates.push({
-    bracket_size: 8,
-    game_number: 6,
-    round_name: 'Winners Semi',
-    round_number: 2,
-    bracket_side: 'winners',
-    team1_source: 'winner:3',
-    team2_source: 'winner:4',
-    winner_advances_to: 13,
-    loser_advances_to:
-      redemptionR2Start + crossBracketPosition(1, winnersR2GameCount),
-    winner_slot: 'team2',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption R1 (Games 7-10): losers from winners R1
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 8,
-      game_number: 7 + i,
-      round_name: 'Redemption R1',
-      round_number: 1,
-      bracket_side: 'losers',
-      team1_source: `loser:${i + 1}`,
-      team2_source: `loser:${4 - i}`, // Cross-matching for balance
-      winner_advances_to: 11 + Math.floor(i / 2),
-      loser_advances_to: null,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Actually, let's simplify and use a more standard 8-team structure
-  // Redemption R1: Games 7-8 (2 games from 4 losers)
-  templates.length = 6; // Reset to just winners games
-
-  // Redemption R1 (Games 7-8)
-  templates.push({
-    bracket_size: 8,
-    game_number: 7,
-    round_name: 'Redemption R1',
-    round_number: 1,
-    bracket_side: 'losers',
-    team1_source: 'loser:1',
-    team2_source: 'loser:2',
-    winner_advances_to: 9,
-    loser_advances_to: null,
-    winner_slot: 'team1',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-  templates.push({
-    bracket_size: 8,
-    game_number: 8,
-    round_name: 'Redemption R1',
-    round_number: 1,
-    bracket_side: 'losers',
-    team1_source: 'loser:3',
-    team2_source: 'loser:4',
-    winner_advances_to: 10,
-    loser_advances_to: null,
-    winner_slot: 'team1',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption R2 (Games 9-10): losers from winners semi vs winners from redemption R1
-  templates.push({
-    bracket_size: 8,
-    game_number: 9,
-    round_name: 'Redemption R2',
-    round_number: 2,
-    bracket_side: 'losers',
-    team1_source: 'winner:7',
-    team2_source: `loser:${5 + crossBracketPosition(0, winnersR2GameCount)}`,
-    winner_advances_to: 11,
-    loser_advances_to: null,
-    winner_slot: 'team1',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-  templates.push({
-    bracket_size: 8,
-    game_number: 10,
-    round_name: 'Redemption R2',
-    round_number: 2,
-    bracket_side: 'losers',
-    team1_source: 'winner:8',
-    team2_source: `loser:${5 + crossBracketPosition(1, winnersR2GameCount)}`,
-    winner_advances_to: 11,
-    loser_advances_to: null,
-    winner_slot: 'team2',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Semi (Game 11)
-  templates.push({
-    bracket_size: 8,
-    game_number: 11,
-    round_name: 'Redemption Semi',
-    round_number: 3,
-    bracket_side: 'losers',
-    team1_source: 'winner:9',
-    team2_source: 'winner:10',
-    winner_advances_to: 12,
-    loser_advances_to: null,
-    winner_slot: 'team1',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Final (Game 12): winner of redemption semi vs loser of winners final
-  templates.push({
-    bracket_size: 8,
-    game_number: 12,
-    round_name: 'Redemption Final',
-    round_number: 4,
-    bracket_side: 'losers',
-    team1_source: 'winner:11',
-    team2_source: 'loser:13',
-    winner_advances_to: 14,
-    loser_advances_to: null,
-    winner_slot: 'team2',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Winners Final (Game 13)
-  templates.push({
-    bracket_size: 8,
-    game_number: 13,
-    round_name: 'Winners Final',
-    round_number: 3,
-    bracket_side: 'winners',
-    team1_source: 'winner:5',
-    team2_source: 'winner:6',
-    winner_advances_to: 14,
-    loser_advances_to: 12,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Grand Final (Game 14)
-  templates.push({
-    bracket_size: 8,
-    game_number: 14,
-    round_name: 'Grand Final',
-    round_number: 5,
-    bracket_side: 'finals',
-    team1_source: 'winner:13',
-    team2_source: 'winner:12',
-    winner_advances_to: 15,
-    loser_advances_to: 15,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: true,
-    is_reset_game: false,
-  });
-
-  // Reset (Game 15)
-  templates.push({
-    bracket_size: 8,
-    game_number: 15,
-    round_name: 'Championship Reset',
-    round_number: 6,
-    bracket_side: 'finals',
-    team1_source: 'winner:14',
-    team2_source: 'loser:14',
-    winner_advances_to: null,
-    loser_advances_to: null,
-    winner_slot: null,
-    loser_slot: null,
-    is_championship: true,
-    is_grand_final: false,
-    is_reset_game: true,
-  });
-
-  return templates;
-}
-
-// =============================================================================
-// 16-TEAM DOUBLE ELIMINATION
-// =============================================================================
-
-function generate16TeamDE(): BracketTemplateDefinition[] {
-  const templates: BracketTemplateDefinition[] = [];
-
-  // Standard 16-team seeding order: 1v16, 8v9, 4v13, 5v12, 2v15, 7v10, 3v14, 6v11
-  const seedPairs = [
-    [1, 16],
-    [8, 9],
-    [4, 13],
-    [5, 12],
-    [2, 15],
-    [7, 10],
-    [3, 14],
-    [6, 11],
-  ];
-
-  // Winners R1 (Games 1-8)
-  for (let i = 0; i < 8; i++) {
-    templates.push({
-      bracket_size: 16,
-      game_number: i + 1,
-      round_name: 'Winners R1',
-      round_number: 1,
-      bracket_side: 'winners',
-      team1_source: `seed:${seedPairs[i][0]}`,
-      team2_source: `seed:${seedPairs[i][1]}`,
-      winner_advances_to: 9 + Math.floor(i / 2),
-      loser_advances_to: 13 + Math.floor(i / 2),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: i % 2 === 0 ? 'team1' : 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners R2 (Games 9-12)
-  const winnersR2GameCount = 4;
-  const redemptionR2Start = 17;
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 16,
-      game_number: 9 + i,
-      round_name: 'Winners R2',
-      round_number: 2,
-      bracket_side: 'winners',
-      team1_source: `winner:${i * 2 + 1}`,
-      team2_source: `winner:${i * 2 + 2}`,
-      winner_advances_to: 25 + Math.floor(i / 2),
-      loser_advances_to:
-        redemptionR2Start + crossBracketPosition(i, winnersR2GameCount),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R1 (Games 13-16): 4 games from 8 losers
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 16,
-      game_number: 13 + i,
-      round_name: 'Redemption R1',
-      round_number: 1,
-      bracket_side: 'losers',
-      team1_source: `loser:${i * 2 + 1}`,
-      team2_source: `loser:${i * 2 + 2}`,
-      winner_advances_to: 17 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R2 (Games 17-20): winners from L1 vs losers from W R2
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 16,
-      game_number: 17 + i,
-      round_name: 'Redemption R2',
-      round_number: 2,
-      bracket_side: 'losers',
-      team1_source: `winner:${13 + i}`,
-      team2_source: `loser:${9 + crossBracketPosition(i, winnersR2GameCount)}`,
-      winner_advances_to: 21 + Math.floor(i / 2),
-      loser_advances_to: null,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R3 (Games 21-22)
-  for (let i = 0; i < 2; i++) {
-    templates.push({
-      bracket_size: 16,
-      game_number: 21 + i,
-      round_name: 'Redemption R3',
-      round_number: 3,
-      bracket_side: 'losers',
-      team1_source: `winner:${17 + i * 2}`,
-      team2_source: `winner:${18 + i * 2}`,
-      winner_advances_to: 23 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R4 (Games 23-24): vs losers from Winners Semi
-  for (let i = 0; i < 2; i++) {
-    templates.push({
-      bracket_size: 16,
-      game_number: 23 + i,
-      round_name: 'Redemption R4',
-      round_number: 4,
-      bracket_side: 'losers',
-      team1_source: `winner:${21 + i}`,
-      team2_source: `loser:${25 + i}`,
-      winner_advances_to: 27,
-      loser_advances_to: null,
-      winner_slot: i === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners Semi (Games 25-26)
-  templates.push({
-    bracket_size: 16,
-    game_number: 25,
-    round_name: 'Winners Semi',
-    round_number: 3,
-    bracket_side: 'winners',
-    team1_source: 'winner:9',
-    team2_source: 'winner:10',
-    winner_advances_to: 28,
-    loser_advances_to: 23,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-  templates.push({
-    bracket_size: 16,
-    game_number: 26,
-    round_name: 'Winners Semi',
-    round_number: 3,
-    bracket_side: 'winners',
-    team1_source: 'winner:11',
-    team2_source: 'winner:12',
-    winner_advances_to: 28,
-    loser_advances_to: 24,
-    winner_slot: 'team2',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Semi (Game 27)
-  templates.push({
-    bracket_size: 16,
-    game_number: 27,
-    round_name: 'Redemption Semi',
-    round_number: 5,
-    bracket_side: 'losers',
-    team1_source: 'winner:23',
-    team2_source: 'winner:24',
-    winner_advances_to: 29,
-    loser_advances_to: null,
-    winner_slot: 'team1',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Winners Final (Game 28)
-  templates.push({
-    bracket_size: 16,
-    game_number: 28,
-    round_name: 'Winners Final',
-    round_number: 4,
-    bracket_side: 'winners',
-    team1_source: 'winner:25',
-    team2_source: 'winner:26',
-    winner_advances_to: 30,
-    loser_advances_to: 29,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Final (Game 29)
-  templates.push({
-    bracket_size: 16,
-    game_number: 29,
-    round_name: 'Redemption Final',
-    round_number: 6,
-    bracket_side: 'losers',
-    team1_source: 'winner:27',
-    team2_source: 'loser:28',
-    winner_advances_to: 30,
-    loser_advances_to: null,
-    winner_slot: 'team2',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Grand Final (Game 30)
-  templates.push({
-    bracket_size: 16,
-    game_number: 30,
-    round_name: 'Grand Final',
-    round_number: 7,
-    bracket_side: 'finals',
-    team1_source: 'winner:28',
-    team2_source: 'winner:29',
-    winner_advances_to: 31,
-    loser_advances_to: 31,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: true,
-    is_reset_game: false,
-  });
-
-  // Reset (Game 31)
-  templates.push({
-    bracket_size: 16,
-    game_number: 31,
-    round_name: 'Championship Reset',
-    round_number: 8,
-    bracket_side: 'finals',
-    team1_source: 'winner:30',
-    team2_source: 'loser:30',
-    winner_advances_to: null,
-    loser_advances_to: null,
-    winner_slot: null,
-    loser_slot: null,
-    is_championship: true,
-    is_grand_final: false,
-    is_reset_game: true,
-  });
-
-  return templates;
-}
-
-// =============================================================================
-// 32-TEAM DOUBLE ELIMINATION
-// =============================================================================
-
-function generate32TeamDE(): BracketTemplateDefinition[] {
-  const templates: BracketTemplateDefinition[] = [];
-
-  // 32-team seeding (standard format)
-  const seedPairs = [
-    [1, 32],
-    [16, 17],
-    [8, 25],
-    [9, 24],
-    [4, 29],
-    [13, 20],
-    [5, 28],
-    [12, 21],
-    [2, 31],
-    [15, 18],
-    [7, 26],
-    [10, 23],
-    [3, 30],
-    [14, 19],
-    [6, 27],
-    [11, 22],
-  ];
-
-  // Winners R1 (Games 1-16)
-  for (let i = 0; i < 16; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: i + 1,
-      round_name: 'Winners R1',
-      round_number: 1,
-      bracket_side: 'winners',
-      team1_source: `seed:${seedPairs[i][0]}`,
-      team2_source: `seed:${seedPairs[i][1]}`,
-      winner_advances_to: 17 + Math.floor(i / 2),
-      loser_advances_to: 25 + Math.floor(i / 2),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: i % 2 === 0 ? 'team1' : 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners R2 (Games 17-24)
-  const winnersR2GameCount = 8;
-  const redemptionR2Start = 33;
-  for (let i = 0; i < 8; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 17 + i,
-      round_name: 'Winners R2',
-      round_number: 2,
-      bracket_side: 'winners',
-      team1_source: `winner:${i * 2 + 1}`,
-      team2_source: `winner:${i * 2 + 2}`,
-      winner_advances_to: 49 + Math.floor(i / 2),
-      loser_advances_to:
-        redemptionR2Start + crossBracketPosition(i, winnersR2GameCount),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R1 (Games 25-32): 8 games from 16 losers
-  for (let i = 0; i < 8; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 25 + i,
-      round_name: 'Redemption R1',
-      round_number: 1,
-      bracket_side: 'losers',
-      team1_source: `loser:${i * 2 + 1}`,
-      team2_source: `loser:${i * 2 + 2}`,
-      winner_advances_to: 33 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R2 (Games 33-40)
-  for (let i = 0; i < 8; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 33 + i,
-      round_name: 'Redemption R2',
-      round_number: 2,
-      bracket_side: 'losers',
-      team1_source: `winner:${25 + i}`,
-      team2_source: `loser:${17 + crossBracketPosition(i, winnersR2GameCount)}`,
-      winner_advances_to: 41 + Math.floor(i / 2),
-      loser_advances_to: null,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R3 (Games 41-44)
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 41 + i,
-      round_name: 'Redemption R3',
-      round_number: 3,
-      bracket_side: 'losers',
-      team1_source: `winner:${33 + i * 2}`,
-      team2_source: `winner:${34 + i * 2}`,
-      winner_advances_to: 45 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R4 (Games 45-48): vs losers from Winners R3
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 45 + i,
-      round_name: 'Redemption R4',
-      round_number: 4,
-      bracket_side: 'losers',
-      team1_source: `winner:${41 + i}`,
-      team2_source: `loser:${49 + i}`,
-      winner_advances_to: 53 + Math.floor(i / 2),
-      loser_advances_to: null,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners R3 (Games 49-52)
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 49 + i,
-      round_name: 'Winners R3',
-      round_number: 3,
-      bracket_side: 'winners',
-      team1_source: `winner:${17 + i * 2}`,
-      team2_source: `winner:${18 + i * 2}`,
-      winner_advances_to: 57 + Math.floor(i / 2),
-      loser_advances_to: 45 + i,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R5 (Games 53-54)
-  for (let i = 0; i < 2; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 53 + i,
-      round_name: 'Redemption R5',
-      round_number: 5,
-      bracket_side: 'losers',
-      team1_source: `winner:${45 + i * 2}`,
-      team2_source: `winner:${46 + i * 2}`,
-      winner_advances_to: 55 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R6 (Games 55-56): vs losers from Winners Semi
-  const winnersSemiGameCount = 2;
-  for (let i = 0; i < 2; i++) {
-    templates.push({
-      bracket_size: 32,
-      game_number: 55 + i,
-      round_name: 'Redemption R6',
-      round_number: 6,
-      bracket_side: 'losers',
-      team1_source: `winner:${53 + i}`,
-      team2_source: `loser:${
-        57 + crossBracketPosition(i, winnersSemiGameCount)
-      }`,
-      winner_advances_to: 59,
-      loser_advances_to: null,
-      winner_slot: i === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners Semi (Games 57-58)
-  templates.push({
-    bracket_size: 32,
-    game_number: 57,
-    round_name: 'Winners Semi',
-    round_number: 4,
-    bracket_side: 'winners',
-    team1_source: 'winner:49',
-    team2_source: 'winner:50',
-    winner_advances_to: 60,
-    loser_advances_to: 56,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-  templates.push({
-    bracket_size: 32,
-    game_number: 58,
-    round_name: 'Winners Semi',
-    round_number: 4,
-    bracket_side: 'winners',
-    team1_source: 'winner:51',
-    team2_source: 'winner:52',
-    winner_advances_to: 60,
-    loser_advances_to: 55,
-    winner_slot: 'team2',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Semi (Game 59)
-  templates.push({
-    bracket_size: 32,
-    game_number: 59,
-    round_name: 'Redemption Semi',
-    round_number: 7,
-    bracket_side: 'losers',
-    team1_source: 'winner:55',
-    team2_source: 'winner:56',
-    winner_advances_to: 61,
-    loser_advances_to: null,
-    winner_slot: 'team1',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Winners Final (Game 60)
-  templates.push({
-    bracket_size: 32,
-    game_number: 60,
-    round_name: 'Winners Final',
-    round_number: 5,
-    bracket_side: 'winners',
-    team1_source: 'winner:57',
-    team2_source: 'winner:58',
-    winner_advances_to: 62,
-    loser_advances_to: 61,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Final (Game 61)
-  templates.push({
-    bracket_size: 32,
-    game_number: 61,
-    round_name: 'Redemption Final',
-    round_number: 8,
-    bracket_side: 'losers',
-    team1_source: 'winner:59',
-    team2_source: 'loser:60',
-    winner_advances_to: 62,
-    loser_advances_to: null,
-    winner_slot: 'team2',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Grand Final (Game 62)
-  templates.push({
-    bracket_size: 32,
-    game_number: 62,
-    round_name: 'Grand Final',
-    round_number: 9,
-    bracket_side: 'finals',
-    team1_source: 'winner:60',
-    team2_source: 'winner:61',
-    winner_advances_to: 63,
-    loser_advances_to: 63,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: true,
-    is_reset_game: false,
-  });
-
-  // Reset (Game 63)
-  templates.push({
-    bracket_size: 32,
-    game_number: 63,
-    round_name: 'Championship Reset',
-    round_number: 10,
-    bracket_side: 'finals',
-    team1_source: 'winner:62',
-    team2_source: 'loser:62',
-    winner_advances_to: null,
-    loser_advances_to: null,
-    winner_slot: null,
-    loser_slot: null,
-    is_championship: true,
-    is_grand_final: false,
-    is_reset_game: true,
-  });
-
-  return templates;
-}
-
-// =============================================================================
-// 64-TEAM DOUBLE ELIMINATION
-// =============================================================================
-
-function generate64TeamDE(): BracketTemplateDefinition[] {
-  const templates: BracketTemplateDefinition[] = [];
-
-  // 64-team seeding (standard format) - all 64 seeds
-  const seedPairs: [number, number][] = [];
-  // Generate standard bracket seeding order
-  for (let i = 0; i < 32; i++) {
-    // Standard seeding algorithm: high vs low in each region
-    const seed1 = getStandardSeed(i, 32);
-    const seed2 = 65 - seed1;
-    seedPairs.push([seed1, seed2]);
-  }
-
-  // Winners R1 (Games 1-32)
-  for (let i = 0; i < 32; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: i + 1,
-      round_name: 'Winners R1',
-      round_number: 1,
-      bracket_side: 'winners',
-      team1_source: `seed:${seedPairs[i][0]}`,
-      team2_source: `seed:${seedPairs[i][1]}`,
-      winner_advances_to: 33 + Math.floor(i / 2),
-      loser_advances_to: 49 + Math.floor(i / 2),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: i % 2 === 0 ? 'team1' : 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners R2 (Games 33-48)
-  const winnersR2GameCount = 16;
-  const redemptionR2Start = 65;
-  for (let i = 0; i < 16; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 33 + i,
-      round_name: 'Winners R2',
-      round_number: 2,
-      bracket_side: 'winners',
-      team1_source: `winner:${i * 2 + 1}`,
-      team2_source: `winner:${i * 2 + 2}`,
-      winner_advances_to: 97 + Math.floor(i / 2),
-      loser_advances_to:
-        redemptionR2Start + crossBracketPosition(i, winnersR2GameCount),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R1 (Games 49-64): 16 games from 32 losers
-  for (let i = 0; i < 16; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 49 + i,
-      round_name: 'Redemption R1',
-      round_number: 1,
-      bracket_side: 'losers',
-      team1_source: `loser:${i * 2 + 1}`,
-      team2_source: `loser:${i * 2 + 2}`,
-      winner_advances_to: 65 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R2 (Games 65-80)
-  for (let i = 0; i < 16; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 65 + i,
-      round_name: 'Redemption R2',
-      round_number: 2,
-      bracket_side: 'losers',
-      team1_source: `winner:${49 + i}`,
-      team2_source: `loser:${33 + crossBracketPosition(i, winnersR2GameCount)}`,
-      winner_advances_to: 81 + Math.floor(i / 2),
-      loser_advances_to: null,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R3 (Games 81-88)
-  for (let i = 0; i < 8; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 81 + i,
-      round_name: 'Redemption R3',
-      round_number: 3,
-      bracket_side: 'losers',
-      team1_source: `winner:${65 + i * 2}`,
-      team2_source: `winner:${66 + i * 2}`,
-      winner_advances_to: 89 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R4 (Games 89-96): vs losers from Winners R3
-  for (let i = 0; i < 8; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 89 + i,
-      round_name: 'Redemption R4',
-      round_number: 4,
-      bracket_side: 'losers',
-      team1_source: `winner:${81 + i}`,
-      team2_source: `loser:${97 + i}`,
-      winner_advances_to: 105 + Math.floor(i / 2),
-      loser_advances_to: null,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners R3 (Games 97-104)
-  for (let i = 0; i < 8; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 97 + i,
-      round_name: 'Winners R3',
-      round_number: 3,
-      bracket_side: 'winners',
-      team1_source: `winner:${33 + i * 2}`,
-      team2_source: `winner:${34 + i * 2}`,
-      winner_advances_to: 113 + Math.floor(i / 2),
-      loser_advances_to: 89 + i,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R5 (Games 105-108)
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 105 + i,
-      round_name: 'Redemption R5',
-      round_number: 5,
-      bracket_side: 'losers',
-      team1_source: `winner:${89 + i * 2}`,
-      team2_source: `winner:${90 + i * 2}`,
-      winner_advances_to: 109 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R6 (Games 109-112): vs losers from Winners R4
-  const winnersR4GameCount = 4;
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 109 + i,
-      round_name: 'Redemption R6',
-      round_number: 6,
-      bracket_side: 'losers',
-      team1_source: `winner:${105 + i}`,
-      team2_source: `loser:${
-        113 + crossBracketPosition(i, winnersR4GameCount)
-      }`,
-      winner_advances_to: 117 + Math.floor(i / 2),
-      loser_advances_to: null,
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners R4 (Games 113-116)
-  for (let i = 0; i < 4; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 113 + i,
-      round_name: 'Winners R4',
-      round_number: 4,
-      bracket_side: 'winners',
-      team1_source: `winner:${97 + i * 2}`,
-      team2_source: `winner:${98 + i * 2}`,
-      winner_advances_to: 121 + Math.floor(i / 2),
-      loser_advances_to: 109 + crossBracketPosition(i, winnersR4GameCount),
-      winner_slot: i % 2 === 0 ? 'team1' : 'team2',
-      loser_slot: 'team2',
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R7 (Games 117-118)
-  for (let i = 0; i < 2; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 117 + i,
-      round_name: 'Redemption R7',
-      round_number: 7,
-      bracket_side: 'losers',
-      team1_source: `winner:${109 + i * 2}`,
-      team2_source: `winner:${110 + i * 2}`,
-      winner_advances_to: 119 + i,
-      loser_advances_to: null,
-      winner_slot: 'team1',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Redemption R8 (Games 119-120): vs losers from Winners Semi
-  for (let i = 0; i < 2; i++) {
-    templates.push({
-      bracket_size: 64,
-      game_number: 119 + i,
-      round_name: 'Redemption R8',
-      round_number: 8,
-      bracket_side: 'losers',
-      team1_source: `winner:${117 + i}`,
-      team2_source: `loser:${121 + i}`,
-      winner_advances_to: 123,
-      loser_advances_to: null,
-      winner_slot: i === 0 ? 'team1' : 'team2',
-      loser_slot: null,
-      is_championship: false,
-      is_grand_final: false,
-      is_reset_game: false,
-    });
-  }
-
-  // Winners Semi (Games 121-122)
-  templates.push({
-    bracket_size: 64,
-    game_number: 121,
-    round_name: 'Winners Semi',
-    round_number: 5,
-    bracket_side: 'winners',
-    team1_source: 'winner:113',
-    team2_source: 'winner:114',
-    winner_advances_to: 124,
-    loser_advances_to: 119,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-  templates.push({
-    bracket_size: 64,
-    game_number: 122,
-    round_name: 'Winners Semi',
-    round_number: 5,
-    bracket_side: 'winners',
-    team1_source: 'winner:115',
-    team2_source: 'winner:116',
-    winner_advances_to: 124,
-    loser_advances_to: 120,
-    winner_slot: 'team2',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Semi (Game 123)
-  templates.push({
-    bracket_size: 64,
-    game_number: 123,
-    round_name: 'Redemption Semi',
-    round_number: 9,
-    bracket_side: 'losers',
-    team1_source: 'winner:119',
-    team2_source: 'winner:120',
-    winner_advances_to: 125,
-    loser_advances_to: null,
-    winner_slot: 'team1',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Winners Final (Game 124)
-  templates.push({
-    bracket_size: 64,
-    game_number: 124,
-    round_name: 'Winners Final',
-    round_number: 6,
-    bracket_side: 'winners',
-    team1_source: 'winner:121',
-    team2_source: 'winner:122',
-    winner_advances_to: 126,
-    loser_advances_to: 125,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Redemption Final (Game 125)
-  templates.push({
-    bracket_size: 64,
-    game_number: 125,
-    round_name: 'Redemption Final',
-    round_number: 10,
-    bracket_side: 'losers',
-    team1_source: 'winner:123',
-    team2_source: 'loser:124',
-    winner_advances_to: 126,
-    loser_advances_to: null,
-    winner_slot: 'team2',
-    loser_slot: null,
-    is_championship: false,
-    is_grand_final: false,
-    is_reset_game: false,
-  });
-
-  // Grand Final (Game 126)
-  templates.push({
-    bracket_size: 64,
-    game_number: 126,
-    round_name: 'Grand Final',
-    round_number: 11,
-    bracket_side: 'finals',
-    team1_source: 'winner:124',
-    team2_source: 'winner:125',
-    winner_advances_to: 127,
-    loser_advances_to: 127,
-    winner_slot: 'team1',
-    loser_slot: 'team2',
-    is_championship: false,
-    is_grand_final: true,
-    is_reset_game: false,
-  });
-
-  // Reset (Game 127)
-  templates.push({
-    bracket_size: 64,
-    game_number: 127,
-    round_name: 'Championship Reset',
-    round_number: 12,
-    bracket_side: 'finals',
-    team1_source: 'winner:126',
-    team2_source: 'loser:126',
-    winner_advances_to: null,
-    loser_advances_to: null,
-    winner_slot: null,
-    loser_slot: null,
-    is_championship: true,
-    is_grand_final: false,
-    is_reset_game: true,
-  });
-
-  return templates;
-}
-
-/**
- * Helper to generate standard bracket seeding order.
- * For a given position (0-based) in a bracket of n games, returns the seed number.
- */
-function getStandardSeed(position: number, totalGames: number): number {
-  // Standard bracket seeding ensures #1 vs #64, #32 vs #33, etc.
-  // This follows the pattern: 1, 32, 16, 17, 8, 25, 9, 24, 4, 29, 13, 20, 5, 28, 12, 21...
-  const seeds = generateSeedOrder(totalGames * 2);
-  return seeds[position * 2] || position + 1;
-}
-
-/**
- * Generate the standard seeding order for a bracket of given size.
- * Returns an array where index i contains the seed number for position i.
- */
-function generateSeedOrder(bracketSize: number): number[] {
-  if (bracketSize === 2) {
-    return [1, 2];
-  }
-
-  const halfSize = bracketSize / 2;
-  const prevOrder = generateSeedOrder(halfSize);
-  const result: number[] = [];
-
-  for (const seed of prevOrder) {
-    result.push(seed);
-    result.push(bracketSize + 1 - seed);
-  }
-
-  return result;
-}
+const DE_BRACKET_LAYOUTS = new Map<number, readonly RoundRows[]>([
+  [
+    4,
+    [
+      round('Winners R1', 1, 'winners', [
+        [1, 'seed:1', 'seed:4', 3, 'team1', 4, 'team1'],
+        [2, 'seed:2', 'seed:3', 3, 'team2', 4, 'team2'],
+      ]),
+      round('Winners Final', 2, 'winners', [
+        [3, 'winner:1', 'winner:2', 6, 'team1', 5, 'team2'],
+      ]),
+      round('Redemption R1', 1, 'losers', [
+        [4, 'loser:1', 'loser:2', 5, 'team1', null, null],
+      ]),
+      round('Redemption Final', 2, 'losers', [
+        [5, 'winner:4', 'loser:3', 6, 'team2', null, null],
+      ]),
+      round('Grand Final', 3, 'finals', [
+        [6, 'winner:3', 'winner:5', 7, 'team1', 7, 'team2'],
+      ]),
+      round('Championship Reset', 4, 'finals', [
+        [7, 'winner:6', 'loser:6', null, null, null, null],
+      ]),
+    ],
+  ],
+  [
+    8,
+    [
+      round('Winners R1', 1, 'winners', [
+        [1, 'seed:1', 'seed:8', 5, 'team1', 7, 'team1'],
+        [2, 'seed:4', 'seed:5', 5, 'team2', 7, 'team2'],
+        [3, 'seed:2', 'seed:7', 6, 'team1', 8, 'team1'],
+        [4, 'seed:3', 'seed:6', 6, 'team2', 8, 'team2'],
+      ]),
+      round('Winners Semi', 2, 'winners', [
+        [5, 'winner:1', 'winner:2', 13, 'team1', 10, 'team2'],
+        [6, 'winner:3', 'winner:4', 13, 'team2', 9, 'team2'],
+      ]),
+      round('Redemption R1', 1, 'losers', [
+        [7, 'loser:1', 'loser:2', 9, 'team1', null, null],
+        [8, 'loser:3', 'loser:4', 10, 'team1', null, null],
+      ]),
+      round('Redemption R2', 2, 'losers', [
+        [9, 'winner:7', 'loser:6', 11, 'team1', null, null],
+        [10, 'winner:8', 'loser:5', 11, 'team2', null, null],
+      ]),
+      round('Redemption Semi', 3, 'losers', [
+        [11, 'winner:9', 'winner:10', 12, 'team1', null, null],
+      ]),
+      round('Redemption Final', 4, 'losers', [
+        [12, 'winner:11', 'loser:13', 14, 'team2', null, null],
+      ]),
+      round('Winners Final', 3, 'winners', [
+        [13, 'winner:5', 'winner:6', 14, 'team1', 12, 'team2'],
+      ]),
+      round('Grand Final', 5, 'finals', [
+        [14, 'winner:13', 'winner:12', 15, 'team1', 15, 'team2'],
+      ]),
+      round('Championship Reset', 6, 'finals', [
+        [15, 'winner:14', 'loser:14', null, null, null, null],
+      ]),
+    ],
+  ],
+  [
+    16,
+    [
+      round('Winners R1', 1, 'winners', [
+        [1, 'seed:1', 'seed:16', 9, 'team1', 13, 'team1'],
+        [2, 'seed:8', 'seed:9', 9, 'team2', 13, 'team2'],
+        [3, 'seed:4', 'seed:13', 10, 'team1', 14, 'team1'],
+        [4, 'seed:5', 'seed:12', 10, 'team2', 14, 'team2'],
+        [5, 'seed:2', 'seed:15', 11, 'team1', 15, 'team1'],
+        [6, 'seed:7', 'seed:10', 11, 'team2', 15, 'team2'],
+        [7, 'seed:3', 'seed:14', 12, 'team1', 16, 'team1'],
+        [8, 'seed:6', 'seed:11', 12, 'team2', 16, 'team2'],
+      ]),
+      round('Winners R2', 2, 'winners', [
+        [9, 'winner:1', 'winner:2', 25, 'team1', 19, 'team2'],
+        [10, 'winner:3', 'winner:4', 25, 'team2', 20, 'team2'],
+        [11, 'winner:5', 'winner:6', 26, 'team1', 17, 'team2'],
+        [12, 'winner:7', 'winner:8', 26, 'team2', 18, 'team2'],
+      ]),
+      round('Redemption R1', 1, 'losers', [
+        [13, 'loser:1', 'loser:2', 17, 'team1', null, null],
+        [14, 'loser:3', 'loser:4', 18, 'team1', null, null],
+        [15, 'loser:5', 'loser:6', 19, 'team1', null, null],
+        [16, 'loser:7', 'loser:8', 20, 'team1', null, null],
+      ]),
+      round('Redemption R2', 2, 'losers', [
+        [17, 'winner:13', 'loser:11', 21, 'team1', null, null],
+        [18, 'winner:14', 'loser:12', 21, 'team2', null, null],
+        [19, 'winner:15', 'loser:9', 22, 'team1', null, null],
+        [20, 'winner:16', 'loser:10', 22, 'team2', null, null],
+      ]),
+      round('Redemption R3', 3, 'losers', [
+        [21, 'winner:17', 'winner:18', 23, 'team1', null, null],
+        [22, 'winner:19', 'winner:20', 24, 'team1', null, null],
+      ]),
+      round('Redemption R4', 4, 'losers', [
+        [23, 'winner:21', 'loser:25', 27, 'team1', null, null],
+        [24, 'winner:22', 'loser:26', 27, 'team2', null, null],
+      ]),
+      round('Winners Semi', 3, 'winners', [
+        [25, 'winner:9', 'winner:10', 28, 'team1', 23, 'team2'],
+        [26, 'winner:11', 'winner:12', 28, 'team2', 24, 'team2'],
+      ]),
+      round('Redemption Semi', 5, 'losers', [
+        [27, 'winner:23', 'winner:24', 29, 'team1', null, null],
+      ]),
+      round('Winners Final', 4, 'winners', [
+        [28, 'winner:25', 'winner:26', 30, 'team1', 29, 'team2'],
+      ]),
+      round('Redemption Final', 6, 'losers', [
+        [29, 'winner:27', 'loser:28', 30, 'team2', null, null],
+      ]),
+      round('Grand Final', 7, 'finals', [
+        [30, 'winner:28', 'winner:29', 31, 'team1', 31, 'team2'],
+      ]),
+      round('Championship Reset', 8, 'finals', [
+        [31, 'winner:30', 'loser:30', null, null, null, null],
+      ]),
+    ],
+  ],
+  [
+    32,
+    [
+      round('Winners R1', 1, 'winners', [
+        [1, 'seed:1', 'seed:32', 17, 'team1', 25, 'team1'],
+        [2, 'seed:16', 'seed:17', 17, 'team2', 25, 'team2'],
+        [3, 'seed:8', 'seed:25', 18, 'team1', 26, 'team1'],
+        [4, 'seed:9', 'seed:24', 18, 'team2', 26, 'team2'],
+        [5, 'seed:4', 'seed:29', 19, 'team1', 27, 'team1'],
+        [6, 'seed:13', 'seed:20', 19, 'team2', 27, 'team2'],
+        [7, 'seed:5', 'seed:28', 20, 'team1', 28, 'team1'],
+        [8, 'seed:12', 'seed:21', 20, 'team2', 28, 'team2'],
+        [9, 'seed:2', 'seed:31', 21, 'team1', 29, 'team1'],
+        [10, 'seed:15', 'seed:18', 21, 'team2', 29, 'team2'],
+        [11, 'seed:7', 'seed:26', 22, 'team1', 30, 'team1'],
+        [12, 'seed:10', 'seed:23', 22, 'team2', 30, 'team2'],
+        [13, 'seed:3', 'seed:30', 23, 'team1', 31, 'team1'],
+        [14, 'seed:14', 'seed:19', 23, 'team2', 31, 'team2'],
+        [15, 'seed:6', 'seed:27', 24, 'team1', 32, 'team1'],
+        [16, 'seed:11', 'seed:22', 24, 'team2', 32, 'team2'],
+      ]),
+      round('Winners R2', 2, 'winners', [
+        [17, 'winner:1', 'winner:2', 49, 'team1', 37, 'team2'],
+        [18, 'winner:3', 'winner:4', 49, 'team2', 38, 'team2'],
+        [19, 'winner:5', 'winner:6', 50, 'team1', 39, 'team2'],
+        [20, 'winner:7', 'winner:8', 50, 'team2', 40, 'team2'],
+        [21, 'winner:9', 'winner:10', 51, 'team1', 33, 'team2'],
+        [22, 'winner:11', 'winner:12', 51, 'team2', 34, 'team2'],
+        [23, 'winner:13', 'winner:14', 52, 'team1', 35, 'team2'],
+        [24, 'winner:15', 'winner:16', 52, 'team2', 36, 'team2'],
+      ]),
+      round('Redemption R1', 1, 'losers', [
+        [25, 'loser:1', 'loser:2', 33, 'team1', null, null],
+        [26, 'loser:3', 'loser:4', 34, 'team1', null, null],
+        [27, 'loser:5', 'loser:6', 35, 'team1', null, null],
+        [28, 'loser:7', 'loser:8', 36, 'team1', null, null],
+        [29, 'loser:9', 'loser:10', 37, 'team1', null, null],
+        [30, 'loser:11', 'loser:12', 38, 'team1', null, null],
+        [31, 'loser:13', 'loser:14', 39, 'team1', null, null],
+        [32, 'loser:15', 'loser:16', 40, 'team1', null, null],
+      ]),
+      round('Redemption R2', 2, 'losers', [
+        [33, 'winner:25', 'loser:21', 41, 'team1', null, null],
+        [34, 'winner:26', 'loser:22', 41, 'team2', null, null],
+        [35, 'winner:27', 'loser:23', 42, 'team1', null, null],
+        [36, 'winner:28', 'loser:24', 42, 'team2', null, null],
+        [37, 'winner:29', 'loser:17', 43, 'team1', null, null],
+        [38, 'winner:30', 'loser:18', 43, 'team2', null, null],
+        [39, 'winner:31', 'loser:19', 44, 'team1', null, null],
+        [40, 'winner:32', 'loser:20', 44, 'team2', null, null],
+      ]),
+      round('Redemption R3', 3, 'losers', [
+        [41, 'winner:33', 'winner:34', 45, 'team1', null, null],
+        [42, 'winner:35', 'winner:36', 46, 'team1', null, null],
+        [43, 'winner:37', 'winner:38', 47, 'team1', null, null],
+        [44, 'winner:39', 'winner:40', 48, 'team1', null, null],
+      ]),
+      round('Redemption R4', 4, 'losers', [
+        [45, 'winner:41', 'loser:49', 53, 'team1', null, null],
+        [46, 'winner:42', 'loser:50', 53, 'team2', null, null],
+        [47, 'winner:43', 'loser:51', 54, 'team1', null, null],
+        [48, 'winner:44', 'loser:52', 54, 'team2', null, null],
+      ]),
+      round('Winners R3', 3, 'winners', [
+        [49, 'winner:17', 'winner:18', 57, 'team1', 45, 'team2'],
+        [50, 'winner:19', 'winner:20', 57, 'team2', 46, 'team2'],
+        [51, 'winner:21', 'winner:22', 58, 'team1', 47, 'team2'],
+        [52, 'winner:23', 'winner:24', 58, 'team2', 48, 'team2'],
+      ]),
+      round('Redemption R5', 5, 'losers', [
+        [53, 'winner:45', 'winner:46', 55, 'team1', null, null],
+        [54, 'winner:47', 'winner:48', 56, 'team1', null, null],
+      ]),
+      round('Redemption R6', 6, 'losers', [
+        [55, 'winner:53', 'loser:58', 59, 'team1', null, null],
+        [56, 'winner:54', 'loser:57', 59, 'team2', null, null],
+      ]),
+      round('Winners Semi', 4, 'winners', [
+        [57, 'winner:49', 'winner:50', 60, 'team1', 56, 'team2'],
+        [58, 'winner:51', 'winner:52', 60, 'team2', 55, 'team2'],
+      ]),
+      round('Redemption Semi', 7, 'losers', [
+        [59, 'winner:55', 'winner:56', 61, 'team1', null, null],
+      ]),
+      round('Winners Final', 5, 'winners', [
+        [60, 'winner:57', 'winner:58', 62, 'team1', 61, 'team2'],
+      ]),
+      round('Redemption Final', 8, 'losers', [
+        [61, 'winner:59', 'loser:60', 62, 'team2', null, null],
+      ]),
+      round('Grand Final', 9, 'finals', [
+        [62, 'winner:60', 'winner:61', 63, 'team1', 63, 'team2'],
+      ]),
+      round('Championship Reset', 10, 'finals', [
+        [63, 'winner:62', 'loser:62', null, null, null, null],
+      ]),
+    ],
+  ],
+  [
+    64,
+    [
+      round('Winners R1', 1, 'winners', [
+        [1, 'seed:1', 'seed:64', 33, 'team1', 49, 'team1'],
+        [2, 'seed:32', 'seed:33', 33, 'team2', 49, 'team2'],
+        [3, 'seed:16', 'seed:49', 34, 'team1', 50, 'team1'],
+        [4, 'seed:17', 'seed:48', 34, 'team2', 50, 'team2'],
+        [5, 'seed:8', 'seed:57', 35, 'team1', 51, 'team1'],
+        [6, 'seed:25', 'seed:40', 35, 'team2', 51, 'team2'],
+        [7, 'seed:9', 'seed:56', 36, 'team1', 52, 'team1'],
+        [8, 'seed:24', 'seed:41', 36, 'team2', 52, 'team2'],
+        [9, 'seed:4', 'seed:61', 37, 'team1', 53, 'team1'],
+        [10, 'seed:29', 'seed:36', 37, 'team2', 53, 'team2'],
+        [11, 'seed:13', 'seed:52', 38, 'team1', 54, 'team1'],
+        [12, 'seed:20', 'seed:45', 38, 'team2', 54, 'team2'],
+        [13, 'seed:5', 'seed:60', 39, 'team1', 55, 'team1'],
+        [14, 'seed:28', 'seed:37', 39, 'team2', 55, 'team2'],
+        [15, 'seed:12', 'seed:53', 40, 'team1', 56, 'team1'],
+        [16, 'seed:21', 'seed:44', 40, 'team2', 56, 'team2'],
+        [17, 'seed:2', 'seed:63', 41, 'team1', 57, 'team1'],
+        [18, 'seed:31', 'seed:34', 41, 'team2', 57, 'team2'],
+        [19, 'seed:15', 'seed:50', 42, 'team1', 58, 'team1'],
+        [20, 'seed:18', 'seed:47', 42, 'team2', 58, 'team2'],
+        [21, 'seed:7', 'seed:58', 43, 'team1', 59, 'team1'],
+        [22, 'seed:26', 'seed:39', 43, 'team2', 59, 'team2'],
+        [23, 'seed:10', 'seed:55', 44, 'team1', 60, 'team1'],
+        [24, 'seed:23', 'seed:42', 44, 'team2', 60, 'team2'],
+        [25, 'seed:3', 'seed:62', 45, 'team1', 61, 'team1'],
+        [26, 'seed:30', 'seed:35', 45, 'team2', 61, 'team2'],
+        [27, 'seed:14', 'seed:51', 46, 'team1', 62, 'team1'],
+        [28, 'seed:19', 'seed:46', 46, 'team2', 62, 'team2'],
+        [29, 'seed:6', 'seed:59', 47, 'team1', 63, 'team1'],
+        [30, 'seed:27', 'seed:38', 47, 'team2', 63, 'team2'],
+        [31, 'seed:11', 'seed:54', 48, 'team1', 64, 'team1'],
+        [32, 'seed:22', 'seed:43', 48, 'team2', 64, 'team2'],
+      ]),
+      round('Winners R2', 2, 'winners', [
+        [33, 'winner:1', 'winner:2', 97, 'team1', 73, 'team2'],
+        [34, 'winner:3', 'winner:4', 97, 'team2', 74, 'team2'],
+        [35, 'winner:5', 'winner:6', 98, 'team1', 75, 'team2'],
+        [36, 'winner:7', 'winner:8', 98, 'team2', 76, 'team2'],
+        [37, 'winner:9', 'winner:10', 99, 'team1', 77, 'team2'],
+        [38, 'winner:11', 'winner:12', 99, 'team2', 78, 'team2'],
+        [39, 'winner:13', 'winner:14', 100, 'team1', 79, 'team2'],
+        [40, 'winner:15', 'winner:16', 100, 'team2', 80, 'team2'],
+        [41, 'winner:17', 'winner:18', 101, 'team1', 65, 'team2'],
+        [42, 'winner:19', 'winner:20', 101, 'team2', 66, 'team2'],
+        [43, 'winner:21', 'winner:22', 102, 'team1', 67, 'team2'],
+        [44, 'winner:23', 'winner:24', 102, 'team2', 68, 'team2'],
+        [45, 'winner:25', 'winner:26', 103, 'team1', 69, 'team2'],
+        [46, 'winner:27', 'winner:28', 103, 'team2', 70, 'team2'],
+        [47, 'winner:29', 'winner:30', 104, 'team1', 71, 'team2'],
+        [48, 'winner:31', 'winner:32', 104, 'team2', 72, 'team2'],
+      ]),
+      round('Redemption R1', 1, 'losers', [
+        [49, 'loser:1', 'loser:2', 65, 'team1', null, null],
+        [50, 'loser:3', 'loser:4', 66, 'team1', null, null],
+        [51, 'loser:5', 'loser:6', 67, 'team1', null, null],
+        [52, 'loser:7', 'loser:8', 68, 'team1', null, null],
+        [53, 'loser:9', 'loser:10', 69, 'team1', null, null],
+        [54, 'loser:11', 'loser:12', 70, 'team1', null, null],
+        [55, 'loser:13', 'loser:14', 71, 'team1', null, null],
+        [56, 'loser:15', 'loser:16', 72, 'team1', null, null],
+        [57, 'loser:17', 'loser:18', 73, 'team1', null, null],
+        [58, 'loser:19', 'loser:20', 74, 'team1', null, null],
+        [59, 'loser:21', 'loser:22', 75, 'team1', null, null],
+        [60, 'loser:23', 'loser:24', 76, 'team1', null, null],
+        [61, 'loser:25', 'loser:26', 77, 'team1', null, null],
+        [62, 'loser:27', 'loser:28', 78, 'team1', null, null],
+        [63, 'loser:29', 'loser:30', 79, 'team1', null, null],
+        [64, 'loser:31', 'loser:32', 80, 'team1', null, null],
+      ]),
+      round('Redemption R2', 2, 'losers', [
+        [65, 'winner:49', 'loser:41', 81, 'team1', null, null],
+        [66, 'winner:50', 'loser:42', 81, 'team2', null, null],
+        [67, 'winner:51', 'loser:43', 82, 'team1', null, null],
+        [68, 'winner:52', 'loser:44', 82, 'team2', null, null],
+        [69, 'winner:53', 'loser:45', 83, 'team1', null, null],
+        [70, 'winner:54', 'loser:46', 83, 'team2', null, null],
+        [71, 'winner:55', 'loser:47', 84, 'team1', null, null],
+        [72, 'winner:56', 'loser:48', 84, 'team2', null, null],
+        [73, 'winner:57', 'loser:33', 85, 'team1', null, null],
+        [74, 'winner:58', 'loser:34', 85, 'team2', null, null],
+        [75, 'winner:59', 'loser:35', 86, 'team1', null, null],
+        [76, 'winner:60', 'loser:36', 86, 'team2', null, null],
+        [77, 'winner:61', 'loser:37', 87, 'team1', null, null],
+        [78, 'winner:62', 'loser:38', 87, 'team2', null, null],
+        [79, 'winner:63', 'loser:39', 88, 'team1', null, null],
+        [80, 'winner:64', 'loser:40', 88, 'team2', null, null],
+      ]),
+      round('Redemption R3', 3, 'losers', [
+        [81, 'winner:65', 'winner:66', 89, 'team1', null, null],
+        [82, 'winner:67', 'winner:68', 90, 'team1', null, null],
+        [83, 'winner:69', 'winner:70', 91, 'team1', null, null],
+        [84, 'winner:71', 'winner:72', 92, 'team1', null, null],
+        [85, 'winner:73', 'winner:74', 93, 'team1', null, null],
+        [86, 'winner:75', 'winner:76', 94, 'team1', null, null],
+        [87, 'winner:77', 'winner:78', 95, 'team1', null, null],
+        [88, 'winner:79', 'winner:80', 96, 'team1', null, null],
+      ]),
+      round('Redemption R4', 4, 'losers', [
+        [89, 'winner:81', 'loser:97', 105, 'team1', null, null],
+        [90, 'winner:82', 'loser:98', 105, 'team2', null, null],
+        [91, 'winner:83', 'loser:99', 106, 'team1', null, null],
+        [92, 'winner:84', 'loser:100', 106, 'team2', null, null],
+        [93, 'winner:85', 'loser:101', 107, 'team1', null, null],
+        [94, 'winner:86', 'loser:102', 107, 'team2', null, null],
+        [95, 'winner:87', 'loser:103', 108, 'team1', null, null],
+        [96, 'winner:88', 'loser:104', 108, 'team2', null, null],
+      ]),
+      round('Winners R3', 3, 'winners', [
+        [97, 'winner:33', 'winner:34', 113, 'team1', 89, 'team2'],
+        [98, 'winner:35', 'winner:36', 113, 'team2', 90, 'team2'],
+        [99, 'winner:37', 'winner:38', 114, 'team1', 91, 'team2'],
+        [100, 'winner:39', 'winner:40', 114, 'team2', 92, 'team2'],
+        [101, 'winner:41', 'winner:42', 115, 'team1', 93, 'team2'],
+        [102, 'winner:43', 'winner:44', 115, 'team2', 94, 'team2'],
+        [103, 'winner:45', 'winner:46', 116, 'team1', 95, 'team2'],
+        [104, 'winner:47', 'winner:48', 116, 'team2', 96, 'team2'],
+      ]),
+      round('Redemption R5', 5, 'losers', [
+        [105, 'winner:89', 'winner:90', 109, 'team1', null, null],
+        [106, 'winner:91', 'winner:92', 110, 'team1', null, null],
+        [107, 'winner:93', 'winner:94', 111, 'team1', null, null],
+        [108, 'winner:95', 'winner:96', 112, 'team1', null, null],
+      ]),
+      round('Redemption R6', 6, 'losers', [
+        [109, 'winner:105', 'loser:115', 117, 'team1', null, null],
+        [110, 'winner:106', 'loser:116', 117, 'team2', null, null],
+        [111, 'winner:107', 'loser:113', 118, 'team1', null, null],
+        [112, 'winner:108', 'loser:114', 118, 'team2', null, null],
+      ]),
+      round('Winners R4', 4, 'winners', [
+        [113, 'winner:97', 'winner:98', 121, 'team1', 111, 'team2'],
+        [114, 'winner:99', 'winner:100', 121, 'team2', 112, 'team2'],
+        [115, 'winner:101', 'winner:102', 122, 'team1', 109, 'team2'],
+        [116, 'winner:103', 'winner:104', 122, 'team2', 110, 'team2'],
+      ]),
+      round('Redemption R7', 7, 'losers', [
+        [117, 'winner:109', 'winner:110', 119, 'team1', null, null],
+        [118, 'winner:111', 'winner:112', 120, 'team1', null, null],
+      ]),
+      round('Redemption R8', 8, 'losers', [
+        [119, 'winner:117', 'loser:121', 123, 'team1', null, null],
+        [120, 'winner:118', 'loser:122', 123, 'team2', null, null],
+      ]),
+      round('Winners Semi', 5, 'winners', [
+        [121, 'winner:113', 'winner:114', 124, 'team1', 119, 'team2'],
+        [122, 'winner:115', 'winner:116', 124, 'team2', 120, 'team2'],
+      ]),
+      round('Redemption Semi', 9, 'losers', [
+        [123, 'winner:119', 'winner:120', 125, 'team1', null, null],
+      ]),
+      round('Winners Final', 6, 'winners', [
+        [124, 'winner:121', 'winner:122', 126, 'team1', 125, 'team2'],
+      ]),
+      round('Redemption Final', 10, 'losers', [
+        [125, 'winner:123', 'loser:124', 126, 'team2', null, null],
+      ]),
+      round('Grand Final', 11, 'finals', [
+        [126, 'winner:124', 'winner:125', 127, 'team1', 127, 'team2'],
+      ]),
+      round('Championship Reset', 12, 'finals', [
+        [127, 'winner:126', 'loser:126', null, null, null, null],
+      ]),
+    ],
+  ],
+]);
