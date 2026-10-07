@@ -6,6 +6,7 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import type { Server } from 'http';
 import type { JudgeAuth } from '../../../src/server/middleware/auth';
+import { errorHandler } from '../../../src/server/middleware/errorHandler';
 
 export interface TestUser {
   id: number;
@@ -74,9 +75,11 @@ export interface TestServerHandle {
 
 /**
  * Start the Express app on an ephemeral port.
+ * Appends the app's central error handler after the routes the test mounted.
  * Returns the base URL and a close function.
  */
 export function startServer(app: Express): Promise<TestServerHandle> {
+  app.use(errorHandler);
   return new Promise((resolve, reject) => {
     let server: Server;
     try {

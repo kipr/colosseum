@@ -99,6 +99,30 @@ describe('apiFetch', () => {
     });
   });
 
+  it('prefers the fallback message over a generic 5xx server error', async () => {
+    stubFetch(
+      Response.json({ error: 'Internal server error' }, { status: 500 }),
+    );
+
+    const error = await apiFetch('/teams', {
+      fallbackError: 'Failed to load teams',
+    }).catch((e: unknown) => e);
+
+    expect(error).toMatchObject({
+      message: 'Failed to load teams',
+      status: 500,
+      data: { error: 'Internal server error' },
+    });
+  });
+
+  it('uses the 5xx server error message when no fallback is given', async () => {
+    stubFetch(
+      Response.json({ error: 'Internal server error' }, { status: 500 }),
+    );
+
+    await expect(apiFetch('/teams')).rejects.toThrow('Internal server error');
+  });
+
   it('defaults the message to the status code without a fallback', async () => {
     stubFetch(new Response('Gateway Timeout', { status: 504 }));
 

@@ -27,6 +27,7 @@ import BracketDetailView from '../bracket/BracketDetailView';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { ApiError, apiFetch } from '../../utils/api';
+import { nextPowerOfTwo } from '@shared/bracketSize';
 import '../Modal.css';
 import './BracketsTab.css';
 
@@ -70,12 +71,6 @@ interface BracketCreateMatrixRow {
   doubleSeedingRanking: CreateModalDoubleSeedingRanking | undefined;
   assigned: AssignedTeam | undefined;
   hasOverlap: boolean;
-}
-
-function nextPowerOfTwo(n: number): number {
-  if (n <= 0) return 4;
-  const p = Math.pow(2, Math.ceil(Math.log2(n)));
-  return Math.max(4, Math.min(64, p));
 }
 
 const BRACKET_SIZES = [4, 8, 16, 32, 64];

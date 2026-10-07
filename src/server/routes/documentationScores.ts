@@ -29,18 +29,11 @@ router.get(
   '/global-categories',
   requireAdmin,
   async (_req: AuthRequest, res: Response) => {
-    try {
-      const db = await getDatabase();
-      const categories = await db.all(
-        `SELECT id, name, weight, max_score FROM documentation_categories ORDER BY name ASC`,
-      );
-      res.json(categories);
-    } catch (error) {
-      console.error('Error fetching global documentation categories:', error);
-      res
-        .status(500)
-        .json({ error: 'Failed to fetch global documentation categories' });
-    }
+    const db = await getDatabase();
+    const categories = await db.all(
+      `SELECT id, name, weight, max_score FROM documentation_categories ORDER BY name ASC`,
+    );
+    res.json(categories);
   },
 );
 
@@ -49,41 +42,32 @@ router.get(
   '/categories/event/:eventId',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
-    try {
-      const { eventId } = req.params;
-      const db = await getDatabase();
+    const { eventId } = req.params;
+    const db = await getDatabase();
 
-      const event = await db.get('SELECT id FROM events WHERE id = ?', [
-        eventId,
-      ]);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-
-      const rows = await db.all(
-        `SELECT edc.id as junction_id, edc.event_id, edc.ordinal, dc.id as id, dc.name, dc.weight, dc.max_score
-         FROM event_documentation_categories edc
-         JOIN documentation_categories dc ON edc.category_id = dc.id
-         WHERE edc.event_id = ?
-         ORDER BY edc.ordinal ASC`,
-        [eventId],
-      );
-      const categories = rows.map((r: Record<string, unknown>) => ({
-        id: r.id,
-        event_id: r.event_id,
-        ordinal: r.ordinal,
-        name: r.name,
-        weight: r.weight,
-        max_score: r.max_score,
-      }));
-
-      res.json(categories);
-    } catch (error) {
-      console.error('Error fetching documentation categories:', error);
-      res
-        .status(500)
-        .json({ error: 'Failed to fetch documentation categories' });
+    const event = await db.get('SELECT id FROM events WHERE id = ?', [eventId]);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
     }
+
+    const rows = await db.all(
+      `SELECT edc.id as junction_id, edc.event_id, edc.ordinal, dc.id as id, dc.name, dc.weight, dc.max_score
+       FROM event_documentation_categories edc
+       JOIN documentation_categories dc ON edc.category_id = dc.id
+       WHERE edc.event_id = ?
+       ORDER BY edc.ordinal ASC`,
+      [eventId],
+    );
+    const categories = rows.map((r: Record<string, unknown>) => ({
+      id: r.id,
+      event_id: r.event_id,
+      ordinal: r.ordinal,
+      name: r.name,
+      weight: r.weight,
+      max_score: r.max_score,
+    }));
+
+    res.json(categories);
   },
 );
 
@@ -339,63 +323,56 @@ router.delete(
   '/categories/:id',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
-    try {
-      const { id } = req.params;
-      const eventId = req.query.event_id as string | undefined;
-      if (!eventId) {
-        return res.status(400).json({
-          error: 'event_id query parameter is required',
-        });
-      }
-
-      const db = await getDatabase();
-      let removedLink = false;
-      const categoryId = parseInt(id, 10);
-      const oldCategory = await getEventCategory(db, eventId, categoryId);
-
-      await db.transaction(async (tx) => {
-        const result = await tx.run(
-          'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
-          [eventId, categoryId],
-        );
-        removedLink = (result.changes ?? 0) > 0;
-        if (!removedLink) {
-          return;
-        }
-
-        // Clean up now-unreferenced global categories.
-        await tx.run(
-          `DELETE FROM documentation_categories
-           WHERE id = ?
-             AND NOT EXISTS (
-               SELECT 1
-               FROM event_documentation_categories
-               WHERE category_id = ?
-             )`,
-          [categoryId, categoryId],
-        );
+    const { id } = req.params;
+    const eventId = req.query.event_id as string | undefined;
+    if (!eventId) {
+      return res.status(400).json({
+        error: 'event_id query parameter is required',
       });
-
-      if (!removedLink) {
-        return res
-          .status(404)
-          .json({ error: 'Category not found for this event' });
-      }
-
-      await auditRequest(db, req, {
-        event_id: Number(eventId),
-        action: 'documentation_category_deleted',
-        entity_type: 'documentation_category',
-        entity_id: categoryId,
-        old_value: oldCategory,
-      });
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting documentation category:', error);
-      res
-        .status(500)
-        .json({ error: 'Failed to delete documentation category' });
     }
+
+    const db = await getDatabase();
+    let removedLink = false;
+    const categoryId = parseInt(id, 10);
+    const oldCategory = await getEventCategory(db, eventId, categoryId);
+
+    await db.transaction(async (tx) => {
+      const result = await tx.run(
+        'DELETE FROM event_documentation_categories WHERE event_id = ? AND category_id = ?',
+        [eventId, categoryId],
+      );
+      removedLink = (result.changes ?? 0) > 0;
+      if (!removedLink) {
+        return;
+      }
+
+      // Clean up now-unreferenced global categories.
+      await tx.run(
+        `DELETE FROM documentation_categories
+         WHERE id = ?
+           AND NOT EXISTS (
+             SELECT 1
+             FROM event_documentation_categories
+             WHERE category_id = ?
+           )`,
+        [categoryId, categoryId],
+      );
+    });
+
+    if (!removedLink) {
+      return res
+        .status(404)
+        .json({ error: 'Category not found for this event' });
+    }
+
+    await auditRequest(db, req, {
+      event_id: Number(eventId),
+      action: 'documentation_category_deleted',
+      entity_type: 'documentation_category',
+      entity_id: categoryId,
+      old_value: oldCategory,
+    });
+    res.status(204).send();
   },
 );
 
@@ -404,52 +381,47 @@ router.get(
   '/event/:eventId/public',
   publicExpensiveReadLimiter,
   async (req: Request, res: Response) => {
-    try {
-      const { eventId } = req.params;
-      if (!(await areFinalScoresReleased(eventId))) {
-        return res.status(404).json({ error: 'Not found' });
-      }
-
-      const db = await getDatabase();
-
-      const categories = await db.all(
-        `SELECT dc.id, dc.name, dc.weight, dc.max_score, edc.ordinal
-         FROM event_documentation_categories edc
-         JOIN documentation_categories dc ON edc.category_id = dc.id
-         WHERE edc.event_id = ?
-         ORDER BY edc.ordinal ASC`,
-        [eventId],
-      );
-
-      const scores = await db.all(
-        `SELECT ds.team_id, ds.overall_score, t.team_number, t.team_name, t.display_name
-         FROM documentation_scores ds
-         JOIN teams t ON ds.team_id = t.id
-         WHERE ds.event_id = ?
-         ORDER BY t.team_number ASC`,
-        [eventId],
-      );
-
-      for (const row of scores) {
-        const subScores = await db.all(
-          `SELECT dss.category_id, dc.name as category_name, edc.ordinal,
-                  dc.max_score, dc.weight, dss.score
-           FROM documentation_sub_scores dss
-           JOIN documentation_scores ds2 ON dss.documentation_score_id = ds2.id
-           JOIN documentation_categories dc ON dss.category_id = dc.id
-           JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
-           WHERE ds2.event_id = ? AND ds2.team_id = ?
-           ORDER BY edc.ordinal ASC`,
-          [eventId, eventId, row.team_id],
-        );
-        (row as Record<string, unknown>).sub_scores = subScores;
-      }
-
-      res.json({ categories, scores });
-    } catch (error) {
-      console.error('Error fetching public documentation scores:', error);
-      res.status(500).json({ error: 'Failed to fetch documentation scores' });
+    const { eventId } = req.params;
+    if (!(await areFinalScoresReleased(eventId))) {
+      return res.status(404).json({ error: 'Not found' });
     }
+
+    const db = await getDatabase();
+
+    const categories = await db.all(
+      `SELECT dc.id, dc.name, dc.weight, dc.max_score, edc.ordinal
+       FROM event_documentation_categories edc
+       JOIN documentation_categories dc ON edc.category_id = dc.id
+       WHERE edc.event_id = ?
+       ORDER BY edc.ordinal ASC`,
+      [eventId],
+    );
+
+    const scores = await db.all(
+      `SELECT ds.team_id, ds.overall_score, t.team_number, t.team_name, t.display_name
+       FROM documentation_scores ds
+       JOIN teams t ON ds.team_id = t.id
+       WHERE ds.event_id = ?
+       ORDER BY t.team_number ASC`,
+      [eventId],
+    );
+
+    for (const row of scores) {
+      const subScores = await db.all(
+        `SELECT dss.category_id, dc.name as category_name, edc.ordinal,
+                dc.max_score, dc.weight, dss.score
+         FROM documentation_sub_scores dss
+         JOIN documentation_scores ds2 ON dss.documentation_score_id = ds2.id
+         JOIN documentation_categories dc ON dss.category_id = dc.id
+         JOIN event_documentation_categories edc ON edc.event_id = ? AND edc.category_id = dc.id
+         WHERE ds2.event_id = ? AND ds2.team_id = ?
+         ORDER BY edc.ordinal ASC`,
+        [eventId, eventId, row.team_id],
+      );
+      (row as Record<string, unknown>).sub_scores = subScores;
+    }
+
+    res.json({ categories, scores });
   },
 );
 
@@ -458,42 +430,33 @@ router.get(
   '/event/:eventId',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
-    try {
-      const { eventId } = req.params;
-      const db = await getDatabase();
+    const { eventId } = req.params;
+    const db = await getDatabase();
 
-      const event = await db.get('SELECT id FROM events WHERE id = ?', [
-        eventId,
-      ]);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-
-      const scores = await db.all(
-        `SELECT ds.*, t.team_number, t.team_name, t.display_name
-         FROM documentation_scores ds
-         JOIN teams t ON ds.team_id = t.id
-         WHERE ds.event_id = ?
-         ORDER BY t.team_number ASC`,
-        [eventId],
-      );
-
-      // Attach sub-scores for each
-      for (const row of scores) {
-        (row as Record<string, unknown>).sub_scores = await getSubScores(
-          db,
-          eventId,
-          row.id,
-        );
-      }
-
-      res.json(scores);
-    } catch (error) {
-      console.error('Error fetching documentation scores for event:', error);
-      res.status(500).json({
-        error: 'Failed to fetch documentation scores for event',
-      });
+    const event = await db.get('SELECT id FROM events WHERE id = ?', [eventId]);
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
     }
+
+    const scores = await db.all(
+      `SELECT ds.*, t.team_number, t.team_name, t.display_name
+       FROM documentation_scores ds
+       JOIN teams t ON ds.team_id = t.id
+       WHERE ds.event_id = ?
+       ORDER BY t.team_number ASC`,
+      [eventId],
+    );
+
+    // Attach sub-scores for each
+    for (const row of scores) {
+      (row as Record<string, unknown>).sub_scores = await getSubScores(
+        db,
+        eventId,
+        row.id,
+      );
+    }
+
+    res.json(scores);
   },
 );
 
@@ -502,45 +465,38 @@ router.get(
   '/team/:teamId',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
-    try {
-      const { teamId } = req.params;
-      const db = await getDatabase();
+    const { teamId } = req.params;
+    const db = await getDatabase();
 
-      const team = await db.get(
-        'SELECT id, event_id, team_number, team_name, display_name FROM teams WHERE id = ?',
-        [teamId],
-      );
-      if (!team) {
-        return res.status(404).json({ error: 'Team not found' });
-      }
+    const team = await db.get(
+      'SELECT id, event_id, team_number, team_name, display_name FROM teams WHERE id = ?',
+      [teamId],
+    );
+    if (!team) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
 
-      const docScore = await db.get(
-        'SELECT * FROM documentation_scores WHERE team_id = ?',
-        [teamId],
-      );
+    const docScore = await db.get(
+      'SELECT * FROM documentation_scores WHERE team_id = ?',
+      [teamId],
+    );
 
-      if (!docScore) {
-        return res.json({
-          team,
-          documentation_score: null,
-          sub_scores: [],
-        });
-      }
-
-      const teamRow = team as { id: number; event_id: number };
-      const subScores = await getSubScores(db, teamRow.event_id, docScore.id);
-
-      res.json({
+    if (!docScore) {
+      return res.json({
         team,
-        documentation_score: docScore,
-        sub_scores: subScores,
-      });
-    } catch (error) {
-      console.error('Error fetching documentation scores for team:', error);
-      res.status(500).json({
-        error: 'Failed to fetch documentation scores for team',
+        documentation_score: null,
+        sub_scores: [],
       });
     }
+
+    const teamRow = team as { id: number; event_id: number };
+    const subScores = await getSubScores(db, teamRow.event_id, docScore.id);
+
+    res.json({
+      team,
+      documentation_score: docScore,
+      sub_scores: subScores,
+    });
   },
 );
 
@@ -726,32 +682,27 @@ router.delete(
   '/event/:eventId/team/:teamId',
   requireAdmin,
   async (req: AuthRequest, res: Response) => {
-    try {
-      const { eventId, teamId } = req.params;
-      const db = await getDatabase();
+    const { eventId, teamId } = req.params;
+    const db = await getDatabase();
 
-      const existing = await getDocumentationScoreSnapshot(db, eventId, teamId);
+    const existing = await getDocumentationScoreSnapshot(db, eventId, teamId);
 
-      await db.run(
-        'DELETE FROM documentation_scores WHERE event_id = ? AND team_id = ?',
-        [eventId, teamId],
-      );
+    await db.run(
+      'DELETE FROM documentation_scores WHERE event_id = ? AND team_id = ?',
+      [eventId, teamId],
+    );
 
-      if (existing) {
-        await auditRequest(db, req, {
-          event_id: Number(eventId),
-          action: 'documentation_score_deleted',
-          entity_type: 'documentation_score',
-          entity_id: existing.id,
-          old_value: existing,
-        });
-      }
-
-      res.status(204).send();
-    } catch (error) {
-      console.error('Error deleting documentation score:', error);
-      res.status(500).json({ error: 'Failed to delete documentation score' });
+    if (existing) {
+      await auditRequest(db, req, {
+        event_id: Number(eventId),
+        action: 'documentation_score_deleted',
+        entity_type: 'documentation_score',
+        entity_id: existing.id,
+        old_value: existing,
+      });
     }
+
+    res.status(204).send();
   },
 );
 

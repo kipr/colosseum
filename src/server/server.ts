@@ -29,6 +29,7 @@ import queueRoutes from './routes/queue';
 import auditRoutes from './routes/audit';
 import documentationScoresRoutes from './routes/documentationScores';
 import awardsRoutes from './routes/awards';
+import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -200,13 +201,7 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Error handling middleware
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: Error, req: Request, res: Response, _next: NextFunction) => {
-  console.error('Error:', err);
-  res
-    .status(500)
-    .json({ error: 'Internal server error', message: err.message });
-});
+app.use(errorHandler);
 
 let server: Server | null = null;
 const SHUTDOWN_TIMEOUT_MS = 10000;
