@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import type {
-  Team,
-  SeedingScore,
-  SeedingRanking,
+import {
+  SEEDING_TABLE_CONFIG,
+  type Team,
+  type SeedingScore,
+  type SeedingRanking,
 } from '../seeding/SeedingScoresTable';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
@@ -93,6 +94,7 @@ export default function SeedingTab() {
           scores={scores}
           rankings={rankings}
           effectiveRounds={effectiveRounds}
+          config={SEEDING_TABLE_CONFIG}
         />
       )}
 

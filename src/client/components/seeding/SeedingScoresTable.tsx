@@ -36,30 +36,131 @@ export interface SeedingRanking {
   display_name: string | null;
 }
 
-export interface TeamRowData {
-  team: Team;
-  scores: Map<number, SeedingScore | null>;
-  ranking: SeedingRanking | null;
+export interface DoubleSeedingScore {
+  id: number;
+  event_id: number;
+  match_id: number;
+  team_id: number;
+  round_number: number;
+  side: 'team1' | 'team2';
+  score: number | null;
+  match_number: number | null;
+  team_number: number;
+  team_name: string;
+  display_name: string | null;
 }
 
-export function buildTeamRowData(
+export interface DoubleSeedingRanking {
+  id: number;
+  team_id: number;
+  seed_average: number | null;
+  seed_rank: number | null;
+  raw_double_seed_score: number | null;
+  tiebreaker_value: number | null;
+  team_number: number;
+  team_name: string;
+  display_name: string | null;
+}
+
+/** Fields the table reads from a per-round score. */
+export interface RoundScore {
+  team_id: number;
+  round_number: number;
+  score: number | null;
+}
+
+/** Fields the table reads from a ranking, apart from the raw score. */
+export interface RankingBase {
+  team_id: number;
+  seed_rank: number | null;
+  seed_average: number | null;
+}
+
+interface ColumnLabels {
+  full: string;
+  title: string;
+  sortAriaLabel: string;
+}
+
+/** What differs between the seeding and double-seeding tables. */
+export interface SeedingTableConfig<R extends RankingBase> {
+  rawScore: (ranking: R) => number | null;
+  heading: string;
+  description: string;
+  rank: ColumnLabels;
+  average: ColumnLabels;
+  raw: ColumnLabels;
+}
+
+export const SEEDING_TABLE_CONFIG: SeedingTableConfig<SeedingRanking> = {
+  rawScore: (ranking) => ranking.raw_seed_score,
+  heading: 'Seeding scores and rankings',
+  description:
+    "Per-round scores and final seed metrics. Rankings use seed averages (e.g. top 2 of 3 scores). Raw seed score: 75% rank position + 25% score ratio against the event's best single round.",
+  rank: {
+    full: 'Seed Rank',
+    title: 'Seed Rank',
+    sortAriaLabel: 'Sort by seed rank',
+  },
+  average: {
+    full: 'Seed Avg',
+    title: 'Seed Average',
+    sortAriaLabel: 'Sort by seed average',
+  },
+  raw: {
+    full: 'Raw Seed Score',
+    title: 'Raw Seed Score',
+    sortAriaLabel: 'Sort by raw seed score',
+  },
+};
+
+export const DOUBLE_SEEDING_TABLE_CONFIG: SeedingTableConfig<DoubleSeedingRanking> =
+  {
+    rawScore: (ranking) => ranking.raw_double_seed_score,
+    heading: 'Double seeding scores and rankings',
+    description:
+      "Each team's own side score per round. Rankings use the average of all rounds (no rounds dropped). Raw double seed score: 2/3 rank position + 1/3 score ratio against the event's best single round.",
+    rank: {
+      full: 'Rank',
+      title: 'Double Seeding Rank',
+      sortAriaLabel: 'Sort by double-seeding rank',
+    },
+    average: {
+      full: 'Average',
+      title: 'Double Seeding Average',
+      sortAriaLabel: 'Sort by double-seeding average',
+    },
+    raw: {
+      full: 'Raw Double Seed Score',
+      title: 'Raw Double Seed Score',
+      sortAriaLabel: 'Sort by raw double seed score',
+    },
+  };
+
+export interface TeamRowData<S extends RoundScore, R extends RankingBase> {
+  team: Team;
+  scores: Map<number, S | null>;
+  ranking: R | null;
+}
+
+export function buildTeamRowData<S extends RoundScore, R extends RankingBase>(
   teams: Team[],
-  scores: SeedingScore[],
-  rankings: SeedingRanking[],
+  scores: S[],
+  rankings: R[],
   effectiveRounds: number,
-): TeamRowData[] {
-  const scoreMap = new Map<string, SeedingScore>();
+): TeamRowData<S, R>[] {
+  const scoreMap = new Map<string, S>();
   for (const score of scores) {
     scoreMap.set(`${score.team_id}:${score.round_number}`, score);
   }
 
-  const rankingMap = new Map<number, SeedingRanking>();
+  const rankingMap = new Map<number, R>();
   for (const ranking of rankings) {
     rankingMap.set(ranking.team_id, ranking);
   }
 
   return teams.map((team) => {
-    const teamScores = new Map<number, SeedingScore | null>();
+    const teamScores = new Map<number, S | null>();
     for (let round = 1; round <= effectiveRounds; round++) {
       teamScores.set(round, scoreMap.get(`${team.id}:${round}`) || null);
     }
@@ -86,17 +187,23 @@ function parseRoundField(field: SortField): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-interface SeedingScoresTableProps {
-  teamRowData: TeamRowData[];
+interface SeedingScoresTableProps<S extends RoundScore, R extends RankingBase> {
+  teamRowData: TeamRowData<S, R>[];
   effectiveRounds: number;
+  config: SeedingTableConfig<R>;
   variant?: SeedingTableVariant;
 }
 
-export default function SeedingScoresTable({
+export default function SeedingScoresTable<
+  S extends RoundScore,
+  R extends RankingBase,
+>({
   teamRowData,
   effectiveRounds,
+  config,
   variant = 'default',
-}: SeedingScoresTableProps) {
+}: SeedingScoresTableProps<S, R>) {
+  type Row = TeamRowData<S, R>;
   const [sortField, setSortField] = useState<SortField>(
     variant === 'spectator' ? 'seed_rank' : 'team_number',
   );
@@ -137,17 +244,17 @@ export default function SeedingScoresTable({
             b.ranking?.seed_average ?? null,
             sortDirection,
           );
-        case 'raw_seed_score':
+        case 'raw_score':
           return compareNullableNumber(
-            a.ranking?.raw_seed_score ?? null,
-            b.ranking?.raw_seed_score ?? null,
+            a.ranking ? config.rawScore(a.ranking) : null,
+            b.ranking ? config.rawScore(b.ranking) : null,
             sortDirection,
           );
         default:
           return 0;
       }
     });
-  }, [teamRowData, sortField, sortDirection]);
+  }, [teamRowData, sortField, sortDirection, config]);
 
   const handleSort = useCallback(
     (field: string) => {
@@ -165,8 +272,8 @@ export default function SeedingScoresTable({
   const stickyNum = isSpectator ? 'sticky-col sticky-col-team-number' : '';
   const stickyName = isSpectator ? 'sticky-col sticky-col-team-name' : '';
 
-  const columns: UnifiedColumnDef<TeamRowData>[] = useMemo(() => {
-    const roundCols: UnifiedColumnDef<TeamRowData>[] = Array.from(
+  const columns: UnifiedColumnDef<Row>[] = useMemo(() => {
+    const roundCols: UnifiedColumnDef<Row>[] = Array.from(
       { length: effectiveRounds },
       (_, i) => {
         const round = i + 1;
@@ -181,7 +288,7 @@ export default function SeedingScoresTable({
           title: `Round ${round}`,
           sortAriaLabel: `Sort by round ${round} score`,
           renderCell: (row) => row.scores.get(round)?.score ?? '—',
-        } satisfies UnifiedColumnDef<TeamRowData>;
+        } satisfies UnifiedColumnDef<Row>;
       },
     );
 
@@ -190,13 +297,13 @@ export default function SeedingScoresTable({
         kind: 'data',
         id: 'seed_rank',
         sortable: true,
-        header: { full: 'Seed Rank', short: 'Rank' },
+        header: { full: config.rank.full, short: 'Rank' },
         headerClassName: ['seed-rank-col', 'sortable', stickyRank]
           .filter(Boolean)
           .join(' '),
         cellClassName: ['rank-cell', stickyRank].filter(Boolean).join(' '),
-        title: 'Seed Rank',
-        sortAriaLabel: 'Sort by seed rank',
+        title: config.rank.title,
+        sortAriaLabel: config.rank.sortAriaLabel,
         renderCell: (row) => row.ranking?.seed_rank ?? '—',
       },
       {
@@ -236,11 +343,11 @@ export default function SeedingScoresTable({
         kind: 'data',
         id: 'seed_average',
         sortable: true,
-        header: { full: 'Seed Avg', short: 'Avg' },
+        header: { full: config.average.full, short: 'Avg' },
         headerClassName: 'avg-col ranking-metric-col sortable',
         cellClassName: 'avg-cell',
-        title: 'Seed Average',
-        sortAriaLabel: 'Sort by seed average',
+        title: config.average.title,
+        sortAriaLabel: config.average.sortAriaLabel,
         renderCell: (row) =>
           row.ranking?.seed_average !== null &&
           row.ranking?.seed_average !== undefined
@@ -249,21 +356,20 @@ export default function SeedingScoresTable({
       },
       {
         kind: 'data',
-        id: 'raw_seed_score',
+        id: 'raw_score',
         sortable: true,
-        header: { full: 'Raw Seed Score', short: 'Raw' },
+        header: { full: config.raw.full, short: 'Raw' },
         headerClassName: 'ranking-metric-col raw-seed-col sortable',
         cellClassName: 'ranking-metric-cell raw-seed-cell',
-        title: 'Raw Seed Score',
-        sortAriaLabel: 'Sort by raw seed score',
-        renderCell: (row) =>
-          row.ranking?.raw_seed_score !== null &&
-          row.ranking?.raw_seed_score !== undefined
-            ? row.ranking.raw_seed_score.toFixed(4)
-            : '—',
+        title: config.raw.title,
+        sortAriaLabel: config.raw.sortAriaLabel,
+        renderCell: (row) => {
+          const raw = row.ranking ? config.rawScore(row.ranking) : null;
+          return raw !== null && raw !== undefined ? raw.toFixed(4) : '—';
+        },
       },
     ];
-  }, [effectiveRounds, stickyName, stickyNum, stickyRank]);
+  }, [effectiveRounds, stickyName, stickyNum, stickyRank, config]);
 
   return (
     <div
@@ -271,12 +377,8 @@ export default function SeedingScoresTable({
     >
       <div className="seeding-section-header">
         <div>
-          <h3>Seeding scores and rankings</h3>
-          <p className="seeding-section-description">
-            Per-round scores and final seed metrics. Rankings use seed averages
-            (e.g. top 2 of 3 scores). Raw seed score: 75% rank position + 25%
-            score ratio against the event&apos;s best single round.
-          </p>
+          <h3>{config.heading}</h3>
+          <p className="seeding-section-description">{config.description}</p>
         </div>
       </div>
       <UnifiedTable

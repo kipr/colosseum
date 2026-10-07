@@ -2,20 +2,19 @@ import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import SeedingDisplay from '../components/seeding/SeedingDisplay';
-import DoubleSeedingDisplay from '../components/doubleSeeding/DoubleSeedingDisplay';
-import type {
-  DoubleSeedingScore,
-  DoubleSeedingRanking,
-} from '../components/doubleSeeding/DoubleSeedingScoresTable';
 import BracketLikeView from '../components/bracket/BracketLikeView';
 import BracketRankingView from '../components/bracket/BracketRankingView';
 import DocumentationScoresDisplay from '../components/documentation/DocumentationScoresDisplay';
 import OverallScoresDisplay from '../components/overall/OverallScoresDisplay';
 import { getBracketWinner } from '../components/bracket/bracketUtils';
-import type {
-  Team,
-  SeedingScore,
-  SeedingRanking,
+import {
+  SEEDING_TABLE_CONFIG,
+  DOUBLE_SEEDING_TABLE_CONFIG,
+  type Team,
+  type SeedingScore,
+  type SeedingRanking,
+  type DoubleSeedingScore,
+  type DoubleSeedingRanking,
 } from '../components/seeding/SeedingScoresTable';
 import type {
   Bracket,
@@ -624,6 +623,7 @@ export default function Spectator() {
                       scores={scores}
                       rankings={rankings}
                       effectiveRounds={effectiveRounds}
+                      config={SEEDING_TABLE_CONFIG}
                       variant="spectator"
                     />
                   )}
@@ -635,11 +635,12 @@ export default function Spectator() {
                   {doubleSeedingLoading ? (
                     <p>Loading double-seeding data...</p>
                   ) : (
-                    <DoubleSeedingDisplay
+                    <SeedingDisplay
                       teams={teams}
                       scores={doubleSeedingScores}
                       rankings={doubleSeedingRankings}
                       effectiveRounds={doubleSeedingRounds}
+                      config={DOUBLE_SEEDING_TABLE_CONFIG}
                       variant="spectator"
                     />
                   )}
