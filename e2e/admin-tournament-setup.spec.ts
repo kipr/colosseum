@@ -97,7 +97,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     await createEventButton.click();
 
-    const modal = page.locator('.modal.show');
+    const modal = page.getByRole('dialog');
     await expect(
       modal.getByRole('heading', { name: 'Create New Event' }),
     ).toBeVisible();
@@ -155,7 +155,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     await page.getByRole('button', { name: '+ Add Team' }).click();
 
-    const modal = page.locator('.modal.show');
+    const modal = page.getByRole('dialog');
     await expect(
       modal.getByRole('heading', { name: 'Add New Team' }),
     ).toBeVisible();
@@ -185,7 +185,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     await page.getByRole('button', { name: 'Bulk Import' }).click();
 
-    const modal = page.locator('.modal.show');
+    const modal = page.getByRole('dialog');
     await expect(
       modal.getByRole('heading', { name: 'Bulk Import Teams' }),
     ).toBeVisible();
@@ -232,7 +232,7 @@ test.describe('Admin Tournament Setup E2E', () => {
 
     await page.getByRole('button', { name: 'Bulk Check-In' }).click();
 
-    const modal = page.locator('.modal.show');
+    const modal = page.getByRole('dialog');
     await expect(
       modal.getByRole('heading', { name: 'Bulk Check-In Teams' }),
     ).toBeVisible();
@@ -277,12 +277,12 @@ test.describe('Admin Tournament Setup E2E', () => {
       .click();
 
     // Choose "Paste JSON Manually"
-    const choiceModal = page.locator('.modal.show');
+    const choiceModal = page.getByRole('dialog');
     await expect(choiceModal.getByText('Paste JSON Manually')).toBeVisible();
     await choiceModal.getByText('Paste JSON Manually').click();
 
     // Template editor modal
-    const editorModal = page.locator('.modal.show');
+    const editorModal = page.getByRole('dialog');
     await expect(
       editorModal.getByRole('heading', { name: 'Create New Score Sheet' }),
     ).toBeVisible();

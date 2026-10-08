@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { lazy, Suspense, useState } from 'react';
 import {
   Link,
   useLocation,
@@ -15,6 +15,8 @@ import {
 } from '../utils/eventStatus';
 import { adminEventPath, adminEventsPath, isAdminView } from '../utils/routes';
 import './Navbar.css';
+
+const Modal = lazy(() => import('./Modal'));
 
 function AdminEventSelector() {
   const { selectedEvent, events, selectEventById } = useEvent();
@@ -137,14 +139,11 @@ export default function Navbar() {
       </nav>
 
       {isAboutOpen && (
-        <div className="modal show" onClick={() => setIsAboutOpen(false)}>
-          <div
-            className="modal-content about-modal-content"
-            onClick={(e) => e.stopPropagation()}
+        <Suspense fallback={null}>
+          <Modal
+            onClose={() => setIsAboutOpen(false)}
+            style={{ maxWidth: isAdmin ? '800px' : '520px' }}
           >
-            <span className="close" onClick={() => setIsAboutOpen(false)}>
-              &times;
-            </span>
             <h3>About Colosseum</h3>
             <div className="about-content">
               <div>
@@ -175,8 +174,8 @@ export default function Navbar() {
                 </a>
               </div>
             </div>
-          </div>
-        </div>
+          </Modal>
+        </Suspense>
       )}
     </>
   );

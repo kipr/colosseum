@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import './Modal.css';
+import Modal from './Modal';
 
 export interface ConfirmModalProps {
   title: string;
@@ -32,45 +32,32 @@ export default function ConfirmModal({
   };
 
   return (
-    <div className="modal show" onClick={onCancel}>
-      <div
-        className={`modal-content ${confirmStyle === 'danger' ? 'confirm-modal--danger' : ''}`}
-        style={{ maxWidth: '450px' }}
-        onClick={(e) => e.stopPropagation()}
+    <Modal
+      onClose={onCancel}
+      className={confirmStyle === 'danger' ? 'confirm-modal--danger' : ''}
+      style={{ maxWidth: '450px' }}
+    >
+      <h3>{title}</h3>
+      <p
+        style={{
+          color: 'var(--text-secondary)',
+          marginBottom: '1.5rem',
+          lineHeight: '1.5',
+        }}
       >
-        <span className="close" onClick={onCancel}>
-          &times;
-        </span>
-        <h3>{title}</h3>
-        <p
-          style={{
-            color: 'var(--text-secondary)',
-            marginBottom: '1.5rem',
-            lineHeight: '1.5',
-          }}
-        >
-          {message}
-        </p>
-        <div
-          style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}
-        >
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={onCancel}
-          >
-            {cancelText}
-          </button>
-          <button
-            type="button"
-            className={getButtonClass()}
-            onClick={onConfirm}
-          >
-            {confirmText}
-          </button>
-        </div>
+        {message}
+      </p>
+      <div
+        style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}
+      >
+        <button type="button" className="btn btn-secondary" onClick={onCancel}>
+          {cancelText}
+        </button>
+        <button type="button" className={getButtonClass()} onClick={onConfirm}>
+          {confirmText}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
 

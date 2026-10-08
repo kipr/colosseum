@@ -21,7 +21,7 @@ import {
   isEventActive,
 } from '../../utils/eventStatus';
 import { apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 
 interface EventFormData {
   name: string;
@@ -682,209 +682,200 @@ export default function EventsTab() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="modal show" onClick={handleCloseModal}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '600px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={handleCloseModal} style={{ maxWidth: '600px' }}>
+          <h3>{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
           >
-            <span className="close" onClick={handleCloseModal}>
-              &times;
-            </span>
-            <h3>{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
-            <p
+            {editingEvent
+              ? 'Update the event details below.'
+              : 'Fill in the details for your new event.'}
+          </p>
+
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="event-name">Event Name *</label>
+              <input
+                id="event-name"
+                type="text"
+                className="field-input"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="e.g., 2026 Botball Regional"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="event-description">Description</label>
+              <textarea
+                id="event-description"
+                className="field-input"
+                rows={2}
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
+                placeholder="Optional description of the event"
+              />
+            </div>
+
+            <div
               style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '1rem',
               }}
             >
-              {editingEvent
-                ? 'Update the event details below.'
-                : 'Fill in the details for your new event.'}
-            </p>
-
-            <form onSubmit={handleSubmit}>
               <div className="form-group">
-                <label htmlFor="event-name">Event Name *</label>
+                <label htmlFor="event-date">Event Date</label>
                 <input
-                  id="event-name"
+                  id="event-date"
+                  type="date"
+                  className="field-input"
+                  value={formData.event_date}
+                  onChange={(e) =>
+                    setFormData({ ...formData, event_date: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="event-location">Location</label>
+                <input
+                  id="event-location"
                   type="text"
                   className="field-input"
-                  value={formData.name}
+                  value={formData.location}
                   onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
+                    setFormData({ ...formData, location: e.target.value })
                   }
-                  placeholder="e.g., 2026 Botball Regional"
-                  required
-                  autoFocus
+                  placeholder="e.g., San Jose, CA"
                 />
               </div>
+            </div>
 
-              <div className="form-group">
-                <label htmlFor="event-description">Description</label>
-                <textarea
-                  id="event-description"
-                  className="field-input"
-                  rows={2}
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData({ ...formData, description: e.target.value })
-                  }
-                  placeholder="Optional description of the event"
-                />
-              </div>
+            <div className="form-group">
+              <label htmlFor="seeding-rounds">Seeding Rounds</label>
+              <input
+                id="seeding-rounds"
+                type="number"
+                className="field-input"
+                value={formData.seeding_rounds}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    seeding_rounds: parseInt(e.target.value, 10) || 3,
+                  })
+                }
+                min={1}
+                max={10}
+                style={{ maxWidth: '100px' }}
+              />
+              <small style={{ color: 'var(--secondary-color)' }}>
+                Number of seeding rounds for this event (typically 3)
+              </small>
+            </div>
 
-              <div
-                style={{
-                  display: 'grid',
-                  gridTemplateColumns: '1fr 1fr',
-                  gap: '1rem',
+            <div className="form-group">
+              <label htmlFor="min-rest-minutes">Minimum Rest (minutes)</label>
+              <input
+                id="min-rest-minutes"
+                type="number"
+                className="field-input"
+                value={formData.min_rest_minutes}
+                onChange={(e) => {
+                  const value = Number.parseInt(e.target.value, 10);
+                  setFormData({
+                    ...formData,
+                    min_rest_minutes: Number.isNaN(value)
+                      ? 0
+                      : Math.max(0, value),
+                  });
                 }}
+                min={0}
+                step={1}
+                style={{ maxWidth: '100px' }}
+              />
+              <small style={{ color: 'var(--secondary-color)' }}>
+                Warn before calling a team that played within this window. A
+                value of 0 disables recent-play warnings.
+              </small>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="score-accept-mode">Score Accept Mode</label>
+              <select
+                id="score-accept-mode"
+                className="field-input"
+                value={formData.score_accept_mode}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    score_accept_mode: e.target.value as ScoreAcceptMode,
+                  })
+                }
               >
-                <div className="form-group">
-                  <label htmlFor="event-date">Event Date</label>
-                  <input
-                    id="event-date"
-                    type="date"
-                    className="field-input"
-                    value={formData.event_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, event_date: e.target.value })
-                    }
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="event-location">Location</label>
-                  <input
-                    id="event-location"
-                    type="text"
-                    className="field-input"
-                    value={formData.location}
-                    onChange={(e) =>
-                      setFormData({ ...formData, location: e.target.value })
-                    }
-                    placeholder="e.g., San Jose, CA"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="seeding-rounds">Seeding Rounds</label>
-                <input
-                  id="seeding-rounds"
-                  type="number"
-                  className="field-input"
-                  value={formData.seeding_rounds}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      seeding_rounds: parseInt(e.target.value, 10) || 3,
-                    })
-                  }
-                  min={1}
-                  max={10}
-                  style={{ maxWidth: '100px' }}
-                />
-                <small style={{ color: 'var(--secondary-color)' }}>
-                  Number of seeding rounds for this event (typically 3)
-                </small>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="min-rest-minutes">Minimum Rest (minutes)</label>
-                <input
-                  id="min-rest-minutes"
-                  type="number"
-                  className="field-input"
-                  value={formData.min_rest_minutes}
-                  onChange={(e) => {
-                    const value = Number.parseInt(e.target.value, 10);
-                    setFormData({
-                      ...formData,
-                      min_rest_minutes: Number.isNaN(value)
-                        ? 0
-                        : Math.max(0, value),
-                    });
+                <option value="manual">
+                  Manual (admin reviews each score)
+                </option>
+                <option value="auto_accept_seeding">
+                  Auto-accept seeding scores only
+                </option>
+                <option value="auto_accept_all">
+                  Auto-accept all scores (seeding + bracket)
+                </option>
+              </select>
+              {formData.score_accept_mode === 'auto_accept_all' && (
+                <small
+                  style={{
+                    color: 'var(--warning-color, #f59e0b)',
+                    display: 'block',
+                    marginTop: '0.25rem',
                   }}
-                  min={0}
-                  step={1}
-                  style={{ maxWidth: '100px' }}
-                />
-                <small style={{ color: 'var(--secondary-color)' }}>
-                  Warn before calling a team that played within this window. A
-                  value of 0 disables recent-play warnings.
+                >
+                  Warning: Auto-accepting bracket scores is risky — incorrect
+                  scores will immediately alter bracket progression.
                 </small>
-              </div>
+              )}
+            </div>
 
-              <div className="form-group">
-                <label htmlFor="score-accept-mode">Score Accept Mode</label>
-                <select
-                  id="score-accept-mode"
-                  className="field-input"
-                  value={formData.score_accept_mode}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      score_accept_mode: e.target.value as ScoreAcceptMode,
-                    })
-                  }
-                >
-                  <option value="manual">
-                    Manual (admin reviews each score)
-                  </option>
-                  <option value="auto_accept_seeding">
-                    Auto-accept seeding scores only
-                  </option>
-                  <option value="auto_accept_all">
-                    Auto-accept all scores (seeding + bracket)
-                  </option>
-                </select>
-                {formData.score_accept_mode === 'auto_accept_all' && (
-                  <small
-                    style={{
-                      color: 'var(--warning-color, #f59e0b)',
-                      display: 'block',
-                      marginTop: '0.25rem',
-                    }}
-                  >
-                    Warning: Auto-accepting bracket scores is risky — incorrect
-                    scores will immediately alter bracket progression.
-                  </small>
-                )}
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1.5rem',
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={handleCloseModal}
+                disabled={saving}
               >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleCloseModal}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={saving}
-                >
-                  {saving
-                    ? 'Saving...'
-                    : editingEvent
-                      ? 'Update Event'
-                      : 'Create Event'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving
+                  ? 'Saving...'
+                  : editingEvent
+                    ? 'Update Event'
+                    : 'Create Event'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {ConfirmDialog}

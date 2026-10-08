@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
 import {
@@ -873,17 +873,9 @@ export default function ScoreViewModal({
 
   if (loading) {
     return (
-      <div className="modal show" onClick={onClose}>
-        <div
-          className="modal-content score-view-modal"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <span className="close" onClick={onClose}>
-            &times;
-          </span>
-          <p>Loading scoresheet...</p>
-        </div>
-      </div>
+      <Modal onClose={onClose} className="score-view-modal">
+        <p>Loading scoresheet...</p>
+      </Modal>
     );
   }
 
@@ -968,220 +960,209 @@ export default function ScoreViewModal({
     : null;
 
   return (
-    <div className="modal show" onClick={onClose}>
-      <div
-        className="modal-content score-view-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <span className="close" onClick={onClose}>
-          &times;
-        </span>
-
-        <div className="score-view-header">
-          <h3>{isReadOnly ? 'View Score' : 'Edit Score'}</h3>
-          <div className="score-view-meta">
-            <span
-              className={`badge badge-${score.status === 'accepted' ? 'success' : score.status === 'rejected' ? 'danger' : 'warning'}`}
-            >
-              {score.status.charAt(0).toUpperCase() + score.status.slice(1)}
-            </span>
-            <span>Submitted: {formatDateTime(score.created_at)}</span>
-          </div>
-        </div>
-
-        {isBracket && (
-          <div className="score-view-result-panel">
-            <label>
-              Result
-              <select
-                className="score-input"
-                value={resultType}
-                disabled={isReadOnly}
-                onChange={(event) => {
-                  const next = event.target.value as BracketResultType;
-                  setResultType(next);
-                  if (next !== 'disqualification') {
-                    setDisqualifiedTeamId(null);
-                    setResultNote('');
-                  }
-                }}
-              >
-                <option value="standard">Normal score</option>
-                <option value="no_contest">No contest</option>
-                <option value="disqualification">Disqualification</option>
-              </select>
-            </label>
-            {resultType === 'disqualification' && (
-              <>
-                <label>
-                  Disqualified team
-                  <select
-                    className="score-input"
-                    value={disqualifiedTeamId ?? ''}
-                    disabled={isReadOnly}
-                    onChange={(event) =>
-                      handleDisqualifiedTeamChange(
-                        Number(event.target.value) || null,
-                      )
-                    }
-                  >
-                    <option value="">Select team...</option>
-                    {score.bracket_team1_id != null && (
-                      <option value={score.bracket_team1_id}>
-                        {score.bracket_team1_display ||
-                          score.bracket_team1_name ||
-                          score.bracket_team1_number}
-                      </option>
-                    )}
-                    {score.bracket_team2_id != null && (
-                      <option value={score.bracket_team2_id}>
-                        {score.bracket_team2_display ||
-                          score.bracket_team2_name ||
-                          score.bracket_team2_number}
-                      </option>
-                    )}
-                  </select>
-                </label>
-                <label>
-                  Private reason or rule reference
-                  <textarea
-                    className="score-input"
-                    rows={3}
-                    maxLength={1000}
-                    value={resultNote}
-                    disabled={isReadOnly}
-                    onChange={(event) => setResultNote(event.target.value)}
-                  />
-                </label>
-              </>
-            )}
-            {isReadOnly && <strong>{resultLabel}</strong>}
-          </div>
-        )}
-
-        {isBracket && winnerDisplay && (
-          <div
-            className="score-view-winner-banner"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              padding: '0.75rem 1rem',
-              marginBottom: '1rem',
-              background: 'var(--primary-color)',
-              color: 'white',
-              borderRadius: '0.5rem',
-              fontWeight: 600,
-              fontSize: '1.1rem',
-            }}
+    <Modal onClose={onClose} className="score-view-modal">
+      <div className="score-view-header">
+        <h3>{isReadOnly ? 'View Score' : 'Edit Score'}</h3>
+        <div className="score-view-meta">
+          <span
+            className={`badge badge-${score.status === 'accepted' ? 'success' : score.status === 'rejected' ? 'danger' : 'warning'}`}
           >
-            <span
-              style={{
-                fontSize: '1.25rem',
-                lineHeight: 1,
+            {score.status.charAt(0).toUpperCase() + score.status.slice(1)}
+          </span>
+          <span>Submitted: {formatDateTime(score.created_at)}</span>
+        </div>
+      </div>
+
+      {isBracket && (
+        <div className="score-view-result-panel">
+          <label>
+            Result
+            <select
+              className="score-input"
+              value={resultType}
+              disabled={isReadOnly}
+              onChange={(event) => {
+                const next = event.target.value as BracketResultType;
+                setResultType(next);
+                if (next !== 'disqualification') {
+                  setDisqualifiedTeamId(null);
+                  setResultNote('');
+                }
               }}
-              aria-hidden
             >
-              ✓
-            </span>
-            <span>
-              {resultType === 'standard'
-                ? `Winner: ${winnerDisplay}`
-                : `Winner by ${resultLabel.toLowerCase()}: ${winnerDisplay}`}
-            </span>
-          </div>
-        )}
+              <option value="standard">Normal score</option>
+              <option value="no_contest">No contest</option>
+              <option value="disqualification">Disqualification</option>
+            </select>
+          </label>
+          {resultType === 'disqualification' && (
+            <>
+              <label>
+                Disqualified team
+                <select
+                  className="score-input"
+                  value={disqualifiedTeamId ?? ''}
+                  disabled={isReadOnly}
+                  onChange={(event) =>
+                    handleDisqualifiedTeamChange(
+                      Number(event.target.value) || null,
+                    )
+                  }
+                >
+                  <option value="">Select team...</option>
+                  {score.bracket_team1_id != null && (
+                    <option value={score.bracket_team1_id}>
+                      {score.bracket_team1_display ||
+                        score.bracket_team1_name ||
+                        score.bracket_team1_number}
+                    </option>
+                  )}
+                  {score.bracket_team2_id != null && (
+                    <option value={score.bracket_team2_id}>
+                      {score.bracket_team2_display ||
+                        score.bracket_team2_name ||
+                        score.bracket_team2_number}
+                    </option>
+                  )}
+                </select>
+              </label>
+              <label>
+                Private reason or rule reference
+                <textarea
+                  className="score-input"
+                  rows={3}
+                  maxLength={1000}
+                  value={resultNote}
+                  disabled={isReadOnly}
+                  onChange={(event) => setResultNote(event.target.value)}
+                />
+              </label>
+            </>
+          )}
+          {isReadOnly && <strong>{resultLabel}</strong>}
+        </div>
+      )}
 
-        {showTeamInitials && (
-          <div className="score-view-initials-panel">
-            <strong>Team initials</strong>
-            {teamInitialsRows.length > 0 ? (
-              <ul>
-                {teamInitialsRows.map((row) => (
-                  <li key={row.key}>
-                    {row.team}: <span>{row.initials}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <span>Not recorded</span>
-            )}
-          </div>
-        )}
+      {isBracket && winnerDisplay && (
+        <div
+          className="score-view-winner-banner"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.75rem 1rem',
+            marginBottom: '1rem',
+            background: 'var(--primary-color)',
+            color: 'white',
+            borderRadius: '0.5rem',
+            fontWeight: 600,
+            fontSize: '1.1rem',
+          }}
+        >
+          <span
+            style={{
+              fontSize: '1.25rem',
+              lineHeight: 1,
+            }}
+            aria-hidden
+          >
+            ✓
+          </span>
+          <span>
+            {resultType === 'standard'
+              ? `Winner: ${winnerDisplay}`
+              : `Winner by ${resultLabel.toLowerCase()}: ${winnerDisplay}`}
+          </span>
+        </div>
+      )}
 
-        <div className="score-view-form">
-          {!template || !schema ? (
-            renderFallbackScoreData()
+      {showTeamInitials && (
+        <div className="score-view-initials-panel">
+          <strong>Team initials</strong>
+          {teamInitialsRows.length > 0 ? (
+            <ul>
+              {teamInitialsRows.map((row) => (
+                <li key={row.key}>
+                  {row.team}: <span>{row.initials}</span>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <div
-              className="scoresheet-form"
-              style={{ boxShadow: 'none', padding: 0 }}
-            >
-              {schema.title && (
-                <div className="scoresheet-title">{schema.title}</div>
-              )}
+            <span>Not recorded</span>
+          )}
+        </div>
+      )}
 
-              <div className="scoresheet-header-fields">
+      <div className="score-view-form">
+        {!template || !schema ? (
+          renderFallbackScoreData()
+        ) : (
+          <div
+            className="scoresheet-form"
+            style={{ boxShadow: 'none', padding: 0 }}
+          >
+            {schema.title && (
+              <div className="scoresheet-title">{schema.title}</div>
+            )}
+
+            <div className="scoresheet-header-fields">
+              {schema.fields
+                .filter(
+                  (f: any) =>
+                    !f.column &&
+                    f.type !== 'section_header' &&
+                    f.type !== 'group_header' &&
+                    f.type !== 'calculated',
+                )
+                .map(renderField)}
+            </div>
+
+            {schema.layout === 'two-column' ? (
+              <div className="scoresheet-columns">
+                <div className="scoresheet-column">
+                  {schema.fields
+                    .filter((f: any) => f.column === 'left')
+                    .map(renderField)}
+                </div>
+                <div className="scoresheet-column">
+                  {schema.fields
+                    .filter((f: any) => f.column === 'right')
+                    .map(renderField)}
+                </div>
+              </div>
+            ) : (
+              <div>
                 {schema.fields
                   .filter(
                     (f: any) =>
                       !f.column &&
                       f.type !== 'section_header' &&
-                      f.type !== 'group_header' &&
-                      f.type !== 'calculated',
+                      f.type !== 'group_header',
                   )
                   .map(renderField)}
               </div>
+            )}
 
-              {schema.layout === 'two-column' ? (
-                <div className="scoresheet-columns">
-                  <div className="scoresheet-column">
-                    {schema.fields
-                      .filter((f: any) => f.column === 'left')
-                      .map(renderField)}
-                  </div>
-                  <div className="scoresheet-column">
-                    {schema.fields
-                      .filter((f: any) => f.column === 'right')
-                      .map(renderField)}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  {schema.fields
-                    .filter(
-                      (f: any) =>
-                        !f.column &&
-                        f.type !== 'section_header' &&
-                        f.type !== 'group_header',
-                    )
-                    .map(renderField)}
-                </div>
-              )}
-
-              {/* Render grand total */}
-              {schema.fields
-                .filter((f: any) => f.isGrandTotal)
-                .map(renderField)}
-            </div>
-          )}
-        </div>
-
-        <div className="score-view-actions">
-          <button className="btn btn-secondary" onClick={onClose}>
-            {isReadOnly ? 'Close' : 'Cancel'}
-          </button>
-          {!isReadOnly && (
-            <button
-              className="btn btn-primary"
-              onClick={handleSave}
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </button>
-          )}
-        </div>
+            {/* Render grand total */}
+            {schema.fields.filter((f: any) => f.isGrandTotal).map(renderField)}
+          </div>
+        )}
       </div>
-    </div>
+
+      <div className="score-view-actions">
+        <button className="btn btn-secondary" onClick={onClose}>
+          {isReadOnly ? 'Close' : 'Cancel'}
+        </button>
+        {!isReadOnly && (
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+        )}
+      </div>
+    </Modal>
   );
 }

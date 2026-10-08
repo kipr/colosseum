@@ -1,4 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { useModalLayer } from './modalLayer';
 import './Toast.css';
 
 export interface ToastMessage {
@@ -14,12 +16,28 @@ interface ToastProps {
 }
 
 function Toast({ toasts, onDismiss }: ToastProps) {
-  return (
-    <div className="toast-container">
-      {toasts.map((toast) => (
-        <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
-      ))}
-    </div>
+  const dialog = useModalLayer();
+  const [container] = useState(() => {
+    if (typeof document === 'undefined') return null;
+    const element = document.createElement('div');
+    element.className = 'toast-container';
+    return element;
+  });
+
+  useLayoutEffect(() => {
+    if (!container) return;
+    // A modal makes outside content inert, regardless of its z-index.
+    // Move one stable portal host so toast timers survive layer changes.
+    (dialog ?? document.body).appendChild(container);
+    return () => container.remove();
+  }, [container, dialog]);
+
+  if (!container) return null;
+  return createPortal(
+    toasts.map((toast) => (
+      <ToastItem key={toast.id} toast={toast} onDismiss={onDismiss} />
+    )),
+    container,
   );
 }
 
@@ -55,7 +73,12 @@ function ToastItem({
     <div className={`toast toast-${toast.type}`}>
       <span className="toast-icon">{getIcon()}</span>
       <span className="toast-message">{toast.message}</span>
-      <button className="toast-close" onClick={() => onDismiss(toast.id)}>
+      <button
+        type="button"
+        className="toast-close"
+        aria-label="Dismiss notification"
+        onClick={() => onDismiss(toast.id)}
+      >
         ×
       </button>
     </div>

@@ -83,7 +83,7 @@ async function enterAsJudge(page: Page) {
 
 async function openStaffDrawer(page: Page) {
   await page.getByRole('button', { name: /Contact event staff/i }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await expect(page.getByRole('dialog', { name: 'Event Staff' })).toBeVisible();
 }
 
 test.describe('Judge Chat E2E', () => {
@@ -166,19 +166,26 @@ test.describe('Judge Chat E2E', () => {
     await page.getByRole('button', { name: 'Continue' }).click();
 
     const judgeInput = page
-      .getByRole('dialog')
+      .getByRole('dialog', { name: 'Event Staff' })
       .locator('.chat-input-form input');
     await judgeInput.fill(JUDGE_MESSAGE);
     await page.getByRole('button', { name: 'Send message' }).click();
 
-    await expect(page.getByRole('dialog').getByText(JUDGE_MESSAGE)).toBeVisible(
-      {
-        timeout: 5_000,
-      },
-    );
+    await expect(
+      page
+        .getByRole('dialog', { name: 'Event Staff' })
+        .getByText(JUDGE_MESSAGE),
+    ).toBeVisible({
+      timeout: 5_000,
+    });
 
-    await page.getByRole('button', { name: 'Close' }).click();
-    await expect(page.getByRole('dialog')).not.toBeVisible();
+    await page
+      .getByRole('dialog', { name: 'Event Staff' })
+      .getByRole('button', { name: 'Close', exact: true })
+      .click();
+    await expect(
+      page.getByRole('dialog', { name: 'Event Staff' }),
+    ).not.toBeVisible();
 
     // ── Admin sees conversation and replies ──
     const adminContext = await browser.newContext();
@@ -224,11 +231,16 @@ test.describe('Judge Chat E2E', () => {
 
     await openStaffDrawer(page);
 
-    await expect(page.getByRole('dialog').getByText(ADMIN_REPLY)).toBeVisible({
+    await expect(
+      page.getByRole('dialog', { name: 'Event Staff' }).getByText(ADMIN_REPLY),
+    ).toBeVisible({
       timeout: 10_000,
     });
 
-    await page.getByRole('button', { name: 'Close' }).click();
+    await page
+      .getByRole('dialog', { name: 'Event Staff' })
+      .getByRole('button', { name: 'Close', exact: true })
+      .click();
 
     await expect(staffBtn.locator('.judge-chat-unread-dot')).not.toBeVisible({
       timeout: 5_000,

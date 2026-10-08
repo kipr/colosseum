@@ -210,10 +210,6 @@
   font-weight: 500;
 }
 
-.about-modal-content {
-  max-width: 520px;
-}
-
 .about-content {
   display: grid;
   gap: 1rem;
