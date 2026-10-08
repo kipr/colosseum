@@ -9,7 +9,7 @@ import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
 import { ApiError, apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 import './ScoringTab.css';
 import type { BracketResultType } from '../../../shared/bracketResult';
 import type { TeamInitialsSide } from '../../../shared/teamInitials';
@@ -1102,114 +1102,85 @@ export default function ScoringTab() {
 
       {/* Bulk Accept Modal */}
       {showBulkAccept && (
-        <div className="modal show" onClick={handleCloseBulkAccept}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '600px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={handleCloseBulkAccept}>
-              &times;
-            </span>
-            <h3>Bulk Accept Scores</h3>
-            <p
-              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
-            >
-              Select the pending scores you want to accept. All scores are
-              selected by default.
-            </p>
+        <Modal onClose={handleCloseBulkAccept} size="600px">
+          <h3>Bulk Accept Scores</h3>
+          <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
+            Select the pending scores you want to accept. All scores are
+            selected by default.
+          </p>
 
-            <div
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              marginBottom: '1rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSelectAllBulkAccept}
+              style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSelectNoneBulkAccept}
+              style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+            >
+              Select None
+            </button>
+            <span
               style={{
-                display: 'flex',
-                gap: '0.5rem',
-                marginBottom: '1rem',
+                marginLeft: 'auto',
+                color: 'var(--secondary-color)',
+                fontSize: '0.875rem',
+                alignSelf: 'center',
               }}
             >
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleSelectAllBulkAccept}
-                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
-              >
-                Select All
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleSelectNoneBulkAccept}
-                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
-              >
-                Select None
-              </button>
-              <span
-                style={{
-                  marginLeft: 'auto',
-                  color: 'var(--secondary-color)',
-                  fontSize: '0.875rem',
-                  alignSelf: 'center',
-                }}
-              >
-                {bulkAcceptSelected.size} of {pendingScores.length} selected
-              </span>
-            </div>
+              {bulkAcceptSelected.size} of {pendingScores.length} selected
+            </span>
+          </div>
 
-            <div className="bulk-accept-list">
-              {pendingScores.length === 0 ? (
-                <p style={{ color: 'var(--secondary-color)' }}>
-                  No pending scores in the current view. Filter by status
-                  &quot;Pending&quot; to see scores to accept.
-                </p>
-              ) : (
-                pendingScores.map((score) => {
-                  const scoreType = score.score_type || 'unknown';
+          <div className="bulk-accept-list">
+            {pendingScores.length === 0 ? (
+              <p style={{ color: 'var(--secondary-color)' }}>
+                No pending scores in the current view. Filter by status
+                &quot;Pending&quot; to see scores to accept.
+              </p>
+            ) : (
+              pendingScores.map((score) => {
+                const scoreType = score.score_type || 'unknown';
 
-                  if (scoreType === 'bracket') {
-                    const {
-                      team1Label,
-                      team2Label,
-                      gameLabel,
-                      scoreLabel,
-                      winnerLabel,
-                    } = getBracketRowDisplay(score);
-                    return (
-                      <label key={score.id} className="bulk-accept-item">
-                        <input
-                          type="checkbox"
-                          checked={bulkAcceptSelected.has(score.id)}
-                          onChange={() => handleToggleBulkAcceptScore(score.id)}
-                        />
-                        <span className="bulk-accept-context">{gameLabel}</span>
-                        <span className="bulk-accept-detail">
-                          {team1Label} vs {team2Label} — {scoreLabel} →{' '}
-                          {winnerLabel}
-                        </span>
-                      </label>
-                    );
-                  }
+                if (scoreType === 'bracket') {
+                  const {
+                    team1Label,
+                    team2Label,
+                    gameLabel,
+                    scoreLabel,
+                    winnerLabel,
+                  } = getBracketRowDisplay(score);
+                  return (
+                    <label key={score.id} className="bulk-accept-item">
+                      <input
+                        type="checkbox"
+                        checked={bulkAcceptSelected.has(score.id)}
+                        onChange={() => handleToggleBulkAcceptScore(score.id)}
+                      />
+                      <span className="bulk-accept-context">{gameLabel}</span>
+                      <span className="bulk-accept-detail">
+                        {team1Label} vs {team2Label} — {scoreLabel} →{' '}
+                        {winnerLabel}
+                      </span>
+                    </label>
+                  );
+                }
 
-                  if (scoreType === 'double_seeding') {
-                    const { team1Label, team2Label, roundLabel, scoreLabel } =
-                      getDoubleSeedingRowDisplay(score);
-                    return (
-                      <label key={score.id} className="bulk-accept-item">
-                        <input
-                          type="checkbox"
-                          checked={bulkAcceptSelected.has(score.id)}
-                          onChange={() => handleToggleBulkAcceptScore(score.id)}
-                        />
-                        <span className="bulk-accept-context">
-                          {roundLabel}
-                        </span>
-                        <span className="bulk-accept-detail">
-                          {team1Label} vs {team2Label} — {scoreLabel}
-                        </span>
-                      </label>
-                    );
-                  }
-
-                  const { teamNum, roundLabel, total } =
-                    getSeedingRowDisplay(score);
+                if (scoreType === 'double_seeding') {
+                  const { team1Label, team2Label, roundLabel, scoreLabel } =
+                    getDoubleSeedingRowDisplay(score);
                   return (
                     <label key={score.id} className="bulk-accept-item">
                       <input
@@ -1219,43 +1190,59 @@ export default function ScoringTab() {
                       />
                       <span className="bulk-accept-context">{roundLabel}</span>
                       <span className="bulk-accept-detail">
-                        Team {teamNum} — {total}
+                        {team1Label} vs {team2Label} — {scoreLabel}
                       </span>
                     </label>
                   );
-                })
-              )}
-            </div>
+                }
 
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                justifyContent: 'flex-end',
-                marginTop: '1.5rem',
-              }}
-            >
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleCloseBulkAccept}
-                disabled={bulkAccepting}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-success"
-                onClick={handleBulkAccept}
-                disabled={bulkAccepting || bulkAcceptSelected.size === 0}
-              >
-                {bulkAccepting
-                  ? 'Accepting...'
-                  : `Accept ${bulkAcceptSelected.size} Score(s)`}
-              </button>
-            </div>
+                const { teamNum, roundLabel, total } =
+                  getSeedingRowDisplay(score);
+                return (
+                  <label key={score.id} className="bulk-accept-item">
+                    <input
+                      type="checkbox"
+                      checked={bulkAcceptSelected.has(score.id)}
+                      onChange={() => handleToggleBulkAcceptScore(score.id)}
+                    />
+                    <span className="bulk-accept-context">{roundLabel}</span>
+                    <span className="bulk-accept-detail">
+                      Team {teamNum} — {total}
+                    </span>
+                  </label>
+                );
+              })
+            )}
           </div>
-        </div>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+              marginTop: '1.5rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleCloseBulkAccept}
+              disabled={bulkAccepting}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-success"
+              onClick={handleBulkAccept}
+              disabled={bulkAccepting || bulkAcceptSelected.size === 0}
+            >
+              {bulkAccepting
+                ? 'Accepting...'
+                : `Accept ${bulkAcceptSelected.size} Score(s)`}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {ConfirmDialog}

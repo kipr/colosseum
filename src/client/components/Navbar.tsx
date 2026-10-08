@@ -1,3 +1,4 @@
+import Modal from './Modal';
 import React, { useState } from 'react';
 import {
   Link,
@@ -137,46 +138,41 @@ export default function Navbar() {
       </nav>
 
       {isAboutOpen && (
-        <div className="modal show" onClick={() => setIsAboutOpen(false)}>
-          <div
-            className="modal-content about-modal-content"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={() => setIsAboutOpen(false)}>
-              &times;
-            </span>
-            <h3>About Colosseum</h3>
-            <div className="about-content">
-              <div>
-                <h4>Contributors</h4>
-                <ul className="about-list">
-                  <li>Tim Corbly</li>
-                  <li>Thomas Wells</li>
-                </ul>
-              </div>
-              <div>
-                <h4>License</h4>
-                <a
-                  href="https://www.gnu.org/licenses/agpl-3.0.html"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  GNU Affero General Public License v3.0
-                </a>
-              </div>
-              <div>
-                <h4>Source</h4>
-                <a
-                  href="https://github.com/kipr/colosseum"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  github.com/kipr/colosseum
-                </a>
-              </div>
+        <Modal
+          onClose={() => setIsAboutOpen(false)}
+          className="about-modal-content"
+        >
+          <h3>About Colosseum</h3>
+          <div className="about-content">
+            <div>
+              <h4>Contributors</h4>
+              <ul className="about-list">
+                <li>Tim Corbly</li>
+                <li>Thomas Wells</li>
+              </ul>
+            </div>
+            <div>
+              <h4>License</h4>
+              <a
+                href="https://www.gnu.org/licenses/agpl-3.0.html"
+                target="_blank"
+                rel="noreferrer"
+              >
+                GNU Affero General Public License v3.0
+              </a>
+            </div>
+            <div>
+              <h4>Source</h4>
+              <a
+                href="https://github.com/kipr/colosseum"
+                target="_blank"
+                rel="noreferrer"
+              >
+                github.com/kipr/colosseum
+              </a>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   );

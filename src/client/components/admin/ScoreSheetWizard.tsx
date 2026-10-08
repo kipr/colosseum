@@ -7,7 +7,7 @@ import {
 } from '../scoresheetUtils';
 import { stripLegacyInitialsFields } from '../../../shared/teamInitials';
 import { apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 
 interface FieldTemplate {
   id: number;
@@ -258,147 +258,158 @@ export default function ScoreSheetWizard({
   const getTotalSteps = () => 4;
 
   return (
-    <div
-      className="modal show"
-      onClick={(e) => e.target === e.currentTarget && onCancel()}
-    >
-      <div
-        className="modal-content"
-        style={{ maxWidth: '700px' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <span className="close" onClick={onCancel}>
-          &times;
-        </span>
+    <Modal onClose={onCancel} size="700px">
+      <h3>Score Sheet Wizard</h3>
+      <div style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
+        Step {getStepNumber()} of {getTotalSteps()}
+      </div>
 
-        <h3>Score Sheet Wizard</h3>
-        <div
-          style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}
-        >
-          Step {getStepNumber()} of {getTotalSteps()}
-        </div>
+      {/* Step 1: Choose Type */}
+      {currentStep === 'type' && (
+        <div>
+          <h4>Choose Score Sheet Type</h4>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
+          >
+            Select whether this is for seeding rounds or double elimination
+            bracket.
+          </p>
 
-        {/* Step 1: Choose Type */}
-        {currentStep === 'type' && (
-          <div>
-            <h4>Choose Score Sheet Type</h4>
-            <p
+          <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
+            <button
+              className={`btn ${sheetType === 'seeding' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setSheetType('seeding')}
               style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
+                flex: 1,
+                padding: '2rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
               }}
             >
-              Select whether this is for seeding rounds or double elimination
-              bracket.
-            </p>
-
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem' }}>
-              <button
-                className={`btn ${sheetType === 'seeding' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setSheetType('seeding')}
-                style={{
-                  flex: 1,
-                  padding: '2rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                }}
-              >
-                <div style={{ fontSize: '2rem' }}>📊</div>
-                <div style={{ fontWeight: 'bold' }}>Seeding</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-                  For qualification rounds
-                </div>
-              </button>
-
-              <button
-                className={`btn ${sheetType === 'double_seeding' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setSheetType('double_seeding')}
-                style={{
-                  flex: 1,
-                  padding: '2rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                }}
-              >
-                <div style={{ fontSize: '2rem' }}>👥</div>
-                <div style={{ fontWeight: 'bold' }}>Double Seeding</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-                  Paired rounds, per-side scores
-                </div>
-              </button>
-
-              <button
-                className={`btn ${sheetType === 'de' ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => setSheetType('de')}
-                style={{
-                  flex: 1,
-                  padding: '2rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.5rem',
-                }}
-              >
-                <div style={{ fontSize: '2rem' }}>🏆</div>
-                <div style={{ fontWeight: 'bold' }}>Double Elimination</div>
-                <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
-                  For bracket games
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Select Field Template */}
-        {currentStep === 'template' && (
-          <div>
-            <h4>Select Scoring Fields Template</h4>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
-              }}
-            >
-              Choose a pre-made template with detailed scoring fields, or use
-              basic fields. Templates work for both seeding and DE score sheets.
-            </p>
-
-            {fieldTemplates.length === 0 ? (
-              <div
-                style={{
-                  padding: '2rem',
-                  background: 'var(--bg-color)',
-                  borderRadius: '0.5rem',
-                  textAlign: 'center',
-                  marginBottom: '1rem',
-                }}
-              >
-                <p style={{ color: 'var(--secondary-color)' }}>
-                  No field templates available yet.
-                </p>
-                <p
-                  style={{
-                    fontSize: '0.875rem',
-                    color: 'var(--secondary-color)',
-                  }}
-                >
-                  You can create field templates on the Score Sheets page, or
-                  continue with basic fields.
-                </p>
+              <div style={{ fontSize: '2rem' }}>📊</div>
+              <div style={{ fontWeight: 'bold' }}>Seeding</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                For qualification rounds
               </div>
-            ) : (
-              <div
+            </button>
+
+            <button
+              className={`btn ${sheetType === 'double_seeding' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setSheetType('double_seeding')}
+              style={{
+                flex: 1,
+                padding: '2rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}
+            >
+              <div style={{ fontSize: '2rem' }}>👥</div>
+              <div style={{ fontWeight: 'bold' }}>Double Seeding</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                Paired rounds, per-side scores
+              </div>
+            </button>
+
+            <button
+              className={`btn ${sheetType === 'de' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setSheetType('de')}
+              style={{
+                flex: 1,
+                padding: '2rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}
+            >
+              <div style={{ fontSize: '2rem' }}>🏆</div>
+              <div style={{ fontWeight: 'bold' }}>Double Elimination</div>
+              <div style={{ fontSize: '0.85rem', opacity: 0.9 }}>
+                For bracket games
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Step 2: Select Field Template */}
+      {currentStep === 'template' && (
+        <div>
+          <h4>Select Scoring Fields Template</h4>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
+          >
+            Choose a pre-made template with detailed scoring fields, or use
+            basic fields. Templates work for both seeding and DE score sheets.
+          </p>
+
+          {fieldTemplates.length === 0 ? (
+            <div
+              style={{
+                padding: '2rem',
+                background: 'var(--bg-color)',
+                borderRadius: '0.5rem',
+                textAlign: 'center',
+                marginBottom: '1rem',
+              }}
+            >
+              <p style={{ color: 'var(--secondary-color)' }}>
+                No field templates available yet.
+              </p>
+              <p
                 style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.75rem',
+                  fontSize: '0.875rem',
+                  color: 'var(--secondary-color)',
                 }}
               >
-                {/* None selected option */}
+                You can create field templates on the Score Sheets page, or
+                continue with basic fields.
+              </p>
+            </div>
+          ) : (
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+              }}
+            >
+              {/* None selected option */}
+              <button
+                className={`btn ${!selectedTemplate ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setSelectedTemplate(null)}
+                style={{
+                  padding: '1rem',
+                  textAlign: 'left',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 'bold' }}>
+                    Basic Fields (No Template)
+                  </div>
+                  <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+                    Use simple default scoring fields
+                  </div>
+                </div>
+                {!selectedTemplate && <span>✓</span>}
+              </button>
+
+              {/* Template options */}
+              {fieldTemplates.map((template) => (
                 <button
-                  className={`btn ${!selectedTemplate ? 'btn-primary' : 'btn-secondary'}`}
-                  onClick={() => setSelectedTemplate(null)}
+                  key={template.id}
+                  className={`btn ${selectedTemplate?.id === template.id ? 'btn-primary' : 'btn-secondary'}`}
+                  onClick={() => setSelectedTemplate(template)}
                   style={{
                     padding: '1rem',
                     textAlign: 'left',
@@ -408,238 +419,211 @@ export default function ScoreSheetWizard({
                   }}
                 >
                   <div>
-                    <div style={{ fontWeight: 'bold' }}>
-                      Basic Fields (No Template)
-                    </div>
-                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
-                      Use simple default scoring fields
-                    </div>
+                    <div style={{ fontWeight: 'bold' }}>{template.name}</div>
+                    {template.description && (
+                      <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+                        {template.description}
+                      </div>
+                    )}
                   </div>
-                  {!selectedTemplate && <span>✓</span>}
+                  {selectedTemplate?.id === template.id && <span>✓</span>}
                 </button>
-
-                {/* Template options */}
-                {fieldTemplates.map((template) => (
-                  <button
-                    key={template.id}
-                    className={`btn ${selectedTemplate?.id === template.id ? 'btn-primary' : 'btn-secondary'}`}
-                    onClick={() => setSelectedTemplate(template)}
-                    style={{
-                      padding: '1rem',
-                      textAlign: 'left',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 'bold' }}>{template.name}</div>
-                      {template.description && (
-                        <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
-                          {template.description}
-                        </div>
-                      )}
-                    </div>
-                    {selectedTemplate?.id === template.id && <span>✓</span>}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Step 3: Basic Info */}
-        {currentStep === 'basic' && (
-          <div>
-            <h4>Basic Information</h4>
-            {selectedEvent ? (
-              <p
-                style={{
-                  color: 'var(--secondary-color)',
-                  marginBottom: '1rem',
-                  fontSize: '0.9rem',
-                }}
-              >
-                Teams will be loaded from event:{' '}
-                <strong>{selectedEvent.name}</strong>
-              </p>
-            ) : (
-              <p
-                style={{
-                  color: 'var(--warning-color, #f59e0b)',
-                  marginBottom: '1rem',
-                  fontSize: '0.9rem',
-                }}
-              >
-                Please select an event in the sidebar. Teams are loaded from the
-                selected event.
-              </p>
-            )}
-            <div className="form-group">
-              <label>Score Sheet Name *</label>
-              <input
-                type="text"
-                className="field-input"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., 2024 Botball Seeding"
-              />
+              ))}
             </div>
+          )}
+        </div>
+      )}
 
-            <div className="form-group">
-              <label>Description</label>
-              <textarea
-                className="field-input"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optional description..."
-                rows={3}
-              />
-            </div>
-
-            <div className="form-group">
-              <label>Access Code *</label>
-              <input
-                type="text"
-                className="field-input"
-                value={accessCode}
-                onChange={(e) => setAccessCode(e.target.value)}
-                placeholder="Code judges will use to access this sheet"
-              />
-              <small>Judges will need this code to fill out scores</small>
-            </div>
-
-            <div className="form-group">
-              <label>
-                <input
-                  type="checkbox"
-                  checked={requireTeamInitials}
-                  onChange={(e) => setRequireTeamInitials(e.target.checked)}
-                />{' '}
-                Require team initials
-              </label>
-              <small>
-                Every team in the match must initial the sheet before the judge
-                can submit it, including no-contest and DQ results.
-              </small>
-            </div>
-          </div>
-        )}
-
-        {/* Step 4: Review */}
-        {currentStep === 'review' && (
-          <div>
-            <h4>Review & Generate</h4>
+      {/* Step 3: Basic Info */}
+      {currentStep === 'basic' && (
+        <div>
+          <h4>Basic Information</h4>
+          {selectedEvent ? (
             <p
               style={{
                 color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
+                marginBottom: '1rem',
+                fontSize: '0.9rem',
               }}
             >
-              Review your selections below. Click "Generate" to create the score
-              sheet.
+              Teams will be loaded from event:{' '}
+              <strong>{selectedEvent.name}</strong>
             </p>
-
-            <div
+          ) : (
+            <p
               style={{
-                background: 'var(--bg-color)',
-                padding: '1rem',
-                borderRadius: '0.5rem',
+                color: 'var(--warning-color, #f59e0b)',
+                marginBottom: '1rem',
+                fontSize: '0.9rem',
               }}
             >
-              <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Type:</strong>{' '}
-                {sheetType === 'seeding'
-                  ? 'Seeding'
-                  : sheetType === 'double_seeding'
-                    ? 'Double Seeding'
-                    : 'Double Elimination'}
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Name:</strong> {name}
-              </div>
-              {description && (
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <strong>Description:</strong> {description}
-                </div>
-              )}
-              <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Access Code:</strong> <code>{accessCode}</code>
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Field Template:</strong>{' '}
-                {selectedTemplate?.name || 'Basic fields (no template)'}
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Team Initials:</strong>{' '}
-                {requireTeamInitials ? 'Required' : 'Not collected'}
-              </div>
-              <div style={{ marginBottom: '0.75rem' }}>
-                <strong>Teams:</strong> Database (Event:{' '}
-                {selectedEvent?.name || selectedEvent?.id || 'N/A'})
-              </div>
-              {sheetType === 'seeding' && (
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <strong>Score Destination:</strong> Database ( seeding_scores)
-                </div>
-              )}
-              {sheetType === 'double_seeding' && (
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <strong>Score Destination:</strong> Database
-                  (double_seeding_scores) — matches selected from the
-                  double-seeding queue
-                </div>
-              )}
-              {sheetType === 'de' && (
-                <div style={{ marginBottom: '0.75rem' }}>
-                  <strong>Bracket Games:</strong> Database (all brackets in{' '}
-                  {selectedEvent?.name || selectedEvent?.id || 'this event'})
-                </div>
-              )}
-            </div>
-
-            <div
-              style={{
-                marginTop: '1rem',
-                padding: '1rem',
-                background:
-                  'var(--warning-color-light, rgba(245, 158, 11, 0.1))',
-                borderRadius: '0.5rem',
-              }}
-            >
-              <strong>Note:</strong> This will generate a basic template. You
-              can customize the scoring fields after creation by editing the
-              JSON schema.
-            </div>
+              Please select an event in the sidebar. Teams are loaded from the
+              selected event.
+            </p>
+          )}
+          <div className="form-group">
+            <label>Score Sheet Name *</label>
+            <input
+              type="text"
+              className="field-input"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="e.g., 2024 Botball Seeding"
+            />
           </div>
-        )}
 
-        {/* Navigation Buttons */}
-        <div
-          style={{
-            display: 'flex',
-            gap: '0.5rem',
-            justifyContent: 'space-between',
-            marginTop: '2rem',
-          }}
-        >
-          <div>
-            {currentStep !== 'type' && (
-              <button className="btn btn-secondary" onClick={handleBack}>
-                ← Back
-              </button>
-            )}
+          <div className="form-group">
+            <label>Description</label>
+            <textarea
+              className="field-input"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Optional description..."
+              rows={3}
+            />
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button className="btn btn-secondary" onClick={onCancel}>
-              Cancel
-            </button>
-            <button className="btn btn-primary" onClick={handleNext}>
-              {currentStep === 'review' ? 'Generate Score Sheet' : 'Next →'}
-            </button>
+
+          <div className="form-group">
+            <label>Access Code *</label>
+            <input
+              type="text"
+              className="field-input"
+              value={accessCode}
+              onChange={(e) => setAccessCode(e.target.value)}
+              placeholder="Code judges will use to access this sheet"
+            />
+            <small>Judges will need this code to fill out scores</small>
+          </div>
+
+          <div className="form-group">
+            <label>
+              <input
+                type="checkbox"
+                checked={requireTeamInitials}
+                onChange={(e) => setRequireTeamInitials(e.target.checked)}
+              />{' '}
+              Require team initials
+            </label>
+            <small>
+              Every team in the match must initial the sheet before the judge
+              can submit it, including no-contest and DQ results.
+            </small>
           </div>
         </div>
+      )}
+
+      {/* Step 4: Review */}
+      {currentStep === 'review' && (
+        <div>
+          <h4>Review & Generate</h4>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
+          >
+            Review your selections below. Click "Generate" to create the score
+            sheet.
+          </p>
+
+          <div
+            style={{
+              background: 'var(--bg-color)',
+              padding: '1rem',
+              borderRadius: '0.5rem',
+            }}
+          >
+            <div style={{ marginBottom: '0.75rem' }}>
+              <strong>Type:</strong>{' '}
+              {sheetType === 'seeding'
+                ? 'Seeding'
+                : sheetType === 'double_seeding'
+                  ? 'Double Seeding'
+                  : 'Double Elimination'}
+            </div>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <strong>Name:</strong> {name}
+            </div>
+            {description && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <strong>Description:</strong> {description}
+              </div>
+            )}
+            <div style={{ marginBottom: '0.75rem' }}>
+              <strong>Access Code:</strong> <code>{accessCode}</code>
+            </div>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <strong>Field Template:</strong>{' '}
+              {selectedTemplate?.name || 'Basic fields (no template)'}
+            </div>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <strong>Team Initials:</strong>{' '}
+              {requireTeamInitials ? 'Required' : 'Not collected'}
+            </div>
+            <div style={{ marginBottom: '0.75rem' }}>
+              <strong>Teams:</strong> Database (Event:{' '}
+              {selectedEvent?.name || selectedEvent?.id || 'N/A'})
+            </div>
+            {sheetType === 'seeding' && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <strong>Score Destination:</strong> Database ( seeding_scores)
+              </div>
+            )}
+            {sheetType === 'double_seeding' && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <strong>Score Destination:</strong> Database
+                (double_seeding_scores) — matches selected from the
+                double-seeding queue
+              </div>
+            )}
+            {sheetType === 'de' && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <strong>Bracket Games:</strong> Database (all brackets in{' '}
+                {selectedEvent?.name || selectedEvent?.id || 'this event'})
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              background: 'var(--warning-color-light, rgba(245, 158, 11, 0.1))',
+              borderRadius: '0.5rem',
+            }}
+          >
+            <strong>Note:</strong> This will generate a basic template. You can
+            customize the scoring fields after creation by editing the JSON
+            schema.
+          </div>
+        </div>
+      )}
+
+      {/* Navigation Buttons */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          justifyContent: 'space-between',
+          marginTop: '2rem',
+        }}
+      >
+        <div>
+          {currentStep !== 'type' && (
+            <button className="btn btn-secondary" onClick={handleBack}>
+              ← Back
+            </button>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button className="btn btn-secondary" onClick={onCancel}>
+            Cancel
+          </button>
+          <button className="btn btn-primary" onClick={handleNext}>
+            {currentStep === 'review' ? 'Generate Score Sheet' : 'Next →'}
+          </button>
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

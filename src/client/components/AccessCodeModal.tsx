@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
 import { ApiError, apiFetch } from '../utils/api';
-import './Modal.css';
+import Modal from './Modal';
 
 interface AccessCodeModalProps {
   templateId: number;
@@ -53,58 +53,45 @@ export default function AccessCodeModal({
   };
 
   return (
-    <div className="modal show" onClick={onClose}>
-      <div
-        className="modal-content"
-        style={{ maxWidth: '450px' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <span className="close" onClick={onClose}>
-          &times;
-        </span>
-        <h3>Enter Access Code</h3>
-        <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
-          Template: {templateName}
-        </p>
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>Access Code:</label>
-            <input
-              type="text"
-              className="field-input"
-              placeholder="Enter code provided by administrator"
-              value={accessCode}
-              onChange={(e) => setAccessCode(e.target.value)}
-              onKeyPress={handleKeyPress}
-              autoComplete="off"
-              autoFocus
-            />
+    <Modal onClose={onClose} size="450px">
+      <h3>Enter Access Code</h3>
+      <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
+        Template: {templateName}
+      </p>
+      <form onSubmit={handleSubmit}>
+        <div className="form-group">
+          <label>Access Code:</label>
+          <input
+            type="text"
+            className="field-input"
+            placeholder="Enter code provided by administrator"
+            value={accessCode}
+            onChange={(e) => setAccessCode(e.target.value)}
+            onKeyPress={handleKeyPress}
+            autoComplete="off"
+            autoFocus
+          />
+        </div>
+        {error && (
+          <div style={{ color: 'var(--danger-color)', marginBottom: '1rem' }}>
+            {error}
           </div>
-          {error && (
-            <div style={{ color: 'var(--danger-color)', marginBottom: '1rem' }}>
-              {error}
-            </div>
-          )}
-          <div
-            style={{
-              display: 'flex',
-              gap: '0.5rem',
-              justifyContent: 'flex-end',
-            }}
-          >
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button type="submit" className="btn btn-primary">
-              Access Scoresheet
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        )}
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            justifyContent: 'flex-end',
+          }}
+        >
+          <button type="button" className="btn btn-secondary" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary">
+            Access Scoresheet
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

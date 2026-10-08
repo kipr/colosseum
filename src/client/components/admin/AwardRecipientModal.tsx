@@ -11,7 +11,7 @@ import {
   type TeamAwardCounts,
 } from '@shared/awards';
 import { apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 import './AwardsTab.css';
 interface AwardRecipientModalProps {
   eventId: number;
@@ -265,94 +265,89 @@ export default function AwardRecipientModal({
   ).length;
 
   return (
-    <div className="modal show" onClick={() => !saving && onClose()}>
-      <div
-        className="modal-content"
-        style={{ maxWidth: '90vw', width: '800px' }}
-        onClick={(e) => e.stopPropagation()}
+    <Modal
+      onClose={() => !saving && onClose()}
+      size="90vw"
+      style={{ width: '800px' }}
+    >
+      <h3>Add team recipients</h3>
+      <p
+        style={{
+          color: 'var(--secondary-color)',
+          marginBottom: '1rem',
+          lineHeight: 1.5,
+        }}
       >
-        <span className="close" onClick={() => !saving && onClose()}>
-          &times;
-        </span>
-        <h3>Add team recipients</h3>
-        <p
-          style={{
-            color: 'var(--secondary-color)',
-            marginBottom: '1rem',
-            lineHeight: 1.5,
-          }}
-        >
-          Select teams for <strong>{awardName}</strong>. Sorted by weighted
-          award load (trophy counts twice) so less-awarded teams appear first.
-        </p>
+        Select teams for <strong>{awardName}</strong>. Sorted by weighted award
+        load (trophy counts twice) so less-awarded teams appear first.
+      </p>
 
-        <div className="form-group award-recipient-filter">
-          <label htmlFor="award-recipient-filter">Filter teams</label>
-          <input
-            id="award-recipient-filter"
-            type="text"
-            className="field-input"
-            placeholder="Team # or name…"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+      <div className="form-group award-recipient-filter">
+        <label htmlFor="award-recipient-filter">Filter teams</label>
+        <input
+          id="award-recipient-filter"
+          type="text"
+          className="field-input"
+          placeholder="Team # or name…"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+        />
+      </div>
+
+      {loading ? (
+        <p style={{ color: 'var(--secondary-color)' }}>Loading teams…</p>
+      ) : filteredSortedRows.length === 0 ? (
+        <p style={{ color: 'var(--secondary-color)' }}>
+          {rows.length === 0
+            ? 'No teams in this event.'
+            : 'No teams match the filter.'}
+        </p>
+      ) : (
+        <div
+          className="table-responsive"
+          style={{ maxHeight: '300px', overflow: 'auto' }}
+        >
+          <UnifiedTable
+            columns={columns}
+            rows={filteredSortedRows}
+            getRowKey={(r) => r.team_id}
+            activeSortId={sortField}
+            sortDirection={sortDirection}
+            onSort={handleSort}
+            rowClassName={(r) =>
+              r.alreadyRecipient ? 'award-recipient-already' : ''
+            }
+            tableClassName="award-recipient-teams-table"
+            headerLabelVariant="none"
+            sortableHeaderClassName="sortable"
           />
         </div>
+      )}
 
-        {loading ? (
-          <p style={{ color: 'var(--secondary-color)' }}>Loading teams…</p>
-        ) : filteredSortedRows.length === 0 ? (
-          <p style={{ color: 'var(--secondary-color)' }}>
-            {rows.length === 0
-              ? 'No teams in this event.'
-              : 'No teams match the filter.'}
-          </p>
-        ) : (
-          <div
-            className="table-responsive"
-            style={{ maxHeight: '300px', overflow: 'auto' }}
-          >
-            <UnifiedTable
-              columns={columns}
-              rows={filteredSortedRows}
-              getRowKey={(r) => r.team_id}
-              activeSortId={sortField}
-              sortDirection={sortDirection}
-              onSort={handleSort}
-              rowClassName={(r) =>
-                r.alreadyRecipient ? 'award-recipient-already' : ''
-              }
-              tableClassName="award-recipient-teams-table"
-              headerLabelVariant="none"
-              sortableHeaderClassName="sortable"
-            />
-          </div>
-        )}
-
-        <div className="award-recipient-modal-actions">
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={onClose}
-            disabled={saving}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="btn btn-primary"
-            disabled={
-              saving || selectedTeamIds.size === 0 || selectableCount === 0
-            }
-            onClick={() => void handleSubmit()}
-          >
-            {saving
-              ? 'Adding…'
-              : selectedTeamIds.size === 0
-                ? 'Add teams'
-                : `Add ${selectedTeamIds.size} team${selectedTeamIds.size === 1 ? '' : 's'}`}
-          </button>
-        </div>
+      <div className="award-recipient-modal-actions">
+        <button
+          type="button"
+          className="btn btn-secondary"
+          onClick={onClose}
+          disabled={saving}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={
+            saving || selectedTeamIds.size === 0 || selectableCount === 0
+          }
+          onClick={() => void handleSubmit()}
+        >
+          {saving
+            ? 'Adding…'
+            : selectedTeamIds.size === 0
+              ? 'Add teams'
+              : `Add ${selectedTeamIds.size} team${selectedTeamIds.size === 1 ? '' : 's'}`}
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }

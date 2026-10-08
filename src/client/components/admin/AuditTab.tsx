@@ -7,7 +7,7 @@ import { useEvent } from '../../contexts/EventContext';
 import { useToast } from '../Toast';
 import { formatDateTime } from '../../utils/dateUtils';
 import { apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 import './AuditTab.css';
 
 const PAGE_SIZE = 50;
@@ -520,36 +520,28 @@ function DiffModal({
   }, [oldValue, newValue]);
 
   return (
-    <div className="modal show" onClick={onClose}>
-      <div
-        className="modal-content audit-diff-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <span className="close" onClick={onClose} aria-label="Close">
-          &times;
-        </span>
-        <h3>Diff: Old → New</h3>
-        <pre className="audit-diff-view">
-          {diff.length === 0 ? (
-            <span className="audit-diff-unchanged">(no changes)</span>
-          ) : (
-            diff.map((part, i) => {
-              const key = `${i}-${part.added ? 'add' : part.removed ? 'rem' : 'unch'}`;
-              const className = part.added
-                ? 'audit-diff-added'
-                : part.removed
-                  ? 'audit-diff-removed'
-                  : 'audit-diff-unchanged';
-              return (
-                <span key={key} className={className}>
-                  {part.value}
-                </span>
-              );
-            })
-          )}
-        </pre>
-      </div>
-    </div>
+    <Modal onClose={onClose} className="audit-diff-modal">
+      <h3>Diff: Old → New</h3>
+      <pre className="audit-diff-view">
+        {diff.length === 0 ? (
+          <span className="audit-diff-unchanged">(no changes)</span>
+        ) : (
+          diff.map((part, i) => {
+            const key = `${i}-${part.added ? 'add' : part.removed ? 'rem' : 'unch'}`;
+            const className = part.added
+              ? 'audit-diff-added'
+              : part.removed
+                ? 'audit-diff-removed'
+                : 'audit-diff-unchanged';
+            return (
+              <span key={key} className={className}>
+                {part.value}
+              </span>
+            );
+          })
+        )}
+      </pre>
+    </Modal>
   );
 }
 
@@ -570,15 +562,10 @@ function JsonViewModal({
     // Use raw value
   }
   return (
-    <div className="modal show" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <span className="close" onClick={onClose} aria-label="Close">
-          &times;
-        </span>
-        <h3>{label}</h3>
-        <pre className="audit-json-view">{displayValue || '(empty)'}</pre>
-      </div>
-    </div>
+    <Modal onClose={onClose}>
+      <h3>{label}</h3>
+      <pre className="audit-json-view">{displayValue || '(empty)'}</pre>
+    </Modal>
   );
 }
 
@@ -649,35 +636,27 @@ function EntityHistoryModal({
   ];
 
   return (
-    <div className="modal show" onClick={onClose}>
-      <div
-        className="modal-content audit-history-modal"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <span className="close" onClick={onClose} aria-label="Close">
-          &times;
-        </span>
-        <h3>
-          Audit history: {entityType} #{entityId}
-        </h3>
-        {loading ? (
-          <p>Loading...</p>
-        ) : logs.length === 0 ? (
-          <p style={{ color: 'var(--secondary-color)' }}>
-            No history found for this entity.
-          </p>
-        ) : (
-          <UnifiedTable
-            wrapperClassName="audit-table-wrapper"
-            columns={historyColumns}
-            rows={logs}
-            getRowKey={(entry) => entry.id}
-            headerLabelVariant="none"
-            tableClassName="audit-table"
-            highlightActiveColumn={false}
-          />
-        )}
-      </div>
-    </div>
+    <Modal onClose={onClose} className="audit-history-modal">
+      <h3>
+        Audit history: {entityType} #{entityId}
+      </h3>
+      {loading ? (
+        <p>Loading...</p>
+      ) : logs.length === 0 ? (
+        <p style={{ color: 'var(--secondary-color)' }}>
+          No history found for this entity.
+        </p>
+      ) : (
+        <UnifiedTable
+          wrapperClassName="audit-table-wrapper"
+          columns={historyColumns}
+          rows={logs}
+          getRowKey={(entry) => entry.id}
+          headerLabelVariant="none"
+          tableClassName="audit-table"
+          highlightActiveColumn={false}
+        />
+      )}
+    </Modal>
   );
 }
