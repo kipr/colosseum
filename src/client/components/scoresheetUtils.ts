@@ -1,7 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { scoreBotballCubeStacks } from '../scoring/botballCubeStacks';
 import { scoreBotballStartBoxCubes } from '../scoring/botballStartBoxCubes';
-import { getBlankFieldValue } from '../../shared/scoresheetSchema';
+import {
+  getBlankFieldValue,
+  getFieldDefaultValue,
+} from '../../shared/scoresheetSchema';
 import { stripLegacyInitialsFields } from '../../shared/teamInitials';
 
 export interface BracketTeamDisplay {
@@ -469,6 +472,63 @@ export function getRepeatableGroupRowKeys(rows: any[]): string[] {
       ),
     ),
   );
+}
+
+function isZeroOrBlank(value: unknown): boolean {
+  return (
+    value === '' ||
+    value === undefined ||
+    value === null ||
+    value === 0 ||
+    value === '0'
+  );
+}
+
+// An untouched number field whose value and default are both zero or blank
+// shows an empty input with a placeholder instead of a literal 0.
+export function shouldShowNumberPlaceholder(
+  field: any,
+  value: any,
+  touched: boolean,
+): boolean {
+  return (
+    !touched &&
+    isZeroOrBlank(value) &&
+    isZeroOrBlank(getFieldDefaultValue(field))
+  );
+}
+
+export function getDisplayedNumberValue(
+  field: any,
+  value: any,
+  touched: boolean,
+): any {
+  if (shouldShowNumberPlaceholder(field, value, touched)) {
+    return '';
+  }
+
+  return value ?? '';
+}
+
+export function getNumberPlaceholder(
+  field: any,
+  value: any,
+  touched: boolean,
+): string {
+  if (!shouldShowNumberPlaceholder(field, value, touched)) {
+    return field.placeholder || '';
+  }
+
+  const startingValue = getFieldDefaultValue(field);
+  if (
+    startingValue !== undefined &&
+    startingValue !== null &&
+    String(startingValue) !== ''
+  ) {
+    return String(startingValue);
+  }
+
+  return field.placeholder || '0';
 }
 
 export function buildEventScopedBracketSource(
