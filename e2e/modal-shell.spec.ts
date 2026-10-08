@@ -265,3 +265,126 @@ test('preview has distinct dismissal controls and uses the mobile height limit',
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toHaveCount(0);
 });
+
+test('failed modal saves show an interactive toast above the dialog', async ({
+  page,
+}) => {
+  await page.route('**/teams', (route) =>
+    route.fulfill({ status: 400, json: { error: 'Team save failed' } }),
+  );
+  const { dialog } = await openTeam(page);
+  await dialog.locator('#team-number').fill('101');
+  await dialog.locator('#team-name').fill('Keep these bots');
+  await dialog.getByRole('button', { name: 'Add Team', exact: true }).click();
+  const toast = page.locator('.toast').filter({ hasText: 'Team save failed' });
+  await expect(toast).toBeVisible();
+  // Use a real click: visibility alone misses top-layer occlusion and inertness.
+  await toast.locator('.toast-close').click({ timeout: 1500 });
+  await expect(toast).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('#team-name')).toHaveValue('Keep these bots');
+});
+
+for (const kind of ['automatic awards', 'recipients'] as const) {
+  test(`${kind} stays reachable after repeated Escape during a failed save`, async ({
+    page,
+  }) => {
+    let releaseSave!: () => void;
+    const save = new Promise<void>((resolve) => {
+      releaseSave = resolve;
+    });
+    const endpoint =
+      kind === 'recipients'
+        ? '/awards/event-awards/7/recipients'
+        : '/awards/event/1/automatic';
+    await page.route(`**${endpoint}`, async (route) => {
+      await save;
+      await route.fulfill({
+        status: 400,
+        json: { error: 'Guarded save failed' },
+      });
+    });
+    try {
+      await page.goto('/admin/events/1?view=awards');
+      const trigger = page.getByRole('button', {
+        name:
+          kind === 'recipients'
+            ? '+ Add team'
+            : 'Add automatic awards (from results)',
+        exact: true,
+      });
+      await trigger.click();
+      const dialog = page.getByRole('dialog', {
+        name:
+          kind === 'recipients' ? 'Add team recipients' : 'Automatic awards',
+      });
+      if (kind === 'recipients') await dialog.getByRole('checkbox').check();
+      await dialog
+        .getByRole('button', {
+          name: kind === 'recipients' ? 'Add 1 team' : 'Apply automatic awards',
+          exact: true,
+        })
+        .click();
+      const dismiss = dialog.getByRole('button', {
+        name: 'Dismiss dialog',
+        exact: true,
+      });
+      await expect(dismiss).toBeDisabled();
+      // No pointer interaction between key presses: Chrome can bypass cancel.
+      for (let press = 0; press < 5; press++)
+        await page.keyboard.press('Escape');
+      await expect(dialog).toBeVisible();
+      await expect(dismiss).toBeDisabled();
+      releaseSave();
+      await expect(dismiss).toBeEnabled();
+      await expect(dialog).toBeVisible();
+      if (kind === 'recipients')
+        await expect(dialog.getByRole('checkbox')).toBeChecked();
+      await dismiss.click();
+      await expect(dialog).toHaveCount(0);
+      await trigger.click();
+      await expect(dialog).toBeVisible();
+    } finally {
+      releaseSave();
+    }
+  });
+}
+
+test('toasts remain interactive as dialogs close and another dialog opens', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.route('**/teams', (route) =>
+    route.fulfill({ status: 400, json: { error: 'Persistent error' } }),
+  );
+  const { dialog } = await openTeam(page);
+  await dialog.locator('#team-number').fill('101');
+  await dialog.locator('#team-name').fill('Test bots');
+  await dialog.getByRole('button', { name: 'Add Team', exact: true }).click();
+  const toast = page.locator('.toast').filter({ hasText: 'Persistent error' });
+  await expect(toast).toBeVisible();
+  await dialog
+    .getByRole('button', { name: 'Dismiss dialog', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  // Trial clicks check real hit testing without dismissing the notification.
+  await toast.locator('.toast-close').click({ trial: true });
+  await page.getByRole('button', { name: 'About', exact: true }).click();
+  const about = page.getByRole('dialog', { name: 'About Colosseum' });
+  await expect(about).toBeVisible();
+  await toast.locator('.toast-close').click();
+  await expect(toast).toHaveCount(0);
+  await expect(about).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('native unguarded closure clears React state and allows reopening', async ({
+  page,
+}) => {
+  const { dialog, trigger } = await openTeam(page);
+  await dialog.evaluate((element) => (element as HTMLDialogElement).close());
+  await expect(page.locator('dialog.modal')).toHaveCount(0);
+  await trigger.click();
+  await expect(dialog).toBeVisible();
+});

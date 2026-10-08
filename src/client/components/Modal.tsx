@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import { registerModalLayer } from './modalLayer';
 import './Modal.css';
 
 export interface ModalProps {
@@ -31,6 +32,7 @@ export default function Modal({
   useLayoutEffect(() => {
     const dialog = dialogRef.current!;
     dialog.showModal();
+    const unregister = registerModalLayer(dialog);
     // React autofocus runs before a closed native dialog can receive focus.
     // Focus the first visible form field once the dialog is open.
     const initialFocus = Array.from(
@@ -40,6 +42,7 @@ export default function Modal({
     ).find((field) => field.getClientRects().length > 0);
     initialFocus?.focus();
     return () => {
+      unregister();
       dialog.close();
       if (triggerRef.current instanceof HTMLElement) triggerRef.current.focus();
     };
@@ -66,6 +69,14 @@ export default function Modal({
       onCancel={(event) => {
         event.preventDefault();
         if (!closeDisabled) onClose();
+      }}
+      onClose={(event) => {
+        const dialog = event.currentTarget;
+        // Ignore queued close events from cleanup or an earlier reopening.
+        if (!dialog.isConnected || dialog.open) return;
+        // Repeated Escape can bypass cancel, so reconcile the native state.
+        if (closeDisabled) dialog.showModal();
+        else onClose();
       }}
       onPointerDown={(event) => {
         backdropPointerDown.current =
