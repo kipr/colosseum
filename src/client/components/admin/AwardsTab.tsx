@@ -979,7 +979,10 @@ export default function AwardsTab() {
 
       {/* Template modal */}
       {showTemplateModal && (
-        <Modal onClose={() => setShowTemplateModal(false)} size="500px">
+        <Modal
+          onClose={() => setShowTemplateModal(false)}
+          style={{ maxWidth: '500px' }}
+        >
           <h3>{editingTemplate ? 'Edit Template' : 'New Award Template'}</h3>
           <form onSubmit={handleSaveTemplate}>
             <div className="form-group">
@@ -1058,8 +1061,9 @@ export default function AwardsTab() {
       {/* Automatic awards modal */}
       {showAutomaticModal && (
         <Modal
-          onClose={() => !applyingAutomatic && setShowAutomaticModal(false)}
-          size="640px"
+          onClose={() => setShowAutomaticModal(false)}
+          closeDisabled={applyingAutomatic}
+          style={{ maxWidth: '640px' }}
         >
           <h3>Automatic awards</h3>
           <p
@@ -1399,7 +1403,10 @@ export default function AwardsTab() {
 
       {/* Event award modal */}
       {showAwardModal && (
-        <Modal onClose={() => setShowAwardModal(false)} size="500px">
+        <Modal
+          onClose={() => setShowAwardModal(false)}
+          style={{ maxWidth: '500px' }}
+        >
           <h3>{editingAward ? 'Edit Award' : 'Add Event Award'}</h3>
           <form onSubmit={handleSaveAward}>
             {!editingAward && (

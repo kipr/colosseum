@@ -266,9 +266,9 @@ export default function AwardRecipientModal({
 
   return (
     <Modal
-      onClose={() => !saving && onClose()}
-      size="90vw"
-      style={{ width: '800px' }}
+      onClose={onClose}
+      closeDisabled={saving}
+      style={{ maxWidth: '800px', width: '90vw' }}
     >
       <h3>Add team recipients</h3>
       <p

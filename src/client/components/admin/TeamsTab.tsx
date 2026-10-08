@@ -710,7 +710,7 @@ export default function TeamsTab() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <Modal onClose={handleCloseModal} size="500px">
+        <Modal onClose={handleCloseModal} style={{ maxWidth: '500px' }}>
           <h3>{editingTeam ? 'Edit Team' : 'Add New Team'}</h3>
           <p
             style={{
@@ -829,7 +829,7 @@ export default function TeamsTab() {
 
       {/* Bulk Import Modal */}
       {showBulkImport && (
-        <Modal onClose={handleCloseBulkImport} size="700px">
+        <Modal onClose={handleCloseBulkImport} style={{ maxWidth: '700px' }}>
           <h3>Bulk Import Teams</h3>
           <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
             Paste team data below. Supports CSV, TSV, or space-separated format.
@@ -981,7 +981,7 @@ export default function TeamsTab() {
 
       {/* Bulk Check-In Modal */}
       {showBulkCheckIn && (
-        <Modal onClose={handleCloseBulkCheckIn} size="600px">
+        <Modal onClose={handleCloseBulkCheckIn} style={{ maxWidth: '600px' }}>
           <h3>Bulk Check-In Teams</h3>
           <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
             Select the registered teams you want to check in. All teams are

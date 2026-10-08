@@ -250,8 +250,8 @@ export default function TemplatePreviewModal({
   return (
     <Modal
       onClose={onClose}
-      size="95%"
-      style={{ maxHeight: '95vh', overflowY: 'auto' }}
+      className="template-preview-modal"
+      style={{ maxWidth: '95%' }}
     >
       <h3 style={{ marginBottom: '1rem' }}>Template Preview</h3>
       {loading ? (

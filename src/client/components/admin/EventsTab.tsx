@@ -682,7 +682,7 @@ export default function EventsTab() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <Modal onClose={handleCloseModal} size="600px">
+        <Modal onClose={handleCloseModal} style={{ maxWidth: '600px' }}>
           <h3>{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
           <p
             style={{

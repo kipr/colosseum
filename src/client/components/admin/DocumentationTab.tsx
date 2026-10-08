@@ -806,7 +806,7 @@ export default function DocumentationTab() {
 
       {/* Category modal */}
       {showCategoryModal && (
-        <Modal onClose={handleCloseCategoryModal} size="500px">
+        <Modal onClose={handleCloseCategoryModal} style={{ maxWidth: '500px' }}>
           <h3>{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
           <form onSubmit={handleSaveCategory}>
             {!editingCategory && (
@@ -1016,7 +1016,7 @@ export default function DocumentationTab() {
 
       {/* Bulk import modal */}
       {showBulkImport && (
-        <Modal onClose={handleCloseBulkImport} size="700px">
+        <Modal onClose={handleCloseBulkImport} style={{ maxWidth: '700px' }}>
           <h3>Bulk Import Documentation Scores</h3>
           <div className="form-group">
             <label htmlFor="bulk-doc-category">Category</label>

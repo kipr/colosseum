@@ -22,6 +22,7 @@
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:modals": "playwright test --config playwright.modal.config.ts",
     "lint": "npx eslint src",
     "pretty": "npx prettier src/ --check",
     "verify": "npm run pretty && npm run lint && npm run typecheck:server && npm run typecheck:client && npm run test:run && npm run test:e2e && npm run build",

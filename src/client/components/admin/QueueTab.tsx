@@ -1163,7 +1163,10 @@ export default function QueueTab() {
 
       {/* Populate from Brackets Modal */}
       {showPopulateModal && (
-        <Modal onClose={() => setShowPopulateModal(false)} size="500px">
+        <Modal
+          onClose={() => setShowPopulateModal(false)}
+          style={{ maxWidth: '500px' }}
+        >
           <h3>Populate Queue from Brackets</h3>
           <p
             style={{
@@ -1218,7 +1221,10 @@ export default function QueueTab() {
 
       {/* Populate from Seeding Modal */}
       {showPopulateSeedingModal && (
-        <Modal onClose={() => setShowPopulateSeedingModal(false)} size="500px">
+        <Modal
+          onClose={() => setShowPopulateSeedingModal(false)}
+          style={{ maxWidth: '500px' }}
+        >
           <h3>Populate Queue from Seeding</h3>
           <p
             style={{
@@ -1261,7 +1267,10 @@ export default function QueueTab() {
 
       {/* Add Seeding Modal */}
       {showAddSeedingModal && (
-        <Modal onClose={() => setShowAddSeedingModal(false)} size="500px">
+        <Modal
+          onClose={() => setShowAddSeedingModal(false)}
+          style={{ maxWidth: '500px' }}
+        >
           <h3>Add Seeding Round to Queue</h3>
           <p
             style={{
@@ -1346,7 +1355,10 @@ export default function QueueTab() {
 
       {/* Add Bracket Game Modal */}
       {showAddBracketModal && (
-        <Modal onClose={() => setShowAddBracketModal(false)} size="600px">
+        <Modal
+          onClose={() => setShowAddBracketModal(false)}
+          style={{ maxWidth: '600px' }}
+        >
           <h3>Add Bracket Game to Queue</h3>
           <p
             style={{

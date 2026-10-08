@@ -1102,7 +1102,7 @@ export default function ScoringTab() {
 
       {/* Bulk Accept Modal */}
       {showBulkAccept && (
-        <Modal onClose={handleCloseBulkAccept} size="600px">
+        <Modal onClose={handleCloseBulkAccept} style={{ maxWidth: '600px' }}>
           <h3>Bulk Accept Scores</h3>
           <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
             Select the pending scores you want to accept. All scores are

@@ -860,8 +860,7 @@ export default function BracketsTab() {
       {showCreateModal && (
         <Modal
           onClose={() => setShowCreateModal(false)}
-          size="90vw"
-          style={{ width: '800px' }}
+          style={{ maxWidth: '800px', width: '90vw' }}
         >
           <h3>Create Bracket</h3>
           <p
@@ -1037,7 +1036,10 @@ export default function BracketsTab() {
 
       {/* Edit Modal */}
       {showEditModal && bracketDetail && (
-        <Modal onClose={() => setShowEditModal(false)} size="500px">
+        <Modal
+          onClose={() => setShowEditModal(false)}
+          style={{ maxWidth: '500px' }}
+        >
           <h3>Edit Bracket</h3>
           <p
             style={{

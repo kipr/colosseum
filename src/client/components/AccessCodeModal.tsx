@@ -53,7 +53,7 @@ export default function AccessCodeModal({
   };
 
   return (
-    <Modal onClose={onClose} size="450px">
+    <Modal onClose={onClose} style={{ maxWidth: '450px' }}>
       <h3>Enter Access Code</h3>
       <p style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
         Template: {templateName}

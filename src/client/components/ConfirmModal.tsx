@@ -35,7 +35,7 @@ export default function ConfirmModal({
     <Modal
       onClose={onCancel}
       className={confirmStyle === 'danger' ? 'confirm-modal--danger' : ''}
-      size="450px"
+      style={{ maxWidth: '450px' }}
     >
       <h3>{title}</h3>
       <p

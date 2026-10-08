@@ -258,7 +258,7 @@ export default function ScoreSheetWizard({
   const getTotalSteps = () => 4;
 
   return (
-    <Modal onClose={onCancel} size="700px">
+    <Modal onClose={onCancel} style={{ maxWidth: '700px' }}>
       <h3>Score Sheet Wizard</h3>
       <div style={{ color: 'var(--secondary-color)', marginBottom: '1.5rem' }}>
         Step {getStepNumber()} of {getTotalSteps()}

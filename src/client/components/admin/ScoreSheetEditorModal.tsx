@@ -37,7 +37,7 @@ export default function ScoreSheetEditorModal({
   // Show choice dialog for new score sheets
   if (mode === 'choice') {
     return (
-      <Modal onClose={onClose} size="600px">
+      <Modal onClose={onClose} style={{ maxWidth: '600px' }}>
         <h3>Create New Score Sheet</h3>
         <p style={{ color: 'var(--secondary-color)', marginBottom: '2rem' }}>
           Choose how you'd like to create your score sheet:
