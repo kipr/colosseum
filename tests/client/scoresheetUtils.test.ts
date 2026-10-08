@@ -59,11 +59,12 @@ describe('scoresheetUtils', () => {
     },
   };
 
-  it('skips calculated fields whose formula is not a string', () => {
+  it('skips calculated fields whose formula is empty or not a string', () => {
     const { calculated } = calculateFormulaValues(
       [
         { id: 'a', type: 'number' },
         { id: 'bad', type: 'calculated', formula: { op: 'sum' } },
+        { id: 'empty', type: 'calculated', formula: '' },
         { id: 'good', type: 'calculated', formula: 'a * 2' },
       ],
       { a: 3 },
