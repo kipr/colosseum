@@ -347,7 +347,8 @@ export function calculateFormulaValues(
   const formulaData = { ...data, ...outputs };
 
   fields.forEach((field: any) => {
-    if (field.type === 'calculated' && field.formula) {
+    // Hand-edited or imported JSON can carry a non-string formula.
+    if (field.type === 'calculated' && typeof field.formula === 'string') {
       calculated[field.id] = evaluateFormula(
         field.formula,
         formulaData,

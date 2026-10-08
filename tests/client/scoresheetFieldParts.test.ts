@@ -126,6 +126,54 @@ describe('OptionSelect', () => {
   });
 });
 
+describe('OptionSelect unknown values', () => {
+  it('shows a stored 0 as an option instead of a stray text node', () => {
+    const html = render(
+      h(OptionSelect, { options, value: 0, showUnknownValue: true }),
+    );
+    expect(html).toContain('<option value="0" selected="">0</option>');
+    expect(html).not.toMatch(/<\/option>0/);
+  });
+});
+
+describe('RepeatableGroupChildInput', () => {
+  const dropdown = { id: 'color', type: 'dropdown', label: 'Color', options };
+
+  it('hides a value missing from the options unless asked', () => {
+    // Judges must pick a listed option; only score review keeps stale values.
+    expect(
+      render(
+        h(RepeatableGroupChildInput, {
+          childField: dropdown,
+          value: 'stale',
+          onChange: () => {},
+          required: true,
+        }),
+      ),
+    ).not.toContain('stale');
+    expect(
+      render(
+        h(RepeatableGroupChildInput, {
+          childField: dropdown,
+          value: 'stale',
+          showUnknownValue: true,
+        }),
+      ),
+    ).toContain('<option value="stale" selected="">stale</option>');
+  });
+
+  it('gives checkboxes the repeatable-group sizing class', () => {
+    expect(
+      render(
+        h(RepeatableGroupChildInput, {
+          childField: { id: 'ok', type: 'checkbox', label: 'OK' },
+          value: true,
+        }),
+      ),
+    ).toContain('class="repeatable-group-checkbox"');
+  });
+});
+
 describe('RepeatableGroupDerivedValue', () => {
   it('renders colour swatches, booleans, and blanks', () => {
     expect(

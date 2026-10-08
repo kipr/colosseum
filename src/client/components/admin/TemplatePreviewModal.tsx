@@ -34,7 +34,8 @@ interface TemplatePreviewModalProps {
 
 const NON_INPUT_FIELD_TYPES = ['section_header', 'group_header', 'calculated'];
 
-// What a judge sees before touching the sheet: schema defaults, or blanks.
+// The values a judge's sheet starts with: schema defaults, or blanks. Event
+// data (dataSource and bracket dropdowns) is not loaded for a preview.
 function getPreviewValues(fields: any[]): Record<string, any> {
   const values: Record<string, any> = {};
 
@@ -143,7 +144,6 @@ export default function TemplatePreviewModal({
           options={field.options}
           value={value}
           style={{ width: '100%' }}
-          showUnknownValue
         />
       );
     }

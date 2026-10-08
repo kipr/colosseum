@@ -153,9 +153,9 @@ export function OptionButtonGroup({
         className ? `score-button-group ${className}` : 'score-button-group'
       }
     >
-      {options?.map((opt) => (
+      {options?.map((opt, index) => (
         <button
-          key={String(opt.value)}
+          key={`${index}-${String(opt.value)}`}
           type="button"
           className={`score-option-button ${isOptionSelected(value, opt.value) ? 'selected' : ''}`}
           onClick={onSelect ? () => onSelect(opt.value) : undefined}
@@ -192,7 +192,8 @@ export function OptionSelect({
 }) {
   const hasUnknownValue =
     showUnknownValue &&
-    value &&
+    value != null &&
+    value !== '' &&
     !options?.some((opt) => String(opt.value) === String(value));
 
   return (
@@ -357,12 +358,15 @@ export function RepeatableGroupChildInput({
   onChange,
   disabled,
   required,
+  showUnknownValue,
 }: {
   childField: any;
   value: any;
   onChange?: (value: any) => void;
   disabled?: boolean;
   required?: boolean;
+  // Review of stored scores only; a judge must pick a listed option.
+  showUnknownValue?: boolean;
 }) {
   const isDisabled = disabled || !onChange;
 
@@ -406,7 +410,7 @@ export function RepeatableGroupChildInput({
         onChange={onChange}
         required={required}
         disabled={isDisabled}
-        showUnknownValue
+        showUnknownValue={showUnknownValue}
       />
     );
   }

@@ -59,6 +59,18 @@ describe('scoresheetUtils', () => {
     },
   };
 
+  it('skips calculated fields whose formula is not a string', () => {
+    const { calculated } = calculateFormulaValues(
+      [
+        { id: 'a', type: 'number' },
+        { id: 'bad', type: 'calculated', formula: { op: 'sum' } },
+        { id: 'good', type: 'calculated', formula: 'a * 2' },
+      ],
+      { a: 3 },
+    );
+    expect(calculated).toEqual({ good: 6 });
+  });
+
   it('builds new DE schemas with an event-scoped bracket source', () => {
     const schema = buildDoubleEliminationSchema({
       title: 'Shared DE Sheet',

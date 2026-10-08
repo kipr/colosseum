@@ -478,6 +478,7 @@ export default function ScoreViewModal({
         handleRepeatableGroupInputChange(field, rowIndex, childField, nextValue)
       }
       disabled={isReadOnly || childField.autoPopulated}
+      showUnknownValue
     />
   );
 

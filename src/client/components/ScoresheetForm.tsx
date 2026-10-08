@@ -1788,7 +1788,7 @@ export default function ScoresheetForm({ template }: ScoresheetFormProps) {
               handleInputChange(field.id, nextValue, field)
             }
             required={field.required}
-            style={{ width: '100%' }}
+            style={{ width: '100%', textAlign: 'left' }}
           />
         )}
         {field.type === 'buttons' && (
