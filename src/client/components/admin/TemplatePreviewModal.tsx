@@ -1,14 +1,56 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useState } from 'react';
-import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
-import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
+import {
+  calculateFormulaValues,
+  calculateRepeatableGroupDerivedRows,
+  getDisplayedNumberValue,
+  getNumberPlaceholder,
+  normalizeRepeatableGroupRows,
+} from '../scoresheetUtils';
+import {
+  getBlankFieldValue,
+  getFieldDefaultValue,
+} from '../../../shared/scoresheetSchema';
 import { apiFetch } from '../../utils/api';
 import Modal from '../Modal';
+import {
+  CalculatedField,
+  OptionButtonGroup,
+  OptionSelect,
+  RepeatableGroupChildInput,
+  RepeatableGroupTable,
+  ScoreFieldWrapper,
+  ScoresheetHeading,
+  getDerivedColumns,
+  getRepeatableChildColumns,
+  getRepeatableGroupLiveDerivedColumns,
+} from '../scoresheet/ScoresheetFieldParts';
 import '../../pages/Scoresheet.css';
 
 interface TemplatePreviewModalProps {
   templateId: number;
   onClose: () => void;
+}
+
+const NON_INPUT_FIELD_TYPES = ['section_header', 'group_header', 'calculated'];
+
+// The values a judge's sheet starts with: schema defaults, or blanks. Event
+// data (dataSource and bracket dropdowns) is not loaded for a preview.
+function getPreviewValues(fields: any[]): Record<string, any> {
+  const values: Record<string, any> = {};
+
+  fields.forEach((field: any) => {
+    if (field.type === 'repeatableGroup') {
+      values[field.id] = normalizeRepeatableGroupRows(
+        getFieldDefaultValue(field),
+        field,
+      );
+    } else if (!NON_INPUT_FIELD_TYPES.includes(field.type)) {
+      values[field.id] = getBlankFieldValue(field);
+    }
+  });
+
+  return values;
 }
 
 export default function TemplatePreviewModal({
@@ -37,168 +79,98 @@ export default function TemplatePreviewModal({
     }
   };
 
-  const getPreviewRepeatableGroupRows = (field: any) => {
-    const startingValue = getFieldDefaultValue(field);
+  const fields: any[] = template?.schema?.fields ?? [];
+  const previewValues = getPreviewValues(fields);
+  const calculatedValues = calculateFormulaValues(
+    fields,
+    previewValues,
+  ).calculated;
 
-    return normalizeRepeatableGroupRows(startingValue, field);
+  const renderRepeatableGroup = (field: any) => {
+    const rows = previewValues[field.id];
+    const columns = [
+      ...getRepeatableChildColumns(field, rows, (childField, value) => (
+        <RepeatableGroupChildInput childField={childField} value={value} />
+      )),
+      ...getDerivedColumns(
+        getRepeatableGroupLiveDerivedColumns(field),
+        calculateRepeatableGroupDerivedRows(field, rows),
+      ),
+    ];
+
+    return (
+      <RepeatableGroupTable
+        key={field.id}
+        title={field.label}
+        suffix={field.suffix}
+        rowLabel={field.rowLabel || 'Row'}
+        rowCount={rows.length}
+        columns={columns}
+      />
+    );
   };
 
-  const renderRepeatableGroupInput = (childField: any, value: any) => {
-    if (childField.type === 'text') {
+  const renderFieldInput = (field: any, value: any) => {
+    if (field.type === 'text') {
       return (
         <input
           type="text"
-          className="score-input repeatable-group-input"
-          placeholder={childField.placeholder || ''}
+          className="score-input"
+          placeholder={field.placeholder || ''}
           value={value ?? ''}
           disabled
         />
       );
     }
 
-    if (childField.type === 'number') {
+    if (field.type === 'number') {
       return (
         <input
           type="number"
-          className="score-input repeatable-group-number"
-          min={childField.min ?? 0}
-          max={childField.max}
-          step={childField.step || 1}
-          value={value ?? ''}
-          placeholder={childField.placeholder || '0'}
+          className="score-input"
+          min={field.min ?? 0}
+          max={field.max}
+          step={field.step || 1}
+          value={getDisplayedNumberValue(field, value, false)}
+          placeholder={getNumberPlaceholder(field, value, false)}
           disabled
         />
       );
     }
 
-    if (childField.type === 'dropdown') {
+    if (field.type === 'dropdown') {
       return (
-        <select
-          className="score-input repeatable-group-input"
-          value={value ?? ''}
-          disabled
-        >
-          <option value="">Select...</option>
-          {childField.options?.map((opt: any) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-          {value &&
-            !childField.options?.some(
-              (opt: any) => String(opt.value) === String(value),
-            ) && <option value={value}>{value}</option>}
-        </select>
+        <OptionSelect
+          options={field.options}
+          value={value}
+          style={{ width: '100%' }}
+        />
       );
     }
 
-    if (childField.type === 'buttons') {
-      return (
-        <div className="score-button-group repeatable-group-buttons">
-          {childField.options?.map((opt: any) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-              disabled
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      );
+    if (field.type === 'buttons') {
+      return <OptionButtonGroup options={field.options} value={value} />;
     }
 
-    if (childField.type === 'checkbox') {
+    if (field.type === 'checkbox') {
       return <input type="checkbox" checked={!!value} disabled />;
     }
 
     return null;
   };
 
-  const renderRepeatableGroup = (field: any) => {
-    const rows = getPreviewRepeatableGroupRows(field);
-    const supportedFields = (field.fields || []).filter((childField: any) =>
-      ['text', 'number', 'dropdown', 'buttons', 'checkbox'].includes(
-        childField.type,
-      ),
-    );
-
-    return (
-      <div key={field.id} className="repeatable-group">
-        <div className="repeatable-group-title">
-          <span>{field.label}</span>
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </div>
-        <div className="repeatable-group-table">
-          <div className="repeatable-group-header">
-            <div className="repeatable-group-row-label">
-              {field.rowLabel || 'Row'}
-            </div>
-            {supportedFields.map((childField: any) => (
-              <div
-                key={childField.id}
-                className="repeatable-group-column-label"
-              >
-                {childField.label}
-              </div>
-            ))}
-          </div>
-          {rows.map((row, rowIndex) => (
-            <div key={rowIndex} className="repeatable-group-row">
-              <div className="repeatable-group-row-label">
-                {field.rowLabel || 'Row'} {rowIndex + 1}
-              </div>
-              {supportedFields.map((childField: any) => (
-                <div key={childField.id} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {childField.label}
-                  </label>
-                  {renderRepeatableGroupInput(childField, row[childField.id])}
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
-
   const renderField = (field: any) => {
-    if (field.type === 'section_header') {
-      return (
-        <div key={field.id} className="section-header">
-          {field.label}
-        </div>
-      );
-    }
-
-    if (field.type === 'group_header') {
-      return (
-        <div key={field.id} className="group-header">
-          {field.label}
-        </div>
-      );
+    if (field.type === 'section_header' || field.type === 'group_header') {
+      return <ScoresheetHeading key={field.id} field={field} />;
     }
 
     if (field.type === 'calculated') {
-      const className = field.isGrandTotal
-        ? 'grand-total-field'
-        : field.isTotal
-          ? 'total-field'
-          : 'subtotal-field';
       return (
-        <div key={field.id} className={`score-field ${className}`}>
-          <label
-            className="score-label"
-            style={{
-              fontWeight: field.isTotal || field.isGrandTotal ? 700 : 600,
-            }}
-          >
-            {field.label}
-          </label>
-          <div className="calculated-value">0</div>
-        </div>
+        <CalculatedField
+          key={field.id}
+          field={field}
+          value={calculatedValues[field.id] || 0}
+        />
       );
     }
 
@@ -207,43 +179,9 @@ export default function TemplatePreviewModal({
     }
 
     return (
-      <div key={field.id} className="score-field">
-        <label className="score-label">
-          {field.label}
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </label>
-        {field.type === 'text' && (
-          <input
-            type="text"
-            className="score-input"
-            placeholder={field.placeholder || ''}
-            disabled
-          />
-        )}
-        {field.type === 'number' && (
-          <input type="number" className="score-input" value="0" disabled />
-        )}
-        {field.type === 'dropdown' && (
-          <select className="score-input" disabled>
-            <option>Select...</option>
-          </select>
-        )}
-        {field.type === 'buttons' && (
-          <div className="score-button-group">
-            {field.options?.map((opt: any) => (
-              <button
-                key={opt.value}
-                type="button"
-                className="score-option-button"
-                disabled
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-        )}
-        {field.type === 'checkbox' && <input type="checkbox" disabled />}
-      </div>
+      <ScoreFieldWrapper key={field.id} field={field}>
+        {renderFieldInput(field, previewValues[field.id])}
+      </ScoreFieldWrapper>
     );
   };
 

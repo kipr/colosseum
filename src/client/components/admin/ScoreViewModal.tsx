@@ -13,6 +13,19 @@ import {
   normalizeRepeatableGroupRows,
   shouldAutoAppendRepeatableGroupRow,
 } from '../scoresheetUtils';
+import {
+  CalculatedField,
+  OptionButtonGroup,
+  OptionSelect,
+  RepeatableGroupChildInput,
+  RepeatableGroupTable,
+  ScoreFieldWrapper,
+  ScoresheetHeading,
+  getDerivedColumns,
+  getRepeatableChildColumns,
+  type RepeatableGroupColumn,
+  type RepeatableGroupDerivedColumnDef,
+} from '../scoresheet/ScoresheetFieldParts';
 import type { BracketResultType } from '../../../shared/bracketResult';
 import {
   isLegacyInitialsField,
@@ -279,20 +292,8 @@ export default function ScoreViewModal({
   };
 
   const renderField = (field: any) => {
-    if (field.type === 'section_header') {
-      return (
-        <div key={field.id} className="section-header">
-          {field.label}
-        </div>
-      );
-    }
-
-    if (field.type === 'group_header') {
-      return (
-        <div key={field.id} className="group-header">
-          {field.label}
-        </div>
-      );
+    if (field.type === 'section_header' || field.type === 'group_header') {
+      return <ScoresheetHeading key={field.id} field={field} />;
     }
 
     if (field.type === 'calculated') {
@@ -300,24 +301,7 @@ export default function ScoreViewModal({
         calculatedValues[field.id] !== undefined
           ? calculatedValues[field.id]
           : score.score_data[field.id]?.value || 0;
-      const className = field.isGrandTotal
-        ? 'grand-total-field'
-        : field.isTotal
-          ? 'total-field'
-          : 'subtotal-field';
-      return (
-        <div key={field.id} className={`score-field ${className}`}>
-          <label
-            className="score-label"
-            style={{
-              fontWeight: field.isTotal || field.isGrandTotal ? 700 : 600,
-            }}
-          >
-            {field.label}
-          </label>
-          <div className="calculated-value">{calcValue}</div>
-        </div>
-      );
+      return <CalculatedField key={field.id} field={field} value={calcValue} />;
     }
 
     if (field.type === 'repeatableGroup') {
@@ -325,38 +309,15 @@ export default function ScoreViewModal({
     }
 
     const value = formData[field.id] !== undefined ? formData[field.id] : '';
-    const isCompact =
-      field.type === 'number' ||
-      field.type === 'buttons' ||
-      field.type === 'checkbox';
-
-    if (field.isMultiplier) {
-      return (
-        <div key={field.id} className="score-field multiplier-field">
-          <label className="score-label">
-            <span className="multiplier-label">Multiplier:</span> {field.label}
-            {field.suffix && <span className="multiplier">{field.suffix}</span>}
-          </label>
-          {renderFieldInput(field, value, isCompact)}
-        </div>
-      );
-    }
 
     return (
-      <div
-        key={field.id}
-        className={`score-field ${isCompact ? 'compact' : ''}`}
-      >
-        <label className="score-label">
-          {field.label}
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </label>
-        {renderFieldInput(field, value, isCompact)}
-      </div>
+      <ScoreFieldWrapper key={field.id} field={field}>
+        {renderFieldInput(field, value)}
+      </ScoreFieldWrapper>
     );
   };
 
-  const renderFieldInput = (field: any, value: any, isCompact: boolean) => {
+  const renderFieldInput = (field: any, value: any) => {
     const disabled = isReadOnly || field.autoPopulated;
 
     return (
@@ -380,42 +341,22 @@ export default function ScoreViewModal({
           />
         )}
         {field.type === 'dropdown' && (
-          <select
-            className={`score-input ${isCompact ? 'compact' : ''}`}
+          <OptionSelect
+            options={field.options}
             value={value}
-            onChange={(e) => handleInputChange(field.id, e.target.value)}
+            onChange={(nextValue) => handleInputChange(field.id, nextValue)}
             disabled={disabled}
-            style={{ width: isCompact ? '70px' : '100%' }}
-          >
-            <option value="">Select...</option>
-            {field.options?.map((opt: any) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-            {/* If the current value isn't in options, show it anyway */}
-            {value &&
-              !field.options?.some(
-                (opt: any) => String(opt.value) === String(value),
-              ) && <option value={value}>{value}</option>}
-          </select>
+            style={{ width: '100%' }}
+            showUnknownValue
+          />
         )}
         {field.type === 'buttons' && (
-          <div className="score-button-group">
-            {field.options?.map((opt: any) => (
-              <button
-                key={opt.value}
-                type="button"
-                className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-                onClick={() =>
-                  !isReadOnly && handleInputChange(field.id, opt.value)
-                }
-                disabled={isReadOnly}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          <OptionButtonGroup
+            options={field.options}
+            value={value}
+            onSelect={(nextValue) => handleInputChange(field.id, nextValue)}
+            disabled={isReadOnly}
+          />
         )}
         {field.type === 'checkbox' && (
           <input
@@ -461,7 +402,10 @@ export default function ScoreViewModal({
     return Array.isArray(submittedRows) ? submittedRows : [];
   };
 
-  const getRepeatableGroupDerivedColumns = (field: any, derivedRows: any[]) => {
+  const getRepeatableGroupDerivedColumns = (
+    field: any,
+    derivedRows: any[],
+  ): RepeatableGroupDerivedColumnDef[] => {
     const columns =
       field?.derived?.type === 'botballStartBoxCubes'
         ? [{ key: 'subtotal', label: 'Value' }]
@@ -496,113 +440,28 @@ export default function ScoreViewModal({
     });
   };
 
-  const renderDerivedValue = (value: any, columnKey: string) => {
-    if (value === undefined || value === null || value === '') {
-      return '';
-    }
-
-    if (columnKey === 'sortedColor' || columnKey === 'color') {
-      return (
-        <span
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: '0.35rem',
-          }}
-        >
-          <span
-            aria-hidden
-            style={{
-              width: '0.75rem',
-              height: '0.75rem',
-              borderRadius: '999px',
-              border: '1px solid var(--border-color)',
-              backgroundColor: String(value),
-              display: 'inline-block',
-            }}
-          />
-          {String(value)}
-        </span>
-      );
-    }
-
-    if (typeof value === 'boolean') {
-      return value ? 'Yes' : 'No';
-    }
-
-    return String(value);
-  };
-
   const renderRepeatableGroup = (field: any) => {
     const rows = getRepeatableGroupRowsForRender(field);
-    const supportedFields = (field.fields || []).filter((childField: any) =>
-      ['text', 'number', 'dropdown', 'buttons', 'checkbox'].includes(
-        childField.type,
-      ),
-    );
     const derivedRows = getRepeatableGroupDerivedRows(field, rows);
-    const derivedColumns = getRepeatableGroupDerivedColumns(field, derivedRows);
+    const columns = [
+      ...getRepeatableChildColumns(field, rows, (childField, value, rowIndex) =>
+        renderRepeatableGroupInput(field, rowIndex, childField, value),
+      ),
+      ...getDerivedColumns(
+        getRepeatableGroupDerivedColumns(field, derivedRows),
+        derivedRows,
+      ),
+    ];
 
     return (
-      <div key={field.id} className="repeatable-group">
-        <div className="repeatable-group-title">
-          <span>{field.label}</span>
-          {field.suffix && <span className="multiplier">{field.suffix}</span>}
-        </div>
-        <div className="repeatable-group-table">
-          <div className="repeatable-group-header">
-            <div className="repeatable-group-row-label">
-              {field.rowLabel || 'Row'}
-            </div>
-            {supportedFields.map((childField: any) => (
-              <div
-                key={childField.id}
-                className="repeatable-group-column-label"
-              >
-                {childField.label}
-              </div>
-            ))}
-            {derivedColumns.map((column) => (
-              <div key={column.key} className="repeatable-group-column-label">
-                {column.label}
-              </div>
-            ))}
-          </div>
-          {rows.map((row, rowIndex) => (
-            <div key={rowIndex} className="repeatable-group-row">
-              <div className="repeatable-group-row-label">
-                {field.rowLabel || 'Row'} {rowIndex + 1}
-              </div>
-              {supportedFields.map((childField: any) => (
-                <div key={childField.id} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {childField.label}
-                  </label>
-                  {renderRepeatableGroupInput(
-                    field,
-                    rowIndex,
-                    childField,
-                    row[childField.id],
-                  )}
-                </div>
-              ))}
-              {derivedColumns.map((column) => (
-                <div key={column.key} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {column.label}
-                  </label>
-                  <div className="calculated-value" style={{ width: 'auto' }}>
-                    {renderDerivedValue(
-                      derivedRows[rowIndex]?.[column.key],
-                      column.key,
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      <RepeatableGroupTable
+        key={field.id}
+        title={field.label}
+        suffix={field.suffix}
+        rowLabel={field.rowLabel || 'Row'}
+        rowCount={rows.length}
+        columns={columns}
+      />
     );
   };
 
@@ -611,188 +470,50 @@ export default function ScoreViewModal({
     rowIndex: number,
     childField: any,
     value: any,
-  ) => {
-    const disabled = isReadOnly || childField.autoPopulated;
-
-    if (childField.type === 'text') {
-      return (
-        <input
-          type="text"
-          className="score-input repeatable-group-input"
-          placeholder={childField.placeholder || ''}
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    if (childField.type === 'number') {
-      return (
-        <input
-          type="number"
-          className="score-input repeatable-group-number"
-          min={childField.min ?? 0}
-          max={childField.max}
-          step={childField.step || 1}
-          value={value ?? ''}
-          placeholder={childField.placeholder || '0'}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    if (childField.type === 'dropdown') {
-      return (
-        <select
-          className="score-input repeatable-group-input"
-          value={value ?? ''}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.value,
-            )
-          }
-          disabled={disabled}
-        >
-          <option value="">Select...</option>
-          {childField.options?.map((opt: any) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-          {value &&
-            !childField.options?.some(
-              (opt: any) => String(opt.value) === String(value),
-            ) && <option value={value}>{value}</option>}
-        </select>
-      );
-    }
-
-    if (childField.type === 'buttons') {
-      return (
-        <div className="score-button-group repeatable-group-buttons">
-          {childField.options?.map((opt: any) => (
-            <button
-              key={opt.value}
-              type="button"
-              className={`score-option-button ${String(value) === String(opt.value) ? 'selected' : ''}`}
-              onClick={() =>
-                handleRepeatableGroupInputChange(
-                  field,
-                  rowIndex,
-                  childField,
-                  opt.value,
-                )
-              }
-              disabled={disabled}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
-      );
-    }
-
-    if (childField.type === 'checkbox') {
-      return (
-        <input
-          type="checkbox"
-          checked={!!value}
-          onChange={(e) =>
-            handleRepeatableGroupInputChange(
-              field,
-              rowIndex,
-              childField,
-              e.target.checked,
-            )
-          }
-          disabled={disabled}
-        />
-      );
-    }
-
-    return null;
-  };
+  ) => (
+    <RepeatableGroupChildInput
+      childField={childField}
+      value={value}
+      onChange={(nextValue) =>
+        handleRepeatableGroupInputChange(field, rowIndex, childField, nextValue)
+      }
+      disabled={isReadOnly || childField.autoPopulated}
+      showUnknownValue
+    />
+  );
 
   const renderFallbackRepeatableGroup = (fieldId: string, data: any) => {
     const rows = Array.isArray(data.value) ? data.value : [];
     const derivedRows = Array.isArray(data.derived?.rows)
       ? data.derived.rows
       : [];
-    const rowKeys = getRepeatableGroupRowKeys(rows);
-    const derivedColumns = getRepeatableGroupDerivedColumns(
-      undefined,
-      derivedRows,
-    );
+    const columns: RepeatableGroupColumn[] = [
+      ...getRepeatableGroupRowKeys(rows).map((key) => ({
+        key: `field:${key}`,
+        label: key,
+        renderCell: (rowIndex: number) => (
+          <input
+            type="text"
+            className="score-input repeatable-group-input"
+            value={String(rows[rowIndex]?.[key] ?? '')}
+            disabled
+          />
+        ),
+      })),
+      ...getDerivedColumns(
+        getRepeatableGroupDerivedColumns(undefined, derivedRows),
+        derivedRows,
+      ),
+    ];
 
     return (
-      <div key={fieldId} className="repeatable-group">
-        <div className="repeatable-group-title">{data.label || fieldId}</div>
-        <div className="repeatable-group-table">
-          <div className="repeatable-group-header">
-            <div className="repeatable-group-row-label">Row</div>
-            {rowKeys.map((key) => (
-              <div key={key} className="repeatable-group-column-label">
-                {key}
-              </div>
-            ))}
-            {derivedColumns.map((column) => (
-              <div key={column.key} className="repeatable-group-column-label">
-                {column.label}
-              </div>
-            ))}
-          </div>
-          {rows.map((row: any, rowIndex: number) => (
-            <div key={rowIndex} className="repeatable-group-row">
-              <div className="repeatable-group-row-label">
-                Row {rowIndex + 1}
-              </div>
-              {rowKeys.map((key) => (
-                <div key={key} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">{key}</label>
-                  <input
-                    type="text"
-                    className="score-input repeatable-group-input"
-                    value={String(row?.[key] ?? '')}
-                    disabled
-                  />
-                </div>
-              ))}
-              {derivedColumns.map((column) => (
-                <div key={column.key} className="repeatable-group-control">
-                  <label className="repeatable-group-mobile-label">
-                    {column.label}
-                  </label>
-                  <div className="calculated-value" style={{ width: 'auto' }}>
-                    {renderDerivedValue(
-                      derivedRows[rowIndex]?.[column.key],
-                      column.key,
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
+      <RepeatableGroupTable
+        key={fieldId}
+        title={data.label || fieldId}
+        rowLabel="Row"
+        rowCount={rows.length}
+        columns={columns}
+      />
     );
   };
 
