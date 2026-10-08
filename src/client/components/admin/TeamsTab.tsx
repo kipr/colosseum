@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { UnifiedTable } from '../table';
+import { compareValues, UnifiedTable, useTableSort } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -29,7 +29,6 @@ type SortField =
   | 'display_name'
   | 'status'
   | 'checked_in_at';
-type SortDirection = 'asc' | 'desc';
 
 const STATUS_OPTIONS: { value: TeamStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All Statuses' },
@@ -159,8 +158,8 @@ export default function TeamsTab() {
   const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<TeamStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<SortField>('team_number');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } =
+    useTableSort<SortField>('team_number');
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -236,8 +235,8 @@ export default function TeamsTab() {
 
     // Sort
     result.sort((a, b) => {
-      let aVal: string | number | null;
-      let bVal: string | number | null;
+      let aVal: string | number;
+      let bVal: string | number;
 
       switch (sortField) {
         case 'team_number':
@@ -264,22 +263,11 @@ export default function TeamsTab() {
           return 0;
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
+      return compareValues(aVal, bVal, sortDirection);
     });
 
     return result;
   }, [teams, searchQuery, sortField, sortDirection]);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
 
   // Modal handlers
   const handleCreateNew = () => {
@@ -694,7 +682,7 @@ export default function TeamsTab() {
             getRowKey={(team) => team.id}
             activeSortId={sortField}
             sortDirection={sortDirection}
-            onSort={(id) => handleSort(id as SortField)}
+            onSort={onSort}
             headerLabelVariant="none"
             sortableHeaderClassName=""
           />

@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   UnifiedTable,
   compareLocaleString,
   compareNullableNumber,
+  useTableSort,
 } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import type { TeamSummary } from '../../types/teams';
@@ -168,7 +169,6 @@ export function buildTeamRowData<S extends RoundScore, R extends RankingBase>(
 
 /** Sort field: meta keys or `round:${n}` for round score columns */
 type SortField = string;
-type SortDirection = 'asc' | 'desc';
 type SeedingTableVariant = 'default' | 'spectator';
 
 function roundField(round: number): string {
@@ -198,10 +198,9 @@ export default function SeedingScoresTable<
   variant = 'default',
 }: SeedingScoresTableProps<S, R>) {
   type Row = TeamRowData<S, R>;
-  const [sortField, setSortField] = useState<SortField>(
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>(
     variant === 'spectator' ? 'seed_rank' : 'team_number',
   );
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const isSpectator = variant === 'spectator';
 
   const sortedTeamRowData = useMemo(() => {
@@ -249,18 +248,6 @@ export default function SeedingScoresTable<
       }
     });
   }, [teamRowData, sortField, sortDirection, config]);
-
-  const handleSort = useCallback(
-    (field: string) => {
-      if (sortField === field) {
-        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-      } else {
-        setSortField(field);
-        setSortDirection('asc');
-      }
-    },
-    [sortField, sortDirection],
-  );
 
   const stickyRank = isSpectator ? 'sticky-col sticky-col-rank' : '';
   const stickyNum = isSpectator ? 'sticky-col sticky-col-team-number' : '';
@@ -381,7 +368,7 @@ export default function SeedingScoresTable<
         getRowKey={(row) => row.team.id}
         activeSortId={sortField}
         sortDirection={sortDirection}
-        onSort={handleSort}
+        onSort={onSort}
         headerLabelVariant="seeding"
         wrapperClassName={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
         tableClassName={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}

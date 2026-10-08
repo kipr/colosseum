@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   UnifiedTable,
   compareLocaleString,
   compareNullableNumber,
+  useTableSort,
 } from '../table';
-import type { SortDirection, UnifiedColumnDef } from '../table';
+import type { UnifiedColumnDef } from '../table';
 import {
   awardWeight,
   compareByAwardLoad,
@@ -52,8 +53,8 @@ export default function AwardRecipientModal({
     () => new Set(),
   );
   const [filter, setFilter] = useState('');
-  const [sortField, setSortField] = useState<SortField>('weighted');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } =
+    useTableSort<SortField>('weighted');
 
   // Keep latest onError without reloading when the parent passes a new inline callback.
   const onErrorRef = useRef(onError);
@@ -90,18 +91,6 @@ export default function AwardRecipientModal({
       cancelled = true;
     };
   }, [eventId]);
-
-  const handleSort = useCallback((sortId: string) => {
-    const field = sortId as SortField;
-    setSortField((prev) => {
-      if (prev === field) {
-        setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
-        return prev;
-      }
-      setSortDirection(field === 'weighted' ? 'asc' : 'asc');
-      return field;
-    });
-  }, []);
 
   const filteredSortedRows = useMemo((): RecipientRow[] => {
     const q = filter.trim().toLowerCase();
@@ -313,7 +302,7 @@ export default function AwardRecipientModal({
             getRowKey={(r) => r.team_id}
             activeSortId={sortField}
             sortDirection={sortDirection}
-            onSort={handleSort}
+            onSort={onSort}
             rowClassName={(r) =>
               r.alreadyRecipient ? 'award-recipient-already' : ''
             }

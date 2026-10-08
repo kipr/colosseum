@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { UnifiedTable } from '../table';
+import { applySortDirection, UnifiedTable, useTableSort } from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -81,7 +81,6 @@ interface QueueParticipant {
 const STATUS_ORDER: readonly QueueStatus[] = QUEUE_STATUSES;
 
 type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
-type SortDirection = 'asc' | 'desc';
 
 const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'all', label: 'All Types' },
@@ -184,8 +183,8 @@ export default function QueueTab() {
     'scored',
   ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
-  const [sortField, setSortField] = useState<SortField>('gameNumber');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } =
+    useTableSort<SortField>('gameNumber');
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [presenceUpdatingIds, setPresenceUpdatingIds] = useState<Set<number>>(
     () => new Set(),
@@ -841,22 +840,13 @@ export default function QueueTab() {
       }
 
       if (valueCompare !== 0) {
-        return sortDirection === 'asc' ? valueCompare : -valueCompare;
+        return applySortDirection(valueCompare, sortDirection);
       }
 
       return a.queue_position - b.queue_position;
     });
     return sorted;
   }, [queue, sortDirection, sortField]);
-
-  const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-      return;
-    }
-    setSortField(field);
-    setSortDirection('asc');
-  };
 
   // No event selected
   if (!selectedEventId) {
@@ -1141,7 +1131,7 @@ export default function QueueTab() {
             getRowKey={(item) => item.id}
             activeSortId={sortField}
             sortDirection={sortDirection}
-            onSort={(id) => handleSort(id as SortField)}
+            onSort={onSort}
             headerLabelVariant="none"
             sortButtonClassName="queue-sort-button unified-table-sort-btn"
             rowClassName={(item) => {

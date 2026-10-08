@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { UnifiedTable } from '../table';
-import type { SortDirection, UnifiedColumnDef } from '../table/types';
+import { compareValues, UnifiedTable, useTableSort } from '../table';
+import type { UnifiedColumnDef } from '../table/types';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -193,8 +193,8 @@ export default function DocumentationTab() {
     | 'overall_score'
     | `cat_${number}`;
 
-  const [sortField, setSortField] = useState<SortField>('team_number');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } =
+    useTableSort<SortField>('team_number');
 
   const mergedTeams = useMemo(() => {
     const merged = teams.map((team) => {
@@ -224,24 +224,10 @@ export default function DocumentationTab() {
         return 0;
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
+      return compareValues(aVal, bVal, sortDirection);
     });
     return merged;
   }, [teams, scores, sortField, sortDirection]);
-
-  const handleSort = useCallback(
-    (field: SortField) => {
-      if (sortField === field) {
-        setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
-      } else {
-        setSortField(field);
-        setSortDirection('asc');
-      }
-    },
-    [sortField],
-  );
 
   if (!selectedEventId) {
     return (
@@ -796,7 +782,7 @@ export default function DocumentationTab() {
             wrapperClassName="doc-scores-table-wrapper"
             activeSortId={sortField}
             sortDirection={sortDirection}
-            onSort={(sortId) => handleSort(sortId as SortField)}
+            onSort={onSort}
             sortableHeaderClassName="doc-sortable"
             activeSortClassName="active-sort-col"
             headerLabelVariant="none"

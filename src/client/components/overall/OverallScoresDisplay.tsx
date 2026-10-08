@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { UnifiedTable } from '../table';
+import { useMemo } from 'react';
+import { compareValues, UnifiedTable, useTableSort } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
 
@@ -29,8 +29,6 @@ type SortField =
   | 'weighted_de_score'
   | 'total';
 
-type SortDirection = 'asc' | 'desc';
-
 function formatScore(val: number): string {
   return val.toFixed(4);
 }
@@ -41,8 +39,10 @@ export default function OverallScoresDisplay({
   showDoubleSeeding = false,
 }: OverallScoresDisplayProps) {
   const isSpectator = variant === 'spectator';
-  const [sortField, setSortField] = useState<SortField>('total');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>(
+    'total',
+    (field) => (field === 'total' ? 'desc' : 'asc'),
+  );
 
   const sortedRows = useMemo(() => {
     const sorted = [...rows].sort((a, b) => {
@@ -82,27 +82,11 @@ export default function OverallScoresDisplay({
           return 0;
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
+      return compareValues(aVal, bVal, sortDirection);
     });
 
     return sorted;
   }, [rows, sortDirection, sortField]);
-
-  const handleSort = useCallback(
-    (field: string) => {
-      const f = field as SortField;
-      if (sortField === f) {
-        setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
-        return;
-      }
-
-      setSortField(f);
-      setSortDirection(f === 'total' ? 'desc' : 'asc');
-    },
-    [sortField],
-  );
 
   const stickyNum = isSpectator
     ? 'sticky-col sticky-col-team-number overall-team-number-col'
@@ -236,7 +220,7 @@ export default function OverallScoresDisplay({
           getRowKey={(row) => row.team_id}
           activeSortId={sortField}
           sortDirection={sortDirection}
-          onSort={handleSort}
+          onSort={onSort}
           headerLabelVariant="doc"
           wrapperClassName={`doc-scores-table-wrapper${isSpectator ? ' overall-scores-table-wrapper-spectator' : ''}`}
           tableClassName={`doc-calculator-table${isSpectator ? ' overall-scores-table-spectator' : ''}`}

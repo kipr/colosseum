@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { BracketEntryWithRank } from '../../types/brackets';
-import { UnifiedTable } from '../table';
+import { applySortDirection, UnifiedTable, useTableSort } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../seeding/SeedingTables.css';
 
@@ -37,7 +37,6 @@ type SortField =
   | 'raw_double_seeding'
   | 'weighted_de'
   | 'total';
-type SortDirection = 'asc' | 'desc';
 
 function getTeamName(entry: BracketEntryWithRank): string {
   return entry.team_name ?? entry.display_name ?? '';
@@ -50,8 +49,7 @@ function formatScore(value: number): string {
 export default function BracketRankingView(props: BracketRankingViewProps) {
   const { rankings, weight, loading, onRefresh, variant = 'default' } = props;
   const refreshedRef = useRef(false);
-  const [sortField, setSortField] = useState<SortField>('place');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>('place');
   const isSpectator = variant === 'spectator';
 
   useEffect(() => {
@@ -119,23 +117,10 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
       if (compare === 0) {
         return a.id - b.id;
       }
-      return sortDirection === 'asc' ? compare : -compare;
+      return applySortDirection(compare, sortDirection);
     });
     return sorted;
   }, [realEntries, sortDirection, sortField]);
-
-  const handleSort = useCallback(
-    (field: string) => {
-      const f = field as SortField;
-      if (sortField === f) {
-        setSortDirection((dir) => (dir === 'asc' ? 'desc' : 'asc'));
-      } else {
-        setSortField(f);
-        setSortDirection('asc');
-      }
-    },
-    [sortField],
-  );
 
   const stickyRank = isSpectator ? 'sticky-col sticky-col-rank' : '';
   const stickyNum = isSpectator ? 'sticky-col sticky-col-team-number' : '';
@@ -324,7 +309,7 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
         getRowKey={(entry) => entry.id}
         activeSortId={sortField}
         sortDirection={sortDirection}
-        onSort={handleSort}
+        onSort={onSort}
         headerLabelVariant="seeding"
         rowClassName={(entry) => getRankRowClass(entry.final_rank)}
         wrapperClassName={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}

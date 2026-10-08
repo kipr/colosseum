@@ -8,7 +8,14 @@ export type {
   UnifiedTableProps,
   SortDirection,
 } from './types';
-export { compareLocaleString, compareNullableNumber } from './sortUtils';
+export {
+  applySortDirection,
+  compareLocaleString,
+  compareNullableNumber,
+  compareValues,
+} from './sortUtils';
+export { nextTableSort, useTableSort } from './useTableSort';
+export type { TableSortState } from './useTableSort';
 export {
   UnifiedTableScrollAffordanceProvider,
   useUnifiedTableScrollAffordance,

@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from 'react';
-import { UnifiedTable } from '../table';
+import { useMemo } from 'react';
+import { compareValues, UnifiedTable, useTableSort } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
 
@@ -41,8 +41,6 @@ type SortField =
   | 'overall_score'
   | `cat_${number}`;
 
-type SortDirection = 'asc' | 'desc';
-
 export default function DocumentationScoresDisplay({
   categories,
   scores,
@@ -53,8 +51,8 @@ export default function DocumentationScoresDisplay({
     (a, b) => a.ordinal - b.ordinal,
   );
 
-  const [sortField, setSortField] = useState<SortField>('team_number');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } =
+    useTableSort<SortField>('team_number');
 
   const subScoreMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -90,25 +88,10 @@ export default function DocumentationScoresDisplay({
         return 0;
       }
 
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
+      return compareValues(aVal, bVal, sortDirection);
     });
     return sorted;
   }, [scores, subScoreMap, sortField, sortDirection]);
-
-  const handleSort = useCallback(
-    (field: string) => {
-      const f = field as SortField;
-      if (sortField === f) {
-        setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
-      } else {
-        setSortField(f);
-        setSortDirection('asc');
-      }
-    },
-    [sortField],
-  );
 
   const stickyNum = isSpectator
     ? 'sticky-col sticky-col-team-number doc-team-number-col'
@@ -256,7 +239,7 @@ export default function DocumentationScoresDisplay({
           getRowKey={(s) => s.team_id}
           activeSortId={sortField}
           sortDirection={sortDirection}
-          onSort={handleSort}
+          onSort={onSort}
           headerLabelVariant="doc"
           wrapperClassName={`doc-scores-table-wrapper${isSpectator ? ' doc-scores-table-wrapper-spectator' : ''}`}
           tableClassName={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}
