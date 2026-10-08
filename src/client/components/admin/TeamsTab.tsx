@@ -6,7 +6,7 @@ import { useEvent } from '../../contexts/EventContext';
 import { formatDateTime } from '../../utils/dateUtils';
 import type { Team, TeamStatus } from '../../types/teams';
 import { apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 import './TeamsTab.css';
 
 interface TeamFormData {
@@ -710,375 +710,89 @@ export default function TeamsTab() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="modal show" onClick={handleCloseModal}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={handleCloseModal} size={500}>
+          <h3>{editingTeam ? 'Edit Team' : 'Add New Team'}</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
           >
-            <span className="close" onClick={handleCloseModal}>
-              &times;
-            </span>
-            <h3>{editingTeam ? 'Edit Team' : 'Add New Team'}</h3>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
-              }}
-            >
-              {editingTeam
-                ? 'Update the team details below.'
-                : 'Enter the details for the new team.'}
-            </p>
+            {editingTeam
+              ? 'Update the team details below.'
+              : 'Enter the details for the new team.'}
+          </p>
 
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <label htmlFor="team-number">Team Number *</label>
-                <input
-                  id="team-number"
-                  type="number"
-                  className="field-input"
-                  value={formData.team_number}
-                  onChange={(e) =>
-                    setFormData({ ...formData, team_number: e.target.value })
-                  }
-                  min={1}
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="team-name">Team Name *</label>
-                <input
-                  id="team-name"
-                  type="text"
-                  className="field-input"
-                  value={formData.team_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, team_name: e.target.value })
-                  }
-                  placeholder="e.g., Robo Warriors"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="display-name">Display Name</label>
-                <input
-                  id="display-name"
-                  type="text"
-                  className="field-input"
-                  value={formData.display_name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, display_name: e.target.value })
-                  }
-                  placeholder="Optional (defaults to 'team# team_name')"
-                />
-                <small style={{ color: 'var(--secondary-color)' }}>
-                  Leave blank to auto-generate from team number and name
-                </small>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="team-status">Status</label>
-                <select
-                  id="team-status"
-                  className="field-input"
-                  value={formData.status}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      status: e.target.value as TeamStatus,
-                    })
-                  }
-                >
-                  {STATUS_OPTIONS.filter((opt) => opt.value !== 'all').map(
-                    (opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    ),
-                  )}
-                </select>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleCloseModal}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={saving}
-                >
-                  {saving
-                    ? 'Saving...'
-                    : editingTeam
-                      ? 'Update Team'
-                      : 'Add Team'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Bulk Import Modal */}
-      {showBulkImport && (
-        <div className="modal show" onClick={handleCloseBulkImport}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '700px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={handleCloseBulkImport}>
-              &times;
-            </span>
-            <h3>Bulk Import Teams</h3>
-            <p
-              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
-            >
-              Paste team data below. Supports CSV, TSV, or space-separated
-              format.
-            </p>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1rem',
-                fontSize: '0.875rem',
-              }}
-            >
-              Format:{' '}
-              <code>team_number, team_name [, display_name] [, status]</code>
-            </p>
-
+          <form onSubmit={handleSubmit}>
             <div className="form-group">
-              <label htmlFor="bulk-text">Teams Data</label>
-              <textarea
-                id="bulk-text"
+              <label htmlFor="team-number">Team Number *</label>
+              <input
+                id="team-number"
+                type="number"
                 className="field-input"
-                rows={10}
-                value={bulkText}
-                onChange={(e) => handleBulkTextChange(e.target.value)}
-                placeholder={`Example:\n101, Team Alpha\n102, Team Beta, The Beta Bots\n103, Team Gamma, , registered`}
+                value={formData.team_number}
+                onChange={(e) =>
+                  setFormData({ ...formData, team_number: e.target.value })
+                }
+                min={1}
+                required
+                autoFocus
               />
             </div>
 
-            {/* Parse preview */}
-            {bulkParsed.length > 0 && (
-              <div className="bulk-preview">
-                <h4>Preview ({bulkParsed.length} teams to import)</h4>
-                <UnifiedTable<ParsedTeam>
-                  columns={[
-                    {
-                      kind: 'data',
-                      id: 'num',
-                      header: { full: '#' },
-                      renderCell: (t) => t.team_number,
-                    },
-                    {
-                      kind: 'data',
-                      id: 'name',
-                      header: { full: 'Team Name' },
-                      renderCell: (t) => t.team_name,
-                    },
-                    {
-                      kind: 'data',
-                      id: 'display',
-                      header: { full: 'Display Name' },
-                      renderCell: (t) => t.display_name || '—',
-                    },
-                    {
-                      kind: 'data',
-                      id: 'status',
-                      header: { full: 'Status' },
-                      renderCell: (t) => t.status || 'registered',
-                    },
-                  ]}
-                  rows={bulkParsed.slice(0, 10)}
-                  getRowKey={(t) =>
-                    `${t.team_number}-${t.team_name}-${t.display_name ?? ''}`
-                  }
-                  headerLabelVariant="none"
-                  wrapperClassName="bulk-preview-table"
-                  tbodyExtra={
-                    bulkParsed.length > 10 ? (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          style={{
-                            textAlign: 'center',
-                            fontStyle: 'italic',
-                          }}
-                        >
-                          ...and {bulkParsed.length - 10} more
-                        </td>
-                      </tr>
-                    ) : null
-                  }
-                />
-              </div>
-            )}
+            <div className="form-group">
+              <label htmlFor="team-name">Team Name *</label>
+              <input
+                id="team-name"
+                type="text"
+                className="field-input"
+                value={formData.team_name}
+                onChange={(e) =>
+                  setFormData({ ...formData, team_name: e.target.value })
+                }
+                placeholder="e.g., Robo Warriors"
+                required
+              />
+            </div>
 
-            {/* Parse errors */}
-            {bulkParseErrors.length > 0 && (
-              <div className="bulk-errors">
-                <h4>Parse Errors</h4>
-                <ul>
-                  {bulkParseErrors.map((err, idx) => (
-                    <li key={idx}>{err}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
+            <div className="form-group">
+              <label htmlFor="display-name">Display Name</label>
+              <input
+                id="display-name"
+                type="text"
+                className="field-input"
+                value={formData.display_name}
+                onChange={(e) =>
+                  setFormData({ ...formData, display_name: e.target.value })
+                }
+                placeholder="Optional (defaults to 'team# team_name')"
+              />
+              <small style={{ color: 'var(--secondary-color)' }}>
+                Leave blank to auto-generate from team number and name
+              </small>
+            </div>
 
-            {/* Import results */}
-            {bulkResults && (
-              <div className="bulk-results">
-                <h4>Import Results</h4>
-                <p>
-                  Successfully imported: <strong>{bulkResults.created}</strong>{' '}
-                  team(s)
-                </p>
-                {bulkResults.errors.length > 0 && (
-                  <>
-                    <p>
-                      Failed: <strong>{bulkResults.errors.length}</strong>{' '}
-                      team(s)
-                    </p>
-                    <ul>
-                      {bulkResults.errors.map((err) => (
-                        <li key={err.index}>
-                          Line {err.index + 1}: {err.error}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
+            <div className="form-group">
+              <label htmlFor="team-status">Status</label>
+              <select
+                id="team-status"
+                className="field-input"
+                value={formData.status}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    status: e.target.value as TeamStatus,
+                  })
+                }
+              >
+                {STATUS_OPTIONS.filter((opt) => opt.value !== 'all').map(
+                  (opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ),
                 )}
-              </div>
-            )}
-
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                justifyContent: 'flex-end',
-                marginTop: '1.5rem',
-              }}
-            >
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleCloseBulkImport}
-              >
-                Close
-              </button>
-              <button
-                type="button"
-                className="btn btn-primary"
-                onClick={handleBulkImport}
-                disabled={bulkImporting || bulkParsed.length === 0}
-              >
-                {bulkImporting
-                  ? 'Importing...'
-                  : `Import ${bulkParsed.length} Team(s)`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Bulk Check-In Modal */}
-      {showBulkCheckIn && (
-        <div className="modal show" onClick={handleCloseBulkCheckIn}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '600px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={handleCloseBulkCheckIn}>
-              &times;
-            </span>
-            <h3>Bulk Check-In Teams</h3>
-            <p
-              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
-            >
-              Select the registered teams you want to check in. All teams are
-              selected by default.
-            </p>
-
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                marginBottom: '1rem',
-              }}
-            >
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleSelectAllBulkCheckIn}
-                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
-              >
-                Select All
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleSelectNoneBulkCheckIn}
-                style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
-              >
-                Select None
-              </button>
-              <span
-                style={{
-                  marginLeft: 'auto',
-                  color: 'var(--secondary-color)',
-                  fontSize: '0.875rem',
-                  alignSelf: 'center',
-                }}
-              >
-                {bulkCheckInSelected.size} of {registeredTeams.length} selected
-              </span>
-            </div>
-
-            <div className="bulk-checkin-list">
-              {registeredTeams.length === 0 ? (
-                <p style={{ color: 'var(--secondary-color)' }}>
-                  No registered teams to check in.
-                </p>
-              ) : (
-                registeredTeams.map((team) => (
-                  <label key={team.id} className="bulk-checkin-item">
-                    <input
-                      type="checkbox"
-                      checked={bulkCheckInSelected.has(team.team_number)}
-                      onChange={() =>
-                        handleToggleBulkCheckInTeam(team.team_number)
-                      }
-                    />
-                    <span className="bulk-checkin-team-number">
-                      {team.team_number}
-                    </span>
-                    <span className="bulk-checkin-team-name">
-                      {team.team_name}
-                    </span>
-                  </label>
-                ))
-              )}
+              </select>
             </div>
 
             <div
@@ -1092,24 +806,277 @@ export default function TeamsTab() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={handleCloseBulkCheckIn}
-                disabled={bulkCheckingIn}
+                onClick={handleCloseModal}
+                disabled={saving}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                className="btn btn-success"
-                onClick={handleBulkCheckIn}
-                disabled={bulkCheckingIn || bulkCheckInSelected.size === 0}
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving}
               >
-                {bulkCheckingIn
-                  ? 'Checking In...'
-                  : `Check In ${bulkCheckInSelected.size} Team(s)`}
+                {saving
+                  ? 'Saving...'
+                  : editingTeam
+                    ? 'Update Team'
+                    : 'Add Team'}
               </button>
             </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Bulk Import Modal */}
+      {showBulkImport && (
+        <Modal onClose={handleCloseBulkImport} size={700}>
+          <h3>Bulk Import Teams</h3>
+          <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
+            Paste team data below. Supports CSV, TSV, or space-separated format.
+          </p>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1rem',
+              fontSize: '0.875rem',
+            }}
+          >
+            Format:{' '}
+            <code>team_number, team_name [, display_name] [, status]</code>
+          </p>
+
+          <div className="form-group">
+            <label htmlFor="bulk-text">Teams Data</label>
+            <textarea
+              id="bulk-text"
+              className="field-input"
+              rows={10}
+              value={bulkText}
+              onChange={(e) => handleBulkTextChange(e.target.value)}
+              placeholder={`Example:\n101, Team Alpha\n102, Team Beta, The Beta Bots\n103, Team Gamma, , registered`}
+            />
           </div>
-        </div>
+
+          {/* Parse preview */}
+          {bulkParsed.length > 0 && (
+            <div className="bulk-preview">
+              <h4>Preview ({bulkParsed.length} teams to import)</h4>
+              <UnifiedTable<ParsedTeam>
+                columns={[
+                  {
+                    kind: 'data',
+                    id: 'num',
+                    header: { full: '#' },
+                    renderCell: (t) => t.team_number,
+                  },
+                  {
+                    kind: 'data',
+                    id: 'name',
+                    header: { full: 'Team Name' },
+                    renderCell: (t) => t.team_name,
+                  },
+                  {
+                    kind: 'data',
+                    id: 'display',
+                    header: { full: 'Display Name' },
+                    renderCell: (t) => t.display_name || '—',
+                  },
+                  {
+                    kind: 'data',
+                    id: 'status',
+                    header: { full: 'Status' },
+                    renderCell: (t) => t.status || 'registered',
+                  },
+                ]}
+                rows={bulkParsed.slice(0, 10)}
+                getRowKey={(t) =>
+                  `${t.team_number}-${t.team_name}-${t.display_name ?? ''}`
+                }
+                headerLabelVariant="none"
+                wrapperClassName="bulk-preview-table"
+                tbodyExtra={
+                  bulkParsed.length > 10 ? (
+                    <tr>
+                      <td
+                        colSpan={4}
+                        style={{
+                          textAlign: 'center',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        ...and {bulkParsed.length - 10} more
+                      </td>
+                    </tr>
+                  ) : null
+                }
+              />
+            </div>
+          )}
+
+          {/* Parse errors */}
+          {bulkParseErrors.length > 0 && (
+            <div className="bulk-errors">
+              <h4>Parse Errors</h4>
+              <ul>
+                {bulkParseErrors.map((err, idx) => (
+                  <li key={idx}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Import results */}
+          {bulkResults && (
+            <div className="bulk-results">
+              <h4>Import Results</h4>
+              <p>
+                Successfully imported: <strong>{bulkResults.created}</strong>{' '}
+                team(s)
+              </p>
+              {bulkResults.errors.length > 0 && (
+                <>
+                  <p>
+                    Failed: <strong>{bulkResults.errors.length}</strong> team(s)
+                  </p>
+                  <ul>
+                    {bulkResults.errors.map((err) => (
+                      <li key={err.index}>
+                        Line {err.index + 1}: {err.error}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+              marginTop: '1.5rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleCloseBulkImport}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleBulkImport}
+              disabled={bulkImporting || bulkParsed.length === 0}
+            >
+              {bulkImporting
+                ? 'Importing...'
+                : `Import ${bulkParsed.length} Team(s)`}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Bulk Check-In Modal */}
+      {showBulkCheckIn && (
+        <Modal onClose={handleCloseBulkCheckIn} size={600}>
+          <h3>Bulk Check-In Teams</h3>
+          <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
+            Select the registered teams you want to check in. All teams are
+            selected by default.
+          </p>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              marginBottom: '1rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSelectAllBulkCheckIn}
+              style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+            >
+              Select All
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleSelectNoneBulkCheckIn}
+              style={{ fontSize: '0.8rem', padding: '0.25rem 0.5rem' }}
+            >
+              Select None
+            </button>
+            <span
+              style={{
+                marginLeft: 'auto',
+                color: 'var(--secondary-color)',
+                fontSize: '0.875rem',
+                alignSelf: 'center',
+              }}
+            >
+              {bulkCheckInSelected.size} of {registeredTeams.length} selected
+            </span>
+          </div>
+
+          <div className="bulk-checkin-list">
+            {registeredTeams.length === 0 ? (
+              <p style={{ color: 'var(--secondary-color)' }}>
+                No registered teams to check in.
+              </p>
+            ) : (
+              registeredTeams.map((team) => (
+                <label key={team.id} className="bulk-checkin-item">
+                  <input
+                    type="checkbox"
+                    checked={bulkCheckInSelected.has(team.team_number)}
+                    onChange={() =>
+                      handleToggleBulkCheckInTeam(team.team_number)
+                    }
+                  />
+                  <span className="bulk-checkin-team-number">
+                    {team.team_number}
+                  </span>
+                  <span className="bulk-checkin-team-name">
+                    {team.team_name}
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+              marginTop: '1.5rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleCloseBulkCheckIn}
+              disabled={bulkCheckingIn}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-success"
+              onClick={handleBulkCheckIn}
+              disabled={bulkCheckingIn || bulkCheckInSelected.size === 0}
+            >
+              {bulkCheckingIn
+                ? 'Checking In...'
+                : `Check In ${bulkCheckInSelected.size} Team(s)`}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {ConfirmDialog}

@@ -28,7 +28,7 @@ import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { ApiError, apiFetch } from '../../utils/api';
 import { nextPowerOfTwo } from '@shared/bracketSize';
-import '../Modal.css';
+import Modal from '../Modal';
 import './BracketsTab.css';
 
 interface BracketFormData {
@@ -858,312 +858,292 @@ export default function BracketsTab() {
 
       {/* Create Modal */}
       {showCreateModal && (
-        <div className="modal show" onClick={() => setShowCreateModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '90vw', width: '800px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={() => setShowCreateModal(false)}>
+          <h3>Create Bracket</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1rem',
+            }}
           >
-            <span className="close" onClick={() => setShowCreateModal(false)}>
-              &times;
-            </span>
-            <h3>Create Bracket</h3>
-            <p
+            Select teams for this bracket. Bracket size and byes are computed
+            automatically.
+          </p>
+
+          <form onSubmit={handleCreate}>
+            <div className="form-group">
+              <label htmlFor="bracket-name">Bracket Name *</label>
+              <input
+                id="bracket-name"
+                type="text"
+                className="field-input"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="e.g., Main Bracket, Division A"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="bracket-weight">Weight</label>
+              <input
+                id="bracket-weight"
+                type="number"
+                className="field-input"
+                value={formData.weight}
+                onChange={(e) =>
+                  setFormData({ ...formData, weight: e.target.value })
+                }
+                placeholder="1"
+                min={0.01}
+                max={1}
+                step="any"
+              />
+            </div>
+
+            {createDataLoading ? (
+              <p>Loading teams...</p>
+            ) : createTeams.length === 0 ? (
+              <p style={{ color: 'var(--secondary-color)' }}>
+                No teams in this event. Add teams first.
+              </p>
+            ) : (
+              <>
+                <div className="form-group">
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    <label style={{ marginBottom: 0 }}>Select Teams</label>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        const availableTeamIds = createTeams
+                          .filter(
+                            (team) =>
+                              !createAssigned.some(
+                                (assigned) => assigned.team_id === team.id,
+                              ),
+                          )
+                          .map((team) => team.id);
+                        setSelectedTeamIds(new Set(availableTeamIds));
+                      }}
+                      disabled={createTeams.length === 0}
+                    >
+                      Select All Available
+                    </button>
+                  </div>
+                  <div
+                    className="table-responsive"
+                    style={{ maxHeight: '300px', overflow: 'auto' }}
+                  >
+                    <UnifiedTable
+                      columns={bracketCreateMatrixColumns}
+                      rows={bracketCreateMatrixRows}
+                      getRowKey={(r) => r.team.id}
+                      rowClassName={(r) =>
+                        r.hasOverlap ? 'bracket-create-overlap' : ''
+                      }
+                      tableClassName="bracket-create-teams-table"
+                      headerLabelVariant="none"
+                    />
+                  </div>
+                </div>
+
+                {selectedTeamIds.size > 0 && (
+                  <div
+                    className="bracket-create-summary"
+                    style={{
+                      marginBottom: '1rem',
+                      padding: '0.5rem',
+                      background: 'var(--surface-color)',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    <strong>Selected:</strong> {selectedTeamIds.size} teams
+                    {' · '}
+                    <strong>Bracket size:</strong>{' '}
+                    {nextPowerOfTwo(selectedTeamIds.size)}{' '}
+                    <strong>Byes:</strong>{' '}
+                    {nextPowerOfTwo(selectedTeamIds.size) -
+                      selectedTeamIds.size}
+                  </div>
+                )}
+
+                {Array.from(selectedTeamIds).some((id) =>
+                  createAssigned.some((a) => a.team_id === id),
+                ) && (
+                  <div
+                    className="bracket-create-overlap-warning"
+                    style={{
+                      color: 'var(--danger-color)',
+                      marginBottom: '1rem',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    Some selected teams are already in another bracket. Remove
+                    them to continue.
+                  </div>
+                )}
+              </>
+            )}
+
+            <div
               style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1rem',
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1.5rem',
               }}
             >
-              Select teams for this bracket. Bracket size and byes are computed
-              automatically.
-            </p>
-
-            <form onSubmit={handleCreate}>
-              <div className="form-group">
-                <label htmlFor="bracket-name">Bracket Name *</label>
-                <input
-                  id="bracket-name"
-                  type="text"
-                  className="field-input"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="e.g., Main Bracket, Division A"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="bracket-weight">Weight</label>
-                <input
-                  id="bracket-weight"
-                  type="number"
-                  className="field-input"
-                  value={formData.weight}
-                  onChange={(e) =>
-                    setFormData({ ...formData, weight: e.target.value })
-                  }
-                  placeholder="1"
-                  min={0.01}
-                  max={1}
-                  step="any"
-                />
-              </div>
-
-              {createDataLoading ? (
-                <p>Loading teams...</p>
-              ) : createTeams.length === 0 ? (
-                <p style={{ color: 'var(--secondary-color)' }}>
-                  No teams in this event. Add teams first.
-                </p>
-              ) : (
-                <>
-                  <div className="form-group">
-                    <div
-                      style={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        marginBottom: '0.5rem',
-                      }}
-                    >
-                      <label style={{ marginBottom: 0 }}>Select Teams</label>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => {
-                          const availableTeamIds = createTeams
-                            .filter(
-                              (team) =>
-                                !createAssigned.some(
-                                  (assigned) => assigned.team_id === team.id,
-                                ),
-                            )
-                            .map((team) => team.id);
-                          setSelectedTeamIds(new Set(availableTeamIds));
-                        }}
-                        disabled={createTeams.length === 0}
-                      >
-                        Select All Available
-                      </button>
-                    </div>
-                    <div
-                      className="table-responsive"
-                      style={{ maxHeight: '300px', overflow: 'auto' }}
-                    >
-                      <UnifiedTable
-                        columns={bracketCreateMatrixColumns}
-                        rows={bracketCreateMatrixRows}
-                        getRowKey={(r) => r.team.id}
-                        rowClassName={(r) =>
-                          r.hasOverlap ? 'bracket-create-overlap' : ''
-                        }
-                        tableClassName="bracket-create-teams-table"
-                        headerLabelVariant="none"
-                      />
-                    </div>
-                  </div>
-
-                  {selectedTeamIds.size > 0 && (
-                    <div
-                      className="bracket-create-summary"
-                      style={{
-                        marginBottom: '1rem',
-                        padding: '0.5rem',
-                        background: 'var(--surface-color)',
-                        borderRadius: '4px',
-                      }}
-                    >
-                      <strong>Selected:</strong> {selectedTeamIds.size} teams
-                      {' · '}
-                      <strong>Bracket size:</strong>{' '}
-                      {nextPowerOfTwo(selectedTeamIds.size)}{' '}
-                      <strong>Byes:</strong>{' '}
-                      {nextPowerOfTwo(selectedTeamIds.size) -
-                        selectedTeamIds.size}
-                    </div>
-                  )}
-
-                  {Array.from(selectedTeamIds).some((id) =>
-                    createAssigned.some((a) => a.team_id === id),
-                  ) && (
-                    <div
-                      className="bracket-create-overlap-warning"
-                      style={{
-                        color: 'var(--danger-color)',
-                        marginBottom: '1rem',
-                        fontSize: '0.9rem',
-                      }}
-                    >
-                      Some selected teams are already in another bracket. Remove
-                      them to continue.
-                    </div>
-                  )}
-                </>
-              )}
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowCreateModal(false)}
+                disabled={saving}
               >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowCreateModal(false)}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={
-                    saving ||
-                    createDataLoading ||
-                    selectedTeamIds.size === 0 ||
-                    Array.from(selectedTeamIds).some((id) =>
-                      createAssigned.some((a) => a.team_id === id),
-                    )
-                  }
-                >
-                  {saving ? 'Creating...' : 'Create Bracket'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={
+                  saving ||
+                  createDataLoading ||
+                  selectedTeamIds.size === 0 ||
+                  Array.from(selectedTeamIds).some((id) =>
+                    createAssigned.some((a) => a.team_id === id),
+                  )
+                }
+              >
+                {saving ? 'Creating...' : 'Create Bracket'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {/* Edit Modal */}
       {showEditModal && bracketDetail && (
-        <div className="modal show" onClick={() => setShowEditModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={() => setShowEditModal(false)} size={500}>
+          <h3>Edit Bracket</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
           >
-            <span className="close" onClick={() => setShowEditModal(false)}>
-              &times;
-            </span>
-            <h3>Edit Bracket</h3>
-            <p
+            Update bracket details.
+          </p>
+
+          <form onSubmit={handleUpdate}>
+            <div className="form-group">
+              <label htmlFor="edit-bracket-name">Bracket Name *</label>
+              <input
+                id="edit-bracket-name"
+                type="text"
+                className="field-input"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="e.g., Main Bracket, Division A"
+                required
+                autoFocus
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="edit-bracket-size">Bracket Size *</label>
+              <select
+                id="edit-bracket-size"
+                className="field-input"
+                value={formData.bracket_size}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    bracket_size: parseInt(e.target.value, 10),
+                  })
+                }
+              >
+                {BRACKET_SIZES.map((size) => (
+                  <option key={size} value={size}>
+                    {size} teams
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="edit-actual-team-count">Actual Team Count</label>
+              <input
+                id="edit-actual-team-count"
+                type="number"
+                className="field-input"
+                value={formData.actual_team_count}
+                onChange={(e) =>
+                  setFormData({
+                    ...formData,
+                    actual_team_count: e.target.value,
+                  })
+                }
+                placeholder={`1-${formData.bracket_size}`}
+                min={1}
+                max={formData.bracket_size}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="edit-bracket-weight">Weight</label>
+              <input
+                id="edit-bracket-weight"
+                type="number"
+                className="field-input"
+                value={formData.weight}
+                onChange={(e) =>
+                  setFormData({ ...formData, weight: e.target.value })
+                }
+                placeholder="1"
+                min={0.01}
+                max={1}
+                step="any"
+              />
+            </div>
+
+            <div
               style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1.5rem',
               }}
             >
-              Update bracket details.
-            </p>
-
-            <form onSubmit={handleUpdate}>
-              <div className="form-group">
-                <label htmlFor="edit-bracket-name">Bracket Name *</label>
-                <input
-                  id="edit-bracket-name"
-                  type="text"
-                  className="field-input"
-                  value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="e.g., Main Bracket, Division A"
-                  required
-                  autoFocus
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="edit-bracket-size">Bracket Size *</label>
-                <select
-                  id="edit-bracket-size"
-                  className="field-input"
-                  value={formData.bracket_size}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      bracket_size: parseInt(e.target.value, 10),
-                    })
-                  }
-                >
-                  {BRACKET_SIZES.map((size) => (
-                    <option key={size} value={size}>
-                      {size} teams
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="edit-actual-team-count">
-                  Actual Team Count
-                </label>
-                <input
-                  id="edit-actual-team-count"
-                  type="number"
-                  className="field-input"
-                  value={formData.actual_team_count}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      actual_team_count: e.target.value,
-                    })
-                  }
-                  placeholder={`1-${formData.bracket_size}`}
-                  min={1}
-                  max={formData.bracket_size}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="edit-bracket-weight">Weight</label>
-                <input
-                  id="edit-bracket-weight"
-                  type="number"
-                  className="field-input"
-                  value={formData.weight}
-                  onChange={(e) =>
-                    setFormData({ ...formData, weight: e.target.value })
-                  }
-                  placeholder="1"
-                  min={0.01}
-                  max={1}
-                  step="any"
-                />
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowEditModal(false)}
+                disabled={saving}
               >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowEditModal(false)}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={saving}
-                >
-                  {saving ? 'Saving...' : 'Save Changes'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={saving}
+              >
+                {saving ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        </Modal>
       )}
 
       {ConfirmDialog}

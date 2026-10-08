@@ -18,7 +18,7 @@ import {
 import AwardRecipientModal from './AwardRecipientModal';
 import { apiFetch } from '../../utils/api';
 import type { TeamSummary } from '../../types/teams';
-import '../Modal.css';
+import Modal from '../Modal';
 import './AwardsTab.css';
 
 const ZERO_COMPONENT_LABELS: Record<ZeroScoreComponent, string> = {
@@ -979,621 +979,586 @@ export default function AwardsTab() {
 
       {/* Template modal */}
       {showTemplateModal && (
-        <div className="modal show" onClick={() => setShowTemplateModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={() => setShowTemplateModal(false)} size={500}>
+          <h3>{editingTemplate ? 'Edit Template' : 'New Award Template'}</h3>
+          <form onSubmit={handleSaveTemplate}>
+            <div className="form-group">
+              <label htmlFor="tmpl-name">Name *</label>
+              <input
+                id="tmpl-name"
+                type="text"
+                className="field-input"
+                value={templateForm.name}
+                onChange={(e) =>
+                  setTemplateForm({ ...templateForm, name: e.target.value })
+                }
+                required
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="tmpl-desc">Description</label>
+              <textarea
+                id="tmpl-desc"
+                className="field-input"
+                rows={3}
+                value={templateForm.description}
+                onChange={(e) =>
+                  setTemplateForm({
+                    ...templateForm,
+                    description: e.target.value,
+                  })
+                }
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="tmpl-type">Award type *</label>
+              <select
+                id="tmpl-type"
+                className="field-input"
+                value={templateForm.award_type}
+                onChange={(e) =>
+                  setTemplateForm({
+                    ...templateForm,
+                    award_type: e.target.value as AwardType,
+                  })
+                }
+              >
+                <option value="trophy">Trophy</option>
+                <option value="certificate">Certificate</option>
+              </select>
+            </div>
+            <div
+              style={{
+                display: 'flex',
+                gap: '0.5rem',
+                justifyContent: 'flex-end',
+                marginTop: '1.5rem',
+              }}
+            >
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowTemplateModal(false)}
+                disabled={savingTemplate}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={savingTemplate}
+              >
+                {savingTemplate ? 'Saving...' : 'Save'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Automatic awards modal */}
+      {showAutomaticModal && (
+        <Modal
+          onClose={() => !applyingAutomatic && setShowAutomaticModal(false)}
+          size={640}
+        >
+          <h3>Automatic awards</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1rem',
+              lineHeight: 1.5,
+            }}
           >
-            <span className="close" onClick={() => setShowTemplateModal(false)}>
-              &times;
-            </span>
-            <h3>{editingTemplate ? 'Edit Template' : 'New Award Template'}</h3>
-            <form onSubmit={handleSaveTemplate}>
+            Choose how many top places to generate for each category. Use 0 to
+            disable a category. Applying replaces existing &quot;Auto:&quot;
+            awards for this event.
+          </p>
+
+          {(() => {
+            const maxN = automaticPreview?.teamCount ?? teams.length;
+            const options = Array.from({ length: maxN + 1 }, (_, i) => i);
+            const selectStyle = { maxWidth: '12rem' } as const;
+            const typeSelect = (
+              id: string,
+              key:
+                | 'de_award_type'
+                | 'per_bracket_overall_award_type'
+                | 'seeding_award_type',
+              value: AwardType,
+            ) => (
               <div className="form-group">
-                <label htmlFor="tmpl-name">Name *</label>
-                <input
-                  id="tmpl-name"
-                  type="text"
-                  className="field-input"
-                  value={templateForm.name}
-                  onChange={(e) =>
-                    setTemplateForm({ ...templateForm, name: e.target.value })
-                  }
-                  required
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="tmpl-desc">Description</label>
-                <textarea
-                  id="tmpl-desc"
-                  className="field-input"
-                  rows={3}
-                  value={templateForm.description}
-                  onChange={(e) =>
-                    setTemplateForm({
-                      ...templateForm,
-                      description: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="form-group">
-                <label htmlFor="tmpl-type">Award type *</label>
+                <label htmlFor={id}>Award type</label>
                 <select
-                  id="tmpl-type"
+                  id={id}
                   className="field-input"
-                  value={templateForm.award_type}
+                  style={selectStyle}
+                  value={value}
+                  disabled={loadingAutomaticPreview && !automaticPreview}
                   onChange={(e) =>
-                    setTemplateForm({
-                      ...templateForm,
-                      award_type: e.target.value as AwardType,
-                    })
+                    handleAutomaticFormChange(key, e.target.value as AwardType)
                   }
                 >
                   <option value="trophy">Trophy</option>
                   <option value="certificate">Certificate</option>
                 </select>
               </div>
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowTemplateModal(false)}
-                  disabled={savingTemplate}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={savingTemplate}
-                >
-                  {savingTemplate ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Automatic awards modal */}
-      {showAutomaticModal && (
-        <div
-          className="modal show"
-          onClick={() => !applyingAutomatic && setShowAutomaticModal(false)}
-        >
-          <div
-            className="modal-content"
-            style={{ maxWidth: '640px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span
-              className="close"
-              onClick={() => !applyingAutomatic && setShowAutomaticModal(false)}
-            >
-              &times;
-            </span>
-            <h3>Automatic awards</h3>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1rem',
-                lineHeight: 1.5,
-              }}
-            >
-              Choose how many top places to generate for each category. Use 0 to
-              disable a category. Applying replaces existing &quot;Auto:&quot;
-              awards for this event.
-            </p>
-
-            {(() => {
-              const maxN = automaticPreview?.teamCount ?? teams.length;
-              const options = Array.from({ length: maxN + 1 }, (_, i) => i);
-              const selectStyle = { maxWidth: '12rem' } as const;
-              const typeSelect = (
-                id: string,
-                key:
-                  | 'de_award_type'
-                  | 'per_bracket_overall_award_type'
-                  | 'seeding_award_type',
-                value: AwardType,
-              ) => (
+            );
+            return (
+              <>
                 <div className="form-group">
-                  <label htmlFor={id}>Award type</label>
+                  <label htmlFor="auto-de-top-n">Top N DE placements</label>
                   <select
-                    id={id}
+                    id="auto-de-top-n"
                     className="field-input"
                     style={selectStyle}
-                    value={value}
+                    value={automaticForm.de_top_n}
                     disabled={loadingAutomaticPreview && !automaticPreview}
                     onChange={(e) =>
                       handleAutomaticFormChange(
-                        key,
-                        e.target.value as AwardType,
+                        'de_top_n',
+                        Number(e.target.value),
                       )
                     }
                   >
-                    <option value="trophy">Trophy</option>
-                    <option value="certificate">Certificate</option>
+                    {options.map((n) => (
+                      <option key={`de-${n}`} value={n}>
+                        {n === 0 ? '0 (disabled)' : n}
+                      </option>
+                    ))}
                   </select>
                 </div>
-              );
-              return (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="auto-de-top-n">Top N DE placements</label>
-                    <select
-                      id="auto-de-top-n"
-                      className="field-input"
-                      style={selectStyle}
-                      value={automaticForm.de_top_n}
-                      disabled={loadingAutomaticPreview && !automaticPreview}
-                      onChange={(e) =>
-                        handleAutomaticFormChange(
-                          'de_top_n',
-                          Number(e.target.value),
-                        )
-                      }
-                    >
-                      {options.map((n) => (
-                        <option key={`de-${n}`} value={n}>
-                          {n === 0 ? '0 (disabled)' : n}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {typeSelect(
-                    'auto-de-award-type',
-                    'de_award_type',
-                    automaticForm.de_award_type,
-                  )}
-                  <div className="form-group">
-                    <label htmlFor="auto-bracket-top-n">
-                      Top N per-bracket overall placements
-                    </label>
-                    <select
-                      id="auto-bracket-top-n"
-                      className="field-input"
-                      style={selectStyle}
-                      value={automaticForm.per_bracket_overall_top_n}
-                      disabled={loadingAutomaticPreview && !automaticPreview}
-                      onChange={(e) =>
-                        handleAutomaticFormChange(
-                          'per_bracket_overall_top_n',
-                          Number(e.target.value),
-                        )
-                      }
-                    >
-                      {options.map((n) => (
-                        <option key={`ob-${n}`} value={n}>
-                          {n === 0 ? '0 (disabled)' : n}
-                        </option>
-                      ))}
-                    </select>
-                    <p
-                      style={{
-                        color: 'var(--secondary-color)',
-                        fontSize: '0.85rem',
-                        marginTop: '0.35rem',
-                      }}
-                    >
-                      Only generated when the event has multiple brackets and
-                      each bracket is fully ranked.
-                    </p>
-                  </div>
-                  {typeSelect(
-                    'auto-bracket-award-type',
-                    'per_bracket_overall_award_type',
-                    automaticForm.per_bracket_overall_award_type,
-                  )}
-                  <div className="form-group">
-                    <label htmlFor="auto-seeding-top-n">
-                      Top N seeding places
-                    </label>
-                    <select
-                      id="auto-seeding-top-n"
-                      className="field-input"
-                      style={selectStyle}
-                      value={automaticForm.seeding_top_n}
-                      disabled={loadingAutomaticPreview && !automaticPreview}
-                      onChange={(e) =>
-                        handleAutomaticFormChange(
-                          'seeding_top_n',
-                          Number(e.target.value),
-                        )
-                      }
-                    >
-                      {options.map((n) => (
-                        <option key={`seed-${n}`} value={n}>
-                          {n === 0 ? '0 (disabled)' : n}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  {typeSelect(
-                    'auto-seeding-award-type',
-                    'seeding_award_type',
-                    automaticForm.seeding_award_type,
-                  )}
-                </>
-              );
-            })()}
+                {typeSelect(
+                  'auto-de-award-type',
+                  'de_award_type',
+                  automaticForm.de_award_type,
+                )}
+                <div className="form-group">
+                  <label htmlFor="auto-bracket-top-n">
+                    Top N per-bracket overall placements
+                  </label>
+                  <select
+                    id="auto-bracket-top-n"
+                    className="field-input"
+                    style={selectStyle}
+                    value={automaticForm.per_bracket_overall_top_n}
+                    disabled={loadingAutomaticPreview && !automaticPreview}
+                    onChange={(e) =>
+                      handleAutomaticFormChange(
+                        'per_bracket_overall_top_n',
+                        Number(e.target.value),
+                      )
+                    }
+                  >
+                    {options.map((n) => (
+                      <option key={`ob-${n}`} value={n}>
+                        {n === 0 ? '0 (disabled)' : n}
+                      </option>
+                    ))}
+                  </select>
+                  <p
+                    style={{
+                      color: 'var(--secondary-color)',
+                      fontSize: '0.85rem',
+                      marginTop: '0.35rem',
+                    }}
+                  >
+                    Only generated when the event has multiple brackets and each
+                    bracket is fully ranked.
+                  </p>
+                </div>
+                {typeSelect(
+                  'auto-bracket-award-type',
+                  'per_bracket_overall_award_type',
+                  automaticForm.per_bracket_overall_award_type,
+                )}
+                <div className="form-group">
+                  <label htmlFor="auto-seeding-top-n">
+                    Top N seeding places
+                  </label>
+                  <select
+                    id="auto-seeding-top-n"
+                    className="field-input"
+                    style={selectStyle}
+                    value={automaticForm.seeding_top_n}
+                    disabled={loadingAutomaticPreview && !automaticPreview}
+                    onChange={(e) =>
+                      handleAutomaticFormChange(
+                        'seeding_top_n',
+                        Number(e.target.value),
+                      )
+                    }
+                  >
+                    {options.map((n) => (
+                      <option key={`seed-${n}`} value={n}>
+                        {n === 0 ? '0 (disabled)' : n}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {typeSelect(
+                  'auto-seeding-award-type',
+                  'seeding_award_type',
+                  automaticForm.seeding_award_type,
+                )}
+              </>
+            );
+          })()}
 
-            {loadingAutomaticPreview && (
-              <p style={{ color: 'var(--secondary-color)' }}>
-                Updating preview…
-              </p>
-            )}
-            {automaticPreviewError && (
-              <p style={{ color: 'var(--danger-color, #b00020)' }}>
-                {automaticPreviewError}
-              </p>
-            )}
+          {loadingAutomaticPreview && (
+            <p style={{ color: 'var(--secondary-color)' }}>Updating preview…</p>
+          )}
+          {automaticPreviewError && (
+            <p style={{ color: 'var(--danger-color, #b00020)' }}>
+              {automaticPreviewError}
+            </p>
+          )}
 
-            {automaticPreview && !automaticPreviewError && (
-              <div
+          {automaticPreview && !automaticPreviewError && (
+            <div
+              style={{
+                marginTop: '0.75rem',
+                marginBottom: '1rem',
+                padding: '0.75rem 1rem',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                background: 'var(--surface-color, transparent)',
+              }}
+            >
+              <p style={{ margin: '0 0 0.5rem' }}>
+                Preview: {countPlannedAwards(automaticPreview)} award
+                {countPlannedAwards(automaticPreview) === 1 ? '' : 's'} will be
+                created
+                {automaticPreview.teamCount === 0
+                  ? ' (event has no teams).'
+                  : '.'}
+              </p>
+              <ul
                 style={{
-                  marginTop: '0.75rem',
-                  marginBottom: '1rem',
-                  padding: '0.75rem 1rem',
-                  border: '1px solid var(--border-color)',
-                  borderRadius: '4px',
-                  background: 'var(--surface-color, transparent)',
+                  margin: 0,
+                  paddingLeft: '1.25rem',
+                  color: 'var(--secondary-color)',
+                  fontSize: '0.9rem',
                 }}
               >
-                <p style={{ margin: '0 0 0.5rem' }}>
-                  Preview: {countPlannedAwards(automaticPreview)} award
-                  {countPlannedAwards(automaticPreview) === 1 ? '' : 's'} will
-                  be created
-                  {automaticPreview.teamCount === 0
-                    ? ' (event has no teams).'
-                    : '.'}
-                </p>
-                <ul
+                <li>
+                  DE:{' '}
+                  {automaticPreview.automatic.de.reduce(
+                    (sum, b) => sum + b.placements.length,
+                    0,
+                  )}{' '}
+                  placement
+                  {automaticPreview.automatic.de.reduce(
+                    (sum, b) => sum + b.placements.length,
+                    0,
+                  ) === 1
+                    ? ''
+                    : 's'}
+                </li>
+                <li>
+                  Per-bracket overall:{' '}
+                  {automaticPreview.automatic.perBracketOverall.reduce(
+                    (sum, b) => sum + b.placements.length,
+                    0,
+                  )}{' '}
+                  placement
+                  {automaticPreview.automatic.perBracketOverall.reduce(
+                    (sum, b) => sum + b.placements.length,
+                    0,
+                  ) === 1
+                    ? ''
+                    : 's'}
+                </li>
+                <li>
+                  Seeding:{' '}
+                  {automaticPreview.automatic.seeding?.placements.length ?? 0}{' '}
+                  place
+                  {(automaticPreview.automatic.seeding?.placements.length ??
+                    0) === 1
+                    ? ''
+                    : 's'}
+                </li>
+              </ul>
+            </div>
+          )}
+
+          {automaticPreview?.hasWarnings && (
+            <div
+              style={{
+                marginBottom: '1rem',
+                padding: '0.75rem 1rem',
+                border: '1px solid var(--warning-border, #c9a227)',
+                borderRadius: '4px',
+                background: 'var(--warning-bg, rgba(201, 162, 39, 0.12))',
+              }}
+            >
+              <strong>Warnings</strong>
+              <p
+                style={{
+                  margin: '0.35rem 0 0.75rem',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.45,
+                }}
+              >
+                Review these common issues before applying. You can still apply
+                anyway.
+              </p>
+              {automaticPreview.diagnostics.zeroScoreIssues.length > 0 && (
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <p style={{ margin: '0 0 0.35rem', fontWeight: 600 }}>
+                    Teams with a zero or missing score component
+                  </p>
+                  <ul
+                    style={{
+                      margin: 0,
+                      paddingLeft: '1.25rem',
+                      maxHeight: '10rem',
+                      overflowY: 'auto',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    {automaticPreview.diagnostics.zeroScoreIssues.map(
+                      (issue) => (
+                        <li key={issue.team_id}>
+                          #{issue.team_number} {issue.team_name}:{' '}
+                          {issue.components
+                            .map((c) => ZERO_COMPONENT_LABELS[c])
+                            .join(', ')}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                </div>
+              )}
+              {automaticPreview.diagnostics.duplicateBracketWeights.length >
+                0 && (
+                <div>
+                  <p style={{ margin: '0 0 0.35rem', fontWeight: 600 }}>
+                    Multiple brackets share the same weight
+                  </p>
+                  <ul
+                    style={{
+                      margin: 0,
+                      paddingLeft: '1.25rem',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    {automaticPreview.diagnostics.duplicateBracketWeights.map(
+                      (group) => (
+                        <li key={group.weight}>
+                          Weight {group.weight}:{' '}
+                          {group.brackets.map((b) => b.name).join(', ')}
+                        </li>
+                      ),
+                    )}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+              marginTop: '1rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowAutomaticModal(false)}
+              disabled={applyingAutomatic}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className={
+                automaticPreview?.hasWarnings
+                  ? 'btn btn-warning'
+                  : 'btn btn-primary'
+              }
+              disabled={
+                applyingAutomatic ||
+                loadingAutomaticPreview ||
+                Boolean(automaticPreviewError) ||
+                !automaticPreview
+              }
+              onClick={() => void handleApplyAutomaticAwards()}
+            >
+              {applyingAutomatic
+                ? 'Applying…'
+                : automaticPreview?.hasWarnings
+                  ? 'Apply anyway'
+                  : 'Apply automatic awards'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Event award modal */}
+      {showAwardModal && (
+        <Modal onClose={() => setShowAwardModal(false)} size={500}>
+          <h3>{editingAward ? 'Edit Award' : 'Add Event Award'}</h3>
+          <form onSubmit={handleSaveAward}>
+            {!editingAward && (
+              <div className="form-group">
+                <label>Add as</label>
+                <div
                   style={{
-                    margin: 0,
-                    paddingLeft: '1.25rem',
-                    color: 'var(--secondary-color)',
-                    fontSize: '0.9rem',
+                    display: 'flex',
+                    gap: '1rem',
+                    marginTop: '0.25rem',
                   }}
                 >
-                  <li>
-                    DE:{' '}
-                    {automaticPreview.automatic.de.reduce(
-                      (sum, b) => sum + b.placements.length,
-                      0,
-                    )}{' '}
-                    placement
-                    {automaticPreview.automatic.de.reduce(
-                      (sum, b) => sum + b.placements.length,
-                      0,
-                    ) === 1
-                      ? ''
-                      : 's'}
-                  </li>
-                  <li>
-                    Per-bracket overall:{' '}
-                    {automaticPreview.automatic.perBracketOverall.reduce(
-                      (sum, b) => sum + b.placements.length,
-                      0,
-                    )}{' '}
-                    placement
-                    {automaticPreview.automatic.perBracketOverall.reduce(
-                      (sum, b) => sum + b.placements.length,
-                      0,
-                    ) === 1
-                      ? ''
-                      : 's'}
-                  </li>
-                  <li>
-                    Seeding:{' '}
-                    {automaticPreview.automatic.seeding?.placements.length ?? 0}{' '}
-                    place
-                    {(automaticPreview.automatic.seeding?.placements.length ??
-                      0) === 1
-                      ? ''
-                      : 's'}
-                  </li>
-                </ul>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="award-mode"
+                      checked={awardForm.mode === 'manual'}
+                      onChange={() =>
+                        setAwardForm({ ...awardForm, mode: 'manual' })
+                      }
+                    />
+                    Manual
+                  </label>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="award-mode"
+                      checked={awardForm.mode === 'template'}
+                      onChange={() =>
+                        setAwardForm({ ...awardForm, mode: 'template' })
+                      }
+                      disabled={templates.length === 0}
+                    />
+                    From template
+                  </label>
+                </div>
               </div>
             )}
 
-            {automaticPreview?.hasWarnings && (
-              <div
-                style={{
-                  marginBottom: '1rem',
-                  padding: '0.75rem 1rem',
-                  border: '1px solid var(--warning-border, #c9a227)',
-                  borderRadius: '4px',
-                  background: 'var(--warning-bg, rgba(201, 162, 39, 0.12))',
-                }}
-              >
-                <strong>Warnings</strong>
-                <p
-                  style={{
-                    margin: '0.35rem 0 0.75rem',
-                    fontSize: '0.9rem',
-                    lineHeight: 1.45,
+            {!editingAward && awardForm.mode === 'template' && (
+              <div className="form-group">
+                <label htmlFor="award-tmpl">Template *</label>
+                <select
+                  id="award-tmpl"
+                  className="field-input"
+                  value={awardForm.template_award_id}
+                  onChange={(e) => {
+                    const templateId = e.target.value;
+                    const tmpl = templates.find(
+                      (t) => String(t.id) === templateId,
+                    );
+                    setAwardForm({
+                      ...awardForm,
+                      template_award_id: templateId,
+                      award_type: tmpl?.award_type ?? awardForm.award_type,
+                    });
                   }}
+                  required
                 >
-                  Review these common issues before applying. You can still
-                  apply anyway.
-                </p>
-                {automaticPreview.diagnostics.zeroScoreIssues.length > 0 && (
-                  <div style={{ marginBottom: '0.75rem' }}>
-                    <p style={{ margin: '0 0 0.35rem', fontWeight: 600 }}>
-                      Teams with a zero or missing score component
-                    </p>
-                    <ul
-                      style={{
-                        margin: 0,
-                        paddingLeft: '1.25rem',
-                        maxHeight: '10rem',
-                        overflowY: 'auto',
-                        fontSize: '0.9rem',
-                      }}
-                    >
-                      {automaticPreview.diagnostics.zeroScoreIssues.map(
-                        (issue) => (
-                          <li key={issue.team_id}>
-                            #{issue.team_number} {issue.team_name}:{' '}
-                            {issue.components
-                              .map((c) => ZERO_COMPONENT_LABELS[c])
-                              .join(', ')}
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </div>
-                )}
-                {automaticPreview.diagnostics.duplicateBracketWeights.length >
-                  0 && (
-                  <div>
-                    <p style={{ margin: '0 0 0.35rem', fontWeight: 600 }}>
-                      Multiple brackets share the same weight
-                    </p>
-                    <ul
-                      style={{
-                        margin: 0,
-                        paddingLeft: '1.25rem',
-                        fontSize: '0.9rem',
-                      }}
-                    >
-                      {automaticPreview.diagnostics.duplicateBracketWeights.map(
-                        (group) => (
-                          <li key={group.weight}>
-                            Weight {group.weight}:{' '}
-                            {group.brackets.map((b) => b.name).join(', ')}
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </div>
-                )}
+                  <option value="">— Select —</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} (
+                      {AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE]})
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
+
+            {(editingAward || awardForm.mode === 'manual') && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="award-name">Name *</label>
+                  <input
+                    id="award-name"
+                    type="text"
+                    className="field-input"
+                    value={awardForm.name}
+                    onChange={(e) =>
+                      setAwardForm({ ...awardForm, name: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="award-desc">Description</label>
+                  <textarea
+                    id="award-desc"
+                    className="field-input"
+                    rows={3}
+                    value={awardForm.description}
+                    onChange={(e) =>
+                      setAwardForm({
+                        ...awardForm,
+                        description: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="form-group">
+              <label htmlFor="award-type">Award type *</label>
+              <select
+                id="award-type"
+                className="field-input"
+                value={awardForm.award_type}
+                onChange={(e) =>
+                  setAwardForm({
+                    ...awardForm,
+                    award_type: e.target.value as AwardType,
+                  })
+                }
+              >
+                <option value="trophy">Trophy</option>
+                <option value="certificate">Certificate</option>
+              </select>
+            </div>
 
             <div
               style={{
                 display: 'flex',
                 gap: '0.5rem',
                 justifyContent: 'flex-end',
-                marginTop: '1rem',
+                marginTop: '1.5rem',
               }}
             >
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={() => setShowAutomaticModal(false)}
-                disabled={applyingAutomatic}
+                onClick={() => setShowAwardModal(false)}
+                disabled={savingAward}
               >
                 Cancel
               </button>
               <button
-                type="button"
-                className={
-                  automaticPreview?.hasWarnings
-                    ? 'btn btn-warning'
-                    : 'btn btn-primary'
-                }
-                disabled={
-                  applyingAutomatic ||
-                  loadingAutomaticPreview ||
-                  Boolean(automaticPreviewError) ||
-                  !automaticPreview
-                }
-                onClick={() => void handleApplyAutomaticAwards()}
+                type="submit"
+                className="btn btn-primary"
+                disabled={savingAward}
               >
-                {applyingAutomatic
-                  ? 'Applying…'
-                  : automaticPreview?.hasWarnings
-                    ? 'Apply anyway'
-                    : 'Apply automatic awards'}
+                {savingAward ? 'Saving...' : 'Save'}
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Event award modal */}
-      {showAwardModal && (
-        <div className="modal show" onClick={() => setShowAwardModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={() => setShowAwardModal(false)}>
-              &times;
-            </span>
-            <h3>{editingAward ? 'Edit Award' : 'Add Event Award'}</h3>
-            <form onSubmit={handleSaveAward}>
-              {!editingAward && (
-                <div className="form-group">
-                  <label>Add as</label>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '1rem',
-                      marginTop: '0.25rem',
-                    }}
-                  >
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="award-mode"
-                        checked={awardForm.mode === 'manual'}
-                        onChange={() =>
-                          setAwardForm({ ...awardForm, mode: 'manual' })
-                        }
-                      />
-                      Manual
-                    </label>
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="award-mode"
-                        checked={awardForm.mode === 'template'}
-                        onChange={() =>
-                          setAwardForm({ ...awardForm, mode: 'template' })
-                        }
-                        disabled={templates.length === 0}
-                      />
-                      From template
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              {!editingAward && awardForm.mode === 'template' && (
-                <div className="form-group">
-                  <label htmlFor="award-tmpl">Template *</label>
-                  <select
-                    id="award-tmpl"
-                    className="field-input"
-                    value={awardForm.template_award_id}
-                    onChange={(e) => {
-                      const templateId = e.target.value;
-                      const tmpl = templates.find(
-                        (t) => String(t.id) === templateId,
-                      );
-                      setAwardForm({
-                        ...awardForm,
-                        template_award_id: templateId,
-                        award_type: tmpl?.award_type ?? awardForm.award_type,
-                      });
-                    }}
-                    required
-                  >
-                    <option value="">— Select —</option>
-                    {templates.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} (
-                        {AWARD_TYPE_LABELS[t.award_type ?? DEFAULT_AWARD_TYPE]})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {(editingAward || awardForm.mode === 'manual') && (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="award-name">Name *</label>
-                    <input
-                      id="award-name"
-                      type="text"
-                      className="field-input"
-                      value={awardForm.name}
-                      onChange={(e) =>
-                        setAwardForm({ ...awardForm, name: e.target.value })
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="award-desc">Description</label>
-                    <textarea
-                      id="award-desc"
-                      className="field-input"
-                      rows={3}
-                      value={awardForm.description}
-                      onChange={(e) =>
-                        setAwardForm({
-                          ...awardForm,
-                          description: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                </>
-              )}
-
-              <div className="form-group">
-                <label htmlFor="award-type">Award type *</label>
-                <select
-                  id="award-type"
-                  className="field-input"
-                  value={awardForm.award_type}
-                  onChange={(e) =>
-                    setAwardForm({
-                      ...awardForm,
-                      award_type: e.target.value as AwardType,
-                    })
-                  }
-                >
-                  <option value="trophy">Trophy</option>
-                  <option value="certificate">Certificate</option>
-                </select>
-              </div>
-
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowAwardModal(false)}
-                  disabled={savingAward}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={savingAward}
-                >
-                  {savingAward ? 'Saving...' : 'Save'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
 
       {recipientModalAward && selectedEventId != null && (

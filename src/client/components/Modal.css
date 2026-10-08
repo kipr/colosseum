@@ -51,6 +51,11 @@
   color: var(--text-color);
 }
 
+/* Template Preview Modal: taller than the default, including on mobile */
+.modal-content.template-preview-modal {
+  max-height: 95vh;
+}
+
 /* Score View Modal */
 .score-view-modal {
   max-width: 1200px;

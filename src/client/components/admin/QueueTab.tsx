@@ -15,7 +15,7 @@ import {
 import type { Bracket, BracketGame } from '../../types/brackets';
 import type { TeamSummary } from '../../types/teams';
 import { QUEUE_STATUSES, type QueueStatus } from '@shared/queueStatus';
-import '../Modal.css';
+import Modal from '../Modal';
 import './QueueTab.css';
 
 interface QueueItem {
@@ -1163,352 +1163,297 @@ export default function QueueTab() {
 
       {/* Populate from Brackets Modal */}
       {showPopulateModal && (
-        <div className="modal show" onClick={() => setShowPopulateModal(false)}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={() => setShowPopulateModal(false)} size={500}>
+          <h3>Populate Queue from Brackets</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
           >
-            <span className="close" onClick={() => setShowPopulateModal(false)}>
-              &times;
-            </span>
-            <h3>Populate Queue from Brackets</h3>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
-              }}
-            >
-              Replace bracket items with eligible games from all brackets in
-              this event, using canonical interleaved order. Games must have
-              both teams assigned. Seeding and double-seeding items remain in
-              the queue.
-            </p>
+            Replace bracket items with eligible games from all brackets in this
+            event, using canonical interleaved order. Games must have both teams
+            assigned. Seeding and double-seeding items remain in the queue.
+          </p>
 
-            {brackets.length === 0 ? (
+          {brackets.length === 0 ? (
+            <p style={{ color: 'var(--secondary-color)' }}>
+              No brackets found for this event.
+            </p>
+          ) : (
+            <>
               <p style={{ color: 'var(--secondary-color)' }}>
-                No brackets found for this event.
+                {brackets.length} bracket{brackets.length === 1 ? '' : 's'}
+                will be populated.
               </p>
-            ) : (
-              <>
-                <p style={{ color: 'var(--secondary-color)' }}>
-                  {brackets.length} bracket{brackets.length === 1 ? '' : 's'}
-                  will be populated.
-                </p>
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    justifyContent: 'flex-end',
-                    marginTop: '1.5rem',
-                  }}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  justifyContent: 'flex-end',
+                  marginTop: '1.5rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowPopulateModal(false)}
+                  disabled={populating}
                 >
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowPopulateModal(false)}
-                    disabled={populating}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    onClick={handlePopulateFromBracket}
-                    disabled={populating}
-                  >
-                    {populating ? 'Populating...' : 'Populate Queue'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handlePopulateFromBracket}
+                  disabled={populating}
+                >
+                  {populating ? 'Populating...' : 'Populate Queue'}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
 
       {/* Populate from Seeding Modal */}
       {showPopulateSeedingModal && (
-        <div
-          className="modal show"
-          onClick={() => setShowPopulateSeedingModal(false)}
-        >
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={() => setShowPopulateSeedingModal(false)} size={500}>
+          <h3>Populate Queue from Seeding</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
           >
-            <span
-              className="close"
-              onClick={() => setShowPopulateSeedingModal(false)}
-            >
-              &times;
-            </span>
-            <h3>Populate Queue from Seeding</h3>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
-              }}
-            >
-              This will completely clear the existing queue and replace it with
-              all unplayed seeding rounds (team + round combinations that
-              don&apos;t have a score yet).
-            </p>
+            This will completely clear the existing queue and replace it with
+            all unplayed seeding rounds (team + round combinations that
+            don&apos;t have a score yet).
+          </p>
 
-            <div
-              style={{
-                display: 'flex',
-                gap: '0.5rem',
-                justifyContent: 'flex-end',
-                marginTop: '1.5rem',
-              }}
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+              marginTop: '1.5rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setShowPopulateSeedingModal(false)}
+              disabled={populatingSeeding}
             >
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setShowPopulateSeedingModal(false)}
-                disabled={populatingSeeding}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn btn-danger"
-                onClick={handlePopulateFromSeeding}
-                disabled={populatingSeeding}
-              >
-                {populatingSeeding ? 'Populating...' : 'Populate Queue'}
-              </button>
-            </div>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn btn-danger"
+              onClick={handlePopulateFromSeeding}
+              disabled={populatingSeeding}
+            >
+              {populatingSeeding ? 'Populating...' : 'Populate Queue'}
+            </button>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Add Seeding Modal */}
       {showAddSeedingModal && (
-        <div
-          className="modal show"
-          onClick={() => setShowAddSeedingModal(false)}
-        >
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={() => setShowAddSeedingModal(false)} size={500}>
+          <h3>Add Seeding Round to Queue</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
           >
-            <span
-              className="close"
-              onClick={() => setShowAddSeedingModal(false)}
-            >
-              &times;
-            </span>
-            <h3>Add Seeding Round to Queue</h3>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
-              }}
-            >
-              Add a specific team&apos;s seeding round to the queue. Games are
-              automatically queued—are you sure you need to add this? Have you
-              double checked the list?
+            Add a specific team&apos;s seeding round to the queue. Games are
+            automatically queued—are you sure you need to add this? Have you
+            double checked the list?
+          </p>
+
+          {teams.length === 0 ? (
+            <p style={{ color: 'var(--secondary-color)' }}>
+              No teams found for this event.
             </p>
-
-            {teams.length === 0 ? (
-              <p style={{ color: 'var(--secondary-color)' }}>
-                No teams found for this event.
-              </p>
-            ) : (
-              <>
-                <div className="form-group">
-                  <label htmlFor="seeding-team">Select Team</label>
-                  <select
-                    id="seeding-team"
-                    className="field-input"
-                    value={selectedTeamId ?? ''}
-                    onChange={(e) => setSelectedTeamId(Number(e.target.value))}
-                  >
-                    {teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        #{team.team_number} {team.team_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="seeding-round">Round</label>
-                  <select
-                    id="seeding-round"
-                    className="field-input"
-                    value={selectedRound}
-                    onChange={(e) => setSelectedRound(Number(e.target.value))}
-                  >
-                    {Array.from({ length: seedingRounds }, (_, i) => i + 1).map(
-                      (round) => (
-                        <option key={round} value={round}>
-                          Round {round}
-                        </option>
-                      ),
-                    )}
-                  </select>
-                </div>
-
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    justifyContent: 'flex-end',
-                    marginTop: '1.5rem',
-                  }}
+          ) : (
+            <>
+              <div className="form-group">
+                <label htmlFor="seeding-team">Select Team</label>
+                <select
+                  id="seeding-team"
+                  className="field-input"
+                  value={selectedTeamId ?? ''}
+                  onChange={(e) => setSelectedTeamId(Number(e.target.value))}
                 >
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowAddSeedingModal(false)}
-                    disabled={addingSeeding}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    onClick={handleAddSeeding}
-                    disabled={addingSeeding || !selectedTeamId}
-                  >
-                    {addingSeeding ? 'Adding...' : 'Add to Queue'}
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
+                  {teams.map((team) => (
+                    <option key={team.id} value={team.id}>
+                      #{team.team_number} {team.team_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="seeding-round">Round</label>
+                <select
+                  id="seeding-round"
+                  className="field-input"
+                  value={selectedRound}
+                  onChange={(e) => setSelectedRound(Number(e.target.value))}
+                >
+                  {Array.from({ length: seedingRounds }, (_, i) => i + 1).map(
+                    (round) => (
+                      <option key={round} value={round}>
+                        Round {round}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </div>
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  justifyContent: 'flex-end',
+                  marginTop: '1.5rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddSeedingModal(false)}
+                  disabled={addingSeeding}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleAddSeeding}
+                  disabled={addingSeeding || !selectedTeamId}
+                >
+                  {addingSeeding ? 'Adding...' : 'Add to Queue'}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
 
       {/* Add Bracket Game Modal */}
       {showAddBracketModal && (
-        <div
-          className="modal show"
-          onClick={() => setShowAddBracketModal(false)}
-        >
-          <div
-            className="modal-content"
-            style={{ maxWidth: '600px' }}
-            onClick={(e) => e.stopPropagation()}
+        <Modal onClose={() => setShowAddBracketModal(false)} size={600}>
+          <h3>Add Bracket Game to Queue</h3>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1.5rem',
+            }}
           >
-            <span
-              className="close"
-              onClick={() => setShowAddBracketModal(false)}
-            >
-              &times;
-            </span>
-            <h3>Add Bracket Game to Queue</h3>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1.5rem',
-              }}
-            >
-              Add a specific bracket game to the queue. Games are automatically
-              queued—are you sure you need to add this? Have you double checked
-              the list?
+            Add a specific bracket game to the queue. Games are automatically
+            queued—are you sure you need to add this? Have you double checked
+            the list?
+          </p>
+
+          {brackets.length === 0 ? (
+            <p style={{ color: 'var(--secondary-color)' }}>
+              No brackets found for this event.
             </p>
-
-            {brackets.length === 0 ? (
-              <p style={{ color: 'var(--secondary-color)' }}>
-                No brackets found for this event.
-              </p>
-            ) : (
-              <>
-                <div className="form-group">
-                  <label htmlFor="bracket-select">Select Bracket</label>
-                  <select
-                    id="bracket-select"
-                    className="field-input"
-                    value={addBracketSelectedBracketId ?? ''}
-                    onChange={(e) => {
-                      const bracketId = Number(e.target.value);
-                      setAddBracketSelectedBracketId(bracketId);
-                      if (bracketId) {
-                        fetchBracketGames(bracketId);
-                      } else {
-                        setBracketGames([]);
-                        setSelectedGameId(null);
-                      }
-                    }}
-                  >
-                    <option value="">Select a bracket...</option>
-                    {brackets.map((bracket) => (
-                      <option key={bracket.id} value={bracket.id}>
-                        {bracket.name} ({bracket.bracket_size} teams)
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {addBracketSelectedBracketId && (
-                  <div className="form-group">
-                    <label htmlFor="game-select">Select Game</label>
-                    {bracketGames.length === 0 ? (
-                      <p
-                        style={{
-                          color: 'var(--secondary-color)',
-                          fontSize: '0.9rem',
-                        }}
-                      >
-                        No eligible games found (games must have both teams
-                        assigned and not be completed).
-                      </p>
-                    ) : (
-                      <select
-                        id="game-select"
-                        className="field-input"
-                        value={selectedGameId ?? ''}
-                        onChange={(e) =>
-                          setSelectedGameId(Number(e.target.value))
-                        }
-                      >
-                        {bracketGames.map((game) => (
-                          <option key={game.id} value={game.id}>
-                            Game {game.game_number}
-                            {game.round_name && ` - ${game.round_name}`}: #
-                            {game.team1_number} {game.team1_name} vs #
-                            {game.team2_number} {game.team2_name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                )}
-
-                <div
-                  style={{
-                    display: 'flex',
-                    gap: '0.5rem',
-                    justifyContent: 'flex-end',
-                    marginTop: '1.5rem',
+          ) : (
+            <>
+              <div className="form-group">
+                <label htmlFor="bracket-select">Select Bracket</label>
+                <select
+                  id="bracket-select"
+                  className="field-input"
+                  value={addBracketSelectedBracketId ?? ''}
+                  onChange={(e) => {
+                    const bracketId = Number(e.target.value);
+                    setAddBracketSelectedBracketId(bracketId);
+                    if (bracketId) {
+                      fetchBracketGames(bracketId);
+                    } else {
+                      setBracketGames([]);
+                      setSelectedGameId(null);
+                    }
                   }}
                 >
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setShowAddBracketModal(false)}
-                    disabled={addingBracket}
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-danger"
-                    onClick={handleAddBracketGame}
-                    disabled={addingBracket || !selectedGameId}
-                  >
-                    {addingBracket ? 'Adding...' : 'Add to Queue'}
-                  </button>
+                  <option value="">Select a bracket...</option>
+                  {brackets.map((bracket) => (
+                    <option key={bracket.id} value={bracket.id}>
+                      {bracket.name} ({bracket.bracket_size} teams)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {addBracketSelectedBracketId && (
+                <div className="form-group">
+                  <label htmlFor="game-select">Select Game</label>
+                  {bracketGames.length === 0 ? (
+                    <p
+                      style={{
+                        color: 'var(--secondary-color)',
+                        fontSize: '0.9rem',
+                      }}
+                    >
+                      No eligible games found (games must have both teams
+                      assigned and not be completed).
+                    </p>
+                  ) : (
+                    <select
+                      id="game-select"
+                      className="field-input"
+                      value={selectedGameId ?? ''}
+                      onChange={(e) =>
+                        setSelectedGameId(Number(e.target.value))
+                      }
+                    >
+                      {bracketGames.map((game) => (
+                        <option key={game.id} value={game.id}>
+                          Game {game.game_number}
+                          {game.round_name && ` - ${game.round_name}`}: #
+                          {game.team1_number} {game.team1_name} vs #
+                          {game.team2_number} {game.team2_name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
-              </>
-            )}
-          </div>
-        </div>
+              )}
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '0.5rem',
+                  justifyContent: 'flex-end',
+                  marginTop: '1.5rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowAddBracketModal(false)}
+                  disabled={addingBracket}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  onClick={handleAddBracketGame}
+                  disabled={addingBracket || !selectedGameId}
+                >
+                  {addingBracket ? 'Adding...' : 'Add to Queue'}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       )}
 
       {ConfirmDialog}

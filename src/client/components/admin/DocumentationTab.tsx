@@ -10,7 +10,7 @@ import {
 } from './documentationBulkImport';
 import { ApiError, apiFetch } from '../../utils/api';
 import type { Team } from '../../types/teams';
-import '../Modal.css';
+import Modal from '../Modal';
 import './DocumentationTab.css';
 
 interface DocCategory {
@@ -806,365 +806,184 @@ export default function DocumentationTab() {
 
       {/* Category modal */}
       {showCategoryModal && (
-        <div className="modal show" onClick={handleCloseCategoryModal}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '500px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={handleCloseCategoryModal}>
-              &times;
-            </span>
-            <h3>{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
-            <form onSubmit={handleSaveCategory}>
-              {!editingCategory && (
-                <div className="form-group">
-                  <label>Add as</label>
-                  <div
-                    style={{
-                      display: 'flex',
-                      gap: '1rem',
-                      marginTop: '0.25rem',
-                    }}
-                  >
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="cat-mode"
-                        checked={categoryModalMode === 'create'}
-                        onChange={() => {
-                          setCategoryModalMode('create');
-                          setSelectedGlobalCategoryId(null);
-                          setCategoryForm(defaultCategoryForm);
-                        }}
-                      />
-                      Create new category
-                    </label>
-                    <label
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.5rem',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="cat-mode"
-                        checked={categoryModalMode === 'link'}
-                        onChange={() => {
-                          setCategoryModalMode('link');
-                          setSelectedGlobalCategoryId(null);
-                          setCategoryForm(defaultCategoryForm);
-                        }}
-                      />
-                      Select existing category
-                    </label>
-                  </div>
-                </div>
-              )}
-              {!editingCategory && categoryModalMode === 'link' && (
-                <div className="form-group">
-                  <label htmlFor="cat-global">Category *</label>
-                  <select
-                    id="cat-global"
-                    className="field-input"
-                    value={selectedGlobalCategoryId ?? ''}
-                    onChange={(e) => {
-                      const id = e.target.value
-                        ? parseInt(e.target.value, 10)
-                        : null;
-                      setSelectedGlobalCategoryId(id);
-                      const gc = globalCategories.find((c) => c.id === id);
-                      if (gc) {
-                        setCategoryForm({
-                          ...categoryForm,
-                          name: gc.name,
-                          weight: String(gc.weight),
-                          max_score: String(gc.max_score),
-                        });
-                      }
-                    }}
-                    required={categoryModalMode === 'link'}
-                  >
-                    <option value="">— Select —</option>
-                    {globalCategories
-                      .filter((gc) => !categories.some((c) => c.id === gc.id))
-                      .map((gc) => (
-                        <option key={gc.id} value={gc.id}>
-                          {gc.name} (max {gc.max_score}, ×{gc.weight})
-                        </option>
-                      ))}
-                  </select>
-                </div>
-              )}
+        <Modal onClose={handleCloseCategoryModal} size={500}>
+          <h3>{editingCategory ? 'Edit Category' : 'Add Category'}</h3>
+          <form onSubmit={handleSaveCategory}>
+            {!editingCategory && (
               <div className="form-group">
-                <label htmlFor="cat-ordinal">Ordinal (1–4) *</label>
-                <input
-                  id="cat-ordinal"
-                  type="number"
-                  className="field-input"
-                  min={1}
-                  max={4}
-                  value={categoryForm.ordinal}
-                  onChange={(e) =>
-                    setCategoryForm({
-                      ...categoryForm,
-                      ordinal: e.target.value,
-                    })
-                  }
-                  required
-                />
-              </div>
-              {!editingCategory && categoryModalMode === 'create' && (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="cat-name">Name *</label>
-                    <input
-                      id="cat-name"
-                      type="text"
-                      className="field-input"
-                      value={categoryForm.name}
-                      onChange={(e) =>
-                        setCategoryForm({
-                          ...categoryForm,
-                          name: e.target.value,
-                        })
-                      }
-                      required
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="cat-weight">Weight</label>
-                    <input
-                      id="cat-weight"
-                      type="number"
-                      className="field-input"
-                      min={0}
-                      step={0.1}
-                      value={categoryForm.weight}
-                      onChange={(e) =>
-                        setCategoryForm({
-                          ...categoryForm,
-                          weight: e.target.value,
-                        })
-                      }
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label htmlFor="cat-max">Max Score *</label>
-                    <input
-                      id="cat-max"
-                      type="number"
-                      className="field-input"
-                      min={0.01}
-                      step="any"
-                      value={categoryForm.max_score}
-                      onChange={(e) =>
-                        setCategoryForm({
-                          ...categoryForm,
-                          max_score: e.target.value,
-                        })
-                      }
-                      required
-                    />
-                  </div>
-                </>
-              )}
-              {categoryModalMode === 'link' && selectedGlobalCategoryId && (
+                <label>Add as</label>
                 <div
-                  className="form-group"
                   style={{
-                    color: 'var(--secondary-color)',
-                    fontSize: '0.875rem',
+                    display: 'flex',
+                    gap: '1rem',
+                    marginTop: '0.25rem',
                   }}
                 >
-                  {(() => {
-                    const gc = globalCategories.find(
-                      (c) => c.id === selectedGlobalCategoryId,
-                    );
-                    return gc
-                      ? `${gc.name}: max ${gc.max_score}, weight ×${gc.weight}`
-                      : null;
-                  })()}
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="cat-mode"
+                      checked={categoryModalMode === 'create'}
+                      onChange={() => {
+                        setCategoryModalMode('create');
+                        setSelectedGlobalCategoryId(null);
+                        setCategoryForm(defaultCategoryForm);
+                      }}
+                    />
+                    Create new category
+                  </label>
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="cat-mode"
+                      checked={categoryModalMode === 'link'}
+                      onChange={() => {
+                        setCategoryModalMode('link');
+                        setSelectedGlobalCategoryId(null);
+                        setCategoryForm(defaultCategoryForm);
+                      }}
+                    />
+                    Select existing category
+                  </label>
                 </div>
-              )}
-              <div
-                style={{
-                  display: 'flex',
-                  gap: '0.5rem',
-                  justifyContent: 'flex-end',
-                  marginTop: '1.5rem',
-                }}
-              >
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleCloseCategoryModal}
-                  disabled={savingCategory}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={savingCategory}
-                >
-                  {savingCategory ? 'Saving...' : 'Save'}
-                </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Bulk import modal */}
-      {showBulkImport && (
-        <div className="modal show" onClick={handleCloseBulkImport}>
-          <div
-            className="modal-content"
-            style={{ maxWidth: '700px' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <span className="close" onClick={handleCloseBulkImport}>
-              &times;
-            </span>
-            <h3>Bulk Import Documentation Scores</h3>
+            )}
+            {!editingCategory && categoryModalMode === 'link' && (
+              <div className="form-group">
+                <label htmlFor="cat-global">Category *</label>
+                <select
+                  id="cat-global"
+                  className="field-input"
+                  value={selectedGlobalCategoryId ?? ''}
+                  onChange={(e) => {
+                    const id = e.target.value
+                      ? parseInt(e.target.value, 10)
+                      : null;
+                    setSelectedGlobalCategoryId(id);
+                    const gc = globalCategories.find((c) => c.id === id);
+                    if (gc) {
+                      setCategoryForm({
+                        ...categoryForm,
+                        name: gc.name,
+                        weight: String(gc.weight),
+                        max_score: String(gc.max_score),
+                      });
+                    }
+                  }}
+                  required={categoryModalMode === 'link'}
+                >
+                  <option value="">— Select —</option>
+                  {globalCategories
+                    .filter((gc) => !categories.some((c) => c.id === gc.id))
+                    .map((gc) => (
+                      <option key={gc.id} value={gc.id}>
+                        {gc.name} (max {gc.max_score}, ×{gc.weight})
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
             <div className="form-group">
-              <label htmlFor="bulk-doc-category">Category</label>
-              <select
-                id="bulk-doc-category"
+              <label htmlFor="cat-ordinal">Ordinal (1–4) *</label>
+              <input
+                id="cat-ordinal"
+                type="number"
                 className="field-input"
-                value={bulkImportCategoryId}
-                onChange={(e) => {
-                  setBulkImportCategoryId(e.target.value);
-                  setBulkResults(null);
-                }}
-              >
-                <option value="">All categories</option>
-                {sortedCategories.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p
-              style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}
-            >
-              {selectedBulkCategory
-                ? `Paste CSV or TSV. Format: team_number, ${selectedBulkCategory.name} score. Optional header row (skipped if first column is non-numeric).`
-                : 'Paste CSV or TSV. Format: team_number, score1, score2, ... (scores in category ordinal order). Optional header row (skipped if first column is non-numeric).'}
-            </p>
-            <p
-              style={{
-                color: 'var(--secondary-color)',
-                marginBottom: '1rem',
-                fontSize: '0.875rem',
-              }}
-            >
-              Expected columns: 1 + {bulkPreviewCategories.length} ={' '}
-              {1 + bulkPreviewCategories.length} (team_number +{' '}
-              {bulkPreviewCategories.map((c) => c.name).join(', ')})
-            </p>
-            <div className="form-group">
-              <label htmlFor="bulk-doc-text">Data</label>
-              <textarea
-                id="bulk-doc-text"
-                className="field-input"
-                rows={10}
-                value={bulkText}
-                onChange={(e) => {
-                  setBulkText(e.target.value);
-                  setBulkResults(null);
-                }}
-                placeholder={
-                  selectedBulkCategory
-                    ? 'Example:\n101\t15\n102\t20'
-                    : 'Example:\n101\t15\t18\t12\n102\t20\t16\t14'
+                min={1}
+                max={4}
+                value={categoryForm.ordinal}
+                onChange={(e) =>
+                  setCategoryForm({
+                    ...categoryForm,
+                    ordinal: e.target.value,
+                  })
                 }
+                required
               />
             </div>
-            {bulkParsed.length > 0 && (
-              <div className="bulk-preview" style={{ marginBottom: '1rem' }}>
-                <h4>Preview ({bulkParsed.length} rows)</h4>
-                <UnifiedTable
-                  columns={[
-                    {
-                      kind: 'data',
-                      id: 'team_number',
-                      header: { full: 'Team #' },
-                      renderCell: (row) => row.team_number,
-                    },
-                    ...bulkPreviewCategories.map((c, idx) => ({
-                      kind: 'data' as const,
-                      id: `score-${c.id}`,
-                      header: { full: c.name },
-                      renderCell: (row: {
-                        team_number: number;
-                        scores: number[];
-                      }) => row.scores[idx],
-                    })),
-                  ]}
-                  rows={bulkParsed.slice(0, 10)}
-                  getRowKey={(row) =>
-                    `${row.team_number}-${row.scores.join(',')}`
-                  }
-                  headerLabelVariant="none"
-                  wrapperClassName="bulk-preview-table"
-                  tbodyExtra={
-                    bulkParsed.length > 10 ? (
-                      <tr>
-                        <td
-                          colSpan={1 + bulkPreviewCategories.length}
-                          style={{
-                            textAlign: 'center',
-                            fontStyle: 'italic',
-                          }}
-                        >
-                          ...and {bulkParsed.length - 10} more
-                        </td>
-                      </tr>
-                    ) : null
-                  }
-                />
-              </div>
+            {!editingCategory && categoryModalMode === 'create' && (
+              <>
+                <div className="form-group">
+                  <label htmlFor="cat-name">Name *</label>
+                  <input
+                    id="cat-name"
+                    type="text"
+                    className="field-input"
+                    value={categoryForm.name}
+                    onChange={(e) =>
+                      setCategoryForm({
+                        ...categoryForm,
+                        name: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="cat-weight">Weight</label>
+                  <input
+                    id="cat-weight"
+                    type="number"
+                    className="field-input"
+                    min={0}
+                    step={0.1}
+                    value={categoryForm.weight}
+                    onChange={(e) =>
+                      setCategoryForm({
+                        ...categoryForm,
+                        weight: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+                <div className="form-group">
+                  <label htmlFor="cat-max">Max Score *</label>
+                  <input
+                    id="cat-max"
+                    type="number"
+                    className="field-input"
+                    min={0.01}
+                    step="any"
+                    value={categoryForm.max_score}
+                    onChange={(e) =>
+                      setCategoryForm({
+                        ...categoryForm,
+                        max_score: e.target.value,
+                      })
+                    }
+                    required
+                  />
+                </div>
+              </>
             )}
-            {bulkParseErrors.length > 0 && (
-              <div className="bulk-errors" style={{ marginBottom: '1rem' }}>
-                <h4>Parse Errors</h4>
-                <ul>
-                  {bulkParseErrors.map((err, idx) => (
-                    <li key={idx}>{err}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {bulkResults && (
-              <div className="bulk-results" style={{ marginBottom: '1rem' }}>
-                <h4>Import Results</h4>
-                <p>
-                  Success: <strong>{bulkResults.success}</strong>
-                </p>
-                {bulkResults.errors.length > 0 && (
-                  <>
-                    <p>
-                      Failed: <strong>{bulkResults.errors.length}</strong>
-                    </p>
-                    <ul>
-                      {bulkResults.errors.map((e) => (
-                        <li key={e.index}>
-                          Row {e.index + 1}: {e.error}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
+            {categoryModalMode === 'link' && selectedGlobalCategoryId && (
+              <div
+                className="form-group"
+                style={{
+                  color: 'var(--secondary-color)',
+                  fontSize: '0.875rem',
+                }}
+              >
+                {(() => {
+                  const gc = globalCategories.find(
+                    (c) => c.id === selectedGlobalCategoryId,
+                  );
+                  return gc
+                    ? `${gc.name}: max ${gc.max_score}, weight ×${gc.weight}`
+                    : null;
+                })()}
               </div>
             )}
             <div
@@ -1178,27 +997,188 @@ export default function DocumentationTab() {
               <button
                 type="button"
                 className="btn btn-secondary"
-                onClick={handleCloseBulkImport}
+                onClick={handleCloseCategoryModal}
+                disabled={savingCategory}
               >
-                Close
+                Cancel
               </button>
               <button
-                type="button"
+                type="submit"
                 className="btn btn-primary"
-                onClick={handleBulkImport}
-                disabled={
-                  bulkImporting ||
-                  bulkParsed.length === 0 ||
-                  bulkParseErrors.length > 0
-                }
+                disabled={savingCategory}
               >
-                {bulkImporting
-                  ? 'Importing...'
-                  : `Import ${bulkParsed.length} Row(s)`}
+                {savingCategory ? 'Saving...' : 'Save'}
               </button>
             </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* Bulk import modal */}
+      {showBulkImport && (
+        <Modal onClose={handleCloseBulkImport} size={700}>
+          <h3>Bulk Import Documentation Scores</h3>
+          <div className="form-group">
+            <label htmlFor="bulk-doc-category">Category</label>
+            <select
+              id="bulk-doc-category"
+              className="field-input"
+              value={bulkImportCategoryId}
+              onChange={(e) => {
+                setBulkImportCategoryId(e.target.value);
+                setBulkResults(null);
+              }}
+            >
+              <option value="">All categories</option>
+              {sortedCategories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
+          <p style={{ color: 'var(--secondary-color)', marginBottom: '1rem' }}>
+            {selectedBulkCategory
+              ? `Paste CSV or TSV. Format: team_number, ${selectedBulkCategory.name} score. Optional header row (skipped if first column is non-numeric).`
+              : 'Paste CSV or TSV. Format: team_number, score1, score2, ... (scores in category ordinal order). Optional header row (skipped if first column is non-numeric).'}
+          </p>
+          <p
+            style={{
+              color: 'var(--secondary-color)',
+              marginBottom: '1rem',
+              fontSize: '0.875rem',
+            }}
+          >
+            Expected columns: 1 + {bulkPreviewCategories.length} ={' '}
+            {1 + bulkPreviewCategories.length} (team_number +{' '}
+            {bulkPreviewCategories.map((c) => c.name).join(', ')})
+          </p>
+          <div className="form-group">
+            <label htmlFor="bulk-doc-text">Data</label>
+            <textarea
+              id="bulk-doc-text"
+              className="field-input"
+              rows={10}
+              value={bulkText}
+              onChange={(e) => {
+                setBulkText(e.target.value);
+                setBulkResults(null);
+              }}
+              placeholder={
+                selectedBulkCategory
+                  ? 'Example:\n101\t15\n102\t20'
+                  : 'Example:\n101\t15\t18\t12\n102\t20\t16\t14'
+              }
+            />
+          </div>
+          {bulkParsed.length > 0 && (
+            <div className="bulk-preview" style={{ marginBottom: '1rem' }}>
+              <h4>Preview ({bulkParsed.length} rows)</h4>
+              <UnifiedTable
+                columns={[
+                  {
+                    kind: 'data',
+                    id: 'team_number',
+                    header: { full: 'Team #' },
+                    renderCell: (row) => row.team_number,
+                  },
+                  ...bulkPreviewCategories.map((c, idx) => ({
+                    kind: 'data' as const,
+                    id: `score-${c.id}`,
+                    header: { full: c.name },
+                    renderCell: (row: {
+                      team_number: number;
+                      scores: number[];
+                    }) => row.scores[idx],
+                  })),
+                ]}
+                rows={bulkParsed.slice(0, 10)}
+                getRowKey={(row) =>
+                  `${row.team_number}-${row.scores.join(',')}`
+                }
+                headerLabelVariant="none"
+                wrapperClassName="bulk-preview-table"
+                tbodyExtra={
+                  bulkParsed.length > 10 ? (
+                    <tr>
+                      <td
+                        colSpan={1 + bulkPreviewCategories.length}
+                        style={{
+                          textAlign: 'center',
+                          fontStyle: 'italic',
+                        }}
+                      >
+                        ...and {bulkParsed.length - 10} more
+                      </td>
+                    </tr>
+                  ) : null
+                }
+              />
+            </div>
+          )}
+          {bulkParseErrors.length > 0 && (
+            <div className="bulk-errors" style={{ marginBottom: '1rem' }}>
+              <h4>Parse Errors</h4>
+              <ul>
+                {bulkParseErrors.map((err, idx) => (
+                  <li key={idx}>{err}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {bulkResults && (
+            <div className="bulk-results" style={{ marginBottom: '1rem' }}>
+              <h4>Import Results</h4>
+              <p>
+                Success: <strong>{bulkResults.success}</strong>
+              </p>
+              {bulkResults.errors.length > 0 && (
+                <>
+                  <p>
+                    Failed: <strong>{bulkResults.errors.length}</strong>
+                  </p>
+                  <ul>
+                    {bulkResults.errors.map((e) => (
+                      <li key={e.index}>
+                        Row {e.index + 1}: {e.error}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+          <div
+            style={{
+              display: 'flex',
+              gap: '0.5rem',
+              justifyContent: 'flex-end',
+              marginTop: '1.5rem',
+            }}
+          >
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={handleCloseBulkImport}
+            >
+              Close
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={handleBulkImport}
+              disabled={
+                bulkImporting ||
+                bulkParsed.length === 0 ||
+                bulkParseErrors.length > 0
+              }
+            >
+              {bulkImporting
+                ? 'Importing...'
+                : `Import ${bulkParsed.length} Row(s)`}
+            </button>
+          </div>
+        </Modal>
       )}
 
       {ConfirmDialog}

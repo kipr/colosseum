@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { normalizeRepeatableGroupRows } from '../scoresheetUtils';
 import { getFieldDefaultValue } from '../../../shared/scoresheetSchema';
 import { apiFetch } from '../../utils/api';
-import '../Modal.css';
+import Modal from '../Modal';
 import '../../pages/Scoresheet.css';
 
 interface TemplatePreviewModalProps {
@@ -248,87 +248,78 @@ export default function TemplatePreviewModal({
   };
 
   return (
-    <div className="modal show" onClick={onClose}>
-      <div
-        className="modal-content"
-        style={{ maxWidth: '95%', maxHeight: '95vh', overflowY: 'auto' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <span className="close" onClick={onClose}>
-          &times;
-        </span>
-        <h3 style={{ marginBottom: '1rem' }}>Template Preview</h3>
-        {loading ? (
-          <p>Loading preview...</p>
-        ) : template ? (
+    <Modal onClose={onClose} size="95%" className="template-preview-modal">
+      <h3 style={{ marginBottom: '1rem' }}>Template Preview</h3>
+      {loading ? (
+        <p>Loading preview...</p>
+      ) : template ? (
+        <div
+          style={{
+            background: 'var(--bg-color)',
+            padding: '1rem',
+            borderRadius: '0.5rem',
+          }}
+        >
           <div
-            style={{
-              background: 'var(--bg-color)',
-              padding: '1rem',
-              borderRadius: '0.5rem',
-            }}
+            className="scoresheet-form"
+            style={{ background: 'var(--card-bg)' }}
           >
-            <div
-              className="scoresheet-form"
-              style={{ background: 'var(--card-bg)' }}
-            >
-              {template.schema.title && (
-                <div className="scoresheet-title">{template.schema.title}</div>
-              )}
+            {template.schema.title && (
+              <div className="scoresheet-title">{template.schema.title}</div>
+            )}
 
-              <div className="scoresheet-header-fields">
+            <div className="scoresheet-header-fields">
+              {template.schema.fields
+                .filter(
+                  (f: any) =>
+                    !f.column &&
+                    f.type !== 'section_header' &&
+                    f.type !== 'group_header' &&
+                    f.type !== 'calculated',
+                )
+                .map(renderField)}
+            </div>
+
+            {template.schema.layout === 'two-column' ? (
+              <div className="scoresheet-columns">
+                <div className="scoresheet-column">
+                  {template.schema.fields
+                    .filter((f: any) => f.column === 'left')
+                    .map(renderField)}
+                </div>
+                <div className="scoresheet-column">
+                  {template.schema.fields
+                    .filter((f: any) => f.column === 'right')
+                    .map(renderField)}
+                </div>
+              </div>
+            ) : (
+              <div>
                 {template.schema.fields
                   .filter(
                     (f: any) =>
                       !f.column &&
                       f.type !== 'section_header' &&
-                      f.type !== 'group_header' &&
-                      f.type !== 'calculated',
+                      f.type !== 'group_header',
                   )
                   .map(renderField)}
               </div>
+            )}
 
-              {template.schema.layout === 'two-column' ? (
-                <div className="scoresheet-columns">
-                  <div className="scoresheet-column">
-                    {template.schema.fields
-                      .filter((f: any) => f.column === 'left')
-                      .map(renderField)}
-                  </div>
-                  <div className="scoresheet-column">
-                    {template.schema.fields
-                      .filter((f: any) => f.column === 'right')
-                      .map(renderField)}
-                  </div>
-                </div>
-              ) : (
-                <div>
-                  {template.schema.fields
-                    .filter(
-                      (f: any) =>
-                        !f.column &&
-                        f.type !== 'section_header' &&
-                        f.type !== 'group_header',
-                    )
-                    .map(renderField)}
-                </div>
-              )}
-
-              {/* Render grand total if it exists */}
-              {template.schema.fields
-                .filter((f: any) => f.isGrandTotal)
-                .map(renderField)}
-            </div>
+            {/* Render grand total if it exists */}
+            {template.schema.fields
+              .filter((f: any) => f.isGrandTotal)
+              .map(renderField)}
           </div>
-        ) : (
-          <p>Failed to load template</p>
-        )}
-        <div style={{ textAlign: 'center', marginTop: '1rem' }}>
-          <button className="btn btn-secondary" onClick={onClose}>
-            Close
-          </button>
         </div>
+      ) : (
+        <p>Failed to load template</p>
+      )}
+      <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+        <button className="btn btn-secondary" onClick={onClose}>
+          Close
+        </button>
       </div>
-    </div>
+    </Modal>
   );
 }
