@@ -258,6 +258,7 @@ describe('Public Final Scores API', () => {
       expect(res.json.entries[0].raw_seed_score).toBe(0);
       expect(res.json.entries[0].weighted_bracket_raw_score).toBe(1);
       expect(res.json.entries[0].total).toBe(1);
+      expect(res.json.entries[0]).not.toHaveProperty('initial_slot');
     });
   });
 

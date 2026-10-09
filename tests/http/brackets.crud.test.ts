@@ -191,6 +191,7 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.entries[0].raw_seed_score).toBe(0);
       expect(body.entries[0].raw_double_seed_score).toBe(0.5);
       expect(body.entries[0].total).toBe(1.25);
+      expect(body.entries[0]).toHaveProperty('initial_slot');
 
       await testDb.db.run(
         'UPDATE events SET double_seeding_rounds = 0 WHERE id = ?',
