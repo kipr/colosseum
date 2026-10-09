@@ -41,37 +41,107 @@ describe('buildDoubleSeedingSchema', () => {
     expect(fields.some((f) => f.id === 'grand_total')).toBe(false);
   });
 
-  it('orders identity then fallback fields with team B optional', () => {
-    const schema = buildDoubleSeedingSchema({
-      title: 'Fallback Sheet',
-      eventId: 7,
-      templateFields: null,
-    });
-
-    expect(schema.fields.map((f: SchemaField) => f.id)).toEqual([
-      'team_a_number',
-      'team_a_name',
-      'team_b_number',
-      'team_b_name',
-      'section_header_team_a',
-      'team_a_score',
-      'team_a_total',
-      'section_header_team_b',
-      'team_b_score',
-      'team_b_total',
-    ]);
-    const identity = schema.fields.slice(0, 4);
-    expect(identity.map((f: { required: boolean }) => f.required)).toEqual([
-      true,
-      true,
-      false,
-      false,
-    ]);
+  it('builds the full fallback schema when there is no template', () => {
     expect(
-      identity.every(
-        (f: { placeholder: string }) => f.placeholder === 'Select match first',
-      ),
-    ).toBe(true);
+      buildDoubleSeedingSchema({
+        title: 'Fallback Sheet',
+        eventId: 42,
+        templateFields: null,
+      }),
+    ).toEqual({
+      layout: 'two-column',
+      scoreKind: 'double_seeding',
+      title: 'Fallback Sheet',
+      eventId: 42,
+      scoreDestination: 'db',
+      teamInitials: { required: true },
+      teamsDataSource: {
+        type: 'db',
+        eventId: 42,
+        teamNumberField: 'team_number',
+        teamNameField: 'team_name',
+      },
+      fields: [
+        {
+          id: 'team_a_number',
+          label: 'Team A Number',
+          type: 'text',
+          required: true,
+          autoPopulated: true,
+          placeholder: 'Select match first',
+        },
+        {
+          id: 'team_a_name',
+          label: 'Team A Name',
+          type: 'text',
+          required: true,
+          autoPopulated: true,
+          placeholder: 'Select match first',
+        },
+        {
+          id: 'team_b_number',
+          label: 'Team B Number',
+          type: 'text',
+          required: false,
+          autoPopulated: true,
+          placeholder: 'Select match first',
+        },
+        {
+          id: 'team_b_name',
+          label: 'Team B Name',
+          type: 'text',
+          required: false,
+          autoPopulated: true,
+          placeholder: 'Select match first',
+        },
+        {
+          id: 'section_header_team_a',
+          label: 'TEAM A',
+          type: 'section_header',
+          column: 'left',
+        },
+        {
+          id: 'team_a_score',
+          label: 'Team A Score',
+          type: 'number',
+          column: 'left',
+          required: false,
+          min: 0,
+          step: 1,
+        },
+        {
+          id: 'team_a_total',
+          label: 'TEAM A TOTAL',
+          type: 'calculated',
+          column: 'left',
+          isTotal: true,
+          formula: 'team_a_score',
+        },
+        {
+          id: 'section_header_team_b',
+          label: 'TEAM B',
+          type: 'section_header',
+          column: 'right',
+        },
+        {
+          id: 'team_b_score',
+          label: 'Team B Score',
+          type: 'number',
+          column: 'right',
+          required: false,
+          min: 0,
+          step: 1,
+        },
+        {
+          id: 'team_b_total',
+          label: 'TEAM B TOTAL',
+          type: 'calculated',
+          column: 'right',
+          isTotal: true,
+          formula: 'team_b_score',
+        },
+      ],
+    });
   });
 
   it('adapts side A/B template fields to team A/B without a winner field', () => {

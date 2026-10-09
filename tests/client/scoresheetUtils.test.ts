@@ -85,34 +85,131 @@ describe('scoresheetUtils', () => {
     expect(schema.teamsDataSource.eventId).toBe(42);
   });
 
-  it('orders DE game, identity, winner, then fallback fields', () => {
-    const schema = buildDoubleEliminationSchema({
+  it('builds the full DE fallback schema when there is no template', () => {
+    expect(
+      buildDoubleEliminationSchema({
+        title: 'Fallback DE Sheet',
+        eventId: 42,
+        templateFields: null,
+      }),
+    ).toEqual({
+      layout: 'two-column',
+      mode: 'head-to-head',
       title: 'Fallback DE Sheet',
       eventId: 42,
-      templateFields: null,
+      scoreDestination: 'db',
+      teamInitials: { required: true },
+      bracketSource: { type: 'db', scope: 'event', eventId: 42 },
+      teamsDataSource: {
+        type: 'db',
+        eventId: 42,
+        teamNumberField: 'team_number',
+        teamNameField: 'team_name',
+      },
+      fields: [
+        {
+          id: 'game_number',
+          label: 'Game',
+          type: 'dropdown',
+          required: true,
+          dataSource: { type: 'bracket' },
+          cascades: {
+            team_a_number: 'team1.teamNumber',
+            team_a_name: 'team1.displayName',
+            team_b_number: 'team2.teamNumber',
+            team_b_name: 'team2.displayName',
+          },
+        },
+        {
+          id: 'team_a_number',
+          label: 'Team A Number',
+          type: 'text',
+          required: true,
+          autoPopulated: true,
+          placeholder: 'Select game first',
+        },
+        {
+          id: 'team_a_name',
+          label: 'Team A Name',
+          type: 'text',
+          required: true,
+          autoPopulated: true,
+          placeholder: 'Select game first',
+        },
+        {
+          id: 'team_b_number',
+          label: 'Team B Number',
+          type: 'text',
+          required: true,
+          autoPopulated: true,
+          placeholder: 'Select game first',
+        },
+        {
+          id: 'team_b_name',
+          label: 'Team B Name',
+          type: 'text',
+          required: true,
+          autoPopulated: true,
+          placeholder: 'Select game first',
+        },
+        {
+          id: 'winner',
+          label: 'Winner',
+          type: 'winner-select',
+          required: true,
+          options: [
+            { value: 'team_a', label: 'Team A Wins' },
+            { value: 'team_b', label: 'Team B Wins' },
+          ],
+        },
+        {
+          id: 'section_header_team_a',
+          label: 'TEAM A',
+          type: 'section_header',
+          column: 'left',
+        },
+        {
+          id: 'team_a_score',
+          label: 'Team A Score',
+          type: 'number',
+          column: 'left',
+          required: false,
+          min: 0,
+          step: 1,
+        },
+        {
+          id: 'team_a_total',
+          label: 'TEAM A TOTAL',
+          type: 'calculated',
+          column: 'left',
+          isTotal: true,
+          formula: 'team_a_score',
+        },
+        {
+          id: 'section_header_team_b',
+          label: 'TEAM B',
+          type: 'section_header',
+          column: 'right',
+        },
+        {
+          id: 'team_b_score',
+          label: 'Team B Score',
+          type: 'number',
+          column: 'right',
+          required: false,
+          min: 0,
+          step: 1,
+        },
+        {
+          id: 'team_b_total',
+          label: 'TEAM B TOTAL',
+          type: 'calculated',
+          column: 'right',
+          isTotal: true,
+          formula: 'team_b_score',
+        },
+      ],
     });
-
-    expect(schema.fields.map((field: { id: string }) => field.id)).toEqual([
-      'game_number',
-      'team_a_number',
-      'team_a_name',
-      'team_b_number',
-      'team_b_name',
-      'winner',
-      'section_header_team_a',
-      'team_a_score',
-      'team_a_total',
-      'section_header_team_b',
-      'team_b_score',
-      'team_b_total',
-    ]);
-    const identity = schema.fields.slice(1, 5);
-    expect(
-      identity.every(
-        (field: { required: boolean; placeholder: string }) =>
-          field.required && field.placeholder === 'Select game first',
-      ),
-    ).toBe(true);
   });
 
   it('requires team initials by default and drops legacy initials fields', () => {
