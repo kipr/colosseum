@@ -1,4 +1,3 @@
-import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
 import {
@@ -8,6 +7,7 @@ import {
 } from '../seeding/SeedingScoresTable';
 import type { TeamSummary } from '../../types/teams';
 import { apiFetch } from '../../utils/api';
+import { useScopedLoad } from '../../hooks/useScopedLoad';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 
@@ -15,52 +15,40 @@ export default function SeedingTab() {
   const { selectedEvent } = useEvent();
   const selectedEventId = selectedEvent?.id ?? null;
   const seedingRounds = selectedEvent?.seeding_rounds ?? 3;
-  const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [scores, setScores] = useState<SeedingScore[]>([]);
-  const [rankings, setRankings] = useState<SeedingRanking[]>([]);
-  const [loading, setLoading] = useState(false);
-
   const toast = useToast();
 
   const effectiveRounds = seedingRounds > 0 ? seedingRounds : 3;
 
-  const loadData = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      setScores([]);
-      setRankings([]);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [teamsData, scoresData, rankingsData] = await Promise.all([
-        apiFetch<TeamSummary[]>(`/teams/event/${selectedEventId}`, {
+  const {
+    data: { teams, scores, rankings },
+    loading,
+  } = useScopedLoad(
+    selectedEventId,
+    async (eventId, signal) => {
+      const [teams, scores, rankings] = await Promise.all([
+        apiFetch<TeamSummary[]>(`/teams/event/${eventId}`, {
+          signal,
           fallbackError: 'Failed to fetch teams',
         }),
-        apiFetch<SeedingScore[]>(`/seeding/scores/event/${selectedEventId}`, {
+        apiFetch<SeedingScore[]>(`/seeding/scores/event/${eventId}`, {
+          signal,
           fallbackError: 'Failed to fetch seeding scores',
         }),
-        apiFetch<SeedingRanking[]>(
-          `/seeding/rankings/event/${selectedEventId}`,
-          { fallbackError: 'Failed to fetch rankings' },
-        ),
+        apiFetch<SeedingRanking[]>(`/seeding/rankings/event/${eventId}`, {
+          signal,
+          fallbackError: 'Failed to fetch rankings',
+        }),
       ]);
-
-      setTeams(teamsData);
-      setScores(scoresData);
-      setRankings(rankingsData);
-    } catch (error) {
-      console.error('Error loading seeding data:', error);
-      toast.error('Failed to load seeding data');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+      return { teams, scores, rankings };
+    },
+    {
+      initial: { teams: [], scores: [], rankings: [] },
+      onError: (error) => {
+        console.error('Error loading seeding data:', error);
+        toast.error('Failed to load seeding data');
+      },
+    },
+  );
 
   if (!selectedEventId) {
     return (

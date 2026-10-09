@@ -18,7 +18,6 @@ import {
 import type { TeamSummary } from '../types/teams';
 import type {
   Bracket,
-  BracketGame,
   BracketEntryWithRank,
   BracketSide,
   BracketDetail,
@@ -43,6 +42,7 @@ import {
   bracketSideToParam,
 } from '../utils/routes';
 import { apiFetch } from '../utils/api';
+import { useScopedLoad } from '../hooks/useScopedLoad';
 import '../components/bracket/BracketDisplay.css';
 import SpectatorAutomaticAwards, {
   hasAutomaticAwardsContent,
@@ -64,6 +64,35 @@ interface PublicEvent {
   final_scores_available: boolean;
 }
 
+interface PublicIndividualRecipient {
+  name: string;
+  team_number: number | null;
+  team_name: string | null;
+  display_name: string | null;
+}
+
+interface PublicManualAward {
+  name: string;
+  description: string | null;
+  sort_order: number;
+  recipients: {
+    team_number: number;
+    team_name: string;
+    display_name?: string | null;
+  }[];
+  individual_recipients: PublicIndividualRecipient[];
+}
+
+interface PublicAwards {
+  manual: PublicManualAward[];
+  automatic: AutomaticAwardsPublic | null;
+}
+
+interface PublicBracketRankings {
+  weight: number;
+  entries: BracketEntryWithRank[];
+}
+
 type EffectiveTab =
   | 'seeding'
   | 'double-seeding'
@@ -83,72 +112,6 @@ export default function Spectator() {
 
   const [events, setEvents] = useState<PublicEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(true);
-
-  // Seeding state
-  const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [scores, setScores] = useState<SeedingScore[]>([]);
-  const [rankings, setRankings] = useState<SeedingRanking[]>([]);
-  const [seedingLoading, setSeedingLoading] = useState(false);
-
-  // Double-seeding state (lazy-loaded)
-  const [doubleSeedingScores, setDoubleSeedingScores] = useState<
-    DoubleSeedingScore[]
-  >([]);
-  const [doubleSeedingRankings, setDoubleSeedingRankings] = useState<
-    DoubleSeedingRanking[]
-  >([]);
-  const [doubleSeedingLoading, setDoubleSeedingLoading] = useState(false);
-  const [doubleSeedingLoaded, setDoubleSeedingLoaded] = useState(false);
-
-  // Bracket state
-  const [brackets, setBrackets] = useState<Bracket[]>([]);
-  const [bracketGames, setBracketGames] = useState<BracketGame[]>([]);
-  const [bracketLoading, setBracketLoading] = useState(false);
-
-  // Documentation state (lazy-loaded)
-  const [docCategories, setDocCategories] = useState<DocCategoryDisplay[]>([]);
-  const [docScores, setDocScores] = useState<DocScoreDisplay[]>([]);
-  const [docLoading, setDocLoading] = useState(false);
-  const [docLoaded, setDocLoaded] = useState(false);
-
-  // Bracket rankings state (lazy-loaded)
-  const [bracketRankings, setBracketRankings] = useState<
-    BracketEntryWithRank[] | null
-  >(null);
-  const [bracketRankingsWeight, setBracketRankingsWeight] = useState(1);
-  const [bracketRankingsLoading, setBracketRankingsLoading] = useState(false);
-  const [bracketRankingsLoadedForId, setBracketRankingsLoadedForId] = useState<
-    number | null
-  >(null);
-
-  // Awards state (lazy-loaded)
-  interface PublicIndividualRecipient {
-    name: string;
-    team_number: number | null;
-    team_name: string | null;
-    display_name: string | null;
-  }
-  interface PublicManualAward {
-    name: string;
-    description: string | null;
-    sort_order: number;
-    recipients: {
-      team_number: number;
-      team_name: string;
-      display_name?: string | null;
-    }[];
-    individual_recipients: PublicIndividualRecipient[];
-  }
-  const [manualAwards, setManualAwards] = useState<PublicManualAward[]>([]);
-  const [automaticAwards, setAutomaticAwards] =
-    useState<AutomaticAwardsPublic | null>(null);
-  const [awardsLoading, setAwardsLoading] = useState(false);
-  const [awardsLoaded, setAwardsLoaded] = useState(false);
-
-  // Overall state (lazy-loaded)
-  const [overallRows, setOverallRows] = useState<OverallRow[]>([]);
-  const [overallLoading, setOverallLoading] = useState(false);
-  const [overallLoaded, setOverallLoaded] = useState(false);
 
   const selectedEventId = eventIdParam ? Number(eventIdParam) : null;
   const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
@@ -252,221 +215,147 @@ export default function Spectator() {
     }
   }, [eventsLoading, eventIdParam, events, navigate]);
 
-  // Clear lazy-loaded state when event changes
-  useEffect(() => {
-    setDoubleSeedingLoaded(false);
-    setDoubleSeedingScores([]);
-    setDoubleSeedingRankings([]);
-    setDocLoaded(false);
-    setDocCategories([]);
-    setDocScores([]);
-    setOverallLoaded(false);
-    setOverallRows([]);
-    setAwardsLoaded(false);
-    setManualAwards([]);
-    setAutomaticAwards(null);
-    setBracketRankings(null);
-    setBracketRankingsLoadedForId(null);
-  }, [selectedEventId]);
+  const logError = (what: string) => (error: unknown) =>
+    console.error(`Error loading ${what}:`, error);
 
-  // Load seeding data when event changes
-  const loadSeeding = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      setScores([]);
-      setRankings([]);
-      return;
-    }
-    setSeedingLoading(true);
-    try {
-      const [teamsData, scoresData, rankingsData] = await Promise.all([
-        apiFetch<TeamSummary[]>(`/teams/event/${selectedEventId}`),
-        apiFetch<SeedingScore[]>(`/seeding/scores/event/${selectedEventId}`),
-        apiFetch<SeedingRanking[]>(
-          `/seeding/rankings/event/${selectedEventId}`,
+  const {
+    data: { teams, scores, rankings },
+    loading: seedingLoading,
+  } = useScopedLoad(
+    selectedEventId,
+    async (eventId, signal) => {
+      const [teams, scores, rankings] = await Promise.all([
+        apiFetch<TeamSummary[]>(`/teams/event/${eventId}`, { signal }),
+        apiFetch<SeedingScore[]>(`/seeding/scores/event/${eventId}`, {
+          signal,
+        }),
+        apiFetch<SeedingRanking[]>(`/seeding/rankings/event/${eventId}`, {
+          signal,
+        }),
+      ]);
+      return { teams, scores, rankings };
+    },
+    {
+      initial: { teams: [], scores: [], rankings: [] },
+      onError: logError('seeding data'),
+    },
+  );
+
+  const {
+    data: { scores: doubleSeedingScores, rankings: doubleSeedingRankings },
+    loading: doubleSeedingLoading,
+  } = useScopedLoad(
+    selectedEventId,
+    async (eventId, signal) => {
+      const [scores, rankings] = await Promise.all([
+        apiFetch<DoubleSeedingScore[]>(
+          `/double-seeding/scores/event/${eventId}`,
+          { signal },
+        ),
+        apiFetch<DoubleSeedingRanking[]>(
+          `/double-seeding/rankings/event/${eventId}`,
+          { signal },
         ),
       ]);
-      setTeams(teamsData);
-      setScores(scoresData);
-      setRankings(rankingsData);
-    } catch (error) {
-      console.error('Error loading seeding data:', error);
-    } finally {
-      setSeedingLoading(false);
-    }
-  }, [selectedEventId]);
+      return { scores, rankings };
+    },
+    {
+      initial: { scores: [], rankings: [] },
+      enabled: activeTab === 'double-seeding',
+      onError: logError('double-seeding data'),
+    },
+  );
 
-  useEffect(() => {
-    loadSeeding();
-  }, [loadSeeding]);
+  const { data: brackets } = useScopedLoad(
+    selectedEventId,
+    (eventId, signal) =>
+      apiFetch<Bracket[]>(`/brackets/event/${eventId}`, {
+        signal,
+        fallbackError: 'Failed to fetch brackets',
+      }),
+    { initial: [], onError: logError('brackets') },
+  );
 
-  // Lazy-load double-seeding data when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'double-seeding' ||
-      !selectedEventId ||
-      doubleSeedingLoaded
-    )
-      return;
-    setDoubleSeedingLoading(true);
-    Promise.all([
-      apiFetch<DoubleSeedingScore[]>(
-        `/double-seeding/scores/event/${selectedEventId}`,
-      ),
-      apiFetch<DoubleSeedingRanking[]>(
-        `/double-seeding/rankings/event/${selectedEventId}`,
-      ),
-    ])
-      .then(([scoresData, rankingsData]) => {
-        setDoubleSeedingScores(scoresData);
-        setDoubleSeedingRankings(rankingsData);
-        setDoubleSeedingLoaded(true);
-      })
-      .catch((err) => console.error('Error loading double-seeding data:', err))
-      .finally(() => setDoubleSeedingLoading(false));
-  }, [activeTab, selectedEventId, doubleSeedingLoaded]);
-
-  // Load brackets list when event changes
-  useEffect(() => {
-    if (!selectedEventId) {
-      setBrackets([]);
-      return;
-    }
-    (async () => {
-      try {
-        const data = await apiFetch<Bracket[]>(
-          `/brackets/event/${selectedEventId}`,
-          { fallbackError: 'Failed to fetch brackets' },
-        );
-        setBrackets(data);
-      } catch (error) {
-        console.error('Error loading brackets:', error);
-      }
-    })();
-  }, [selectedEventId]);
-
-  // Load bracket games when selected bracket changes
-  const loadBracketGames = useCallback(async () => {
-    if (!selectedBracketId) {
-      setBracketGames([]);
-      return;
-    }
-    setBracketLoading(true);
-    try {
-      const data = await apiFetch<BracketDetail>(
-        `/brackets/${selectedBracketId}`,
-        {
-          fallbackError: 'Failed to fetch bracket',
-        },
-      );
-      setBracketGames(data.games ?? []);
-    } catch (error) {
-      console.error('Error loading bracket games:', error);
-    } finally {
-      setBracketLoading(false);
-    }
-  }, [selectedBracketId]);
-
-  useEffect(() => {
-    loadBracketGames();
-  }, [loadBracketGames]);
-
-  // Lazy-load documentation scores when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'documentation' ||
-      !selectedEventId ||
-      !finalScoresAvailable ||
-      docLoaded
-    )
-      return;
-    setDocLoading(true);
-    apiFetch<{ categories: DocCategoryDisplay[]; scores: DocScoreDisplay[] }>(
-      `/documentation-scores/event/${selectedEventId}/public`,
-    )
-      .then((data) => {
-        setDocCategories(data.categories);
-        setDocScores(data.scores);
-        setDocLoaded(true);
-      })
-      .catch((err) => console.error('Error loading documentation scores:', err))
-      .finally(() => setDocLoading(false));
-  }, [activeTab, selectedEventId, finalScoresAvailable, docLoaded]);
-
-  // Lazy-load awards when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'awards' ||
-      !selectedEventId ||
-      !finalScoresAvailable ||
-      awardsLoaded
-    )
-      return;
-    setAwardsLoading(true);
-    apiFetch<{
-      manual: PublicManualAward[];
-      automatic: AutomaticAwardsPublic;
-    }>(`/awards/event/${selectedEventId}/public`)
-      .then((data) => {
-        setManualAwards(
-          (data.manual ?? []).map((award) => ({
-            ...award,
-            recipients: award.recipients ?? [],
-            individual_recipients: award.individual_recipients ?? [],
-          })),
-        );
-        setAutomaticAwards(data.automatic ?? null);
-        setAwardsLoaded(true);
-      })
-      .catch((err) => console.error('Error loading awards:', err))
-      .finally(() => setAwardsLoading(false));
-  }, [activeTab, selectedEventId, finalScoresAvailable, awardsLoaded]);
-
-  // Lazy-load bracket rankings when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'bracketRankings' ||
-      !selectedBracketId ||
-      !finalScoresAvailable ||
-      bracketRankingsLoadedForId === selectedBracketId
-    )
-      return;
-    setBracketRankingsLoading(true);
-    apiFetch<{ weight: number; entries: BracketEntryWithRank[] }>(
-      `/brackets/${selectedBracketId}/rankings/public`,
-    )
-      .then((data) => {
-        setBracketRankings(data.entries);
-        setBracketRankingsWeight(data.weight);
-        setBracketRankingsLoadedForId(selectedBracketId);
-      })
-      .catch((err) => console.error('Error loading bracket rankings:', err))
-      .finally(() => setBracketRankingsLoading(false));
-  }, [
-    activeTab,
+  const { data: bracketGames, loading: bracketLoading } = useScopedLoad(
     selectedBracketId,
-    finalScoresAvailable,
-    bracketRankingsLoadedForId,
-  ]);
+    async (bracketId, signal) => {
+      const data = await apiFetch<BracketDetail>(`/brackets/${bracketId}`, {
+        signal,
+        fallbackError: 'Failed to fetch bracket',
+      });
+      return data.games ?? [];
+    },
+    { initial: [], onError: logError('bracket games') },
+  );
 
-  // Lazy-load overall scores when tab is opened
-  useEffect(() => {
-    if (
-      activeTab !== 'overall' ||
-      !selectedEventId ||
-      !finalScoresAvailable ||
-      overallLoaded
-    )
-      return;
-    setOverallLoading(true);
-    apiFetch<OverallRow[]>(`/events/${selectedEventId}/overall/public`)
-      .then((data) => {
-        setOverallRows(data);
-        setOverallLoaded(true);
-      })
-      .catch((err) => console.error('Error loading overall scores:', err))
-      .finally(() => setOverallLoading(false));
-  }, [activeTab, selectedEventId, finalScoresAvailable, overallLoaded]);
+  const {
+    data: { categories: docCategories, scores: docScores },
+    loading: docLoading,
+  } = useScopedLoad(
+    selectedEventId,
+    (eventId, signal) =>
+      apiFetch<{ categories: DocCategoryDisplay[]; scores: DocScoreDisplay[] }>(
+        `/documentation-scores/event/${eventId}/public`,
+        { signal },
+      ),
+    {
+      initial: { categories: [], scores: [] },
+      enabled: activeTab === 'documentation' && finalScoresAvailable,
+      onError: logError('documentation scores'),
+    },
+  );
+
+  const {
+    data: { manual: manualAwards, automatic: automaticAwards },
+    loading: awardsLoading,
+  } = useScopedLoad<number, PublicAwards>(
+    selectedEventId,
+    async (eventId, signal) => {
+      const data = await apiFetch<{
+        manual: PublicManualAward[];
+        automatic: AutomaticAwardsPublic;
+      }>(`/awards/event/${eventId}/public`, { signal });
+      return {
+        manual: (data.manual ?? []).map((award) => ({
+          ...award,
+          recipients: award.recipients ?? [],
+          individual_recipients: award.individual_recipients ?? [],
+        })),
+        automatic: data.automatic ?? null,
+      };
+    },
+    {
+      initial: { manual: [], automatic: null },
+      enabled: activeTab === 'awards' && finalScoresAvailable,
+      onError: logError('awards'),
+    },
+  );
+
+  const { data: bracketRankingsData, loading: bracketRankingsLoading } =
+    useScopedLoad<number, PublicBracketRankings | null>(
+      selectedBracketId,
+      (bracketId, signal) =>
+        apiFetch<PublicBracketRankings>(
+          `/brackets/${bracketId}/rankings/public`,
+          { signal },
+        ),
+      {
+        initial: null,
+        enabled: activeTab === 'bracketRankings' && finalScoresAvailable,
+        onError: logError('bracket rankings'),
+      },
+    );
+
+  const { data: overallRows, loading: overallLoading } = useScopedLoad(
+    selectedEventId,
+    (eventId, signal) =>
+      apiFetch<OverallRow[]>(`/events/${eventId}/overall/public`, { signal }),
+    {
+      initial: [],
+      enabled: activeTab === 'overall' && finalScoresAvailable,
+      onError: logError('overall scores'),
+    },
+  );
 
   const navigateToTab = useCallback(
     (tab: EffectiveTab) => {
@@ -828,8 +717,8 @@ export default function Spectator() {
                       {bracketSelector('spectator-rankings')}
                       <BracketRankingView
                         bracketId={selectedBracketId ?? 0}
-                        rankings={bracketRankings}
-                        weight={bracketRankingsWeight}
+                        rankings={bracketRankingsData?.entries ?? null}
+                        weight={bracketRankingsData?.weight ?? 1}
                         loading={bracketRankingsLoading}
                         variant="spectator"
                       />

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../Toast';
 import { useConfirm } from '../ConfirmModal';
 import { useEvent } from '../../contexts/EventContext';
@@ -9,6 +9,7 @@ import {
 } from '../seeding/SeedingScoresTable';
 import type { TeamSummary } from '../../types/teams';
 import { apiFetch } from '../../utils/api';
+import { useScopedLoad } from '../../hooks/useScopedLoad';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
 
@@ -43,17 +44,48 @@ export default function DoubleSeedingTab() {
   const selectedEventId = selectedEvent?.id ?? null;
   const configuredRounds = selectedEvent?.double_seeding_rounds ?? 0;
 
-  const [teams, setTeams] = useState<TeamSummary[]>([]);
-  const [scores, setScores] = useState<DoubleSeedingScore[]>([]);
-  const [rankings, setRankings] = useState<DoubleSeedingRanking[]>([]);
-  const [matches, setMatches] = useState<DoubleSeedingMatch[]>([]);
-  const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [deletingRound, setDeletingRound] = useState<number | null>(null);
   const [roundsInput, setRoundsInput] = useState<number>(configuredRounds);
 
   const toast = useToast();
   const { confirm, ConfirmDialog } = useConfirm();
+
+  const {
+    data: { teams, scores, rankings, matches },
+    loading,
+    reload: loadData,
+  } = useScopedLoad(
+    selectedEventId,
+    async (eventId, signal) => {
+      const [teams, scores, rankings, matches] = await Promise.all([
+        apiFetch<TeamSummary[]>(`/teams/event/${eventId}`, {
+          signal,
+          fallbackError: 'Failed to fetch teams',
+        }),
+        apiFetch<DoubleSeedingScore[]>(
+          `/double-seeding/scores/event/${eventId}`,
+          { signal, fallbackError: 'Failed to fetch double-seeding scores' },
+        ),
+        apiFetch<DoubleSeedingRanking[]>(
+          `/double-seeding/rankings/event/${eventId}`,
+          { signal, fallbackError: 'Failed to fetch rankings' },
+        ),
+        apiFetch<DoubleSeedingMatch[]>(
+          `/double-seeding/matches/event/${eventId}`,
+          { signal, fallbackError: 'Failed to fetch double-seeding matches' },
+        ),
+      ]);
+      return { teams, scores, rankings, matches };
+    },
+    {
+      initial: { teams: [], scores: [], rankings: [], matches: [] },
+      onError: (error) => {
+        console.error('Error loading double-seeding data:', error);
+        toast.error('Failed to load double-seeding data');
+      },
+    },
+  );
 
   const effectiveRounds = useMemo(() => {
     if (configuredRounds > 0) return configuredRounds;
@@ -69,52 +101,6 @@ export default function DoubleSeedingTab() {
     }
     return Array.from(byRound.entries()).sort((a, b) => a[0] - b[0]);
   }, [matches]);
-
-  const loadData = useCallback(async () => {
-    if (!selectedEventId) {
-      setTeams([]);
-      setScores([]);
-      setRankings([]);
-      setMatches([]);
-      return;
-    }
-
-    setLoading(true);
-    try {
-      const [teamsData, scoresData, rankingsData, matchesData] =
-        await Promise.all([
-          apiFetch<TeamSummary[]>(`/teams/event/${selectedEventId}`, {
-            fallbackError: 'Failed to fetch teams',
-          }),
-          apiFetch<DoubleSeedingScore[]>(
-            `/double-seeding/scores/event/${selectedEventId}`,
-            { fallbackError: 'Failed to fetch double-seeding scores' },
-          ),
-          apiFetch<DoubleSeedingRanking[]>(
-            `/double-seeding/rankings/event/${selectedEventId}`,
-            { fallbackError: 'Failed to fetch rankings' },
-          ),
-          apiFetch<DoubleSeedingMatch[]>(
-            `/double-seeding/matches/event/${selectedEventId}`,
-            { fallbackError: 'Failed to fetch double-seeding matches' },
-          ),
-        ]);
-
-      setTeams(teamsData);
-      setScores(scoresData);
-      setRankings(rankingsData);
-      setMatches(matchesData);
-    } catch (error) {
-      console.error('Error loading double-seeding data:', error);
-      toast.error('Failed to load double-seeding data');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
 
   useEffect(() => {
     setRoundsInput(configuredRounds);

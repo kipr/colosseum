@@ -27,6 +27,7 @@ import BracketDetailView from '../bracket/BracketDetailView';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import { ApiError, apiFetch } from '../../utils/api';
+import { useScopedLoad } from '../../hooks/useScopedLoad';
 import { nextPowerOfTwo } from '@shared/bracketSize';
 import Modal from '../Modal';
 import './BracketsTab.css';
@@ -65,6 +66,16 @@ interface AssignedTeam {
   bracket_name: string;
 }
 
+interface BracketRankings {
+  weight: number;
+  entries: BracketEntryWithRank[];
+}
+
+interface BracketDetailState {
+  bracketDetail: BracketDetail;
+  rankings: BracketRankings | null;
+}
+
 interface BracketCreateMatrixRow {
   team: CreateModalTeam;
   ranking: CreateModalRanking | undefined;
@@ -89,8 +100,6 @@ export default function BracketsTab() {
   const navigate = useNavigate();
   const { bracketId: bracketIdParam } = useParams<{ bracketId?: string }>();
   const [searchParams] = useSearchParams();
-  const [brackets, setBrackets] = useState<Bracket[]>([]);
-  const [loading, setLoading] = useState(false);
 
   const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
 
@@ -108,11 +117,6 @@ export default function BracketsTab() {
     },
     [selectedEventId, navigate, searchParams],
   );
-  const [bracketDetail, setBracketDetail] = useState<BracketDetail | null>(
-    null,
-  );
-  const [detailLoading, setDetailLoading] = useState(false);
-
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [formData, setFormData] = useState<BracketFormData>(defaultFormData);
@@ -133,8 +137,6 @@ export default function BracketsTab() {
   const [generatingEntries, setGeneratingEntries] = useState(false);
   const [generatingGames, setGeneratingGames] = useState(false);
 
-  const [rankings, setRankings] = useState<BracketEntryWithRank[] | null>(null);
-  const [rankingsWeight, setRankingsWeight] = useState<number>(1);
   const [rankingsLoading, setRankingsLoading] = useState(false);
 
   const { confirm, ConfirmDialog } = useConfirm();
@@ -142,50 +144,49 @@ export default function BracketsTab() {
   const toastRef = useRef(toast);
   toastRef.current = toast;
 
-  const fetchBrackets = useCallback(async () => {
-    if (!selectedEventId) {
-      setBrackets([]);
-      return;
-    }
+  const {
+    data: brackets,
+    loading,
+    reload: fetchBrackets,
+  } = useScopedLoad(
+    selectedEventId,
+    (eventId, signal) =>
+      apiFetch<Bracket[]>(`/brackets/event/${eventId}`, {
+        signal,
+        fallbackError: 'Failed to fetch brackets',
+      }),
+    {
+      initial: [],
+      onError: (error) => {
+        console.error('Error fetching brackets:', error);
+        toast.error('Failed to load brackets');
+      },
+    },
+  );
 
-    setLoading(true);
-    try {
-      const data = await apiFetch<Bracket[]>(
-        `/brackets/event/${selectedEventId}`,
-        { fallbackError: 'Failed to fetch brackets' },
-      );
-      setBrackets(data);
-    } catch (error) {
-      console.error('Error fetching brackets:', error);
-      toast.error('Failed to load brackets');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedEventId]);
-
-  const fetchBracketDetail = useCallback(
-    async (bracketId: number) => {
-      setDetailLoading(true);
-      try {
-        const [data, rankingsBody] = await Promise.all([
-          apiFetch<BracketDetail>(`/brackets/${bracketId}`, {
-            fallbackError: 'Failed to fetch bracket details',
-          }),
-          // Rankings are optional; the detail view renders without them.
-          apiFetch<{
-            weight: number;
-            entries: BracketEntryWithRank[];
-          }>(`/brackets/${bracketId}/rankings`).catch(() => null),
-        ]);
-        if (rankingsBody) {
-          data.rankings = rankingsBody.entries;
-          setRankings(rankingsBody.entries);
-          setRankingsWeight(rankingsBody.weight);
-        } else {
-          setRankings(null);
-        }
-        setBracketDetail(data);
-      } catch (error) {
+  const {
+    data: detail,
+    loading: detailLoading,
+    reload: fetchBracketDetail,
+    setData: setDetail,
+  } = useScopedLoad<number, BracketDetailState | null>(
+    selectedBracketId,
+    async (bracketId, signal) => {
+      const [bracketDetail, rankings] = await Promise.all([
+        apiFetch<BracketDetail>(`/brackets/${bracketId}`, {
+          signal,
+          fallbackError: 'Failed to fetch bracket details',
+        }),
+        // Rankings are optional; the detail view renders without them.
+        apiFetch<BracketRankings>(`/brackets/${bracketId}/rankings`, {
+          signal,
+        }).catch(() => null),
+      ]);
+      return { bracketDetail, rankings };
+    },
+    {
+      initial: null,
+      onError: (error) => {
         if (
           error instanceof ApiError &&
           error.status === 404 &&
@@ -198,49 +199,39 @@ export default function BracketsTab() {
         }
         console.error('Error fetching bracket detail:', error);
         toast.error('Failed to load bracket details');
+      },
+    },
+  );
+  const bracketDetail = detail?.bracketDetail ?? null;
+  const rankings = detail?.rankings?.entries ?? null;
+  const rankingsWeight = detail?.rankings?.weight ?? 1;
+
+  const fetchRankings = useCallback(
+    async (bracketId: number) => {
+      setRankingsLoading(true);
+      try {
+        // A failed recalculation still shows the stored rankings.
+        await apiFetch(`/brackets/${bracketId}/rankings/calculate`, {
+          method: 'POST',
+        }).catch(() => undefined);
+        const body = await apiFetch<BracketRankings>(
+          `/brackets/${bracketId}/rankings`,
+          { fallbackError: 'Failed to fetch rankings' },
+        );
+        setDetail((prev) =>
+          prev?.bracketDetail.id === bracketId
+            ? { ...prev, rankings: body }
+            : prev,
+        );
+      } catch (error) {
+        console.error('Error fetching bracket rankings:', error);
+        toastRef.current.error('Failed to load rankings');
       } finally {
-        setDetailLoading(false);
+        setRankingsLoading(false);
       }
     },
-    [selectedEventId, navigate],
+    [setDetail],
   );
-
-  useEffect(() => {
-    fetchBrackets();
-    setBracketDetail(null);
-  }, [fetchBrackets]);
-
-  useEffect(() => {
-    if (selectedBracketId) {
-      fetchBracketDetail(selectedBracketId);
-    } else {
-      setBracketDetail(null);
-      setRankings(null);
-    }
-  }, [selectedBracketId, fetchBracketDetail]);
-
-  const fetchRankings = useCallback(async (bracketId: number) => {
-    setRankingsLoading(true);
-    try {
-      // A failed recalculation still shows the stored rankings.
-      await apiFetch(`/brackets/${bracketId}/rankings/calculate`, {
-        method: 'POST',
-      }).catch(() => undefined);
-      const body = await apiFetch<{
-        weight: number;
-        entries: BracketEntryWithRank[];
-      }>(`/brackets/${bracketId}/rankings`, {
-        fallbackError: 'Failed to fetch rankings',
-      });
-      setRankings(body.entries);
-      setRankingsWeight(body.weight);
-    } catch (error) {
-      console.error('Error fetching bracket rankings:', error);
-      toastRef.current.error('Failed to load rankings');
-    } finally {
-      setRankingsLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (!showCreateModal || !selectedEventId) {
@@ -395,7 +386,7 @@ export default function BracketsTab() {
       toast.success('Bracket updated!');
       setShowEditModal(false);
       await fetchBrackets();
-      await fetchBracketDetail(bracketDetail.id);
+      await fetchBracketDetail();
     } catch (error) {
       console.error('Error updating bracket:', error);
       toast.error(
@@ -427,7 +418,6 @@ export default function BracketsTab() {
         if (selectedEventId) {
           navigate(adminEventPath(selectedEventId, 'brackets'));
         }
-        setBracketDetail(null);
       }
       await fetchBrackets();
     } catch (error) {
@@ -466,7 +456,7 @@ export default function BracketsTab() {
       toast.success(
         `Generated ${data.entriesCreated} entries (${data.byeCount} byes)`,
       );
-      await fetchBracketDetail(bracketDetail.id);
+      await fetchBracketDetail();
     } catch (error) {
       console.error('Error generating entries:', error);
       toast.error(
@@ -500,7 +490,7 @@ export default function BracketsTab() {
         fallbackError: 'Failed to generate games',
       });
       toast.success(`Generated ${data.gamesCreated} games`);
-      await fetchBracketDetail(bracketDetail.id);
+      await fetchBracketDetail();
     } catch (error) {
       console.error('Error generating games:', error);
       toast.error(
@@ -523,7 +513,7 @@ export default function BracketsTab() {
 
       toast.success(`Bracket status updated to ${STATUS_LABELS[newStatus]}`);
       await fetchBrackets();
-      await fetchBracketDetail(bracketDetail.id);
+      await fetchBracketDetail();
     } catch (error) {
       console.error('Error updating bracket status:', error);
       toast.error(
@@ -838,7 +828,6 @@ export default function BracketsTab() {
                 if (selectedEventId) {
                   navigate(adminEventPath(selectedEventId, 'brackets'));
                 }
-                setBracketDetail(null);
               }}
               adminActions={renderAdminActions()}
               entriesActions={renderEntriesActions()}
