@@ -8,6 +8,7 @@ import {
 import { stripLegacyInitialsFields } from '../../../shared/teamInitials';
 import { apiFetch } from '../../utils/api';
 import Modal from '../Modal';
+import type { ToastNotifier } from '../Toast';
 
 interface FieldTemplate {
   id: number;
@@ -24,6 +25,7 @@ interface ScoreSheetWizardProps {
     schema: any;
   }) => void;
   onCancel: () => void;
+  toast: ToastNotifier;
 }
 
 type StepType = 'type' | 'template' | 'basic' | 'review';
@@ -32,6 +34,7 @@ type SheetType = 'seeding' | 'double_seeding' | 'de';
 export default function ScoreSheetWizard({
   onComplete,
   onCancel,
+  toast,
 }: ScoreSheetWizardProps) {
   const [currentStep, setCurrentStep] = useState<StepType>('type');
   const [sheetType, setSheetType] = useState<SheetType>('seeding');
@@ -217,11 +220,13 @@ export default function ScoreSheetWizard({
       setCurrentStep('basic');
     } else if (currentStep === 'basic') {
       if (!name || !accessCode) {
-        alert('Please fill in Name and Access Code');
+        toast.error('Please fill in Name and Access Code');
         return;
       }
       if (!selectedEvent?.id) {
-        alert('Please select an event first. Teams are loaded from the event.');
+        toast.error(
+          'Please select an event first. Teams are loaded from the event.',
+        );
         return;
       }
       setCurrentStep('review');

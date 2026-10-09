@@ -127,4 +127,7 @@ export function useToast() {
   return { success, error, warning, info, ToastContainer };
 }
 
+// Modals receive their tab's notifier so toasts outlive the modal.
+export type ToastNotifier = Omit<ReturnType<typeof useToast>, 'ToastContainer'>;
+
 export default Toast;

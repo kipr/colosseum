@@ -338,6 +338,7 @@ export default function ScoreSheetsTab() {
             setEditingScoreSheet(null);
           }}
           onSave={handleScoreSheetSaved}
+          toast={toast}
         />
       )}
 
@@ -345,6 +346,7 @@ export default function ScoreSheetsTab() {
         <ScoreSheetPreviewModal
           scoreSheetId={previewingScoreSheet}
           onClose={() => setPreviewingScoreSheet(null)}
+          toast={toast}
         />
       )}
 
@@ -356,6 +358,7 @@ export default function ScoreSheetsTab() {
             setEditingTemplate(null);
           }}
           onSave={handleTemplateSaved}
+          toast={toast}
         />
       )}
 

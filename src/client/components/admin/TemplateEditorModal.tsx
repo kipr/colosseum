@@ -7,12 +7,14 @@ import {
 import { apiFetch } from '../../utils/api';
 import type { Bracket } from '../../types/brackets';
 import Modal from '../Modal';
+import type { ToastNotifier } from '../Toast';
 
 interface TemplateEditorModalProps {
   templateId: number | null;
   eventId: number;
   onClose: () => void;
   onSave: () => void;
+  toast: ToastNotifier;
   initialData?: {
     name: string;
     description: string;
@@ -26,6 +28,7 @@ export default function TemplateEditorModal({
   eventId,
   onClose,
   onSave,
+  toast,
   initialData,
 }: TemplateEditorModalProps) {
   const [name, setName] = useState('');
@@ -134,7 +137,7 @@ export default function TemplateEditorModal({
       updateBracketStateFromSchema(template.schema);
     } catch (error) {
       console.error('Error loading template:', error);
-      alert('Failed to load template');
+      toast.error('Failed to load template');
       onClose();
     } finally {
       setLoading(false);
@@ -148,13 +151,13 @@ export default function TemplateEditorModal({
 
     // Check file size (limit to 2MB)
     if (file.size > 2 * 1024 * 1024) {
-      alert('Image must be less than 2MB');
+      toast.error('Image must be less than 2MB');
       return;
     }
 
     // Check file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+      toast.error('Please select an image file');
       return;
     }
 
@@ -165,7 +168,7 @@ export default function TemplateEditorModal({
       setUploadingImage(false);
     };
     reader.onerror = () => {
-      alert('Failed to read image file');
+      toast.error('Failed to read image file');
       setUploadingImage(false);
     };
     reader.readAsDataURL(file);
@@ -183,7 +186,7 @@ export default function TemplateEditorModal({
     e.preventDefault();
 
     if (!accessCode.trim()) {
-      alert('Access code is required');
+      toast.error('Access code is required');
       return;
     }
 
@@ -214,7 +217,7 @@ export default function TemplateEditorModal({
         fallbackError: 'Failed to save template',
       });
 
-      showSuccessMessage(
+      toast.success(
         templateId
           ? 'Score sheet updated successfully!'
           : 'Score sheet created successfully!',
@@ -223,29 +226,11 @@ export default function TemplateEditorModal({
     } catch (error) {
       console.error('Error saving template:', error);
       if (error instanceof SyntaxError) {
-        alert('Invalid JSON schema. Please check your syntax.');
+        toast.error('Invalid JSON schema. Please check your syntax.');
       } else {
-        alert('Failed to save template. Please try again.');
+        toast.error('Failed to save template. Please try again.');
       }
     }
-  };
-
-  const showSuccessMessage = (message: string) => {
-    const messageDiv = document.createElement('div');
-    messageDiv.textContent = message;
-    messageDiv.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background-color: var(--success-color);
-      color: white;
-      padding: 1rem 1.5rem;
-      border-radius: 0.5rem;
-      box-shadow: var(--shadow-lg);
-      z-index: 2000;
-    `;
-    document.body.appendChild(messageDiv);
-    setTimeout(() => messageDiv.remove(), 3000);
   };
 
   const legacyBracket = legacyBracketId

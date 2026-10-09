@@ -285,6 +285,47 @@ test('failed modal saves show an interactive toast above the dialog', async ({
   await expect(dialog.locator('#team-name')).toHaveValue('Keep these bots');
 });
 
+test('editor toasts come from the tab and outlive the closed modal', async ({
+  page,
+}) => {
+  await page.route('**/field-templates', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({ json: { id: 3 } })
+      : route.fallback(),
+  );
+  await page.goto('/admin/events/1?view=scoresheets');
+  await page
+    .getByRole('button', { name: '+ Create Field Template', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Create Field Template' });
+  const name = dialog.getByPlaceholder('e.g., Botball 2024 Scoring Fields');
+  await name.fill('Keep this template');
+  const fields = dialog.locator('textarea').nth(1);
+  await fields.fill('[');
+  await dialog
+    .getByRole('button', { name: 'Create Template', exact: true })
+    .click();
+  const invalid = page
+    .locator('.toast-error')
+    .filter({ hasText: 'Invalid JSON. Please check your syntax.' });
+  await expect(invalid).toBeVisible();
+  await invalid.locator('.toast-close').click({ timeout: 1500 });
+  await expect(invalid).toHaveCount(0);
+  await expect(name).toHaveValue('Keep this template');
+
+  await fields.fill('[]');
+  await dialog
+    .getByRole('button', { name: 'Create Template', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  const saved = page
+    .locator('.toast-success')
+    .filter({ hasText: 'Field template created!' });
+  await expect(saved).toBeVisible();
+  await saved.locator('.toast-close').click({ timeout: 1500 });
+  await expect(saved).toHaveCount(0);
+});
+
 for (const kind of ['automatic awards', 'recipients'] as const) {
   test(`${kind} stays reachable after repeated Escape during a failed save`, async ({
     page,

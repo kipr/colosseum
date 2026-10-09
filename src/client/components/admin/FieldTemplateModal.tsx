@@ -2,17 +2,20 @@
 import React, { useEffect, useState } from 'react';
 import { apiFetch } from '../../utils/api';
 import Modal from '../Modal';
+import type { ToastNotifier } from '../Toast';
 
 interface FieldTemplateModalProps {
   templateId: number | null;
   onClose: () => void;
   onSave: () => void;
+  toast: ToastNotifier;
 }
 
 export default function FieldTemplateModal({
   templateId,
   onClose,
   onSave,
+  toast,
 }: FieldTemplateModalProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -54,7 +57,7 @@ export default function FieldTemplateModal({
       setFieldsJson(JSON.stringify(template.fields, null, 2));
     } catch (error) {
       console.error('Error loading template:', error);
-      alert('Failed to load template');
+      toast.error('Failed to load template');
       onClose();
     } finally {
       setLoading(false);
@@ -68,7 +71,7 @@ export default function FieldTemplateModal({
       const parsedFields = JSON.parse(fieldsJson);
 
       if (!Array.isArray(parsedFields)) {
-        alert('Fields must be a JSON array');
+        toast.error('Fields must be a JSON array');
         return;
       }
 
@@ -87,38 +90,20 @@ export default function FieldTemplateModal({
         fallbackError: 'Failed to save template',
       });
 
-      showSuccessMessage(
+      toast.success(
         templateId ? 'Field template updated!' : 'Field template created!',
       );
       onSave();
     } catch (error: any) {
       console.error('Error saving template:', error);
       if (error instanceof SyntaxError) {
-        alert('Invalid JSON. Please check your syntax.');
+        toast.error('Invalid JSON. Please check your syntax.');
       } else {
-        alert(
+        toast.error(
           `Failed to save template: ${error.message || 'Please try again.'}`,
         );
       }
     }
-  };
-
-  const showSuccessMessage = (message: string) => {
-    const messageDiv = document.createElement('div');
-    messageDiv.textContent = message;
-    messageDiv.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background-color: var(--success-color);
-      color: white;
-      padding: 1rem 1.5rem;
-      border-radius: 0.5rem;
-      box-shadow: var(--shadow-lg);
-      z-index: 2000;
-    `;
-    document.body.appendChild(messageDiv);
-    setTimeout(() => messageDiv.remove(), 3000);
   };
 
   return (

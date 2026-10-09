@@ -1097,6 +1097,7 @@ export default function ScoringTab() {
           score={editingScore}
           onClose={() => setEditingScore(null)}
           onSave={handleScoreUpdated}
+          toast={toast}
         />
       )}
 

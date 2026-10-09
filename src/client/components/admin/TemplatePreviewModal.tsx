@@ -13,6 +13,7 @@ import {
 } from '../../../shared/scoresheetSchema';
 import { apiFetch } from '../../utils/api';
 import Modal from '../Modal';
+import type { ToastNotifier } from '../Toast';
 import {
   CalculatedField,
   OptionButtonGroup,
@@ -30,6 +31,7 @@ import '../../pages/Scoresheet.css';
 interface TemplatePreviewModalProps {
   templateId: number;
   onClose: () => void;
+  toast: ToastNotifier;
 }
 
 const NON_INPUT_FIELD_TYPES = ['section_header', 'group_header', 'calculated'];
@@ -56,6 +58,7 @@ function getPreviewValues(fields: any[]): Record<string, any> {
 export default function TemplatePreviewModal({
   templateId,
   onClose,
+  toast,
 }: TemplatePreviewModalProps) {
   const [template, setTemplate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -72,7 +75,7 @@ export default function TemplatePreviewModal({
       setTemplate(data);
     } catch (error) {
       console.error('Error loading template:', error);
-      alert('Failed to load template preview');
+      toast.error('Failed to load template preview');
       onClose();
     } finally {
       setLoading(false);
