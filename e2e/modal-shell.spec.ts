@@ -286,6 +286,28 @@ test('failed modal saves show an interactive toast above the dialog', async ({
   await expect(dialog.locator('#team-name')).toHaveValue('Keep these bots');
 });
 
+test('a focused toast resumes its timer when its dialog closes', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.route('**/teams', (route) =>
+    route.fulfill({ status: 400, json: { error: 'Team save failed' } }),
+  );
+  const { dialog } = await openTeam(page);
+  await dialog.locator('#team-number').fill('101');
+  await dialog.locator('#team-name').fill('Keep these bots');
+  await dialog.getByRole('button', { name: 'Add Team', exact: true }).click();
+  const toast = page.getByRole('alert').filter({ hasText: 'Team save failed' });
+  await expect(toast).toBeVisible();
+  // Removing the dialog drops focus from the toast without a blur event.
+  await toast.getByRole('button', { name: 'Dismiss notification' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(toast).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect(toast).toHaveCount(0);
+});
+
 test('editor toasts come from the tab and outlive the closed modal', async ({
   page,
 }) => {

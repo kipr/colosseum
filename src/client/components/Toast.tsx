@@ -4,6 +4,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalLayer } from './modalLayer';
@@ -54,7 +55,17 @@ function ToastItem({
   toast: ToastMessage;
   onDismiss: (id: string) => void;
 }) {
-  const [paused, setPaused] = useState(false);
+  const itemRef = useRef<HTMLDivElement>(null);
+  const layer = useModalLayer();
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
+
+  // Closing a dialog removes this toast from the document with it, which
+  // drops focus without a blur event, so re-read focus after layer changes.
+  useEffect(() => {
+    setFocused(!!itemRef.current?.contains(document.activeElement));
+  }, [layer]);
 
   // Hover or focus holds the toast; resuming restarts the full duration.
   useEffect(() => {
@@ -81,14 +92,15 @@ function ToastItem({
 
   return (
     <div
+      ref={itemRef}
       className={`toast toast-${toast.type}`}
       role={
         toast.type === 'error' || toast.type === 'warning' ? 'alert' : 'status'
       }
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
     >
       <span className="toast-icon">{getIcon()}</span>
       <span className="toast-message">{toast.message}</span>
