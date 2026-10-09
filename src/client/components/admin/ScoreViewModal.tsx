@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../utils/api';
 import Modal from '../Modal';
+import type { ToastNotifier } from '../Toast';
 import '../../pages/Scoresheet.css';
 import { formatDateTime } from '../../utils/dateUtils';
 import {
@@ -52,12 +53,14 @@ interface ScoreViewModalProps {
   score: any;
   onClose: () => void;
   onSave: () => void;
+  toast: ToastNotifier;
 }
 
 export default function ScoreViewModal({
   score,
   onClose,
   onSave,
+  toast,
 }: ScoreViewModalProps) {
   const [template, setTemplate] = useState<any>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
@@ -213,7 +216,7 @@ export default function ScoreViewModal({
       resultType === 'disqualification' &&
       (disqualifiedTeamId == null || !resultNote.trim())
     ) {
-      alert('Select the disqualified team and enter a private reason.');
+      toast.error('Select the disqualified team and enter a private reason.');
       return;
     }
 
@@ -281,11 +284,11 @@ export default function ScoreViewModal({
         fallbackError: 'Failed to update score',
       });
 
-      alert('Score updated successfully!');
+      toast.success('Score updated successfully!');
       onSave();
     } catch (error) {
       console.error('Error updating score:', error);
-      alert('Failed to update score');
+      toast.error('Failed to update score');
     } finally {
       setSaving(false);
     }

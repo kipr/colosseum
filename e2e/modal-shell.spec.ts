@@ -62,6 +62,7 @@ test.beforeEach(async ({ page }) => {
       '/scoresheet/templates/admin': [template],
       '/scoresheet/templates/2': template,
       '/field-templates': [],
+      '/brackets/event/1': [],
     };
     if (path in data) await route.fulfill({ json: data[path] });
     else await route.continue();
@@ -283,6 +284,255 @@ test('failed modal saves show an interactive toast above the dialog', async ({
   await expect(toast).toHaveCount(0);
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('#team-name')).toHaveValue('Keep these bots');
+});
+
+test('a focused toast resumes its timer when its dialog closes', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.route('**/teams', (route) =>
+    route.fulfill({ status: 400, json: { error: 'Team save failed' } }),
+  );
+  const { dialog } = await openTeam(page);
+  await dialog.locator('#team-number').fill('101');
+  await dialog.locator('#team-name').fill('Keep these bots');
+  await dialog.getByRole('button', { name: 'Add Team', exact: true }).click();
+  const toast = page.getByRole('alert').filter({ hasText: 'Team save failed' });
+  await expect(toast).toBeVisible();
+  // Removing the dialog drops focus from the toast without a blur event.
+  await toast.getByRole('button', { name: 'Dismiss notification' }).focus();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(toast).toBeVisible();
+  await page.clock.runFor(10_000);
+  await expect(toast).toHaveCount(0);
+});
+
+test('editor toasts come from the tab and outlive the closed modal', async ({
+  page,
+}) => {
+  await page.clock.install();
+  await page.route('**/field-templates', (route) =>
+    route.request().method() === 'POST'
+      ? route.fulfill({ json: { id: 3 } })
+      : route.fallback(),
+  );
+  await page.goto('/admin/events/1?view=scoresheets');
+  await page
+    .getByRole('button', { name: '+ Create Field Template', exact: true })
+    .click();
+  const dialog = page.getByRole('dialog', { name: 'Create Field Template' });
+  const name = dialog.getByPlaceholder('e.g., Botball 2024 Scoring Fields');
+  await name.fill('Keep this template');
+  const fields = dialog.locator('textarea').nth(1);
+  await fields.fill('[');
+  const create = dialog.getByRole('button', {
+    name: 'Create Template',
+    exact: true,
+  });
+  await create.click();
+  await create.click();
+  const invalid = page
+    .getByRole('alert')
+    .filter({ hasText: 'Invalid JSON. Please check your syntax.' });
+  // Repeating the same error restarts it instead of stacking a copy.
+  await expect(invalid).toHaveCount(1);
+  // Hovering holds an error past its 6s duration so it can be read.
+  await invalid.hover();
+  await page.clock.runFor(10_000);
+  await expect(invalid).toBeVisible();
+  await page.mouse.move(0, 0);
+  await page.clock.runFor(10_000);
+  await expect(invalid).toHaveCount(0);
+  await expect(name).toHaveValue('Keep this template');
+
+  await fields.fill('[]');
+  await create.click();
+  await expect(dialog).toHaveCount(0);
+  const saved = page
+    .getByRole('status')
+    .filter({ hasText: 'Field template created!' });
+  await expect(saved).toBeVisible();
+  await saved.getByRole('button', { name: 'Dismiss notification' }).click({
+    timeout: 1500,
+  });
+  await expect(saved).toHaveCount(0);
+});
+
+for (const [kind, button, message] of [
+  ['editor', 'Edit', 'Failed to load template'],
+  ['preview', 'Preview', 'Failed to load template preview'],
+] as const) {
+  test(`${kind} load failure closes the modal and keeps its toast`, async ({
+    page,
+  }) => {
+    await page.route('**/scoresheet/templates/2', (route) =>
+      route.fulfill({ status: 500, json: { error: 'Load failed' } }),
+    );
+    await page.goto('/admin/events/1?view=scoresheets');
+    await page.getByRole('button', { name: button, exact: true }).click();
+    await expect(
+      page.getByRole('alert').filter({ hasText: message }),
+    ).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+}
+
+test('a stale load failure leaves the next modal alone', async ({ page }) => {
+  let failLoad = () => {};
+  const loadHeld = new Promise<void>((resolve) => (failLoad = resolve));
+  await page.route('**/field-templates', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill({
+          json: [
+            {
+              id: 9,
+              name: 'Slow template',
+              description: '',
+              created_at: '2026-01-01T00:00:00Z',
+            },
+          ],
+        })
+      : route.fallback(),
+  );
+  let loadFinished = () => {};
+  const loadDone = new Promise<void>((resolve) => (loadFinished = resolve));
+  await page.route('**/field-templates/9', async (route) => {
+    await loadHeld;
+    await route.fulfill({ status: 500, json: { error: 'Load failed' } });
+    loadFinished();
+  });
+  await page.goto('/admin/events/1?view=scoresheets');
+  await page
+    .getByRole('row', { name: /Slow template/ })
+    .getByRole('button', { name: 'Edit', exact: true })
+    .click();
+  const edit = page.getByRole('dialog', { name: 'Edit Field Template' });
+  await expect(edit).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(edit).toHaveCount(0);
+
+  await page
+    .getByRole('button', { name: '+ Create Field Template', exact: true })
+    .click();
+  const create = page.getByRole('dialog', { name: 'Create Field Template' });
+  await expect(create).toBeVisible();
+  failLoad();
+  await loadDone;
+  // Give the stale response a chance to run its handlers.
+  await page.waitForTimeout(300);
+  await expect(create).toBeVisible();
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Failed to load template' }),
+  ).toHaveCount(0);
+});
+
+test('wizard validation repeats as one toast', async ({ page }) => {
+  await page.goto('/admin/events/1?view=scoresheets');
+  await page
+    .getByRole('button', { name: '+ Create New Score Sheet', exact: true })
+    .click();
+  await page.getByRole('button', { name: /Use Score Sheet Generator/ }).click();
+  const dialog = page.getByRole('dialog', { name: 'Score Sheet Wizard' });
+  const next = dialog.getByRole('button', { name: 'Next →', exact: true });
+  await next.click();
+  await next.click();
+  await expect(
+    dialog.getByRole('heading', { name: 'Basic Information' }),
+  ).toBeVisible();
+  await next.click();
+  await next.click();
+  await expect(
+    page
+      .getByRole('alert')
+      .filter({ hasText: 'Please fill in Name and Access Code' }),
+  ).toHaveCount(1);
+  await expect(dialog).toBeVisible();
+});
+
+test('removing the game areas image asks in an app dialog', async ({
+  page,
+}) => {
+  const image =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+  await page.route('**/scoresheet/templates/2', (route) =>
+    route.fulfill({
+      json: {
+        ...template,
+        schema: { ...template.schema, gameAreasImage: image },
+      },
+    }),
+  );
+  await page.goto('/admin/events/1?view=scoresheets');
+  await page.getByRole('button', { name: 'Edit', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit Score Sheet' });
+  const preview = editor.getByRole('img', { name: 'Game Areas' });
+  await expect(preview).toBeVisible();
+  const remove = editor.getByRole('button', {
+    name: 'Remove Image',
+    exact: true,
+  });
+
+  await remove.click();
+  const confirmDialog = page.getByRole('dialog', { name: 'Remove Image' });
+  await expect(confirmDialog).toBeVisible();
+  // Escape on the confirm must not also dismiss the editor beneath it.
+  await page.keyboard.press('Escape');
+  await expect(confirmDialog).toHaveCount(0);
+  await expect(editor).toBeVisible();
+  await expect(preview).toBeVisible();
+
+  await remove.click();
+  await confirmDialog
+    .getByRole('button', { name: 'Remove', exact: true })
+    .click();
+  await expect(confirmDialog).toHaveCount(0);
+  await expect(editor).toBeVisible();
+  await expect(preview).toHaveCount(0);
+});
+
+test('score edits report success after the modal closes', async ({ page }) => {
+  const score = {
+    id: 5,
+    template_id: 2,
+    template_name: template.name,
+    participant_name: 'Alpha Bots',
+    match_id: '',
+    created_at: '2026-01-01T00:00:00Z',
+    status: 'pending',
+    reviewed_by: null,
+    reviewed_at: null,
+    reviewer_name: null,
+    score_data: {},
+    result_type: 'standard',
+    disqualified_team_id: null,
+    result_note: null,
+    event_id: 1,
+    score_type: 'seeding',
+  };
+  await page.route('**/scores/by-event/1*', (route) =>
+    route.fulfill({
+      json: { rows: [score], page: 1, limit: 50, totalCount: 1, totalPages: 1 },
+    }),
+  );
+  await page.route('**/scoresheet/templates', (route) =>
+    route.fulfill({ json: [template] }),
+  );
+  await page.route('**/scores/5', (route) =>
+    route.request().method() === 'PUT'
+      ? route.fulfill({ json: { id: 5 } })
+      : route.fallback(),
+  );
+  await page.goto('/admin/events/1?view=scoring');
+  await page.getByRole('button', { name: 'View Details', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Edit Score' });
+  await dialog
+    .getByRole('button', { name: 'Save Changes', exact: true })
+    .click();
+  await expect(dialog).toHaveCount(0);
+  await expect(
+    page.getByRole('status').filter({ hasText: 'Score updated successfully!' }),
+  ).toBeVisible();
 });
 
 for (const kind of ['automatic awards', 'recipients'] as const) {

@@ -3,12 +3,14 @@ import { useState } from 'react';
 import TemplateEditorModal from './TemplateEditorModal';
 import ScoreSheetWizard from './ScoreSheetWizard';
 import Modal from '../Modal';
+import type { ToastNotifier } from '../Toast';
 
 interface ScoreSheetEditorModalProps {
   scoreSheetId: number | null;
   eventId: number;
   onClose: () => void;
   onSave: () => void;
+  toast: ToastNotifier;
 }
 
 export default function ScoreSheetEditorModal({
@@ -16,6 +18,7 @@ export default function ScoreSheetEditorModal({
   eventId,
   onClose,
   onSave,
+  toast,
 }: ScoreSheetEditorModalProps) {
   const [mode, setMode] = useState<'choice' | 'wizard' | 'manual' | null>(
     scoreSheetId ? 'manual' : 'choice', // If editing existing, go straight to manual mode
@@ -30,6 +33,7 @@ export default function ScoreSheetEditorModal({
         eventId={eventId}
         onClose={onClose}
         onSave={onSave}
+        toast={toast}
       />
     );
   }
@@ -111,6 +115,7 @@ export default function ScoreSheetEditorModal({
           setMode('manual');
         }}
         onCancel={() => setMode('choice')}
+        toast={toast}
       />
     );
   }
@@ -122,6 +127,7 @@ export default function ScoreSheetEditorModal({
       eventId={eventId}
       onClose={onClose}
       onSave={onSave}
+      toast={toast}
       initialData={wizardData}
     />
   );

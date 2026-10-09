@@ -13,6 +13,7 @@ import {
 } from '../../../shared/scoresheetSchema';
 import { apiFetch } from '../../utils/api';
 import Modal from '../Modal';
+import type { ToastNotifier } from '../Toast';
 import {
   CalculatedField,
   OptionButtonGroup,
@@ -30,6 +31,7 @@ import '../../pages/Scoresheet.css';
 interface TemplatePreviewModalProps {
   templateId: number;
   onClose: () => void;
+  toast: ToastNotifier;
 }
 
 const NON_INPUT_FIELD_TYPES = ['section_header', 'group_header', 'calculated'];
@@ -56,26 +58,34 @@ function getPreviewValues(fields: any[]): Record<string, any> {
 export default function TemplatePreviewModal({
   templateId,
   onClose,
+  toast,
 }: TemplatePreviewModalProps) {
   const [template, setTemplate] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadTemplate();
+    // Ignore a load that finishes after this modal closed or switched.
+    let active = true;
+    loadTemplate(() => active);
+    return () => {
+      active = false;
+    };
   }, [templateId]);
 
-  const loadTemplate = async () => {
+  const loadTemplate = async (isActive: () => boolean) => {
     try {
       const data = await apiFetch(`/scoresheet/templates/${templateId}`, {
         fallbackError: 'Failed to load template',
       });
+      if (!isActive()) return;
       setTemplate(data);
     } catch (error) {
+      if (!isActive()) return;
       console.error('Error loading template:', error);
-      alert('Failed to load template preview');
+      toast.error('Failed to load template preview');
       onClose();
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
   };
 
