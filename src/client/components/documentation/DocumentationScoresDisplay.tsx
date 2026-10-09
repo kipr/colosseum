@@ -1,5 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
-import { UnifiedTable } from '../table';
+import { useMemo } from 'react';
+import {
+  compareLocaleString,
+  compareNullableNumber,
+  compareValues,
+  UnifiedTable,
+  useTableSort,
+} from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
 
@@ -35,13 +41,21 @@ interface DocumentationScoresDisplayProps {
   variant?: 'default' | 'spectator';
 }
 
-type SortField =
-  | 'team_number'
-  | 'team_name'
-  | 'overall_score'
+const META_SORT_FIELDS = ['team_number', 'team_name', 'overall_score'] as const;
+/** Sort ids shared by the public and admin documentation tables. */
+export type DocumentationSortField =
+  | (typeof META_SORT_FIELDS)[number]
   | `cat_${number}`;
+type SortField = DocumentationSortField;
 
-type SortDirection = 'asc' | 'desc';
+export function isDocumentationSortField(
+  sortId: string,
+): sortId is DocumentationSortField {
+  return (
+    (META_SORT_FIELDS as readonly string[]).includes(sortId) ||
+    /^cat_\d+$/.test(sortId)
+  );
+}
 
 export default function DocumentationScoresDisplay({
   categories,
@@ -53,8 +67,10 @@ export default function DocumentationScoresDisplay({
     (a, b) => a.ordinal - b.ordinal,
   );
 
-  const [sortField, setSortField] = useState<SortField>('team_number');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>({
+    initialField: 'team_number',
+    fields: isDocumentationSortField,
+  });
 
   const subScoreMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -70,45 +86,29 @@ export default function DocumentationScoresDisplay({
 
   const sortedScores = useMemo(() => {
     const sorted = [...scores].sort((a, b) => {
-      let aVal: string | number;
-      let bVal: string | number;
-
-      if (sortField === 'team_number') {
-        aVal = a.team_number;
-        bVal = b.team_number;
-      } else if (sortField === 'team_name') {
-        aVal = a.team_name.toLowerCase();
-        bVal = b.team_name.toLowerCase();
-      } else if (sortField === 'overall_score') {
-        aVal = a.overall_score ?? -Infinity;
-        bVal = b.overall_score ?? -Infinity;
-      } else if (sortField.startsWith('cat_')) {
-        const catId = parseInt(sortField.slice(4), 10);
-        aVal = subScoreMap.get(`${a.team_id}-${catId}`) ?? -Infinity;
-        bVal = subScoreMap.get(`${b.team_id}-${catId}`) ?? -Infinity;
-      } else {
-        return 0;
+      switch (sortField) {
+        case 'team_number':
+          return compareValues(a.team_number, b.team_number, sortDirection);
+        case 'team_name':
+          return compareLocaleString(a.team_name, b.team_name, sortDirection);
+        case 'overall_score':
+          return compareNullableNumber(
+            a.overall_score,
+            b.overall_score,
+            sortDirection,
+          );
+        default: {
+          const catId = parseInt(sortField.slice('cat_'.length), 10);
+          return compareNullableNumber(
+            subScoreMap.get(`${a.team_id}-${catId}`),
+            subScoreMap.get(`${b.team_id}-${catId}`),
+            sortDirection,
+          );
+        }
       }
-
-      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
-      return 0;
     });
     return sorted;
   }, [scores, subScoreMap, sortField, sortDirection]);
-
-  const handleSort = useCallback(
-    (field: string) => {
-      const f = field as SortField;
-      if (sortField === f) {
-        setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
-      } else {
-        setSortField(f);
-        setSortDirection('asc');
-      }
-    },
-    [sortField],
-  );
 
   const stickyNum = isSpectator
     ? 'sticky-col sticky-col-team-number doc-team-number-col'
@@ -256,7 +256,7 @@ export default function DocumentationScoresDisplay({
           getRowKey={(s) => s.team_id}
           activeSortId={sortField}
           sortDirection={sortDirection}
-          onSort={handleSort}
+          onSort={onSort}
           headerLabelVariant="doc"
           wrapperClassName={`doc-scores-table-wrapper${isSpectator ? ' doc-scores-table-wrapper-spectator' : ''}`}
           tableClassName={`doc-calculator-table${isSpectator ? ' doc-calculator-table-spectator' : ''}`}

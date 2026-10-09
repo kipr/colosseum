@@ -41,4 +41,20 @@ describe('OverallScoresDisplay', () => {
     expect(html).toContain('Raw Double Seeding');
     expect(html).toContain('2x Seed');
   });
+
+  it('sorts by total, highest first, by default', () => {
+    const html = renderToStaticMarkup(
+      React.createElement(OverallScoresDisplay, {
+        rows: [
+          { ...rows[0], team_id: 1, team_name: 'Low', total: 1 },
+          { ...rows[0], team_id: 2, team_name: 'High', total: 3 },
+          { ...rows[0], team_id: 3, team_name: 'Mid', total: 2 },
+        ],
+      }),
+    );
+
+    const order = ['High', 'Mid', 'Low'].map((name) => html.indexOf(name));
+    expect(order.every((index) => index >= 0)).toBe(true);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
 });

@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   UnifiedTable,
   compareLocaleString,
   compareNullableNumber,
+  useTableSort,
 } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import type { TeamSummary } from '../../types/teams';
@@ -166,19 +167,32 @@ export function buildTeamRowData<S extends RoundScore, R extends RankingBase>(
   });
 }
 
+const META_SORT_FIELDS = [
+  'seed_rank',
+  'team_number',
+  'team_name',
+  'seed_average',
+  'raw_score',
+] as const;
 /** Sort field: meta keys or `round:${n}` for round score columns */
-type SortField = string;
-type SortDirection = 'asc' | 'desc';
+type SortField = (typeof META_SORT_FIELDS)[number] | `round:${number}`;
 type SeedingTableVariant = 'default' | 'spectator';
 
-function roundField(round: number): string {
+function roundField(round: number): `round:${number}` {
   return `round:${round}`;
 }
 
-function parseRoundField(field: SortField): number | null {
+function parseRoundField(field: string): number | null {
   if (!field.startsWith('round:')) return null;
   const n = Number(field.slice('round:'.length));
   return Number.isFinite(n) ? n : null;
+}
+
+function isSortField(sortId: string): sortId is SortField {
+  return (
+    (META_SORT_FIELDS as readonly string[]).includes(sortId) ||
+    parseRoundField(sortId) !== null
+  );
 }
 
 interface SeedingScoresTableProps<S extends RoundScore, R extends RankingBase> {
@@ -198,21 +212,14 @@ export default function SeedingScoresTable<
   variant = 'default',
 }: SeedingScoresTableProps<S, R>) {
   type Row = TeamRowData<S, R>;
-  const [sortField, setSortField] = useState<SortField>(
-    variant === 'spectator' ? 'seed_rank' : 'team_number',
-  );
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>({
+    initialField: variant === 'spectator' ? 'seed_rank' : 'team_number',
+    fields: isSortField,
+  });
   const isSpectator = variant === 'spectator';
 
   const sortedTeamRowData = useMemo(() => {
     return [...teamRowData].sort((a, b) => {
-      const roundNum = parseRoundField(sortField);
-      if (roundNum !== null) {
-        const sa = a.scores.get(roundNum)?.score;
-        const sb = b.scores.get(roundNum)?.score;
-        return compareNullableNumber(sa ?? null, sb ?? null, sortDirection);
-      }
-
       switch (sortField) {
         case 'seed_rank': {
           const ra = a.ranking?.seed_rank;
@@ -244,23 +251,18 @@ export default function SeedingScoresTable<
             b.ranking ? config.rawScore(b.ranking) : null,
             sortDirection,
           );
-        default:
-          return 0;
+        default: {
+          const roundNum = parseRoundField(sortField);
+          if (roundNum === null) return 0;
+          return compareNullableNumber(
+            a.scores.get(roundNum)?.score,
+            b.scores.get(roundNum)?.score,
+            sortDirection,
+          );
+        }
       }
     });
   }, [teamRowData, sortField, sortDirection, config]);
-
-  const handleSort = useCallback(
-    (field: string) => {
-      if (sortField === field) {
-        setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-      } else {
-        setSortField(field);
-        setSortDirection('asc');
-      }
-    },
-    [sortField, sortDirection],
-  );
 
   const stickyRank = isSpectator ? 'sticky-col sticky-col-rank' : '';
   const stickyNum = isSpectator ? 'sticky-col sticky-col-team-number' : '';
@@ -381,7 +383,7 @@ export default function SeedingScoresTable<
         getRowKey={(row) => row.team.id}
         activeSortId={sortField}
         sortDirection={sortDirection}
-        onSort={handleSort}
+        onSort={onSort}
         headerLabelVariant="seeding"
         wrapperClassName={`table-responsive${isSpectator ? ' seeding-table-responsive-spectator' : ''}`}
         tableClassName={`seeding-table seeding-unified-table${isSpectator ? ' seeding-table-spectator' : ''}`}
