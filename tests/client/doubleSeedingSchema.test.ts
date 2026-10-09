@@ -41,6 +41,39 @@ describe('buildDoubleSeedingSchema', () => {
     expect(fields.some((f) => f.id === 'grand_total')).toBe(false);
   });
 
+  it('orders identity then fallback fields with team B optional', () => {
+    const schema = buildDoubleSeedingSchema({
+      title: 'Fallback Sheet',
+      eventId: 7,
+      templateFields: null,
+    });
+
+    expect(schema.fields.map((f: SchemaField) => f.id)).toEqual([
+      'team_a_number',
+      'team_a_name',
+      'team_b_number',
+      'team_b_name',
+      'section_header_team_a',
+      'team_a_score',
+      'team_a_total',
+      'section_header_team_b',
+      'team_b_score',
+      'team_b_total',
+    ]);
+    const identity = schema.fields.slice(0, 4);
+    expect(identity.map((f: { required: boolean }) => f.required)).toEqual([
+      true,
+      true,
+      false,
+      false,
+    ]);
+    expect(
+      identity.every(
+        (f: { placeholder: string }) => f.placeholder === 'Select match first',
+      ),
+    ).toBe(true);
+  });
+
   it('adapts side A/B template fields to team A/B without a winner field', () => {
     const schema = buildDoubleSeedingSchema({
       title: 'Adapted Sheet',

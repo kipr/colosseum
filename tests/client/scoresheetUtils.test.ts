@@ -85,6 +85,36 @@ describe('scoresheetUtils', () => {
     expect(schema.teamsDataSource.eventId).toBe(42);
   });
 
+  it('orders DE game, identity, winner, then fallback fields', () => {
+    const schema = buildDoubleEliminationSchema({
+      title: 'Fallback DE Sheet',
+      eventId: 42,
+      templateFields: null,
+    });
+
+    expect(schema.fields.map((field: { id: string }) => field.id)).toEqual([
+      'game_number',
+      'team_a_number',
+      'team_a_name',
+      'team_b_number',
+      'team_b_name',
+      'winner',
+      'section_header_team_a',
+      'team_a_score',
+      'team_a_total',
+      'section_header_team_b',
+      'team_b_score',
+      'team_b_total',
+    ]);
+    const identity = schema.fields.slice(1, 5);
+    expect(
+      identity.every(
+        (field: { required: boolean; placeholder: string }) =>
+          field.required && field.placeholder === 'Select game first',
+      ),
+    ).toBe(true);
+  });
+
   it('requires team initials by default and drops legacy initials fields', () => {
     const schema = buildDoubleEliminationSchema({
       title: 'Initials DE Sheet',
