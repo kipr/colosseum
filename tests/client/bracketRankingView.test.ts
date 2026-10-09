@@ -36,7 +36,7 @@ describe('BracketRankingView', () => {
     expect(html).toContain('0.6000');
   });
 
-  it('sorts by place by default, ties by id, unranked last', () => {
+  it('sorts by place by default, ties by id, unranked last by id', () => {
     const entry = {
       bracket_id: 1,
       seed_position: 1,
@@ -55,6 +55,14 @@ describe('BracketRankingView', () => {
         weight: 1,
         loading: false,
         rankings: [
+          {
+            ...entry,
+            id: 6,
+            team_id: 6,
+            team_number: 106,
+            team_name: 'Foxtrot',
+            final_rank: null,
+          },
           {
             ...entry,
             id: 5,
@@ -91,7 +99,7 @@ describe('BracketRankingView', () => {
       }),
     );
 
-    const order = ['Alpha', 'Bravo', 'Charlie', 'Echo'].map((name) =>
+    const order = ['Alpha', 'Bravo', 'Charlie', 'Echo', 'Foxtrot'].map((name) =>
       html.indexOf(name),
     );
     expect(order.every((index) => index >= 0)).toBe(true);

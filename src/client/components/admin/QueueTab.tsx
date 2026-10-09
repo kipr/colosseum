@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { applySortDirection, UnifiedTable, useTableSort } from '../table';
+import {
+  compareLocaleString,
+  compareNullable,
+  compareNullableNumber,
+  compareValues,
+  UnifiedTable,
+  useTableSort,
+} from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -80,7 +87,8 @@ interface QueueParticipant {
 
 const STATUS_ORDER: readonly QueueStatus[] = QUEUE_STATUSES;
 
-type SortField = 'gameNumber' | 'teamNumber' | 'teamName';
+const SORT_FIELDS = ['gameNumber', 'teamNumber', 'teamName'] as const;
+type SortField = (typeof SORT_FIELDS)[number];
 
 const TYPE_OPTIONS: { value: QueueType | 'all'; label: string }[] = [
   { value: 'all', label: 'All Types' },
@@ -183,8 +191,10 @@ export default function QueueTab() {
     'scored',
   ]);
   const [filterType, setFilterType] = useState<QueueType | 'all'>('all');
-  const { sortField, sortDirection, onSort } =
-    useTableSort<SortField>('gameNumber');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>({
+    initialField: 'gameNumber',
+    fields: SORT_FIELDS,
+  });
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [presenceUpdatingIds, setPresenceUpdatingIds] = useState<Set<number>>(
     () => new Set(),
@@ -795,56 +805,57 @@ export default function QueueTab() {
     }
   };
 
-  const getTeamSortValue = (item: QueueItem): string => {
-    if (item.queue_type === 'seeding') {
-      return (item.seeding_team_name || '').toLowerCase();
-    }
-    if (item.queue_type === 'double_seeding') {
-      const team1 = (item.double_seeding_team1_name || '').toLowerCase();
-      const team2 = (item.double_seeding_team2_name || '').toLowerCase();
-      return `${team1} ${team2}`.trim();
-    }
-    const team1 = (item.team1_name || '').toLowerCase();
-    const team2 = (item.team2_name || '').toLowerCase();
-    return `${team1} ${team2}`.trim();
+  /** Team label for sorting, or null when no team is assigned yet. */
+  const getTeamSortValue = (item: QueueItem): string | null => {
+    const names =
+      item.queue_type === 'seeding'
+        ? [item.seeding_team_name]
+        : item.queue_type === 'double_seeding'
+          ? [item.double_seeding_team1_name, item.double_seeding_team2_name]
+          : [item.team1_name, item.team2_name];
+    return names.filter(Boolean).join(' ') || null;
   };
 
-  const getTeamNumberSortValue = (item: QueueItem): number => {
-    if (item.queue_type === 'seeding') {
-      return item.seeding_team_number ?? Number.MAX_SAFE_INTEGER;
-    }
-    if (item.queue_type === 'double_seeding') {
-      return Math.min(
-        item.double_seeding_team1_number ?? Number.MAX_SAFE_INTEGER,
-        item.double_seeding_team2_number ?? Number.MAX_SAFE_INTEGER,
-      );
-    }
-    return Math.min(
-      item.team1_number ?? Number.MAX_SAFE_INTEGER,
-      item.team2_number ?? Number.MAX_SAFE_INTEGER,
-    );
+  /** Lowest assigned team number, or null when no team is assigned yet. */
+  const getTeamNumberSortValue = (item: QueueItem): number | null => {
+    const numbers =
+      item.queue_type === 'seeding'
+        ? [item.seeding_team_number]
+        : item.queue_type === 'double_seeding'
+          ? [item.double_seeding_team1_number, item.double_seeding_team2_number]
+          : [item.team1_number, item.team2_number];
+    const present = numbers.filter((n): n is number => n != null);
+    return present.length > 0 ? Math.min(...present) : null;
   };
 
   const sortedQueue = useMemo(() => {
     const sorted = [...queue];
-    sorted.sort((a, b) => {
-      let valueCompare = 0;
-      if (sortField === 'gameNumber') {
-        const aValue = a.queue_position;
-        const bValue = b.queue_position;
-        valueCompare = aValue - bValue;
-      } else if (sortField === 'teamNumber') {
-        valueCompare = getTeamNumberSortValue(a) - getTeamNumberSortValue(b);
-      } else {
-        valueCompare = getTeamSortValue(a).localeCompare(getTeamSortValue(b));
+    const compareField = (a: QueueItem, b: QueueItem): number => {
+      switch (sortField) {
+        case 'gameNumber':
+          return compareValues(
+            a.queue_position,
+            b.queue_position,
+            sortDirection,
+          );
+        case 'teamNumber':
+          return compareNullableNumber(
+            getTeamNumberSortValue(a),
+            getTeamNumberSortValue(b),
+            sortDirection,
+          );
+        case 'teamName':
+          return compareNullable(
+            getTeamSortValue(a),
+            getTeamSortValue(b),
+            sortDirection,
+            compareLocaleString,
+          );
       }
-
-      if (valueCompare !== 0) {
-        return applySortDirection(valueCompare, sortDirection);
-      }
-
-      return a.queue_position - b.queue_position;
-    });
+    };
+    sorted.sort(
+      (a, b) => compareField(a, b) || a.queue_position - b.queue_position,
+    );
     return sorted;
   }, [queue, sortDirection, sortField]);
 

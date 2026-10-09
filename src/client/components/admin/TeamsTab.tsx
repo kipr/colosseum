@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { compareValues, UnifiedTable, useTableSort } from '../table';
+import {
+  compareLocaleString,
+  compareNullable,
+  compareValues,
+  UnifiedTable,
+  useTableSort,
+} from '../table';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
@@ -23,12 +29,14 @@ const defaultFormData: TeamFormData = {
   status: 'registered',
 };
 
-type SortField =
-  | 'team_number'
-  | 'team_name'
-  | 'display_name'
-  | 'status'
-  | 'checked_in_at';
+const SORT_FIELDS = [
+  'team_number',
+  'team_name',
+  'display_name',
+  'status',
+  'checked_in_at',
+] as const;
+type SortField = (typeof SORT_FIELDS)[number];
 
 const STATUS_OPTIONS: { value: TeamStatus | 'all'; label: string }[] = [
   { value: 'all', label: 'All Statuses' },
@@ -158,8 +166,10 @@ export default function TeamsTab() {
   const [loading, setLoading] = useState(false);
   const [filterStatus, setFilterStatus] = useState<TeamStatus | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const { sortField, sortDirection, onSort } =
-    useTableSort<SortField>('team_number');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>({
+    initialField: 'team_number',
+    fields: SORT_FIELDS,
+  });
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -235,35 +245,28 @@ export default function TeamsTab() {
 
     // Sort
     result.sort((a, b) => {
-      let aVal: string | number;
-      let bVal: string | number;
-
       switch (sortField) {
         case 'team_number':
-          aVal = a.team_number;
-          bVal = b.team_number;
-          break;
+          return compareValues(a.team_number, b.team_number, sortDirection);
         case 'team_name':
-          aVal = a.team_name.toLowerCase();
-          bVal = b.team_name.toLowerCase();
-          break;
+          return compareLocaleString(a.team_name, b.team_name, sortDirection);
         case 'display_name':
-          aVal = (a.display_name || '').toLowerCase();
-          bVal = (b.display_name || '').toLowerCase();
-          break;
+          return compareNullable(
+            a.display_name || null,
+            b.display_name || null,
+            sortDirection,
+            compareLocaleString,
+          );
         case 'status':
-          aVal = a.status;
-          bVal = b.status;
-          break;
+          return compareValues(a.status, b.status, sortDirection);
         case 'checked_in_at':
-          aVal = a.checked_in_at || '';
-          bVal = b.checked_in_at || '';
-          break;
-        default:
-          return 0;
+          return compareNullable(
+            a.checked_in_at || null,
+            b.checked_in_at || null,
+            sortDirection,
+            compareValues,
+          );
       }
-
-      return compareValues(aVal, bVal, sortDirection);
     });
 
     return result;

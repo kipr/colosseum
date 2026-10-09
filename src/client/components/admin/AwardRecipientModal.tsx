@@ -25,12 +25,14 @@ interface AwardRecipientModalProps {
   onSuccess: (message: string) => void;
 }
 
-type SortField =
-  | 'weighted'
-  | 'team_number'
-  | 'team_name'
-  | 'certificates'
-  | 'trophies';
+const SORT_FIELDS = [
+  'weighted',
+  'team_number',
+  'team_name',
+  'certificates',
+  'trophies',
+] as const;
+type SortField = (typeof SORT_FIELDS)[number];
 
 interface RecipientRow extends TeamAwardCounts {
   alreadyRecipient: boolean;
@@ -53,8 +55,10 @@ export default function AwardRecipientModal({
     () => new Set(),
   );
   const [filter, setFilter] = useState('');
-  const { sortField, sortDirection, onSort } =
-    useTableSort<SortField>('weighted');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>({
+    initialField: 'weighted',
+    fields: SORT_FIELDS,
+  });
 
   // Keep latest onError without reloading when the parent passes a new inline callback.
   const onErrorRef = useRef(onError);

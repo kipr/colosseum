@@ -1,5 +1,11 @@
 import { useMemo } from 'react';
-import { compareValues, UnifiedTable, useTableSort } from '../table';
+import {
+  compareLocaleString,
+  compareValues,
+  UnifiedTable,
+  useTableSort,
+} from '../table';
+import type { SortDirection } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../admin/DocumentationTab.css';
 
@@ -20,14 +26,20 @@ interface OverallScoresDisplayProps {
   showDoubleSeeding?: boolean;
 }
 
-type SortField =
-  | 'team_number'
-  | 'team_name'
-  | 'doc_score'
-  | 'raw_seed_score'
-  | 'raw_double_seed_score'
-  | 'weighted_de_score'
-  | 'total';
+const SORT_FIELDS = [
+  'team_number',
+  'team_name',
+  'doc_score',
+  'raw_seed_score',
+  'raw_double_seed_score',
+  'weighted_de_score',
+  'total',
+] as const;
+type SortField = (typeof SORT_FIELDS)[number];
+
+function defaultSortDirection(field: SortField): SortDirection {
+  return field === 'total' ? 'desc' : 'asc';
+}
 
 function formatScore(val: number): string {
   return val.toFixed(4);
@@ -39,50 +51,42 @@ export default function OverallScoresDisplay({
   showDoubleSeeding = false,
 }: OverallScoresDisplayProps) {
   const isSpectator = variant === 'spectator';
-  const { sortField, sortDirection, onSort } = useTableSort<SortField>(
-    'total',
-    (field) => (field === 'total' ? 'desc' : 'asc'),
-  );
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>({
+    initialField: 'total',
+    fields: SORT_FIELDS,
+    defaultDirection: defaultSortDirection,
+  });
 
   const sortedRows = useMemo(() => {
     const sorted = [...rows].sort((a, b) => {
-      let aVal: string | number;
-      let bVal: string | number;
-
       switch (sortField) {
         case 'team_number':
-          aVal = a.team_number;
-          bVal = b.team_number;
-          break;
+          return compareValues(a.team_number, b.team_number, sortDirection);
         case 'team_name':
-          aVal = a.team_name.toLowerCase();
-          bVal = b.team_name.toLowerCase();
-          break;
+          return compareLocaleString(a.team_name, b.team_name, sortDirection);
         case 'doc_score':
-          aVal = a.doc_score;
-          bVal = b.doc_score;
-          break;
+          return compareValues(a.doc_score, b.doc_score, sortDirection);
         case 'raw_seed_score':
-          aVal = a.raw_seed_score;
-          bVal = b.raw_seed_score;
-          break;
+          return compareValues(
+            a.raw_seed_score,
+            b.raw_seed_score,
+            sortDirection,
+          );
         case 'raw_double_seed_score':
-          aVal = a.raw_double_seed_score ?? 0;
-          bVal = b.raw_double_seed_score ?? 0;
-          break;
+          return compareValues(
+            a.raw_double_seed_score ?? 0,
+            b.raw_double_seed_score ?? 0,
+            sortDirection,
+          );
         case 'weighted_de_score':
-          aVal = a.weighted_de_score;
-          bVal = b.weighted_de_score;
-          break;
+          return compareValues(
+            a.weighted_de_score,
+            b.weighted_de_score,
+            sortDirection,
+          );
         case 'total':
-          aVal = a.total;
-          bVal = b.total;
-          break;
-        default:
-          return 0;
+          return compareValues(a.total, b.total, sortDirection);
       }
-
-      return compareValues(aVal, bVal, sortDirection);
     });
 
     return sorted;

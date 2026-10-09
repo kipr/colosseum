@@ -1,9 +1,8 @@
 import type { SortDirection } from './types';
 
 /**
- * Compare two already-extracted sort values with `<` / `>` (code-unit order for
- * strings). Callers map missing values (e.g. `?? -Infinity`, `|| ''`) before
- * calling, so their placement is decided by the caller.
+ * Compare two numbers or machine strings (ids, enum keys, ISO timestamps) with
+ * `<` / `>`. Use `compareLocaleString` for display text.
  */
 export function compareValues(
   a: string | number,
@@ -16,40 +15,44 @@ export function compareValues(
 }
 
 /**
- * Apply a sort direction to a raw ascending comparison (e.g. a subtraction or
- * `localeCompare` result). Lets callers add an unreversed tie breaker afterward.
+ * Compare nullable values; null/undefined sort last in both directions, and
+ * present values are compared with `compare`.
  */
-export function applySortDirection(
-  compare: number,
+export function compareNullable<T>(
+  a: T | null | undefined,
+  b: T | null | undefined,
   dir: SortDirection,
-): number {
-  return dir === 'asc' ? compare : -compare;
-}
-
-/**
- * Compare nullable numbers; null/undefined sort after non-null (toward end in asc).
- */
-export function compareNullableNumber(
-  a: number | null | undefined,
-  b: number | null | undefined,
-  dir: SortDirection,
+  compare: (a: T, b: T, dir: SortDirection) => number,
 ): number {
   const aNull = a === null || a === undefined;
   const bNull = b === null || b === undefined;
   if (aNull && bNull) return 0;
   if (aNull) return 1;
   if (bNull) return -1;
-  return compareValues(a, b, dir);
+  return compare(a, b, dir);
 }
 
 /**
- * Case-insensitive string compare with direction. Uses code-unit order on the
- * lowercased strings, not `localeCompare`.
+ * Compare nullable numbers; null/undefined sort last in both directions.
+ */
+export function compareNullableNumber(
+  a: number | null | undefined,
+  b: number | null | undefined,
+  dir: SortDirection,
+): number {
+  return compareNullable(a, b, dir, compareValues);
+}
+
+const textCollator = new Intl.Collator(undefined, { sensitivity: 'accent' });
+
+/**
+ * Locale-aware, case-insensitive compare for display text (team names etc.).
  */
 export function compareLocaleString(
   a: string,
   b: string,
   dir: SortDirection,
 ): number {
-  return compareValues(a.toLowerCase(), b.toLowerCase(), dir);
+  const cmp = Math.sign(textCollator.compare(a, b));
+  return dir === 'asc' ? cmp : -cmp;
 }

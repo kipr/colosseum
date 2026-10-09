@@ -9,13 +9,13 @@ export type {
   SortDirection,
 } from './types';
 export {
-  applySortDirection,
   compareLocaleString,
+  compareNullable,
   compareNullableNumber,
   compareValues,
 } from './sortUtils';
 export { nextTableSort, useTableSort } from './useTableSort';
-export type { TableSortState } from './useTableSort';
+export type { TableSortFields, TableSortState } from './useTableSort';
 export {
   UnifiedTableScrollAffordanceProvider,
   useUnifiedTableScrollAffordance,

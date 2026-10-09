@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applySortDirection,
   compareLocaleString,
+  compareNullable,
   compareNullableNumber,
   compareValues,
 } from '../../src/client/components/table/sortUtils';
@@ -14,50 +14,44 @@ describe('compareValues', () => {
     expect(compareValues(2, 2, 'asc')).toBe(0);
   });
 
-  it('keeps caller-mapped missing values where the mapping puts them', () => {
-    const values = [3, -Infinity, 1];
-    expect([...values].sort((a, b) => compareValues(a, b, 'asc'))).toEqual([
-      -Infinity,
-      1,
-      3,
-    ]);
-    expect([...values].sort((a, b) => compareValues(a, b, 'desc'))).toEqual([
-      3,
-      1,
-      -Infinity,
-    ]);
-  });
-
-  it('uses code-unit string order rather than locale order', () => {
-    expect(compareValues('Z', 'a', 'asc')).toBe(-1);
-    expect(compareValues('é', 'f', 'asc')).toBe(1);
-  });
-});
-
-describe('applySortDirection', () => {
-  it('flips the sign only for descending sorts', () => {
-    expect(applySortDirection(-3, 'asc')).toBe(-3);
-    expect(applySortDirection(-3, 'desc')).toBe(3);
-  });
-
-  it('passes NaN through unchanged', () => {
-    expect(applySortDirection(NaN, 'desc')).toBeNaN();
+  it('orders machine strings such as ISO timestamps', () => {
+    expect(
+      compareValues('2026-01-02T00:00:00Z', '2026-01-10T00:00:00Z', 'asc'),
+    ).toBe(-1);
   });
 });
 
 describe('compareLocaleString', () => {
-  it('compares lowercased strings in code-unit order', () => {
-    expect(compareLocaleString('beta', 'Alpha', 'asc')).toBe(1);
-    expect(compareLocaleString('ALPHA', 'alpha', 'desc')).toBe(0);
-    expect(compareLocaleString('é', 'F', 'asc')).toBe(1);
+  const names = ['Zeta', 'fox', 'Émile', 'Ellen'];
+
+  it('sorts accented and mixed-case names in locale order', () => {
+    expect([...names].sort((a, b) => compareLocaleString(a, b, 'asc'))).toEqual(
+      ['Ellen', 'Émile', 'fox', 'Zeta'],
+    );
+    expect(
+      [...names].sort((a, b) => compareLocaleString(a, b, 'desc')),
+    ).toEqual(['Zeta', 'fox', 'Émile', 'Ellen']);
+  });
+
+  it('ignores case', () => {
+    expect(compareLocaleString('ALPHA', 'alpha', 'asc')).toBe(0);
   });
 });
 
-describe('compareNullableNumber', () => {
+describe('compareNullable', () => {
   it('sorts missing values last in both directions', () => {
-    expect(compareNullableNumber(null, 1, 'asc')).toBe(1);
-    expect(compareNullableNumber(null, 1, 'desc')).toBe(1);
-    expect(compareNullableNumber(2, 1, 'desc')).toBe(-1);
+    const values = [2, null, 1, undefined, 3];
+    expect(
+      [...values].sort((a, b) => compareNullableNumber(a, b, 'asc')),
+    ).toEqual([1, 2, 3, null, undefined]);
+    expect(
+      [...values].sort((a, b) => compareNullableNumber(a, b, 'desc')),
+    ).toEqual([3, 2, 1, null, undefined]);
+  });
+
+  it('delegates present values to the given comparator', () => {
+    expect(compareNullable('b', 'A', 'asc', compareLocaleString)).toBe(1);
+    expect(compareNullable(null, 'A', 'desc', compareLocaleString)).toBe(1);
   });
 });
 

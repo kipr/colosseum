@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { compareValues, UnifiedTable, useTableSort } from '../table';
+import {
+  compareLocaleString,
+  compareNullableNumber,
+  compareValues,
+  UnifiedTable,
+  useTableSort,
+} from '../table';
 import type { UnifiedColumnDef } from '../table/types';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
@@ -11,6 +17,10 @@ import {
 import { ApiError, apiFetch } from '../../utils/api';
 import type { Team } from '../../types/teams';
 import Modal from '../Modal';
+import {
+  type DocumentationSortField,
+  isDocumentationSortField,
+} from '../documentation/DocumentationScoresDisplay';
 import './DocumentationTab.css';
 
 interface DocCategory {
@@ -187,14 +197,11 @@ export default function DocumentationTab() {
   const scoreByTeamId = new Map(scores.map((s) => [s.team_id, s]));
   const teamByNumber = new Map(teams.map((t) => [t.team_number, t]));
 
-  type SortField =
-    | 'team_number'
-    | 'team_name'
-    | 'overall_score'
-    | `cat_${number}`;
-
   const { sortField, sortDirection, onSort } =
-    useTableSort<SortField>('team_number');
+    useTableSort<DocumentationSortField>({
+      initialField: 'team_number',
+      fields: isDocumentationSortField,
+    });
 
   const mergedTeams = useMemo(() => {
     const merged = teams.map((team) => {
@@ -202,29 +209,32 @@ export default function DocumentationTab() {
       return { team, doc };
     });
     merged.sort((a, b) => {
-      let aVal: string | number;
-      let bVal: string | number;
-
-      if (sortField === 'team_number') {
-        aVal = a.team.team_number;
-        bVal = b.team.team_number;
-      } else if (sortField === 'team_name') {
-        aVal = a.team.team_name.toLowerCase();
-        bVal = b.team.team_name.toLowerCase();
-      } else if (sortField === 'overall_score') {
-        aVal = a.doc?.overall_score ?? -Infinity;
-        bVal = b.doc?.overall_score ?? -Infinity;
-      } else if (sortField.startsWith('cat_')) {
-        const catId = parseInt(sortField.slice(4), 10);
-        const subA = a.doc?.sub_scores?.find((s) => s.category_id === catId);
-        const subB = b.doc?.sub_scores?.find((s) => s.category_id === catId);
-        aVal = subA?.score ?? -Infinity;
-        bVal = subB?.score ?? -Infinity;
-      } else {
-        return 0;
+      switch (sortField) {
+        case 'team_number':
+          return compareValues(
+            a.team.team_number,
+            b.team.team_number,
+            sortDirection,
+          );
+        case 'team_name':
+          return compareLocaleString(
+            a.team.team_name,
+            b.team.team_name,
+            sortDirection,
+          );
+        case 'overall_score':
+          return compareNullableNumber(
+            a.doc?.overall_score,
+            b.doc?.overall_score,
+            sortDirection,
+          );
+        default: {
+          const catId = parseInt(sortField.slice('cat_'.length), 10);
+          const subA = a.doc?.sub_scores?.find((s) => s.category_id === catId);
+          const subB = b.doc?.sub_scores?.find((s) => s.category_id === catId);
+          return compareNullableNumber(subA?.score, subB?.score, sortDirection);
+        }
       }
-
-      return compareValues(aVal, bVal, sortDirection);
     });
     return merged;
   }, [teams, scores, sortField, sortDirection]);

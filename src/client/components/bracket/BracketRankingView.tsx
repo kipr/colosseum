@@ -1,6 +1,13 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { BracketEntryWithRank } from '../../types/brackets';
-import { applySortDirection, UnifiedTable, useTableSort } from '../table';
+import {
+  compareLocaleString,
+  compareNullableNumber,
+  compareValues,
+  UnifiedTable,
+  useTableSort,
+} from '../table';
+import type { SortDirection } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import '../seeding/SeedingTables.css';
 
@@ -27,16 +34,18 @@ function getRankRowClass(rank: number | null): string {
   return '';
 }
 
-type SortField =
-  | 'place'
-  | 'team_number'
-  | 'team_name'
-  | 'raw_score'
-  | 'doc_score'
-  | 'raw_seeding'
-  | 'raw_double_seeding'
-  | 'weighted_de'
-  | 'total';
+const SORT_FIELDS = [
+  'place',
+  'team_number',
+  'team_name',
+  'raw_score',
+  'doc_score',
+  'raw_seeding',
+  'raw_double_seeding',
+  'weighted_de',
+  'total',
+] as const;
+type SortField = (typeof SORT_FIELDS)[number];
 
 function getTeamName(entry: BracketEntryWithRank): string {
   return entry.team_name ?? entry.display_name ?? '';
@@ -46,10 +55,54 @@ function formatScore(value: number): string {
   return value.toFixed(4);
 }
 
+/** Missing ranks, numbers and scores sort last in both directions. */
+function compareEntries(
+  a: BracketEntryWithRank,
+  b: BracketEntryWithRank,
+  field: SortField,
+  dir: SortDirection,
+): number {
+  switch (field) {
+    case 'place':
+      return compareNullableNumber(a.final_rank, b.final_rank, dir);
+    case 'team_number':
+      return compareNullableNumber(a.team_number, b.team_number, dir);
+    case 'team_name':
+      return compareLocaleString(getTeamName(a), getTeamName(b), dir);
+    case 'raw_score':
+      return compareNullableNumber(
+        a.bracket_raw_score,
+        b.bracket_raw_score,
+        dir,
+      );
+    case 'doc_score':
+      return compareValues(a.doc_score, b.doc_score, dir);
+    case 'raw_seeding':
+      return compareValues(a.raw_seed_score, b.raw_seed_score, dir);
+    case 'raw_double_seeding':
+      return compareValues(
+        a.raw_double_seed_score,
+        b.raw_double_seed_score,
+        dir,
+      );
+    case 'weighted_de':
+      return compareNullableNumber(
+        a.weighted_bracket_raw_score,
+        b.weighted_bracket_raw_score,
+        dir,
+      );
+    case 'total':
+      return compareValues(a.total, b.total, dir);
+  }
+}
+
 export default function BracketRankingView(props: BracketRankingViewProps) {
   const { rankings, weight, loading, onRefresh, variant = 'default' } = props;
   const refreshedRef = useRef(false);
-  const { sortField, sortDirection, onSort } = useTableSort<SortField>('place');
+  const { sortField, sortDirection, onSort } = useTableSort<SortField>({
+    initialField: 'place',
+    fields: SORT_FIELDS,
+  });
   const isSpectator = variant === 'spectator';
 
   useEffect(() => {
@@ -69,56 +122,9 @@ export default function BracketRankingView(props: BracketRankingViewProps) {
   );
 
   const sortedEntries = useMemo(() => {
-    const sorted = [...realEntries].sort((a, b) => {
-      let compare = 0;
-      switch (sortField) {
-        case 'place': {
-          const aVal = a.final_rank ?? Number.POSITIVE_INFINITY;
-          const bVal = b.final_rank ?? Number.POSITIVE_INFINITY;
-          compare = aVal - bVal;
-          break;
-        }
-        case 'team_number': {
-          const aVal = a.team_number ?? Number.POSITIVE_INFINITY;
-          const bVal = b.team_number ?? Number.POSITIVE_INFINITY;
-          compare = aVal - bVal;
-          break;
-        }
-        case 'team_name': {
-          compare = getTeamName(a)
-            .toLowerCase()
-            .localeCompare(getTeamName(b).toLowerCase());
-          break;
-        }
-        case 'raw_score':
-          compare = (a.bracket_raw_score ?? 0) - (b.bracket_raw_score ?? 0);
-          break;
-        case 'doc_score':
-          compare = a.doc_score - b.doc_score;
-          break;
-        case 'raw_seeding':
-          compare = a.raw_seed_score - b.raw_seed_score;
-          break;
-        case 'raw_double_seeding':
-          compare = a.raw_double_seed_score - b.raw_double_seed_score;
-          break;
-        case 'weighted_de':
-          compare =
-            (a.weighted_bracket_raw_score ?? 0) -
-            (b.weighted_bracket_raw_score ?? 0);
-          break;
-        case 'total':
-          compare = a.total - b.total;
-          break;
-        default:
-          compare = 0;
-      }
-
-      if (compare === 0) {
-        return a.id - b.id;
-      }
-      return applySortDirection(compare, sortDirection);
-    });
+    const sorted = [...realEntries].sort(
+      (a, b) => compareEntries(a, b, sortField, sortDirection) || a.id - b.id,
+    );
     return sorted;
   }, [realEntries, sortDirection, sortField]);
 
