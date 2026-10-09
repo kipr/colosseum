@@ -754,7 +754,10 @@ describe('Brackets CRUD & Game Management', () => {
         game_number: 1,
       });
 
-      // Number() accepts these; Postgres integer input does not.
+      // Number() accepts these; Postgres integer input does not. The route
+      // currently answers 500 via the general error handler; a 400 or 404
+      // would satisfy this test too, since what it guards is not resolving
+      // these ids onto an existing bracket.
       for (const id of [`${bracket.id}.0`, `${bracket.id}e0`]) {
         const res = await http.get(`${baseUrl}/brackets/${id}/games`);
         expect(res.status).not.toBe(200);

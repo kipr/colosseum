@@ -18,7 +18,7 @@ export interface BracketRankingEntryRow {
   team_id: number | null;
   seed_position: number;
   initial_slot: number | null;
-  is_bye: boolean;
+  is_bye: boolean | null;
   final_rank: number | null;
   bracket_raw_score: number | null;
   weighted_bracket_raw_score: number | null;
@@ -43,7 +43,7 @@ export interface BracketGameWithTeamsRow {
   team2_id: number | null;
   team1_source: string | null;
   team2_source: string | null;
-  status: string;
+  status: string | null;
   winner_id: number | null;
   loser_id: number | null;
   winner_advances_to_id: number | null;
@@ -58,8 +58,8 @@ export interface BracketGameWithTeamsRow {
   scheduled_time: Date | null;
   started_at: Date | null;
   completed_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
+  created_at: Date | null;
+  updated_at: Date | null;
   team1_number: number | null;
   team1_name: string | null;
   team1_display: string | null;
@@ -75,8 +75,8 @@ export interface BracketGameWithTeamsRow {
  * Games in a bracket with team number/name/display name joined for team1,
  * team2 and the winner, ordered by game number.
  *
- * Accepts the raw route param so Postgres rejects non-integer ids (`1e1`,
- * `0x10`) instead of JavaScript coercing them to another bracket.
+ * Accepts the raw route param so Postgres rejects non-integer ids (`12.0`,
+ * `1e1`) instead of JavaScript coercing them to another bracket.
  */
 export async function listBracketGamesWithTeams(
   db: Database,

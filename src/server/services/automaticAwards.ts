@@ -175,8 +175,10 @@ function buildSeedingPlacements(
 }
 
 /**
- * Non-bye entries; the bracket_entries check constraint ties is_bye = FALSE to
- * a non-null team_id, and the teams FK guarantees the joined team fields.
+ * Non-bye entries. Mirrors the SQL filter `is_bye = FALSE`, so a NULL is_bye
+ * (which the bracket_entries check constraint lets through) is skipped. The
+ * constraint ties is_bye = FALSE to a non-null team_id, and the teams FK
+ * guarantees the joined team fields.
  */
 function isTeamEntry(
   row: BracketRankingEntryRow,
@@ -185,7 +187,7 @@ function isTeamEntry(
   team_number: number;
   team_name: string;
 } {
-  return !row.is_bye && row.team_id != null;
+  return row.is_bye === false && row.team_id != null;
 }
 
 /**
