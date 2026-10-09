@@ -23,8 +23,10 @@ export default function FieldTemplateModal({
   const [loading, setLoading] = useState(!!templateId);
 
   useEffect(() => {
+    // Ignore a load that finishes after this modal closed or switched.
+    let active = true;
     if (templateId) {
-      loadTemplate();
+      loadTemplate(() => active);
     } else {
       // Default empty fields array
       setFieldsJson(
@@ -44,23 +46,28 @@ export default function FieldTemplateModal({
         ),
       );
     }
+    return () => {
+      active = false;
+    };
   }, [templateId]);
 
-  const loadTemplate = async () => {
+  const loadTemplate = async (isActive: () => boolean) => {
     try {
       const template = await apiFetch<any>(`/field-templates/${templateId}`, {
         fallbackError: 'Failed to load template',
       });
+      if (!isActive()) return;
 
       setName(template.name);
       setDescription(template.description || '');
       setFieldsJson(JSON.stringify(template.fields, null, 2));
     } catch (error) {
+      if (!isActive()) return;
       console.error('Error loading template:', error);
       toast.error('Failed to load template');
       onClose();
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
   };
 

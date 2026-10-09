@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
 import ScoreSheetEditorModal from './ScoreSheetEditorModal';
-import ScoreSheetPreviewModal from './ScoreSheetPreviewModal';
+import TemplatePreviewModal from './TemplatePreviewModal';
 import FieldTemplateModal from './FieldTemplateModal';
 import { useConfirm } from '../ConfirmModal';
 import { useToast } from '../Toast';
@@ -338,15 +338,15 @@ export default function ScoreSheetsTab() {
             setEditingScoreSheet(null);
           }}
           onSave={handleScoreSheetSaved}
-          toast={toast}
+          toast={toast.notifier}
         />
       )}
 
       {previewingScoreSheet && (
-        <ScoreSheetPreviewModal
-          scoreSheetId={previewingScoreSheet}
+        <TemplatePreviewModal
+          templateId={previewingScoreSheet}
           onClose={() => setPreviewingScoreSheet(null)}
-          toast={toast}
+          toast={toast.notifier}
         />
       )}
 
@@ -358,7 +358,7 @@ export default function ScoreSheetsTab() {
             setEditingTemplate(null);
           }}
           onSave={handleTemplateSaved}
-          toast={toast}
+          toast={toast.notifier}
         />
       )}
 

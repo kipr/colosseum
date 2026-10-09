@@ -64,21 +64,28 @@ export default function TemplatePreviewModal({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadTemplate();
+    // Ignore a load that finishes after this modal closed or switched.
+    let active = true;
+    loadTemplate(() => active);
+    return () => {
+      active = false;
+    };
   }, [templateId]);
 
-  const loadTemplate = async () => {
+  const loadTemplate = async (isActive: () => boolean) => {
     try {
       const data = await apiFetch(`/scoresheet/templates/${templateId}`, {
         fallbackError: 'Failed to load template',
       });
+      if (!isActive()) return;
       setTemplate(data);
     } catch (error) {
+      if (!isActive()) return;
       console.error('Error loading template:', error);
       toast.error('Failed to load template preview');
       onClose();
     } finally {
-      setLoading(false);
+      if (isActive()) setLoading(false);
     }
   };
 
