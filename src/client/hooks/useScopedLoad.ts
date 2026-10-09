@@ -39,18 +39,21 @@ interface Snapshot<K, T> {
  *   hook returns `initial` until the new key's response arrives, so a view
  *   never shows one event's rows under another.
  * - Only the latest request may commit. Starting another load, changing the
- *   key, disabling the hook or unmounting aborts the one in flight, so a slow
- *   response for a previous key cannot overwrite the current one.
- * - A null key loads nothing and returns `initial`.
- * - `enabled: false` defers the load (for lazily loaded tabs). Once loaded,
- *   the data is kept for that key and not refetched when re-enabled; call
- *   `reload` to refresh it.
+ *   key or unmounting aborts the one in flight, so a slow response for a
+ *   previous key cannot overwrite the current one.
+ * - A null or NaN key (an unparsable route param) loads nothing and returns
+ *   `initial`.
+ * - `enabled: false` defers the load (for lazily loaded tabs). A load already
+ *   in flight keeps going while disabled, and once loaded the data is kept
+ *   for that key and not refetched when re-enabled; call `reload` to refresh
+ *   it. A failed load is retried the next time the hook is enabled.
  */
 export function useScopedLoad<K extends ScopeKey, T>(
-  key: K | null,
+  scopeKey: K | null,
   load: (key: K, signal: AbortSignal) => Promise<T>,
   { initial, enabled = true, onError }: ScopedLoadOptions<T>,
 ): ScopedLoad<T> {
+  const key = Number.isNaN(scopeKey) ? null : scopeKey;
   const [initialData] = useState(initial);
   const [snapshot, setSnapshot] = useState<Snapshot<K, T> | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
@@ -93,23 +96,31 @@ export function useScopedLoad<K extends ScopeKey, T>(
   );
 
   useEffect(() => {
-    if (key === null || !enabled || loaded) return;
+    // A request in flight is always for the current key: leaving a key
+    // aborts it (below).
+    if (key === null || !enabled || loaded || controllerRef.current) return;
     void run(key);
   }, [key, enabled, loaded, run]);
 
-  // Leaving a key (or disabling the hook) abandons its request, whether the
-  // effect above or `reload` started it.
+  // Leaving a key abandons its request, whether the effect above or `reload`
+  // started it.
   useEffect(
     () => () => {
-      if (!controllerRef.current) return;
-      controllerRef.current.abort();
+      controllerRef.current?.abort();
       controllerRef.current = null;
-      setSnapshot((prev) =>
-        prev?.key === key && prev.loading ? { ...prev, loading: false } : prev,
-      );
     },
-    [key, enabled],
+    [key],
   );
+
+  // Forget a failed load while disabled, so re-enabling reports loading from
+  // its first render rather than flashing the empty initial data.
+  const failed = current !== null && !current.loaded && !current.loading;
+  useEffect(() => {
+    if (enabled || !failed) return;
+    setSnapshot((prev) =>
+      prev && !prev.loaded && !prev.loading ? null : prev,
+    );
+  }, [enabled, failed]);
 
   const reload = useCallback(async () => {
     if (keyRef.current !== null) await run(keyRef.current);

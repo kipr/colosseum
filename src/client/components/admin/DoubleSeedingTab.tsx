@@ -2,11 +2,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useToast } from '../Toast';
 import { useConfirm } from '../ConfirmModal';
 import { useEvent } from '../../contexts/EventContext';
-import {
-  DOUBLE_SEEDING_TABLE_CONFIG,
-  type DoubleSeedingScore,
-  type DoubleSeedingRanking,
-} from '../seeding/SeedingScoresTable';
+import { DOUBLE_SEEDING_TABLE_CONFIG } from '../seeding/SeedingScoresTable';
+import { loadDoubleSeeding } from '../seeding/seedingData';
 import type { TeamSummary } from '../../types/teams';
 import { apiFetch } from '../../utils/api';
 import { useScopedLoad } from '../../hooks/useScopedLoad';
@@ -58,19 +55,12 @@ export default function DoubleSeedingTab() {
   } = useScopedLoad(
     selectedEventId,
     async (eventId, signal) => {
-      const [teams, scores, rankings, matches] = await Promise.all([
+      const [teams, { scores, rankings }, matches] = await Promise.all([
         apiFetch<TeamSummary[]>(`/teams/event/${eventId}`, {
           signal,
           fallbackError: 'Failed to fetch teams',
         }),
-        apiFetch<DoubleSeedingScore[]>(
-          `/double-seeding/scores/event/${eventId}`,
-          { signal, fallbackError: 'Failed to fetch double-seeding scores' },
-        ),
-        apiFetch<DoubleSeedingRanking[]>(
-          `/double-seeding/rankings/event/${eventId}`,
-          { signal, fallbackError: 'Failed to fetch rankings' },
-        ),
+        loadDoubleSeeding(eventId, signal),
         apiFetch<DoubleSeedingMatch[]>(
           `/double-seeding/matches/event/${eventId}`,
           { signal, fallbackError: 'Failed to fetch double-seeding matches' },

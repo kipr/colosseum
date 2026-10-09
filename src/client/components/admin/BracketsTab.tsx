@@ -18,7 +18,7 @@ import {
 import {
   Bracket,
   BracketDetail,
-  BracketEntryWithRank,
+  BracketRankings,
   BracketStatus,
   STATUS_LABELS,
 } from '../../types/brackets';
@@ -64,11 +64,6 @@ interface AssignedTeam {
   team_name: string;
   bracket_id: number;
   bracket_name: string;
-}
-
-interface BracketRankings {
-  weight: number;
-  entries: BracketEntryWithRank[];
 }
 
 interface BracketDetailState {

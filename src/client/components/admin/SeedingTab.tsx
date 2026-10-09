@@ -1,12 +1,7 @@
 import { useToast } from '../Toast';
 import { useEvent } from '../../contexts/EventContext';
-import {
-  SEEDING_TABLE_CONFIG,
-  type SeedingScore,
-  type SeedingRanking,
-} from '../seeding/SeedingScoresTable';
-import type { TeamSummary } from '../../types/teams';
-import { apiFetch } from '../../utils/api';
+import { SEEDING_TABLE_CONFIG } from '../seeding/SeedingScoresTable';
+import { loadSeeding } from '../seeding/seedingData';
 import { useScopedLoad } from '../../hooks/useScopedLoad';
 import SeedingDisplay from '../seeding/SeedingDisplay';
 import './SeedingTab.css';
@@ -22,33 +17,13 @@ export default function SeedingTab() {
   const {
     data: { teams, scores, rankings },
     loading,
-  } = useScopedLoad(
-    selectedEventId,
-    async (eventId, signal) => {
-      const [teams, scores, rankings] = await Promise.all([
-        apiFetch<TeamSummary[]>(`/teams/event/${eventId}`, {
-          signal,
-          fallbackError: 'Failed to fetch teams',
-        }),
-        apiFetch<SeedingScore[]>(`/seeding/scores/event/${eventId}`, {
-          signal,
-          fallbackError: 'Failed to fetch seeding scores',
-        }),
-        apiFetch<SeedingRanking[]>(`/seeding/rankings/event/${eventId}`, {
-          signal,
-          fallbackError: 'Failed to fetch rankings',
-        }),
-      ]);
-      return { teams, scores, rankings };
+  } = useScopedLoad(selectedEventId, loadSeeding, {
+    initial: { teams: [], scores: [], rankings: [] },
+    onError: (error) => {
+      console.error('Error loading seeding data:', error);
+      toast.error('Failed to load seeding data');
     },
-    {
-      initial: { teams: [], scores: [], rankings: [] },
-      onError: (error) => {
-        console.error('Error loading seeding data:', error);
-        toast.error('Failed to load seeding data');
-      },
-    },
-  );
+  });
 
   if (!selectedEventId) {
     return (

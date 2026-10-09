@@ -10,15 +10,14 @@ import { getBracketWinner } from '../components/bracket/bracketUtils';
 import {
   SEEDING_TABLE_CONFIG,
   DOUBLE_SEEDING_TABLE_CONFIG,
-  type SeedingScore,
-  type SeedingRanking,
-  type DoubleSeedingScore,
-  type DoubleSeedingRanking,
 } from '../components/seeding/SeedingScoresTable';
-import type { TeamSummary } from '../types/teams';
+import {
+  loadSeeding,
+  loadDoubleSeeding,
+} from '../components/seeding/seedingData';
 import type {
   Bracket,
-  BracketEntryWithRank,
+  BracketRankings,
   BracketSide,
   BracketDetail,
 } from '../types/brackets';
@@ -86,11 +85,6 @@ interface PublicManualAward {
 interface PublicAwards {
   manual: PublicManualAward[];
   automatic: AutomaticAwardsPublic | null;
-}
-
-interface PublicBracketRankings {
-  weight: number;
-  entries: BracketEntryWithRank[];
 }
 
 type EffectiveTab =
@@ -221,50 +215,19 @@ export default function Spectator() {
   const {
     data: { teams, scores, rankings },
     loading: seedingLoading,
-  } = useScopedLoad(
-    selectedEventId,
-    async (eventId, signal) => {
-      const [teams, scores, rankings] = await Promise.all([
-        apiFetch<TeamSummary[]>(`/teams/event/${eventId}`, { signal }),
-        apiFetch<SeedingScore[]>(`/seeding/scores/event/${eventId}`, {
-          signal,
-        }),
-        apiFetch<SeedingRanking[]>(`/seeding/rankings/event/${eventId}`, {
-          signal,
-        }),
-      ]);
-      return { teams, scores, rankings };
-    },
-    {
-      initial: { teams: [], scores: [], rankings: [] },
-      onError: logError('seeding data'),
-    },
-  );
+  } = useScopedLoad(selectedEventId, loadSeeding, {
+    initial: { teams: [], scores: [], rankings: [] },
+    onError: logError('seeding data'),
+  });
 
   const {
     data: { scores: doubleSeedingScores, rankings: doubleSeedingRankings },
     loading: doubleSeedingLoading,
-  } = useScopedLoad(
-    selectedEventId,
-    async (eventId, signal) => {
-      const [scores, rankings] = await Promise.all([
-        apiFetch<DoubleSeedingScore[]>(
-          `/double-seeding/scores/event/${eventId}`,
-          { signal },
-        ),
-        apiFetch<DoubleSeedingRanking[]>(
-          `/double-seeding/rankings/event/${eventId}`,
-          { signal },
-        ),
-      ]);
-      return { scores, rankings };
-    },
-    {
-      initial: { scores: [], rankings: [] },
-      enabled: activeTab === 'double-seeding',
-      onError: logError('double-seeding data'),
-    },
-  );
+  } = useScopedLoad(selectedEventId, loadDoubleSeeding, {
+    initial: { scores: [], rankings: [] },
+    enabled: activeTab === 'double-seeding',
+    onError: logError('double-seeding data'),
+  });
 
   const { data: brackets } = useScopedLoad(
     selectedEventId,
@@ -332,13 +295,12 @@ export default function Spectator() {
   );
 
   const { data: bracketRankingsData, loading: bracketRankingsLoading } =
-    useScopedLoad<number, PublicBracketRankings | null>(
+    useScopedLoad<number, BracketRankings | null>(
       selectedBracketId,
       (bracketId, signal) =>
-        apiFetch<PublicBracketRankings>(
-          `/brackets/${bracketId}/rankings/public`,
-          { signal },
-        ),
+        apiFetch<BracketRankings>(`/brackets/${bracketId}/rankings/public`, {
+          signal,
+        }),
       {
         initial: null,
         enabled: activeTab === 'bracketRankings' && finalScoresAvailable,

@@ -41,6 +41,7 @@ type ProbeProps = {
 let root: Root;
 let calls: Call[];
 let latest: ScopedLoad<string>;
+let renders: ScopedLoad<string>[];
 
 function load(key: number, signal: AbortSignal): Promise<string> {
   const response = deferred<string>();
@@ -50,6 +51,7 @@ function load(key: number, signal: AbortSignal): Promise<string> {
 
 function Probe({ scopeKey, ...options }: ProbeProps) {
   latest = useScopedLoad(scopeKey, load, { initial: 'initial', ...options });
+  renders.push(latest);
   return null;
 }
 
@@ -67,6 +69,7 @@ async function respond(call: Call, value: string) {
 
 beforeEach(() => {
   calls = [];
+  renders = [];
   root = createRoot(document.createElement('div'));
 });
 
@@ -86,6 +89,12 @@ describe('useScopedLoad', () => {
 
   it('loads nothing for a null key', async () => {
     await render({ scopeKey: null });
+    expect(calls).toHaveLength(0);
+    expect(latest).toMatchObject({ data: 'initial', loading: false });
+  });
+
+  it('treats a NaN key (an unparsable route param) as no key', async () => {
+    await render({ scopeKey: Number('abc') });
     expect(calls).toHaveLength(0);
     expect(latest).toMatchObject({ data: 'initial', loading: false });
   });
@@ -125,14 +134,33 @@ describe('useScopedLoad', () => {
     expect(latest.data).toBe('event 1');
   });
 
-  it('retries on re-enable after a load was abandoned by disabling', async () => {
+  it('lets a load in flight finish while disabled', async () => {
     await render({ scopeKey: 1, enabled: true });
     await render({ scopeKey: 1, enabled: false });
-    expect(calls[0].signal.aborted).toBe(true);
-    expect(latest.loading).toBe(false);
+    expect(calls[0].signal.aborted).toBe(false);
 
     await render({ scopeKey: 1, enabled: true });
+    expect(calls).toHaveLength(1);
+    expect(latest.loading).toBe(true);
+
+    await render({ scopeKey: 1, enabled: false });
+    await respond(calls[0], 'event 1');
+    await render({ scopeKey: 1, enabled: true });
+    expect(calls).toHaveLength(1);
+    expect(latest).toMatchObject({ data: 'event 1', loading: false });
+  });
+
+  it('retries a failed load on re-enable without an empty frame', async () => {
+    await render({ scopeKey: 1, enabled: true, onError: () => {} });
+    await render({ scopeKey: 1, enabled: false, onError: () => {} });
+    await act(async () => {
+      calls[0].response.reject(new Error('boom'));
+    });
+
+    renders = [];
+    await render({ scopeKey: 1, enabled: true, onError: () => {} });
     expect(calls).toHaveLength(2);
+    expect(renders.every((r) => r.loading)).toBe(true);
     await respond(calls[1], 'event 1');
     expect(latest.data).toBe('event 1');
   });
