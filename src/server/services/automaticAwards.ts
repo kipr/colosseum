@@ -6,9 +6,9 @@
 
 import { getDatabase } from '../database/connection';
 import {
-  BRACKET_OVERALL_TOTAL_SQL,
-  BRACKET_OVERALL_JOINS_SQL,
-} from './overallScores';
+  listBracketRankingEntries,
+  type BracketRankingEntryRow,
+} from './bracketReads';
 import { computeAutomaticAwardDiagnostics } from './eventScoreDiagnostics';
 import {
   DEFAULT_AWARD_TYPE,
@@ -174,31 +174,20 @@ function buildSeedingPlacements(
   return placements.length > 0 ? placements : null;
 }
 
-async function fetchBracketOverallRows(
-  eventId: number,
-  bracketId: number,
-): Promise<
-  Array<{
-    final_rank: number | null;
-    total: number;
-    team_number: number;
-    team_name: string;
-    display_name: string | null;
-  }>
-> {
-  const db = await getDatabase();
-  return db.all(
-    `SELECT be.final_rank,
-            ${BRACKET_OVERALL_TOTAL_SQL} AS total,
-            t.team_number, t.team_name, t.display_name
-     FROM bracket_entries be
-     LEFT JOIN teams t ON be.team_id = t.id
-     ${BRACKET_OVERALL_JOINS_SQL}
-     WHERE be.bracket_id = ?
-       AND be.is_bye = ?
-       AND be.team_id IS NOT NULL`,
-    [eventId, bracketId, false],
-  );
+/**
+ * Non-bye entries. Mirrors the SQL filter `is_bye = FALSE`, so a NULL is_bye
+ * (which the bracket_entries check constraint lets through) is skipped. The
+ * constraint ties is_bye = FALSE to a non-null team_id, and the teams FK
+ * guarantees the joined team fields.
+ */
+function isTeamEntry(
+  row: BracketRankingEntryRow,
+): row is BracketRankingEntryRow & {
+  team_id: number;
+  team_number: number;
+  team_name: string;
+} {
+  return row.is_bye === false && row.team_id != null;
 }
 
 /**
@@ -359,59 +348,49 @@ export async function computeAutomaticAwards(
   const shouldIncludePerBracketOverall =
     brackets.length > 1 && settings.per_bracket_overall_top_n > 0;
 
-  for (const b of brackets) {
-    if (settings.de_top_n > 0) {
-      const deRows = await db.all<{
-        final_rank: number | null;
-        team_number: number;
-        team_name: string;
-        display_name: string | null;
-      }>(
-        `SELECT be.final_rank, t.team_number, t.team_name, t.display_name
-         FROM bracket_entries be
-         JOIN teams t ON be.team_id = t.id
-         WHERE be.bracket_id = ? AND be.is_bye = ? AND be.team_id IS NOT NULL`,
-        [b.id, false],
-      );
+  if (settings.de_top_n > 0 || shouldIncludePerBracketOverall) {
+    for (const b of brackets) {
+      const teamRows = (
+        await listBracketRankingEntries(db, eventId, b.id)
+      ).filter(isTeamEntry);
 
-      const dePlacements = buildDePlacementsForBracket(
-        deRows,
-        settings.de_top_n,
-      );
-      if (dePlacements) {
-        de.push({
-          bracket_id: b.id,
-          bracket_name: b.name,
-          placements: dePlacements,
-        });
-      }
-    }
-
-    if (shouldIncludePerBracketOverall) {
-      const overallRows = await fetchBracketOverallRows(eventId, b.id);
-      if (overallRows.length === 0) continue;
-
-      if (!bracketFullyRanked(overallRows)) {
-        continue;
+      if (settings.de_top_n > 0) {
+        const dePlacements = buildDePlacementsForBracket(
+          teamRows,
+          settings.de_top_n,
+        );
+        if (dePlacements) {
+          de.push({
+            bracket_id: b.id,
+            bracket_name: b.name,
+            placements: dePlacements,
+          });
+        }
       }
 
-      const forTotals = overallRows.map((r) => ({
-        team_number: r.team_number,
-        team_name: r.team_name,
-        display_name: r.display_name,
-        total: r.total,
-      }));
+      if (shouldIncludePerBracketOverall) {
+        if (!bracketFullyRanked(teamRows)) {
+          continue;
+        }
 
-      const obPlacements = topNMedalPlacementsByTotal(
-        forTotals,
-        settings.per_bracket_overall_top_n,
-      );
-      if (obPlacements) {
-        perBracketOverall.push({
-          bracket_id: b.id,
-          bracket_name: b.name,
-          placements: obPlacements,
-        });
+        const forTotals = teamRows.map((r) => ({
+          team_number: r.team_number,
+          team_name: r.team_name,
+          display_name: r.display_name,
+          total: r.total,
+        }));
+
+        const obPlacements = topNMedalPlacementsByTotal(
+          forTotals,
+          settings.per_bracket_overall_top_n,
+        );
+        if (obPlacements) {
+          perBracketOverall.push({
+            bracket_id: b.id,
+            bracket_name: b.name,
+            placements: obPlacements,
+          });
+        }
       }
     }
   }

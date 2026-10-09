@@ -63,6 +63,33 @@ describe('computeAutomaticAwards', () => {
     expect(auto.seeding).toBeNull();
   });
 
+  it('skips entries whose is_bye is NULL, matching is_bye = FALSE', async () => {
+    const t1 = await createTeam(1);
+    const t2 = await createTeam(2);
+    const bracket = await testDb.db.run(
+      `INSERT INTO brackets (event_id, name, bracket_size, status, weight) VALUES (?, ?, ?, ?, ?) RETURNING id`,
+      [eventId, 'Main', 4, 'completed', 1],
+    );
+    await testDb.db.run(
+      `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank)
+       VALUES (?, ?, 1, FALSE, 1), (?, ?, 2, NULL, 2)`,
+      [bracket.lastID, t1, bracket.lastID, t2],
+    );
+
+    const auto = await computeAutomaticAwards(eventId, {
+      de_top_n: 3,
+      per_bracket_overall_top_n: 0,
+      seeding_top_n: 0,
+    });
+
+    expect(auto.de).toHaveLength(1);
+    expect(
+      auto.de[0].placements.flatMap((p) =>
+        p.recipients.map((r) => r.team_number),
+      ),
+    ).toEqual([1]);
+  });
+
   it('includes per-bracket overall for multi-bracket fully ranked events', async () => {
     const t1 = await createTeam(1);
     const t2 = await createTeam(2);

@@ -18,9 +18,9 @@ import {
   areFinalScoresReleased,
 } from '../utils/eventVisibility';
 import {
-  BRACKET_OVERALL_TOTAL_SQL,
-  BRACKET_OVERALL_JOINS_SQL,
-} from '../services/overallScores';
+  listBracketGamesWithTeams,
+  listBracketRankingEntries,
+} from '../services/bracketReads';
 import { ensureQueueFresh, scheduleQueueRepair } from '../services/queueSync';
 import { auditRequest } from './audit';
 import {
@@ -229,20 +229,7 @@ router.get('/:id', async (req: Request, res: Response) => {
     [id],
   );
 
-  // Get games
-  const games = await db.all(
-    `SELECT bg.*,
-            t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
-            t2.team_number as team2_number, t2.team_name as team2_name, t2.display_name as team2_display,
-            w.team_number as winner_number, w.team_name as winner_name, w.display_name as winner_display
-     FROM bracket_games bg
-     LEFT JOIN teams t1 ON bg.team1_id = t1.id
-     LEFT JOIN teams t2 ON bg.team2_id = t2.id
-     LEFT JOIN teams w ON bg.winner_id = w.id
-     WHERE bg.bracket_id = ?
-     ORDER BY bg.game_number ASC`,
-    [id],
-  );
+  const games = await listBracketGamesWithTeams(db, bracket.id);
 
   res.json({
     ...bracket,
@@ -272,21 +259,30 @@ router.get('/:id/rankings/public', async (req: Request, res: Response) => {
 
   await calculateBracketRankingsIfReady(Number(id));
 
-  const entries = await db.all(
-    `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.is_bye,
-              be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
-              COALESCE(ds.overall_score, 0) AS doc_score,
-              COALESCE(sr.raw_seed_score, 0) AS raw_seed_score,
-              COALESCE(dsr.raw_double_seed_score, 0) AS raw_double_seed_score,
-              ${BRACKET_OVERALL_TOTAL_SQL} AS total,
-              t.team_number, t.team_name, t.display_name
-       FROM bracket_entries be
-       LEFT JOIN teams t ON be.team_id = t.id
-       ${BRACKET_OVERALL_JOINS_SQL}
-       WHERE be.bracket_id = ?
-       ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
-    [bracket.event_id, id],
+  const rows = await listBracketRankingEntries(
+    db,
+    bracket.event_id,
+    bracket.id,
   );
+  // Explicit allowlist: admin-only columns added to the shared query (such as
+  // initial_slot) stay out of this unauthenticated response by default.
+  const entries = rows.map((row) => ({
+    id: row.id,
+    bracket_id: row.bracket_id,
+    team_id: row.team_id,
+    seed_position: row.seed_position,
+    is_bye: row.is_bye,
+    final_rank: row.final_rank,
+    bracket_raw_score: row.bracket_raw_score,
+    weighted_bracket_raw_score: row.weighted_bracket_raw_score,
+    doc_score: row.doc_score,
+    raw_seed_score: row.raw_seed_score,
+    raw_double_seed_score: row.raw_double_seed_score,
+    total: row.total,
+    team_number: row.team_number,
+    team_name: row.team_name,
+    display_name: row.display_name,
+  }));
 
   res.json({ weight: bracket.weight, entries });
 });
@@ -311,20 +307,10 @@ router.get(
 
     await calculateBracketRankingsIfReady(Number(id));
 
-    const entries = await db.all(
-      `SELECT be.id, be.bracket_id, be.team_id, be.seed_position, be.initial_slot, be.is_bye,
-              be.final_rank, be.bracket_raw_score, be.weighted_bracket_raw_score,
-              COALESCE(ds.overall_score, 0) AS doc_score,
-              COALESCE(sr.raw_seed_score, 0) AS raw_seed_score,
-              COALESCE(dsr.raw_double_seed_score, 0) AS raw_double_seed_score,
-              ${BRACKET_OVERALL_TOTAL_SQL} AS total,
-              t.team_number, t.team_name, t.display_name
-       FROM bracket_entries be
-       LEFT JOIN teams t ON be.team_id = t.id
-       ${BRACKET_OVERALL_JOINS_SQL}
-       WHERE be.bracket_id = ?
-       ORDER BY COALESCE(be.final_rank, 9999) ASC, be.seed_position ASC`,
-      [bracket.event_id, id],
+    const entries = await listBracketRankingEntries(
+      db,
+      bracket.event_id,
+      bracket.id,
     );
 
     res.json({ weight: bracket.weight, entries });
@@ -1054,19 +1040,7 @@ router.get('/:id/games', async (req: Request, res: Response) => {
   const { id } = req.params;
   const db = await getDatabase();
 
-  const games = await db.all(
-    `SELECT bg.*,
-            t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
-            t2.team_number as team2_number, t2.team_name as team2_name, t2.display_name as team2_display,
-            w.team_number as winner_number, w.team_name as winner_name, w.display_name as winner_display
-     FROM bracket_games bg
-     LEFT JOIN teams t1 ON bg.team1_id = t1.id
-     LEFT JOIN teams t2 ON bg.team2_id = t2.id
-     LEFT JOIN teams w ON bg.winner_id = w.id
-     WHERE bg.bracket_id = ?
-     ORDER BY bg.game_number ASC`,
-    [id],
-  );
+  const games = await listBracketGamesWithTeams(db, id);
 
   res.json(games);
 });

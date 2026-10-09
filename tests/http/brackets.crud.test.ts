@@ -191,6 +191,7 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.entries[0].raw_seed_score).toBe(0);
       expect(body.entries[0].raw_double_seed_score).toBe(0.5);
       expect(body.entries[0].total).toBe(1.25);
+      expect(body.entries[0]).toHaveProperty('initial_slot');
 
       await testDb.db.run(
         'UPDATE events SET double_seeding_rounds = 0 WHERE id = ?',
@@ -743,6 +744,24 @@ describe('Brackets CRUD & Game Management', () => {
       const res = await http.get(`${baseUrl}/brackets/${bracket.id}/games`);
       expect(res.status).toBe(200);
       expect(res.json).toEqual([]);
+    });
+
+    it('does not coerce non-integer ids onto an existing bracket', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+      });
+
+      // Number() accepts these; Postgres integer input does not. The route
+      // currently answers 500 via the general error handler; a 400 or 404
+      // would satisfy this test too, since what it guards is not resolving
+      // these ids onto an existing bracket.
+      for (const id of [`${bracket.id}.0`, `${bracket.id}e0`]) {
+        const res = await http.get(`${baseUrl}/brackets/${id}/games`);
+        expect(res.status).not.toBe(200);
+      }
     });
   });
 
