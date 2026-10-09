@@ -745,6 +745,21 @@ describe('Brackets CRUD & Game Management', () => {
       expect(res.status).toBe(200);
       expect(res.json).toEqual([]);
     });
+
+    it('does not coerce non-integer ids onto an existing bracket', async () => {
+      const event = await seedEvent(testDb.db);
+      const bracket = await seedBracket(testDb.db, { event_id: event.id });
+      await seedBracketGame(testDb.db, {
+        bracket_id: bracket.id,
+        game_number: 1,
+      });
+
+      // Number() accepts these; Postgres integer input does not.
+      for (const id of [`${bracket.id}.0`, `${bracket.id}e0`]) {
+        const res = await http.get(`${baseUrl}/brackets/${id}/games`);
+        expect(res.status).not.toBe(200);
+      }
+    });
   });
 
   // ==========================================================================

@@ -31,15 +31,58 @@ export interface BracketRankingEntryRow {
   display_name: string | null;
 }
 
+export interface BracketGameWithTeamsRow {
+  id: number;
+  bracket_id: number;
+  game_number: number;
+  play_order: number | null;
+  round_name: string | null;
+  round_number: number | null;
+  bracket_side: string | null;
+  team1_id: number | null;
+  team2_id: number | null;
+  team1_source: string | null;
+  team2_source: string | null;
+  status: string;
+  winner_id: number | null;
+  loser_id: number | null;
+  winner_advances_to_id: number | null;
+  loser_advances_to_id: number | null;
+  winner_slot: string | null;
+  loser_slot: string | null;
+  team1_score: number | null;
+  team2_score: number | null;
+  result_type: string;
+  disqualified_team_id: number | null;
+  score_submission_id: number | null;
+  scheduled_time: Date | null;
+  started_at: Date | null;
+  completed_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+  team1_number: number | null;
+  team1_name: string | null;
+  team1_display: string | null;
+  team2_number: number | null;
+  team2_name: string | null;
+  team2_display: string | null;
+  winner_number: number | null;
+  winner_name: string | null;
+  winner_display: string | null;
+}
+
 /**
  * Games in a bracket with team number/name/display name joined for team1,
  * team2 and the winner, ordered by game number.
+ *
+ * Accepts the raw route param so Postgres rejects non-integer ids (`1e1`,
+ * `0x10`) instead of JavaScript coercing them to another bracket.
  */
 export async function listBracketGamesWithTeams(
   db: Database,
-  bracketId: number,
-) {
-  return db.all(
+  bracketId: number | string,
+): Promise<BracketGameWithTeamsRow[]> {
+  return db.all<BracketGameWithTeamsRow>(
     `SELECT bg.*,
             t1.team_number as team1_number, t1.team_name as team1_name, t1.display_name as team1_display,
             t2.team_number as team2_number, t2.team_name as team2_name, t2.display_name as team2_display,

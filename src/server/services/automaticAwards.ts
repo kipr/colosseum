@@ -346,51 +346,49 @@ export async function computeAutomaticAwards(
   const shouldIncludePerBracketOverall =
     brackets.length > 1 && settings.per_bracket_overall_top_n > 0;
 
-  for (const b of brackets) {
-    if (settings.de_top_n <= 0 && !shouldIncludePerBracketOverall) continue;
+  if (settings.de_top_n > 0 || shouldIncludePerBracketOverall) {
+    for (const b of brackets) {
+      const teamRows = (
+        await listBracketRankingEntries(db, eventId, b.id)
+      ).filter(isTeamEntry);
 
-    const teamRows = (
-      await listBracketRankingEntries(db, eventId, b.id)
-    ).filter(isTeamEntry);
-
-    if (settings.de_top_n > 0) {
-      const dePlacements = buildDePlacementsForBracket(
-        teamRows,
-        settings.de_top_n,
-      );
-      if (dePlacements) {
-        de.push({
-          bracket_id: b.id,
-          bracket_name: b.name,
-          placements: dePlacements,
-        });
-      }
-    }
-
-    if (shouldIncludePerBracketOverall) {
-      if (teamRows.length === 0) continue;
-
-      if (!bracketFullyRanked(teamRows)) {
-        continue;
+      if (settings.de_top_n > 0) {
+        const dePlacements = buildDePlacementsForBracket(
+          teamRows,
+          settings.de_top_n,
+        );
+        if (dePlacements) {
+          de.push({
+            bracket_id: b.id,
+            bracket_name: b.name,
+            placements: dePlacements,
+          });
+        }
       }
 
-      const forTotals = teamRows.map((r) => ({
-        team_number: r.team_number,
-        team_name: r.team_name,
-        display_name: r.display_name,
-        total: r.total,
-      }));
+      if (shouldIncludePerBracketOverall) {
+        if (!bracketFullyRanked(teamRows)) {
+          continue;
+        }
 
-      const obPlacements = topNMedalPlacementsByTotal(
-        forTotals,
-        settings.per_bracket_overall_top_n,
-      );
-      if (obPlacements) {
-        perBracketOverall.push({
-          bracket_id: b.id,
-          bracket_name: b.name,
-          placements: obPlacements,
-        });
+        const forTotals = teamRows.map((r) => ({
+          team_number: r.team_number,
+          team_name: r.team_name,
+          display_name: r.display_name,
+          total: r.total,
+        }));
+
+        const obPlacements = topNMedalPlacementsByTotal(
+          forTotals,
+          settings.per_bracket_overall_top_n,
+        );
+        if (obPlacements) {
+          perBracketOverall.push({
+            bracket_id: b.id,
+            bracket_name: b.name,
+            placements: obPlacements,
+          });
+        }
       }
     }
   }

@@ -264,9 +264,25 @@ router.get('/:id/rankings/public', async (req: Request, res: Response) => {
     bracket.event_id,
     bracket.id,
   );
-  // initial_slot is an admin-only layout detail; keep it out of the public view.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const entries = rows.map(({ initial_slot, ...entry }) => entry);
+  // Explicit allowlist: admin-only columns added to the shared query (such as
+  // initial_slot) stay out of this unauthenticated response by default.
+  const entries = rows.map((row) => ({
+    id: row.id,
+    bracket_id: row.bracket_id,
+    team_id: row.team_id,
+    seed_position: row.seed_position,
+    is_bye: row.is_bye,
+    final_rank: row.final_rank,
+    bracket_raw_score: row.bracket_raw_score,
+    weighted_bracket_raw_score: row.weighted_bracket_raw_score,
+    doc_score: row.doc_score,
+    raw_seed_score: row.raw_seed_score,
+    raw_double_seed_score: row.raw_double_seed_score,
+    total: row.total,
+    team_number: row.team_number,
+    team_name: row.team_name,
+    display_name: row.display_name,
+  }));
 
   res.json({ weight: bracket.weight, entries });
 });
@@ -1024,7 +1040,7 @@ router.get('/:id/games', async (req: Request, res: Response) => {
   const { id } = req.params;
   const db = await getDatabase();
 
-  const games = await listBracketGamesWithTeams(db, Number(id));
+  const games = await listBracketGamesWithTeams(db, id);
 
   res.json(games);
 });
