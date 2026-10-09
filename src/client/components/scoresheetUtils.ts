@@ -577,6 +577,9 @@ function adaptDoubleEliminationId(value: string): string {
   return value.replace(/side_a/g, 'team_a').replace(/side_b/g, 'team_b');
 }
 
+// Renames side_a/side_b to team_a/team_b in top-level ids, formulas and
+// derived outputs, and relabels exact 'SIDE A'/'SIDE B' section headers.
+// Nested group fields and other labels are left as they are.
 export function adaptDoubleEliminationFields(templateFields: any[]): any[] {
   return templateFields.map((field) => {
     const newField = { ...field };
@@ -610,18 +613,115 @@ export function adaptDoubleEliminationFields(templateFields: any[]): any[] {
   });
 }
 
-export function buildDoubleEliminationSchema(options: {
+type TwoTeamSchemaOptions = {
   title: string;
   eventId: number | null;
   templateFields?: any[] | null;
   requireTeamInitials?: boolean;
-}): any {
+};
+
+function buildTeamsDataSource(eventId: number | null) {
+  return {
+    type: 'db',
+    eventId,
+    teamNumberField: 'team_number',
+    teamNameField: 'team_name',
+  };
+}
+
+function buildTeamIdentityFields(options: {
+  placeholder: string;
+  teamBRequired: boolean;
+}): any[] {
+  const { placeholder, teamBRequired } = options;
+  return [
+    { id: 'team_a_number', label: 'Team A Number', required: true },
+    { id: 'team_a_name', label: 'Team A Name', required: true },
+    { id: 'team_b_number', label: 'Team B Number', required: teamBRequired },
+    { id: 'team_b_name', label: 'Team B Name', required: teamBRequired },
+  ].map(({ id, label, required }) => ({
+    id,
+    label,
+    type: 'text',
+    required,
+    autoPopulated: true,
+    placeholder,
+  }));
+}
+
+// Minimal per-team score section for sheets built without a template. These
+// ids are read by literal key in ScoresheetForm, ScoringTab and scoreAccept.
+function buildFallbackScoringFields(): any[] {
+  return [
+    {
+      id: 'section_header_team_a',
+      label: 'TEAM A',
+      type: 'section_header',
+      column: 'left',
+    },
+    {
+      id: 'team_a_score',
+      label: 'Team A Score',
+      type: 'number',
+      column: 'left',
+      required: false,
+      min: 0,
+      step: 1,
+    },
+    {
+      id: 'team_a_total',
+      label: 'TEAM A TOTAL',
+      type: 'calculated',
+      column: 'left',
+      isTotal: true,
+      formula: 'team_a_score',
+    },
+    {
+      id: 'section_header_team_b',
+      label: 'TEAM B',
+      type: 'section_header',
+      column: 'right',
+    },
+    {
+      id: 'team_b_score',
+      label: 'Team B Score',
+      type: 'number',
+      column: 'right',
+      required: false,
+      min: 0,
+      step: 1,
+    },
+    {
+      id: 'team_b_total',
+      label: 'TEAM B TOTAL',
+      type: 'calculated',
+      column: 'right',
+      isTotal: true,
+      formula: 'team_b_score',
+    },
+  ];
+}
+
+// Template fields renamed from side A/B to team A/B, or the fallback section
+// when there are none. Template fields otherwise pass through unchanged, so a
+// template's combined grand total, if it has one, is kept.
+function buildTwoTeamScoringFields(templateFields: any[] | null): any[] {
+  if (templateFields && templateFields.length > 0) {
+    return adaptDoubleEliminationFields(templateFields);
+  }
+
+  return buildFallbackScoringFields();
+}
+
+export function buildDoubleEliminationSchema(
+  options: TwoTeamSchemaOptions,
+): any {
   const { title, eventId, requireTeamInitials = true } = options;
   // Initials are collected by the built-in panel, not template fields.
   const templateFields = options.templateFields
     ? stripLegacyInitialsFields(options.templateFields)
     : null;
-  const schema: any = {
+  return {
     layout: 'two-column',
     mode: 'head-to-head',
     title: title || 'Double Elimination Score Sheet',
@@ -629,266 +729,71 @@ export function buildDoubleEliminationSchema(options: {
     scoreDestination: 'db',
     teamInitials: { required: requireTeamInitials },
     bracketSource: buildEventScopedBracketSource(eventId),
-    teamsDataSource: {
-      type: 'db',
-      eventId,
-      teamNumberField: 'team_number',
-      teamNameField: 'team_name',
-    },
-    fields: [],
-  };
-
-  schema.fields.push({
-    id: 'game_number',
-    label: 'Game',
-    type: 'dropdown',
-    required: true,
-    dataSource: {
-      type: 'bracket',
-    },
-    cascades: {
-      team_a_number: 'team1.teamNumber',
-      team_a_name: 'team1.displayName',
-      team_b_number: 'team2.teamNumber',
-      team_b_name: 'team2.displayName',
-    },
-  });
-
-  schema.fields.push({
-    id: 'team_a_number',
-    label: 'Team A Number',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'team_a_name',
-    label: 'Team A Name',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_number',
-    label: 'Team B Number',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_name',
-    label: 'Team B Name',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select game first',
-  });
-
-  schema.fields.push({
-    id: 'winner',
-    label: 'Winner',
-    type: 'winner-select',
-    required: true,
-    options: [
-      { value: 'team_a', label: 'Team A Wins' },
-      { value: 'team_b', label: 'Team B Wins' },
+    teamsDataSource: buildTeamsDataSource(eventId),
+    fields: [
+      {
+        id: 'game_number',
+        label: 'Game',
+        type: 'dropdown',
+        required: true,
+        dataSource: {
+          type: 'bracket',
+        },
+        cascades: {
+          team_a_number: 'team1.teamNumber',
+          team_a_name: 'team1.displayName',
+          team_b_number: 'team2.teamNumber',
+          team_b_name: 'team2.displayName',
+        },
+      },
+      ...buildTeamIdentityFields({
+        placeholder: 'Select game first',
+        teamBRequired: true,
+      }),
+      {
+        id: 'winner',
+        label: 'Winner',
+        type: 'winner-select',
+        required: true,
+        options: [
+          { value: 'team_a', label: 'Team A Wins' },
+          { value: 'team_b', label: 'Team B Wins' },
+        ],
+      },
+      ...buildTwoTeamScoringFields(templateFields),
     ],
-  });
-
-  if (templateFields && templateFields.length > 0) {
-    schema.fields.push(...adaptDoubleEliminationFields(templateFields));
-    return schema;
-  }
-
-  schema.fields.push({
-    id: 'section_header_team_a',
-    label: 'TEAM A',
-    type: 'section_header',
-    column: 'left',
-  });
-
-  schema.fields.push({
-    id: 'team_a_score',
-    label: 'Team A Score',
-    type: 'number',
-    column: 'left',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_a_total',
-    label: 'TEAM A TOTAL',
-    type: 'calculated',
-    column: 'left',
-    isTotal: true,
-    formula: 'team_a_score',
-  });
-
-  schema.fields.push({
-    id: 'section_header_team_b',
-    label: 'TEAM B',
-    type: 'section_header',
-    column: 'right',
-  });
-
-  schema.fields.push({
-    id: 'team_b_score',
-    label: 'Team B Score',
-    type: 'number',
-    column: 'right',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_b_total',
-    label: 'TEAM B TOTAL',
-    type: 'calculated',
-    column: 'right',
-    isTotal: true,
-    formula: 'team_b_score',
-  });
-
-  return schema;
+  };
 }
 
 /**
  * Build a double-seeding scoresheet schema. Two teams share one match and
  * scoresheet, but each team only receives its own side total — so there is no
- * winner selection and no combined grand total. The match is selected from the
- * double-seeding queue (handled by ScoresheetForm via `scoreKind`).
+ * winner selection, and the fallback section has no combined grand total. The
+ * match is selected from the double-seeding queue (handled by ScoresheetForm
+ * via `scoreKind`).
  */
-export function buildDoubleSeedingSchema(options: {
-  title: string;
-  eventId: number | null;
-  templateFields?: any[] | null;
-  requireTeamInitials?: boolean;
-}): any {
+export function buildDoubleSeedingSchema(options: TwoTeamSchemaOptions): any {
   const { title, eventId, requireTeamInitials = true } = options;
   // Initials are collected by the built-in panel, not template fields.
   const templateFields = options.templateFields
     ? stripLegacyInitialsFields(options.templateFields)
     : null;
-  const schema: any = {
+  return {
     layout: 'two-column',
     scoreKind: 'double_seeding',
     title: title || 'Double Seeding Score Sheet',
     eventId,
     scoreDestination: 'db',
     teamInitials: { required: requireTeamInitials },
-    teamsDataSource: {
-      type: 'db',
-      eventId,
-      teamNumberField: 'team_number',
-      teamNameField: 'team_name',
-    },
-    fields: [],
+    teamsDataSource: buildTeamsDataSource(eventId),
+    fields: [
+      ...buildTeamIdentityFields({
+        placeholder: 'Select match first',
+        teamBRequired: false,
+      }),
+      ...buildTwoTeamScoringFields(templateFields),
+    ],
   };
-
-  schema.fields.push({
-    id: 'team_a_number',
-    label: 'Team A Number',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  schema.fields.push({
-    id: 'team_a_name',
-    label: 'Team A Name',
-    type: 'text',
-    required: true,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_number',
-    label: 'Team B Number',
-    type: 'text',
-    required: false,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  schema.fields.push({
-    id: 'team_b_name',
-    label: 'Team B Name',
-    type: 'text',
-    required: false,
-    autoPopulated: true,
-    placeholder: 'Select match first',
-  });
-
-  if (templateFields && templateFields.length > 0) {
-    // Reuse the side A/B field adaptation from DE; side totals stay separate.
-    schema.fields.push(...adaptDoubleEliminationFields(templateFields));
-    return schema;
-  }
-
-  schema.fields.push({
-    id: 'section_header_team_a',
-    label: 'TEAM A',
-    type: 'section_header',
-    column: 'left',
-  });
-
-  schema.fields.push({
-    id: 'team_a_score',
-    label: 'Team A Score',
-    type: 'number',
-    column: 'left',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_a_total',
-    label: 'TEAM A TOTAL',
-    type: 'calculated',
-    column: 'left',
-    isTotal: true,
-    formula: 'team_a_score',
-  });
-
-  schema.fields.push({
-    id: 'section_header_team_b',
-    label: 'TEAM B',
-    type: 'section_header',
-    column: 'right',
-  });
-
-  schema.fields.push({
-    id: 'team_b_score',
-    label: 'Team B Score',
-    type: 'number',
-    column: 'right',
-    required: false,
-    min: 0,
-    step: 1,
-  });
-
-  schema.fields.push({
-    id: 'team_b_total',
-    label: 'TEAM B TOTAL',
-    type: 'calculated',
-    column: 'right',
-    isTotal: true,
-    formula: 'team_b_score',
-  });
-
-  return schema;
 }
 
 export function formatBracketGameOptionLabel(game: BracketGameOption): string {
