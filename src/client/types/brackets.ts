@@ -91,6 +91,12 @@ export interface BracketDetail extends Bracket {
   rankings?: BracketEntryWithRank[];
 }
 
+/** Body of GET /brackets/:id/rankings and its public variant. */
+export interface BracketRankings {
+  weight: number;
+  entries: BracketEntryWithRank[];
+}
+
 // Display label mappings for admin management view
 export const STATUS_LABELS: Record<BracketStatus, string> = {
   setup: 'Setup',
