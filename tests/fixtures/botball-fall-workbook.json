@@ -1,0 +1,357 @@
+{
+  "source": "Botball_Fall_Seeding_Scoresheet.xlsx",
+  "sha256": "b09144270117b484ec61a452920585c2bcfa402c6dfa574cb6f507f2fcf1878e",
+  "sheet": "Seeding Scoresheet",
+  "note": "Scoring cells extracted from XLSX XML; shared formulas expanded. Cached values are defaults, not recalculated scores.",
+  "cells": {
+    "A1": {
+      "value": "Theme Budget: $0"
+    },
+    "A2": {
+      "value": "A game so good, we forgot the theme."
+    },
+    "A4": {
+      "value": "Team Name:"
+    },
+    "D4": {
+      "value": "Team #:"
+    },
+    "A5": {
+      "value": "Round:"
+    },
+    "A7": {
+      "value": "Area"
+    },
+    "B7": {
+      "value": "Item"
+    },
+    "C7": {
+      "value": "Count"
+    },
+    "D7": {
+      "value": "Pts Each"
+    },
+    "E7": {
+      "value": "Subtotal"
+    },
+    "A9": {
+      "value": "1. Base Score"
+    },
+    "B9": {
+      "value": "Objects touching board, off black tape"
+    },
+    "C9": {
+      "value": 0
+    },
+    "D9": {
+      "value": 1
+    },
+    "E9": {
+      "value": 0,
+      "formula": "C9*D9"
+    },
+    "A10": {
+      "value": "2. Pickleballs"
+    },
+    "B10": {
+      "value": "Under raised platform"
+    },
+    "C10": {
+      "value": 0
+    },
+    "D10": {
+      "value": 7
+    },
+    "E10": {
+      "value": 0,
+      "formula": "C10*D10"
+    },
+    "A11": {
+      "value": "3. Rings"
+    },
+    "B11": {
+      "value": "Touching bottle, not on neck"
+    },
+    "C11": {
+      "value": 0
+    },
+    "D11": {
+      "value": 3
+    },
+    "E11": {
+      "value": 0,
+      "formula": "C11*D11"
+    },
+    "A12": {
+      "value": "3. Rings"
+    },
+    "B12": {
+      "value": "On bottle neck (volume broken)"
+    },
+    "C12": {
+      "value": 0
+    },
+    "D12": {
+      "value": 15
+    },
+    "E12": {
+      "value": 0,
+      "formula": "C12*D12"
+    },
+    "A13": {
+      "value": "4. Ducks"
+    },
+    "B13": {
+      "value": "Under raised platform"
+    },
+    "C13": {
+      "value": 0
+    },
+    "D13": {
+      "value": 3
+    },
+    "E13": {
+      "value": 0,
+      "formula": "C13*D13"
+    },
+    "A14": {
+      "value": "5. Cups"
+    },
+    "B14": {
+      "value": "Nested in other cup (1=Yes, 0=No)"
+    },
+    "C14": {
+      "value": 0
+    },
+    "D14": {
+      "value": 20
+    },
+    "E14": {
+      "value": 0,
+      "formula": "C14*D14"
+    },
+    "A15": {
+      "value": "5. Cups"
+    },
+    "B15": {
+      "value": "Flat/upright on base each cup (0-2)"
+    },
+    "C15": {
+      "value": 0
+    },
+    "D15": {
+      "value": 20
+    },
+    "E15": {
+      "value": 0,
+      "formula": "C15*D15"
+    },
+    "A16": {
+      "value": "6. Botguy"
+    },
+    "B16": {
+      "value": "On top of raised platform (1=Yes, 0=No)"
+    },
+    "C16": {
+      "value": 0
+    },
+    "D16": {
+      "value": 15
+    },
+    "E16": {
+      "value": 0,
+      "formula": "C16*D16"
+    },
+    "A17": {
+      "value": "7. Big Duck"
+    },
+    "B17": {
+      "value": "At Botguy's starting position (1=Yes, 0=No)"
+    },
+    "C17": {
+      "value": 0
+    },
+    "D17": {
+      "value": 15
+    },
+    "E17": {
+      "value": 0,
+      "formula": "C17*D17"
+    },
+    "A18": {
+      "value": "8. Mystery Red Pom"
+    },
+    "B18": {
+      "value": "Isolated alone on platform (1=Yes, 0=No)"
+    },
+    "C18": {
+      "value": 0
+    },
+    "D18": {
+      "value": 50
+    },
+    "E18": {
+      "value": 0,
+      "formula": "C18*D18"
+    },
+    "A20": {
+      "value": "9. Pom Zones"
+    },
+    "A21": {
+      "value": "Zone (placeholder)"
+    },
+    "B21": {
+      "value": "Same-Color Count (0-5)"
+    },
+    "C21": {
+      "value": "Unique-Color Count (0-5)"
+    },
+    "E21": {
+      "value": "Bonus"
+    },
+    "A22": {
+      "value": "Zone 1"
+    },
+    "B22": {
+      "value": 0
+    },
+    "C22": {
+      "value": 0
+    },
+    "E22": {
+      "value": 0,
+      "formula": "IF(B22=5,25,IF(B22>=1,B22,IF(C22>=2,C22^2,0)))"
+    },
+    "A23": {
+      "value": "Zone 2"
+    },
+    "B23": {
+      "value": 0
+    },
+    "C23": {
+      "value": 0
+    },
+    "E23": {
+      "value": 0,
+      "formula": "IF(B23=5,25,IF(B23>=1,B23,IF(C23>=2,C23^2,0)))"
+    },
+    "A24": {
+      "value": "Zone 3"
+    },
+    "B24": {
+      "value": 0
+    },
+    "C24": {
+      "value": 0
+    },
+    "E24": {
+      "value": 0,
+      "formula": "IF(B24=5,25,IF(B24>=1,B24,IF(C24>=2,C24^2,0)))"
+    },
+    "A25": {
+      "value": "Zone 4"
+    },
+    "B25": {
+      "value": 0
+    },
+    "C25": {
+      "value": 0
+    },
+    "E25": {
+      "value": 0,
+      "formula": "IF(B25=5,25,IF(B25>=1,B25,IF(C25>=2,C25^2,0)))"
+    },
+    "A26": {
+      "value": "Zone 5"
+    },
+    "B26": {
+      "value": 0
+    },
+    "C26": {
+      "value": 0
+    },
+    "E26": {
+      "value": 0,
+      "formula": "IF(B26=5,25,IF(B26>=1,B26,IF(C26>=2,C26^2,0)))"
+    },
+    "A28": {
+      "value": "Round Subtotal (Areas 1\u20139)"
+    },
+    "E28": {
+      "value": 0,
+      "formula": "SUM(E9:E18)+SUM(E22:E26)"
+    },
+    "A30": {
+      "value": "Overall Multiplier \u2014 Zones with Exactly 1 Smaller Duck"
+    },
+    "A31": {
+      "value": "Zone "
+    },
+    "B31": {
+      "value": "Exactly 1 Duck? (1=Yes, 0=No)"
+    },
+    "A32": {
+      "value": "Zone 1"
+    },
+    "B32": {
+      "value": 0
+    },
+    "A33": {
+      "value": "Zone 2"
+    },
+    "B33": {
+      "value": 0
+    },
+    "A34": {
+      "value": "Zone 3"
+    },
+    "B34": {
+      "value": 0
+    },
+    "A35": {
+      "value": "Zone 4"
+    },
+    "B35": {
+      "value": 0
+    },
+    "A36": {
+      "value": "Zone 5"
+    },
+    "B36": {
+      "value": 0
+    },
+    "A37": {
+      "value": "Qualifying Zone Count"
+    },
+    "B37": {
+      "value": 0,
+      "formula": "SUM(B32:B36)"
+    },
+    "A38": {
+      "value": "Multiplier (min 1x, max 5x)"
+    },
+    "B38": {
+      "value": 1,
+      "formula": "MAX(1,MIN(5,B37))"
+    },
+    "A40": {
+      "value": "TOTAL SCORE"
+    },
+    "E40": {
+      "value": 0,
+      "formula": "E28*B38"
+    },
+    "A42": {
+      "value": "Legend:"
+    },
+    "A43": {
+      "value": "Yellow cells = judge fills in during scoring"
+    },
+    "A44": {
+      "value": "Blue text = fixed point value (game constant)"
+    },
+    "A45": {
+      "value": "Black text = calculated automatically"
+    }
+  }
+}
