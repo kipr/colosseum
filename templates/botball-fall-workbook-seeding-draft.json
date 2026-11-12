@@ -1,0 +1,508 @@
+[
+  {
+    "id": "objects_header",
+    "label": "Object Bonuses",
+    "type": "section_header",
+    "column": "left"
+  },
+  {
+    "id": "base_objects",
+    "label": "Objects touching board, off black tape",
+    "type": "number",
+    "min": 0,
+    "step": 1,
+    "defaultValue": 0,
+    "suffix": "× 1",
+    "column": "left"
+  },
+  {
+    "id": "base_objects_points",
+    "label": "Objects touching board, off black tape — points",
+    "type": "calculated",
+    "formula": "base_objects * 1",
+    "column": "left"
+  },
+  {
+    "id": "pickleballs",
+    "label": "Pickleballs under raised platform",
+    "type": "number",
+    "min": 0,
+    "step": 1,
+    "defaultValue": 0,
+    "suffix": "× 7",
+    "column": "left"
+  },
+  {
+    "id": "pickleballs_points",
+    "label": "Pickleballs under raised platform — points",
+    "type": "calculated",
+    "formula": "pickleballs * 7",
+    "column": "left"
+  },
+  {
+    "id": "rings_touching",
+    "label": "Rings touching bottle, not on neck",
+    "type": "number",
+    "min": 0,
+    "step": 1,
+    "defaultValue": 0,
+    "suffix": "× 3",
+    "column": "left"
+  },
+  {
+    "id": "rings_touching_points",
+    "label": "Rings touching bottle, not on neck — points",
+    "type": "calculated",
+    "formula": "rings_touching * 3",
+    "column": "left"
+  },
+  {
+    "id": "rings_neck",
+    "label": "Rings on bottle neck (volume broken)",
+    "type": "number",
+    "min": 0,
+    "step": 1,
+    "defaultValue": 0,
+    "suffix": "× 15",
+    "column": "left"
+  },
+  {
+    "id": "rings_neck_points",
+    "label": "Rings on bottle neck (volume broken) — points",
+    "type": "calculated",
+    "formula": "rings_neck * 15",
+    "column": "left"
+  },
+  {
+    "id": "ducks_under",
+    "label": "Ducks under raised platform",
+    "type": "number",
+    "min": 0,
+    "step": 1,
+    "defaultValue": 0,
+    "suffix": "× 3",
+    "column": "left"
+  },
+  {
+    "id": "ducks_under_points",
+    "label": "Ducks under raised platform — points",
+    "type": "calculated",
+    "formula": "ducks_under * 3",
+    "column": "left"
+  },
+  {
+    "id": "cups_nested",
+    "label": "Cups nested in other cup",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "suffix": "× 20",
+    "column": "left"
+  },
+  {
+    "id": "cups_nested_points",
+    "label": "Cups nested in other cup — points",
+    "type": "calculated",
+    "formula": "cups_nested * 20",
+    "column": "left"
+  },
+  {
+    "id": "cups_upright",
+    "label": "Cups flat/upright on base",
+    "type": "number",
+    "min": 0,
+    "step": 1,
+    "defaultValue": 0,
+    "suffix": "× 20",
+    "max": 2,
+    "column": "left"
+  },
+  {
+    "id": "cups_upright_points",
+    "label": "Cups flat/upright on base — points",
+    "type": "calculated",
+    "formula": "cups_upright * 20",
+    "column": "left"
+  },
+  {
+    "id": "botguy",
+    "label": "Botguy on top of raised platform",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "suffix": "× 15",
+    "column": "left"
+  },
+  {
+    "id": "botguy_points",
+    "label": "Botguy on top of raised platform — points",
+    "type": "calculated",
+    "formula": "botguy * 15",
+    "column": "left"
+  },
+  {
+    "id": "big_duck",
+    "label": "Big Duck at Botguy’s starting position",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "suffix": "× 15",
+    "column": "left"
+  },
+  {
+    "id": "big_duck_points",
+    "label": "Big Duck at Botguy’s starting position — points",
+    "type": "calculated",
+    "formula": "big_duck * 15",
+    "column": "left"
+  },
+  {
+    "id": "mystery_pom",
+    "label": "Mystery Red Pom isolated alone on platform",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "suffix": "× 50",
+    "column": "left"
+  },
+  {
+    "id": "mystery_pom_points",
+    "label": "Mystery Red Pom isolated alone on platform — points",
+    "type": "calculated",
+    "formula": "mystery_pom * 50",
+    "column": "left"
+  },
+  {
+    "id": "object_subtotal",
+    "label": "Object subtotal",
+    "type": "calculated",
+    "formula": "base_objects_points + pickleballs_points + rings_touching_points + rings_neck_points + ducks_under_points + cups_nested_points + cups_upright_points + botguy_points + big_duck_points + mystery_pom_points",
+    "column": "left"
+  },
+  {
+    "id": "zones_header",
+    "label": "Pom Zones and Duck Multiplier",
+    "type": "section_header",
+    "description": "Five fixed zones. Enter pom counts and duck qualification for each zone.",
+    "column": "left"
+  },
+  {
+    "id": "zone_1_header",
+    "label": "Zone 1",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "zone_1_same",
+    "label": "Same-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_1_unique",
+    "label": "Unique-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_1_bonus",
+    "label": "Pom bonus",
+    "type": "calculated",
+    "formula": "zone_1_same == 5 ? 25 : (zone_1_same >= 1 ? zone_1_same : (zone_1_unique >= 2 ? zone_1_unique * zone_1_unique : 0))",
+    "description": "Workbook behavior: same-color count takes priority over unique-color count.",
+    "column": "left"
+  },
+  {
+    "id": "zone_1_duck",
+    "label": "Exactly one smaller duck in this zone?",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "column": "left"
+  },
+  {
+    "id": "zone_2_header",
+    "label": "Zone 2",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "zone_2_same",
+    "label": "Same-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_2_unique",
+    "label": "Unique-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_2_bonus",
+    "label": "Pom bonus",
+    "type": "calculated",
+    "formula": "zone_2_same == 5 ? 25 : (zone_2_same >= 1 ? zone_2_same : (zone_2_unique >= 2 ? zone_2_unique * zone_2_unique : 0))",
+    "description": "Workbook behavior: same-color count takes priority over unique-color count.",
+    "column": "left"
+  },
+  {
+    "id": "zone_2_duck",
+    "label": "Exactly one smaller duck in this zone?",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "column": "left"
+  },
+  {
+    "id": "zone_3_header",
+    "label": "Zone 3",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "zone_3_same",
+    "label": "Same-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_3_unique",
+    "label": "Unique-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_3_bonus",
+    "label": "Pom bonus",
+    "type": "calculated",
+    "formula": "zone_3_same == 5 ? 25 : (zone_3_same >= 1 ? zone_3_same : (zone_3_unique >= 2 ? zone_3_unique * zone_3_unique : 0))",
+    "description": "Workbook behavior: same-color count takes priority over unique-color count.",
+    "column": "left"
+  },
+  {
+    "id": "zone_3_duck",
+    "label": "Exactly one smaller duck in this zone?",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "column": "left"
+  },
+  {
+    "id": "zone_4_header",
+    "label": "Zone 4",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "zone_4_same",
+    "label": "Same-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_4_unique",
+    "label": "Unique-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_4_bonus",
+    "label": "Pom bonus",
+    "type": "calculated",
+    "formula": "zone_4_same == 5 ? 25 : (zone_4_same >= 1 ? zone_4_same : (zone_4_unique >= 2 ? zone_4_unique * zone_4_unique : 0))",
+    "description": "Workbook behavior: same-color count takes priority over unique-color count.",
+    "column": "left"
+  },
+  {
+    "id": "zone_4_duck",
+    "label": "Exactly one smaller duck in this zone?",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "column": "left"
+  },
+  {
+    "id": "zone_5_header",
+    "label": "Zone 5",
+    "type": "group_header",
+    "column": "left"
+  },
+  {
+    "id": "zone_5_same",
+    "label": "Same-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_5_unique",
+    "label": "Unique-color pom count",
+    "type": "number",
+    "min": 0,
+    "max": 5,
+    "step": 1,
+    "defaultValue": 0,
+    "column": "left"
+  },
+  {
+    "id": "zone_5_bonus",
+    "label": "Pom bonus",
+    "type": "calculated",
+    "formula": "zone_5_same == 5 ? 25 : (zone_5_same >= 1 ? zone_5_same : (zone_5_unique >= 2 ? zone_5_unique * zone_5_unique : 0))",
+    "description": "Workbook behavior: same-color count takes priority over unique-color count.",
+    "column": "left"
+  },
+  {
+    "id": "zone_5_duck",
+    "label": "Exactly one smaller duck in this zone?",
+    "type": "buttons",
+    "defaultValue": 0,
+    "options": [
+      {
+        "label": "No",
+        "value": 0
+      },
+      {
+        "label": "Yes",
+        "value": 1
+      }
+    ],
+    "column": "left"
+  },
+  {
+    "id": "round_subtotal",
+    "label": "Round subtotal (Areas 1–9)",
+    "type": "calculated",
+    "formula": "object_subtotal + zone_1_bonus + zone_2_bonus + zone_3_bonus + zone_4_bonus + zone_5_bonus",
+    "column": "left"
+  },
+  {
+    "id": "qualifying_zones",
+    "label": "Zones with exactly one smaller duck",
+    "type": "calculated",
+    "formula": "zone_1_duck + zone_2_duck + zone_3_duck + zone_4_duck + zone_5_duck",
+    "column": "left"
+  },
+  {
+    "id": "multiplier",
+    "label": "Overall multiplier",
+    "type": "calculated",
+    "formula": "qualifying_zones < 1 ? 1 : (qualifying_zones > 5 ? 5 : qualifying_zones)",
+    "column": "left"
+  },
+  {
+    "id": "grand_total",
+    "label": "Total score",
+    "type": "calculated",
+    "formula": "round_subtotal * multiplier",
+    "isGrandTotal": true
+  }
+]
