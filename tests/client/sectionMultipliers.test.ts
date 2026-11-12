@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import fallFields from '../../templates/botball-2026-fall-scoring-fields.json';
-import standardFields from '../../templates/botball-2026-scoring-fields.json';
-import gcerFields from '../../templates/botball-gcer-2026-scoring-fields.json';
-import seedingTemplate from '../../templates/botball-seeding-template.json';
+import fallFields from '../../templates/archive/botball-25-26-fall-scoring-fields.json';
+import standardFields from '../../templates/archive/botball-2026-scoring-fields.json';
+import gcerFields from '../../templates/archive/botball-gcer-2026-scoring-fields.json';
+import seedingTemplate from '../../templates/archive/botball-seeding-template.json';
 
 describe('section multipliers', () => {
   it.each([

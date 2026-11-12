@@ -17,7 +17,7 @@ test.describe('Portable scoresheet default values', () => {
       [
         'tools/portable-scoresheet/export-html.mjs',
         '--input',
-        'templates/test-default-values.json',
+        'templates/tests/test-default-values.json',
         '--output',
         outputPath,
       ],
