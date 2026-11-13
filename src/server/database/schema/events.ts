@@ -5,6 +5,16 @@ export const eventsSchema: SchemaModule = {
   updatedAtTables: ['events', 'teams'],
   tables: [
     `
+      CREATE TABLE IF NOT EXISTS seasons (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL CHECK (
+          char_length(name) BETWEEN 1 AND 100
+          AND name !~ '^[[:space:]]|[[:space:]]$'
+        ),
+        sort_order INTEGER NOT NULL DEFAULT 0
+      )
+    `,
+    `
       CREATE TABLE IF NOT EXISTS events (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -17,6 +27,8 @@ export const eventsSchema: SchemaModule = {
         min_rest_minutes INTEGER NOT NULL DEFAULT 3 CHECK (min_rest_minutes >= 0),
         score_accept_mode TEXT NOT NULL DEFAULT 'manual' CHECK (score_accept_mode IN ('manual', 'auto_accept_seeding', 'auto_accept_all')),
         spectator_results_released INTEGER NOT NULL DEFAULT 0,
+        spectator_listing TEXT NOT NULL DEFAULT 'current',
+        season_id INTEGER,
         created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -41,9 +53,60 @@ export const eventsSchema: SchemaModule = {
   columns: [
     {
       table: 'events',
+      column: 'spectator_listing',
+      definition: "TEXT NOT NULL DEFAULT 'current'",
+    },
+    {
+      table: 'events',
+      column: 'season_id',
+      definition: 'INTEGER',
+    },
+    {
+      table: 'events',
       column: 'min_rest_minutes',
       definition: 'INTEGER NOT NULL DEFAULT 3 CHECK (min_rest_minutes >= 0)',
     },
+  ],
+  constraints: [
+    `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'events_spectator_listing_check'
+            AND table_name = 'events'
+            AND table_schema = current_schema()
+        ) THEN
+          ALTER TABLE events ADD CONSTRAINT events_spectator_listing_check
+            CHECK (spectator_listing IN ('current', 'archive'));
+        END IF;
+      END $$
+    `,
+    `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'events_season_id_fkey'
+            AND table_name = 'events'
+            AND table_schema = current_schema()
+        ) THEN
+          ALTER TABLE events ADD CONSTRAINT events_season_id_fkey
+            FOREIGN KEY (season_id) REFERENCES seasons(id) ON DELETE RESTRICT;
+        END IF;
+      END $$
+    `,
+    `
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'events_archive_season_check'
+            AND table_name = 'events'
+            AND table_schema = current_schema()
+        ) THEN
+          ALTER TABLE events ADD CONSTRAINT events_archive_season_check
+            CHECK (spectator_listing <> 'archive' OR season_id IS NOT NULL);
+        END IF;
+      END $$
+    `,
   ],
   triggers: [
     `
@@ -66,6 +129,8 @@ export const eventsSchema: SchemaModule = {
     `,
   ],
   indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_seasons_name_unique ON seasons (lower(name))`,
+    `CREATE INDEX IF NOT EXISTS idx_events_season ON events(season_id)`,
     `CREATE INDEX IF NOT EXISTS idx_teams_event ON teams(event_id)`,
     `CREATE INDEX IF NOT EXISTS idx_teams_status ON teams(event_id, status)`,
   ],

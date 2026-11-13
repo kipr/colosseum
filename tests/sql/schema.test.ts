@@ -158,6 +158,43 @@ describe('Schema Constraints', () => {
     });
   });
 
+  describe('spectator placement schema', () => {
+    it('creates nullable season assignment, current placement defaults and season indexes', async () => {
+      const columns = await testDb.db.all(
+        `SELECT column_name, data_type, is_nullable, column_default
+         FROM information_schema.columns
+         WHERE table_schema = current_schema() AND table_name = 'events'
+           AND column_name IN ('spectator_listing', 'season_id')
+         ORDER BY column_name`,
+      );
+      expect(columns).toEqual([
+        {
+          column_name: 'season_id',
+          data_type: 'integer',
+          is_nullable: 'YES',
+          column_default: null,
+        },
+        {
+          column_name: 'spectator_listing',
+          data_type: 'text',
+          is_nullable: 'NO',
+          column_default: "'current'::text",
+        },
+      ]);
+      expect(
+        await testDb.db.all(
+          `SELECT indexname FROM pg_indexes
+           WHERE schemaname = current_schema()
+             AND indexname IN ('idx_events_season', 'idx_seasons_name_unique')
+           ORDER BY indexname`,
+        ),
+      ).toEqual([
+        { indexname: 'idx_events_season' },
+        { indexname: 'idx_seasons_name_unique' },
+      ]);
+    });
+  });
+
   describe('event rest configuration schema', () => {
     it('creates min_rest_minutes with a default and non-negative check', async () => {
       const column = await testDb.db.get<{

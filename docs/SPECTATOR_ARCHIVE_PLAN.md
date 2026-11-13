@@ -40,6 +40,14 @@ Extend the schema through the existing schema runner:
 
 Using named seasons supports both `2026` and `2025–2026`, without assuming that an event’s date determines its competition season. Current events may also have a season assigned.
 
+**Step 1 schema contracts:**
+
+- `seasons.name` is stored verbatim and must be 1–100 PostgreSQL characters long, without leading/trailing whitespace matching PostgreSQL `[[:space:]]`. Invalid names are rejected rather than silently trimmed; display case, internal whitespace, and punctuation are preserved. A unique index on `lower(name)` prevents case-only duplicates under the database locale.
+- `seasons.sort_order` is a non-null signed 32-bit PostgreSQL `INTEGER` (`-2147483648` through `2147483647`), defaulting to `0`. Listing direction and tie-breaks will be pinned when the listing contract is implemented.
+- `events.season_id` references `seasons.id` with `ON DELETE RESTRICT`, for both current and archive placements. Deleting a referenced season cannot delete events or clear their assignments.
+- Updating placement back to `current` does not implicitly clear the season; an explicit same-statement clear is permitted. Neither placement nor season is inferred from event dates, lifecycle status, or release state.
+- Placement checks, the season foreign key, and the archive-requires-season check run through the schema runner's constraint phase for fresh installs and upgrades alike. Existing events receive `current` and `NULL` without other row changes.
+
 **Primary files:** `src/server/database/schema/events.ts`, `src/client/utils/eventStatus.ts`.
 
 **Adversarial tests and acceptance criteria:**
@@ -216,4 +224,13 @@ Keep the first version to **manual, per-event moves and season grouping**. Defer
 
 ## Status
 
-This document is an implementation plan. The feature has not been implemented or validated as part of drafting the plan.
+Step 1 is implemented: the schema runner adds seasons, event season assignment, and independent spectator placement on fresh installs and upgrades; the client model exposes separate lifecycle and placement concepts. Steps 2–6 remain planned. Public archive APIs and UI are not implemented yet.
+
+Step 1 validation:
+
+- Regression tests were added and observed failing before implementation.
+- `npm run test:run -- tests/sql/spectatorArchiveSchema.test.ts tests/sql/schema.test.ts tests/client/eventStatus.test.ts`: 131 tests passed, including the same invariants on fresh and pre-feature schemas.
+- `npm run test:run`: all 1,437 tests passed across 101 files. The existing schema inventory was updated to include `seasons`.
+- `npm run test:e2e -- --reporter=line`: all 97 existing browser tests passed.
+- `npm run pretty`, `npm run lint`, `npm run typecheck:client`, and `npm run typecheck:server`: passed. The plan and changed test files were also explicitly checked with Prettier, and the archive-schema/client-model tests were typechecked.
+- `npm run build`: passed, with the existing unrelated `eval` warning in `src/client/components/scoresheetUtils.ts`.
