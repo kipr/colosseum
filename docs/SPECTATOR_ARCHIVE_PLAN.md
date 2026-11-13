@@ -78,6 +78,15 @@ In `src/server/routes/events.ts`:
 
 Retain the existing final-results gate: a completed event must still have results explicitly released. Archive placement must not bypass that rule.
 
+**Step 2 API contracts:**
+
+- `GET /events/seasons` requires authentication (401 for anonymous/access-code-only judges), including non-admin users; `POST /events/seasons` requires admin (403 otherwise). Responses explicitly contain `id`, `name`, and `sort_order`. Creation accepts the step 1 name contract and a JSON signed-32-bit integer sort order (default `0`); invalid input is 400 and case-insensitive name conflicts, including races, are 409.
+- Event body `season_id` accepts `null`, a positive signed-32-bit JSON integer, or a canonical decimal string (`1` through `2147483647`, without signs, leading zeroes, whitespace, or trailing characters). Public query IDs use the same canonical decimal strings. Invalid IDs/placements, nonexistent season assignments, or invalid resulting archive rows return actionable 400s without partial writes.
+- `listing` accepts only one scalar `current` or `archive`, defaulting to `current`. Optional `season_id` filters either placement; a valid nonexistent/empty/hidden-only season returns `[]`. Malformed, repeated, or structured selectors return 400, never a broader list.
+- Both public list and detail add the flat fields `spectator_listing`, `season_id`, `season_name`, and `season_sort_order`; unassigned season fields are `null`. The existing safe fields and array list shape remain unchanged; raw release flags and private event configuration remain excluded.
+- Seasons sort by `sort_order DESC, id DESC`. Archive lists use that season order first; events within a season, and the entire current listing, sort by `event_date DESC NULLS LAST, created_at DESC, id DESC`.
+- PATCH locks the event before validating the resulting row, preserves omitted fields, and writes placement/season in one statement. Returning to current retains the season unless explicitly cleared. Audit entries contain actual before/after snapshots and the acting user. The existing post-write audit-failure policy remains: a committed mutation is not undone if audit persistence fails.
+
 **Adversarial tests and acceptance criteria:**
 
 - **Create/update round trips:** cover omitted fields on creation, current placement with an optional season, creation directly into archive, current → archive, archive → current, and archive season A → season B. Read back stored values and both admin/public responses. PATCH omission means preserve the existing value, not reset to defaults; explicitly clearing a current event's season is different from omitting it.
@@ -224,7 +233,7 @@ Keep the first version to **manual, per-event moves and season grouping**. Defer
 
 ## Status
 
-Step 1 is implemented: the schema runner adds seasons, event season assignment, and independent spectator placement on fresh installs and upgrades; the client model exposes separate lifecycle and placement concepts. Steps 2–6 remain planned. Public archive APIs and UI are not implemented yet.
+Steps 1–2 are implemented: the schema runner adds seasons, event season assignment, and independent spectator placement on fresh installs and upgrades; the client model exposes separate lifecycle and placement concepts. Event APIs now support validated, audited placement/season writes, authenticated season listing/admin creation, and anonymous current/archive listings and event details with safe season metadata. Hidden lifecycle status and final-results release gates remain independent of placement. Steps 3–6, including the admin and spectator Archive UI, remain planned.
 
 Step 1 validation:
 
@@ -234,3 +243,16 @@ Step 1 validation:
 - `npm run test:e2e -- --reporter=line`: all 97 existing browser tests passed.
 - `npm run pretty`, `npm run lint`, `npm run typecheck:client`, and `npm run typecheck:server`: passed. The plan and changed test files were also explicitly checked with Prettier, and the archive-schema/client-model tests were typechecked.
 - `npm run build`: passed, with the existing unrelated `eval` warning in `src/client/components/scoresheetUtils.ts`.
+
+Step 2 validation:
+
+- New API regression tests were added and observed failing before implementation; season-route tests initially failed because the route did not exist. The first event-write run had 45 failures and the first public-list run had 102 failures.
+- `npm run test:run`: all 1,694 tests passed across 103 files, including PostgreSQL-backed write validation, authorization, duplicate-season races, controlled concurrent edits, persistence/audit fault injection, exact anonymous metadata contracts, and all four final-results endpoints across the full placement/status/release matrix.
+- Populated-state preservation tests materialize lazy results before snapshots and verify placement/season moves leave other persistent data and released results unchanged. Reopening an event still clears release in both placements.
+- `npm run test:e2e -- --reporter=line`: all 97 existing browser tests passed.
+- `npm run pretty`, explicit Prettier checks of changed documentation/tests, `npm run lint`, targeted ESLint for changed tests, `npm run typecheck:client`, `npm run typecheck:server`, `npm run build`, and `git diff --check`: passed.
+- An additional standalone TypeScript check of the changed HTTP tests is blocked by three pre-existing errors in the unchanged `tests/http/helpers/seed.ts` (lines 343–345): `SeedScoreSubmissionData` lacks `result_type`, `disqualified_team_id`, and `result_note`. The normal application typechecks and runtime test suite pass; these unrelated helper types were not changed.
+
+### Pre-existing visibility gaps (outside step 2)
+
+Anonymous probes with populated hidden-event fixtures found that these existing routes do not enforce hidden lifecycle status: `GET /teams/:id`, `GET /seeding/scores/team/:teamId`, `GET /double-seeding/scores/team/:teamId`, `GET /brackets/:id/games`, and `GET /queue/event/:eventId`. They are unchanged by this feature and need a separate visibility-hardening follow-up; passing the archive tests must not be interpreted as fixing them.

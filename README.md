@@ -312,6 +312,33 @@ The application uses PostgreSQL with the following tables:
 - `POST /events` - Create event
 - `PATCH /events/:id` - Update event
 - `DELETE /events/:id` - Delete event
+- `GET /events/seasons` - List seasons (authenticated users)
+- `POST /events/seasons` - Create a season (admin only)
+- `GET /events/public` - Current spectator events (anonymous access)
+- `GET /events/public?listing=archive` - Public-archive events with season metadata
+- `GET /events/:id/public` - Public event metadata for either placement
+
+Admin event creation and PATCH accept `spectator_listing` (`current` or `archive`)
+and nullable `season_id`. Archive placement requires an existing season. Creation
+defaults to current with no season; PATCH preserves omitted fields, and returning
+to current retains the season unless explicitly cleared with `null`. Placement
+changes do not change lifecycle status or release results.
+
+Public lists remain arrays, exclude hidden `status=archived` events, and accept an
+optional `season_id` filter for either placement. Invalid, repeated, or structured
+selectors return 400. Season IDs accept positive signed-32-bit integers or canonical
+decimal strings (no whitespace, leading zeroes, or coercion). Public list/detail
+responses add only `spectator_listing`, `season_id`, `season_name`, and
+`season_sort_order`; unassigned season metadata is `null`. Completed events remain
+visible before release, but final-results endpoints still require explicit release.
+
+Seasons sort by `sort_order DESC, id DESC`; archive events are grouped in that
+order. Within a season, and throughout the current listing, events sort by date
+descending (undated last), creation time descending, then ID descending. Season
+creation accepts `{ name, sort_order? }`: names follow the schema's verbatim,
+1–100-character, unpadded, case-insensitive-unique contract; sort order must be a
+JSON signed-32-bit integer and defaults to zero. Invalid input returns 400 and
+duplicate season names return 409.
 
 ### Teams
 
