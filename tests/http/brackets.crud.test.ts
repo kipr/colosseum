@@ -197,7 +197,7 @@ describe('Brackets CRUD & Game Management', () => {
         'UPDATE events SET double_seeding_rounds = 0 WHERE id = ?',
         [event.id],
       );
-      const disabled = await http.get(
+      const disabled = await http.get<typeof body>(
         `${baseUrl}/brackets/${bracket.id}/rankings`,
       );
       expect(disabled.json.entries[0].raw_double_seed_score).toBe(0);
