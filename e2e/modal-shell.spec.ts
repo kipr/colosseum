@@ -69,6 +69,123 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+for (const width of [1280, 600, 390]) {
+  test(`preview section headings stick flush to the modal at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    const fields = Array.from({ length: 3 }, (_, section) => [
+      {
+        id: `section_${section}`,
+        label: `Section ${section + 1}`,
+        type: 'section_header',
+        column: 'left',
+      },
+      ...Array.from({ length: 8 }, (_, row) => ({
+        id: `field_${section}_${row}`,
+        label: `Field ${section + 1}.${row + 1}`,
+        type: 'number',
+        column: 'left',
+      })),
+    ]).flat();
+    await page.route('**/scoresheet/templates/2', (route) =>
+      route.fulfill({
+        json: {
+          ...template,
+          schema: { title: 'Preview test', layout: 'two-column', fields },
+        },
+      }),
+    );
+    await page.goto('/admin/events/1?view=scoresheets');
+    await page.getByRole('button', { name: 'Preview', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: 'Template Preview' });
+    const headings = dialog.locator('.section-header');
+    await expect(headings).toHaveCount(3);
+    for (const heading of await headings.all()) {
+      await expect(heading).toHaveCSS('position', 'sticky');
+    }
+    await expect(headings.nth(1)).toHaveCSS('margin-top', '16px');
+
+    const content = dialog.locator('.modal-content');
+    const scrolled = await content.evaluate((element) => {
+      element.scrollTop = 500;
+      return element.scrollTop;
+    });
+    expect(scrolled).toBeGreaterThan(0);
+    const headingBox = await headings.first().boundingBox();
+    const contentBox = await content.boundingBox();
+    expect(headingBox).not.toBeNull();
+    expect(contentBox).not.toBeNull();
+    expect(headingBox!.y).toBeCloseTo(contentBox!.y, 0);
+  });
+}
+
+for (const width of [1280, 390]) {
+  test(`judge sections leave space above later headings at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await page.addInitScript(
+      (currentTemplate) => {
+        sessionStorage.setItem(
+          'currentTemplate',
+          JSON.stringify(currentTemplate),
+        );
+      },
+      {
+        ...template,
+        schema: {
+          title: 'Judge section spacing',
+          layout: 'two-column',
+          fields: [
+            {
+              id: 'first',
+              label: 'First section',
+              type: 'section_header',
+              column: 'left',
+            },
+            {
+              id: 'subtotal',
+              label: 'Object subtotal',
+              type: 'calculated',
+              formula: '0',
+              column: 'left',
+            },
+            {
+              id: 'second',
+              label: 'Second section',
+              type: 'section_header',
+              column: 'left',
+            },
+            {
+              id: 'zone',
+              label: 'Zone 1',
+              type: 'group_header',
+              column: 'left',
+            },
+          ],
+        },
+      },
+    );
+    await page.goto('/scoresheet');
+    const headings = page.locator('.scoresheet-form .section-header');
+    await expect(headings).toHaveCount(2);
+    await expect(headings.first()).toHaveCSS('margin-top', '-16px');
+    await expect(headings.nth(1)).toHaveCSS('margin-top', '16px');
+    await expect(headings.nth(1)).toHaveCSS('position', 'sticky');
+    const subtotal = await page
+      .locator('.score-field')
+      .filter({ hasText: 'Object subtotal' })
+      .boundingBox();
+    const second = await headings.nth(1).boundingBox();
+    expect(subtotal).not.toBeNull();
+    expect(second).not.toBeNull();
+    expect(second!.y - (subtotal!.y + subtotal!.height)).toBeGreaterThanOrEqual(
+      16,
+    );
+  });
+}
+
 async function openTeam(page: Page) {
   await page.goto('/admin/events/1?view=teams');
   const trigger = page.getByRole('button', { name: '+ Add Team', exact: true });

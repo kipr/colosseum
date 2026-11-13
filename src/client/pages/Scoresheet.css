@@ -78,6 +78,11 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+/* Only the first section should pull up into the column's top padding. */
+.section-header ~ .section-header {
+  margin-top: 1rem;
+}
+
 .group-header {
   background-color: var(--secondary-color);
   color: white;
