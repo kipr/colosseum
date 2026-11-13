@@ -139,14 +139,16 @@ export default function ScoreSheetWizard({
       // Initials are collected by the built-in panel, not template fields.
       schema.fields.push(...stripLegacyInitialsFields(selectedTemplate.fields));
 
-      // Add grand total for seeding sheets (templates don't include this so it can be conditional)
-      schema.fields.push({
-        id: 'grand_total',
-        label: 'Total Score (A + B)',
-        type: 'calculated',
-        formula: 'side_a_total + side_b_total',
-        isGrandTotal: true,
-      });
+      // Templates may define a whole-board total instead of two side totals.
+      if (!schema.fields.some((field: any) => field.isGrandTotal)) {
+        schema.fields.push({
+          id: 'grand_total',
+          label: 'Total Score (A + B)',
+          type: 'calculated',
+          formula: 'side_a_total + side_b_total',
+          isGrandTotal: true,
+        });
+      }
     } else {
       // Default basic scoring fields
       schema.fields.push({

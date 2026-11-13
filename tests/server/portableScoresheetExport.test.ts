@@ -27,7 +27,7 @@ describe('portable scoresheet exporter', () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-scoresheet-'));
     const outputPath = path.join(tempDir, 'simple.html');
 
-    runExporter('templates/test-simple-fields.json', outputPath);
+    runExporter('templates/tests/test-simple-fields.json', outputPath);
 
     const html = readFileSync(outputPath, 'utf8');
 
@@ -44,7 +44,7 @@ describe('portable scoresheet exporter', () => {
     const tempDir = mkdtempSync(path.join(os.tmpdir(), 'portable-scoresheet-'));
     const outputPath = path.join(tempDir, 'defaults.html');
 
-    runExporter('templates/test-default-values.json', outputPath);
+    runExporter('templates/tests/test-default-values.json', outputPath);
 
     const html = readFileSync(outputPath, 'utf8');
     expect(html).toContain('"defaultValue": "Ada Lovelace"');

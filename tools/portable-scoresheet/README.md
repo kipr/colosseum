@@ -6,7 +6,7 @@ This tool generates a **single self-contained HTML file** for offline score entr
 
 ```bash
 npm run export:scoresheet -- \
-  --input templates/botball-seeding-template.json \
+  --input templates/archive/botball-seeding-template.json \
   --output dist/portable/botball-seeding.html
 ```
 
@@ -14,7 +14,7 @@ For a small demo that pre-fills controls with `defaultValue` (a bare fields arra
 
 ```bash
 npm run export:scoresheet -- \
-  --input templates/demo-default-values.json \
+  --input templates/tests/test-demo-default-values.json \
   --output dist/portable/demo-default-values.html
 ```
 

@@ -60,7 +60,7 @@ Implement this as a generic scoresheet capability with an isolated Botball scori
 8. Store the raw stack rows and per-row derived metadata on the repeatable group submission entry so admin review can see exactly what the judge entered.
 9. Also publish derived totals as normal top-level score fields so existing formulas, totals, rankings, and admin review flows can keep consuming field IDs such as `side_a_ild_sorted_cubes`, `side_a_ild_unsorted_cubes`, and `side_a_ild_subtotal`.
 10. Replace the current manual cube and pallet fields for the affected Botball cube-stack areas. Do not keep the old `*_pallets_mult` fields beside the repeatable stack group unless final rules confirm an additional area multiplier independent of per-stack pallet state.
-11. All template updates should take place in the new `templates/botball-gcer-2026-scoring-fields.json`.
+11. All template updates should take place in the new `templates/archive/botball-gcer-2026-scoring-fields.json`.
 
 The `repeatableGroup` field should remain generic. Botball-specific logic should live in a pure helper, tentatively `scoreBotballCubeStacks`, so the color, size, brown wildcard, and all-or-nothing sorting rules are easy to test outside React.
 
