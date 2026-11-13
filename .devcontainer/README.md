@@ -10,8 +10,8 @@ except the repo checkout.
 |------|-----------------|
 | `../Dockerfile`, stage `dev` | The image. Built from the same `toolchain` stage as the production build, so the Node pin lives in one place. The default target is still the production image. |
 | `../docker-compose.yml` | The `postgres` service (shared with `npm run db:up` on the host). |
-| `docker-compose.yml` | Overlay adding the `app` service: workspace mount, database URLs, agent volumes, security options. |
-| `devcontainer.json` | Editor settings, forwarded ports, lifecycle commands. |
+| `docker-compose.yml` | Overlay adding the `app` service: published ports, workspace mount, database URLs, agent volumes, security options. |
+| `devcontainer.json` | Editor settings and lifecycle commands. |
 
 ## What's in the image
 
@@ -34,6 +34,7 @@ build directories between them.
 ## Open it
 
 VS Code: "Dev Containers: Reopen in Container". CLI: `devcontainer up --workspace-folder .`.
+Zed: "Project: Open Remote", then "Connect Dev Container".
 
 Rebuild ("Dev Containers: Rebuild Container", or
 `devcontainer up --workspace-folder . --remove-existing-container`) after
@@ -46,6 +47,40 @@ there is no Docker CLI in it.
 
 Git identity and credentials need no setup: VS Code copies the host git config
 and forwards the credential helper and SSH agent.
+
+## Ports and Zed
+
+The Compose overlay publishes these ports to the same ports on the host:
+
+| Service | Port | Starts with |
+|---------|------|-------------|
+| Express API | 3000 | `npm run dev` |
+| Vite frontend | 5173 | `npm run dev` |
+| Playwright API | 3001 | `npm run test:e2e` |
+| Playwright frontend | 5174 | `npm run test:e2e` |
+
+Opening the container starts PostgreSQL. Run `npm run dev` in the container
+to start the app, then open `http://localhost:5173` on the host.
+
+Zed can reuse a container originally created by VS Code. In Zed 1.28.1,
+reopening a running container keeps its existing configuration; resuming a
+stopped Compose container uses `--no-recreate`. Port changes therefore need
+a container recreation. Stopping and reopening the container is insufficient.
+See [Zed's container resume implementation](https://github.com/zed-industries/zed/blob/e8bc16acee5ae1937600d571d441c4b5d7b0d288/crates/dev_container/src/devcontainer_manifest.rs#L2447).
+
+After changing port mappings, close the container's editor windows and run
+this from the repo root on the host, then reconnect in Zed:
+
+```sh
+devcontainer up --workspace-folder . --remove-existing-container
+docker compose -f docker-compose.yml -f .devcontainer/docker-compose.yml ps app
+```
+
+The `PORTS` column should show host mappings for 3000, 5173, 3001 and 5174.
+If it is empty, inspect the actual bindings with
+`docker inspect colosseum-app-1 --format '{{json .HostConfig.PortBindings}}'`.
+An empty object means the container has no published ports, even if the
+current Compose files declare them.
 
 ## Commands (inside the container)
 
