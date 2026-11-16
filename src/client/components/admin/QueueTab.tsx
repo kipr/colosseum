@@ -21,7 +21,7 @@ import {
 } from '../../utils/queueRest';
 import type { Bracket, BracketGame } from '../../types/brackets';
 import type { TeamSummary } from '../../types/teams';
-import { QUEUE_STATUSES, type QueueStatus } from '@shared/queueStatus';
+import { QUEUE_STATUSES, type QueueStatus } from '../../../shared/queueStatus';
 import Modal from '../Modal';
 import './QueueTab.css';
 

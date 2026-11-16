@@ -11,12 +11,7 @@ import {
   TestServerHandle,
   http,
 } from './helpers/testServer';
-import {
-  seedEvent,
-  seedTeam,
-  seedUser,
-  seedSeedingScore,
-} from './helpers/seed';
+import { seedEvent, seedTeam, seedSeedingScore } from './helpers/seed';
 import seedingRoutes from '../../src/server/routes/seeding';
 
 describe('Seeding Routes', () => {
