@@ -189,7 +189,7 @@ describe('EventContext', () => {
     input.value = 'archive';
     input.focus();
     const saved = makeEvent(1, { spectator_listing: 'archive', season_id: 7 });
-    await act(async () => latest.reconcileEvent(saved));
+    await act(async () => latest.beginEventMutation()(saved));
     const background = await refresh({ background: true });
     expect(latest).toMatchObject({
       events: [saved],
@@ -386,7 +386,7 @@ describe('EventContext', () => {
       season_id: 7,
       updated_at: '2026-02-01T00:00:00Z',
     });
-    await act(async () => latest.reconcileEvent(saved));
+    await act(async () => latest.beginEventMutation()(saved));
     expect(latest).toMatchObject({
       events: [saved, initial[1]],
       selectedEvent: saved,
@@ -400,10 +400,107 @@ describe('EventContext', () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBe('1');
   });
 
+  it('ignores an older mutation after a newer save and accepted refresh without invalidating a pending read', async () => {
+    const original = makeEvent(1);
+    await initialize([original]);
+    const reconcilePlacement = latest.beginEventMutation();
+    const placement = {
+      ...original,
+      spectator_listing: 'archive',
+      season_id: 7,
+    } satisfies Event;
+    // Equal timestamps must not give an older response authority over a newer save.
+    const renamed = { ...placement, name: 'Confirmed new name' };
+    const reconcileRename = latest.beginEventMutation();
+    await act(async () => reconcileRename(renamed));
+    await refresh({ background: true });
+    await respond(1, [renamed]);
+
+    await refresh();
+    await act(async () => reconcilePlacement(placement));
+    expect(latest).toMatchObject({
+      events: [renamed],
+      selectedEvent: renamed,
+      loading: true,
+      error: null,
+    });
+
+    const newest = { ...renamed, location: 'Latest server location' };
+    await respond(2, [newest]);
+    expect(latest).toMatchObject({
+      events: [newest],
+      selectedEvent: newest,
+      loading: false,
+    });
+  });
+
+  it('preserves confirmed refresh data and errors when an older mutation completes', async () => {
+    const original = makeEvent(1);
+    await initialize([original]);
+    const reconcilePlacement = latest.beginEventMutation();
+    await refresh({ background: true });
+    const renamed = {
+      ...original,
+      name: 'Confirmed by a read',
+      spectator_listing: 'archive',
+      season_id: 7,
+    } satisfies Event;
+    await respond(1, [renamed]);
+    await refresh({ background: true });
+    await reject(2, 'Refresh unavailable');
+
+    await act(async () =>
+      reconcilePlacement({ ...renamed, name: original.name }),
+    );
+    expect(latest).toMatchObject({
+      events: [renamed],
+      selectedEvent: renamed,
+      loading: false,
+      error: 'Refresh unavailable',
+    });
+  });
+
+  it('rejects a superseded mutation even when both callbacks run before React renders', async () => {
+    const original = makeEvent(1);
+    await initialize([original]);
+    const reconcilePlacement = latest.beginEventMutation();
+    const reconcileRename = latest.beginEventMutation();
+    const renamed = { ...original, name: 'Newer confirmed save' };
+    await act(async () => {
+      reconcileRename(renamed);
+      reconcilePlacement({
+        ...original,
+        spectator_listing: 'archive',
+        season_id: 7,
+      });
+    });
+    expect(latest.events).toEqual([renamed]);
+    expect(latest.selectedEvent).toEqual(renamed);
+  });
+
+  it('defers a mutation overtaken by a read to its post-save refresh', async () => {
+    const original = makeEvent(1);
+    await initialize([original]);
+    const reconcilePlacement = latest.beginEventMutation();
+    await refresh({ background: true });
+    await respond(1, [original]);
+    const saved = {
+      ...original,
+      spectator_listing: 'archive',
+      season_id: 7,
+    } satisfies Event;
+    await act(async () => reconcilePlacement(saved));
+    expect(latest.events).toEqual([original]);
+    await refresh({ background: true });
+    await respond(2, [saved]);
+    expect(latest.events).toEqual([saved]);
+    expect(latest.selectedEvent).toEqual(saved);
+  });
+
   it('does not select a saved event after the user has selected another event', async () => {
     const initial = [makeEvent(1), makeEvent(2)];
     await initialize(initial);
-    const reconcileAfterSave = latest.reconcileEvent;
+    const reconcileAfterSave = latest.beginEventMutation();
     await act(async () => latest.selectEventById(2));
     const location = window.location.href;
     const saved = makeEvent(1, { spectator_listing: 'archive', season_id: 4 });
@@ -418,13 +515,13 @@ describe('EventContext', () => {
     const initial = [makeEvent(1)];
     await initialize(initial);
     const added = makeEvent(2, { spectator_listing: 'archive', season_id: 7 });
-    await act(async () => latest.reconcileEvent(added));
+    await act(async () => latest.beginEventMutation()(added));
     expect(latest.events).toEqual([...initial, added]);
     expect(latest.selectedEvent).toEqual(initial[0]);
 
     await act(async () => latest.setSelectedEvent(null));
     const updated = { ...added, name: 'Saved again' };
-    await act(async () => latest.reconcileEvent(updated));
+    await act(async () => latest.beginEventMutation()(updated));
     expect(latest.events).toEqual([...initial, updated]);
     expect(latest.selectedEvent).toBeNull();
     expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
@@ -434,7 +531,7 @@ describe('EventContext', () => {
     await initialize();
     await refresh();
     const saved = makeEvent(1, { spectator_listing: 'archive', season_id: 7 });
-    await act(async () => latest.reconcileEvent(saved));
+    await act(async () => latest.beginEventMutation()(saved));
     const next = await refresh();
     await reject(1, 'Pre-save failure');
     expect(latest).toMatchObject({
@@ -476,11 +573,12 @@ describe('EventContext', () => {
     const save = deferred<Event>();
     let finished!: Promise<void>;
     function SaveButton() {
-      const { reconcileEvent } = useEvent();
+      const { beginEventMutation } = useEvent();
       return createElement(
         'button',
         {
           onClick: () => {
+            const reconcileEvent = beginEventMutation();
             finished = save.promise.then(reconcileEvent);
           },
         },
@@ -507,13 +605,13 @@ describe('EventContext', () => {
 
   it('ignores both retained and current reconciliation callbacks after logout', async () => {
     await initialize();
-    const reconcileAfterSave = latest.reconcileEvent;
+    const reconcileAfterSave = latest.beginEventMutation();
     mocks.auth.user = null;
     await render();
     const saved = makeEvent(1, { spectator_listing: 'archive', season_id: 7 });
     await act(async () => {
       reconcileAfterSave(saved);
-      latest.reconcileEvent(saved);
+      latest.beginEventMutation()(saved);
     });
     expect(latest).toMatchObject({
       events: [],
@@ -527,11 +625,12 @@ describe('EventContext', () => {
     const initial = [makeEvent(1)];
     await initialize(initial);
     const previous = latest;
+    const reconcileAfterSave = latest.beginEventMutation();
     mocks.auth.user = { ...mocks.auth.user!, id: 2 };
     await render();
     let oldRead!: Promise<Event[]>;
     await act(async () => {
-      previous.reconcileEvent(makeEvent(1, { name: 'Old user save' }));
+      reconcileAfterSave(makeEvent(1, { name: 'Old user save' }));
       oldRead = previous.refreshEvents({ background: true });
     });
     await expect(oldRead).resolves.toEqual([]);
@@ -557,13 +656,14 @@ describe('EventContext', () => {
       const initial = [makeEvent(1)];
       await initialize(initial);
       const previous = latest;
+      const reconcileAfterSave = latest.beginEventMutation();
       const user = mocks.auth.user;
       if (transition === 'loading') mocks.auth.loading = true;
       else mocks.auth.user = null;
       await render();
       const inactiveEvents = latest.events;
       await act(async () =>
-        previous.reconcileEvent(makeEvent(1, { name: 'Inactive save' })),
+        reconcileAfterSave(makeEvent(1, { name: 'Inactive save' })),
       );
       expect(latest.events).toEqual(inactiveEvents);
 
@@ -573,7 +673,7 @@ describe('EventContext', () => {
       const currentEvents = latest.events;
       let oldRead!: Promise<Event[]>;
       await act(async () => {
-        previous.reconcileEvent(makeEvent(1, { name: 'Retired save' }));
+        reconcileAfterSave(makeEvent(1, { name: 'Retired save' }));
         oldRead = previous.refreshEvents({ background: true });
       });
       await expect(oldRead).resolves.toEqual([]);
@@ -600,11 +700,12 @@ describe('EventContext', () => {
   it('ignores retained callbacks after provider unmount without affecting a new provider', async () => {
     await initialize();
     const previous = latest;
+    const reconcileAfterSave = latest.beginEventMutation();
     await act(async () => root!.unmount());
     root = null;
     let oldRead!: Promise<Event[]>;
     await act(async () => {
-      previous.reconcileEvent(makeEvent(1, { name: 'Save after unmount' }));
+      reconcileAfterSave(makeEvent(1, { name: 'Save after unmount' }));
       oldRead = previous.refreshEvents({ background: true });
     });
     await expect(oldRead).resolves.toEqual([]);
@@ -612,7 +713,7 @@ describe('EventContext', () => {
 
     root = createRoot(container);
     await render();
-    await act(async () => previous.reconcileEvent(makeEvent(1)));
+    await act(async () => reconcileAfterSave(makeEvent(1)));
     const newest = [makeEvent(2)];
     await respond(1, newest);
     expect(latest).toMatchObject({

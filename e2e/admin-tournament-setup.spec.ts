@@ -1487,6 +1487,435 @@ test.describe('Spectator archive admin controls', () => {
     }
   });
 
+  test('preserves a confirmed rename when an older placement response arrives after history navigation', async ({
+    page,
+  }) => {
+    const season = await seedSeason();
+    const event = await seedEvent('Stale placement rename target', {
+      status: 'active',
+    });
+    const latestName = `${prefix} Latest saved name`;
+    await openEvents(page, event);
+    const documentRequests: string[] = [];
+    page.on('request', (request) => {
+      if (
+        request.isNavigationRequest() &&
+        request.frame() === page.mainFrame()
+      ) {
+        documentRequests.push(request.url());
+      }
+    });
+    await page
+      .locator('.admin-sidebar')
+      .getByRole('button', { name: /Teams$/ })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(`/admin/events/${event.id}\\?view=teams$`),
+    );
+    await page
+      .locator('.admin-sidebar')
+      .getByRole('button', { name: /Manage Events$/ })
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(`/admin/events/${event.id}\\?view=events$`),
+    );
+
+    let committed!: (response: APIResponse) => void;
+    let commitFailed!: (error: unknown) => void;
+    const serverSaved = new Promise<APIResponse>((resolve, reject) => {
+      committed = resolve;
+      commitFailed = reject;
+    });
+    let releasePatch!: () => void;
+    const patchHeld = new Promise<void>((resolve) => {
+      releasePatch = resolve;
+    });
+    let refreshReady!: (response: APIResponse) => void;
+    let refreshFailed!: (error: unknown) => void;
+    const backgroundRefresh = new Promise<APIResponse>((resolve, reject) => {
+      refreshReady = resolve;
+      refreshFailed = reject;
+    });
+    let releaseRefresh!: () => void;
+    const refreshHeld = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    await page.route(`**/events/${event.id}`, async (route) => {
+      if (
+        route.request().method() !== 'PATCH' ||
+        route.request().postDataJSON().spectator_listing !== 'archive'
+      ) {
+        return route.fallback();
+      }
+      // Commit the placement, but only delay its response, never edit PATCHes.
+      try {
+        const response = await route.fetch();
+        committed(response);
+        await patchHeld;
+        await route.fulfill({ response });
+      } catch (error) {
+        commitFailed(error);
+        throw error;
+      }
+    });
+    try {
+      await selectedCard(page)
+        .getByRole('button', {
+          name: 'Move to Spectator Archive',
+          exact: true,
+        })
+        .click();
+      const placementDialog = page.getByRole('dialog', {
+        name: 'Move to Spectator Archive',
+        exact: true,
+      });
+      await placementDialog
+        .getByLabel('Season', { exact: true })
+        .selectOption(String(season.id));
+      await placementDialog
+        .getByRole('button', {
+          name: 'Move to Spectator Archive',
+          exact: true,
+        })
+        .click();
+      const committedPlacement = await serverSaved;
+      await expect(committedPlacement).toBeOK();
+      expect(await committedPlacement.json()).toMatchObject({
+        id: event.id,
+        name: event.name,
+        spectator_listing: 'archive',
+        season_id: season.id,
+      });
+      expect(await storedEvent(event.id)).toMatchObject({
+        name: event.name,
+        spectator_listing: 'archive',
+        season_id: season.id,
+      });
+
+      // Back unmounts the pending dialog; Forward returns to the same provider.
+      await page.goBack();
+      await expect(page).toHaveURL(
+        new RegExp(`/admin/events/${event.id}\\?view=teams$`),
+      );
+      await expect(placementDialog).not.toBeVisible();
+      await expect(
+        page
+          .locator('.admin-content-header')
+          .getByRole('heading', { name: 'Teams', exact: true }),
+      ).toBeVisible();
+      await page.goForward();
+      await expect(page).toHaveURL(
+        new RegExp(`/admin/events/${event.id}\\?view=events$`),
+      );
+      await selectedCard(page)
+        .getByRole('button', { name: 'Edit', exact: true })
+        .click();
+      const editor = page.getByRole('dialog', {
+        name: 'Edit Event',
+        exact: true,
+      });
+      const nameInput = editor.getByLabel('Event Name', { exact: false });
+      await nameInput.fill(latestName);
+      const renameRefresh = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/events' &&
+          response.request().method() === 'GET',
+      );
+      expect(await submitEventForm(page, false)).toMatchObject({
+        id: event.id,
+        name: latestName,
+      });
+      const renamed = await renameRefresh;
+      expect(renamed.ok(), await renamed.text()).toBe(true);
+      expect(await renamed.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: event.id, name: latestName }),
+        ]),
+      );
+      expect(await renamed.finished()).toBeNull();
+      // Cross render boundaries so the accepted refresh and selected-event
+      // synchronization effect settle before delivering the older snapshot.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect(
+        selectedCard(page).getByText(latestName, { exact: true }),
+      ).toBeVisible();
+
+      // The old mutation must still refresh after its dialog unmounts, but that
+      // read must not hide a stale cache replacement before Edit is opened.
+      await page.route('**/events', async (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        try {
+          const response = await route.fetch();
+          refreshReady(response);
+          await refreshHeld;
+          await route.fulfill({ response });
+        } catch (error) {
+          refreshFailed(error);
+          throw error;
+        }
+      });
+      const deliveredPlacement = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === `/events/${event.id}` &&
+          response.request().method() === 'PATCH' &&
+          response.request().postDataJSON().spectator_listing === 'archive',
+      );
+      releasePatch();
+      const delivered = await deliveredPlacement;
+      expect(delivered.ok(), await delivered.text()).toBe(true);
+      expect(await delivered.finished()).toBeNull();
+      await expect(await backgroundRefresh).toBeOK();
+      await selectedCard(page)
+        .getByRole('button', { name: 'Edit', exact: true })
+        .click();
+      await expect(nameInput).toHaveValue(latestName);
+
+      const refreshedResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/events' &&
+          response.request().method() === 'GET',
+      );
+      releaseRefresh();
+      const refreshed = await refreshedResponse;
+      expect(refreshed.ok(), await refreshed.text()).toBe(true);
+      expect(await refreshed.finished()).toBeNull();
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect(nameInput).toHaveValue(latestName);
+      await expect(
+        selectedCard(page).getByText(latestName, { exact: true }),
+      ).toBeVisible();
+      const savedResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === `/events/${event.id}` &&
+          response.request().method() === 'PATCH',
+      );
+      await submitEventForm(page, false);
+      expect((await savedResponse).request().postDataJSON()).toMatchObject({
+        name: latestName,
+      });
+      expect(await storedEvent(event.id)).toMatchObject({ name: latestName });
+      expect(documentRequests).toEqual([]);
+    } finally {
+      releasePatch();
+      releaseRefresh();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+  });
+
+  test('selects a created event only after refresh confirms it when an intervening read omits it', async ({
+    page,
+  }) => {
+    const season = await seedSeason();
+    const anchor = await seedEvent('Create selection anchor', {
+      status: 'active',
+      listing: 'archive',
+      season,
+    });
+    const createdName = `${prefix} Deferred create selection`;
+    const refreshedLocation = `${prefix} Accepted intervening list`;
+    await openEvents(page, anchor);
+    const visitedUrls: string[] = [];
+    page.on('framenavigated', (frame) => {
+      if (frame === page.mainFrame()) visitedUrls.push(frame.url());
+    });
+
+    function heldResponse() {
+      let ready!: (response: APIResponse) => void;
+      let failed!: (error: unknown) => void;
+      const fetched = new Promise<APIResponse>((resolve, reject) => {
+        ready = resolve;
+        failed = reject;
+      });
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return { fetched, ready, failed, held, release };
+    }
+
+    const beforeCreate = heldResponse();
+    const createResponse = heldResponse();
+    const afterCreate = heldResponse();
+    let refreshCount = 0;
+    await page.route('**/events', async (route) => {
+      const method = route.request().method();
+      if (method !== 'GET' && method !== 'POST') return route.fallback();
+      const gate =
+        method === 'POST'
+          ? createResponse
+          : refreshCount++ === 0
+            ? beforeCreate
+            : afterCreate;
+      try {
+        if (gate === beforeCreate) {
+          // Only this read can expose the marker; the placement PATCH snapshot
+          // was already returned before this fixture-only database change.
+          await e2eDb().run('UPDATE events SET location = ? WHERE id = ?', [
+            refreshedLocation,
+            anchor.id,
+          ]);
+        }
+        const response = await route.fetch();
+        gate.ready(response);
+        await gate.held;
+        await route.fulfill({ response });
+      } catch (error) {
+        gate.failed(error);
+        throw error;
+      }
+    });
+    try {
+      // Fetch a real pre-create list through the placement's background refresh,
+      // but do not deliver it until the create mutation has already started.
+      await selectedCard(page)
+        .getByRole('button', {
+          name: 'Return to Current Events',
+          exact: true,
+        })
+        .click();
+      const placementDialog = page.getByRole('dialog', {
+        name: 'Return to Current Events',
+        exact: true,
+      });
+      await placementDialog
+        .getByRole('button', {
+          name: 'Return to Current Events',
+          exact: true,
+        })
+        .click();
+      const before = await beforeCreate.fetched;
+      await expect(before).toBeOK();
+      const beforeEvents = (await before.json()) as SeededEvent[];
+      await expect(placementDialog).not.toBeVisible();
+
+      await page
+        .getByRole('button', { name: '+ Create New Event', exact: true })
+        .click();
+      const createDialog = page.getByRole('dialog', {
+        name: 'Create New Event',
+        exact: true,
+      });
+      await createDialog
+        .getByLabel('Event Name', { exact: false })
+        .fill(createdName);
+      await createDialog
+        .getByRole('button', { name: 'Create Event', exact: true })
+        .click();
+      const committed = await createResponse.fetched;
+      await expect(committed).toBeOK();
+      const created = (await committed.json()) as SeededEvent;
+      expect(created).toMatchObject({ name: createdName });
+      expect(await storedEvent(created.id)).toMatchObject({
+        name: createdName,
+      });
+      expect(beforeEvents.map((event) => event.id)).not.toContain(created.id);
+
+      const interveningRefresh = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/events' &&
+          response.request().method() === 'GET',
+      );
+      beforeCreate.release();
+      const intervening = await interveningRefresh;
+      expect(intervening.ok(), await intervening.text()).toBe(true);
+      expect(await intervening.finished()).toBeNull();
+      // Visible server-only data proves the provider accepted this absent-event
+      // list, so the mutation-start generation guard must skip the POST snapshot.
+      await expect(selectedCard(page)).toContainText(refreshedLocation);
+      await expect(createDialog).toBeVisible();
+      await expect(eventRow(page, created)).toHaveCount(0);
+
+      const deliveredCreate = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/events' &&
+          response.request().method() === 'POST',
+      );
+      createResponse.release();
+      const delivered = await deliveredCreate;
+      expect(delivered.ok(), await delivered.text()).toBe(true);
+      expect(await delivered.finished()).toBeNull();
+      await expect(createDialog).not.toBeVisible();
+      const after = await afterCreate.fetched;
+      await expect(after).toBeOK();
+      expect(await after.json()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ id: created.id, name: createdName }),
+        ]),
+      );
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      const createdUrl = new URL(
+        `/admin/events/${created.id}?view=events`,
+        page.url(),
+      ).href;
+      // The real provider and Admin router must not select or navigate to an ID
+      // absent from confirmed events, even transiently before falling back.
+      expect(visitedUrls).not.toContain(createdUrl);
+      await expect(page).toHaveURL(
+        new RegExp(`/admin/events/${anchor.id}\\?view=events$`),
+      );
+      await expect(selectedCard(page).locator('strong').first()).toHaveText(
+        anchor.name,
+      );
+      await expect(eventRow(page, created)).toHaveCount(0);
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem('colosseum_selected_event_id'),
+        ),
+      ).toBe(String(anchor.id));
+
+      const confirmingRefresh = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/events' &&
+          response.request().method() === 'GET',
+      );
+      afterCreate.release();
+      const confirmed = await confirmingRefresh;
+      expect(confirmed.ok(), await confirmed.text()).toBe(true);
+      expect(await confirmed.finished()).toBeNull();
+      await expect(page).toHaveURL(createdUrl);
+      await expect(selectedCard(page).locator('strong').first()).toHaveText(
+        createdName,
+      );
+      // Check again after provider/router effects, rather than observing only
+      // a transient selection that the missing-event fallback later replaces.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect(page).toHaveURL(createdUrl);
+      await expect(selectedCard(page).locator('strong').first()).toHaveText(
+        createdName,
+      );
+      expect(
+        await page.evaluate(() =>
+          localStorage.getItem('colosseum_selected_event_id'),
+        ),
+      ).toBe(String(created.id));
+    } finally {
+      beforeCreate.release();
+      createResponse.release();
+      afterCreate.release();
+      await page.unrouteAll({ behavior: 'wait' });
+    }
+  });
+
   test('requires a season, supports keyboard selection and cancellation, and restores focus without stale dialog state', async ({
     page,
   }) => {

@@ -4,6 +4,7 @@ import SeasonPicker from './SeasonPicker';
 import type { SeasonCatalog } from '../../hooks/useSeasons';
 import type { Event } from '../../utils/eventStatus';
 import { apiFetch } from '../../utils/api';
+import { useEvent } from '../../contexts/EventContext';
 
 interface SpectatorPlacementDialogProps {
   event: Event;
@@ -20,6 +21,7 @@ export default function SpectatorPlacementDialog({
   onPersisted,
   onSaved,
 }: SpectatorPlacementDialogProps) {
+  const { beginEventMutation } = useEvent();
   const returning = event.spectator_listing === 'archive';
   const title = returning
     ? 'Return to Current Events'
@@ -48,6 +50,7 @@ export default function SpectatorPlacementDialog({
     setSaving(true);
     setError(null);
     try {
+      const reconcileEvent = beginEventMutation();
       const saved = await apiFetch<Event>(`/events/${event.id}`, {
         method: 'PATCH',
         body: returning
@@ -57,6 +60,7 @@ export default function SpectatorPlacementDialog({
       });
       // Keep the persistent event cache current even if browser history left
       // this dialog while saving. Only local UI callbacks depend on its lifetime.
+      reconcileEvent(saved);
       onPersisted(saved);
       if (mounted.current) onSaved(saved);
     } catch (err) {

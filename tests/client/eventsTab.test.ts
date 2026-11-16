@@ -85,6 +85,7 @@ const context = {
   error: null,
   refreshEvents:
     vi.fn<(options?: { background?: boolean }) => Promise<Event[]>>(),
+  beginEventMutation: vi.fn<() => (event: Event) => void>(),
   reconcileEvent: vi.fn<(event: Event) => void>(),
   setSelectedEvent: vi.fn<(event: Event | null) => void>(),
 };
@@ -162,6 +163,7 @@ function mutations() {
 }
 
 function expectPersisted(saved: Event) {
+  expect(context.beginEventMutation).toHaveBeenCalledTimes(1);
   expect(context.reconcileEvent).toHaveBeenCalledExactlyOnceWith(saved);
   expect(context.refreshEvents).toHaveBeenCalledExactlyOnceWith({
     background: true,
@@ -278,6 +280,7 @@ beforeEach(() => {
     },
   );
   context.refreshEvents.mockImplementation(async () => context.events);
+  context.beginEventMutation.mockImplementation(() => context.reconcileEvent);
   context.reconcileEvent.mockImplementation((saved) => {
     context.events = context.events.some((event) => event.id === saved.id)
       ? context.events.map((event) => (event.id === saved.id ? saved : event))
@@ -470,6 +473,26 @@ describe('EventsTab season catalog and event form', () => {
     expect(matchingRequests('/events/31', 'PATCH')).toEqual([]);
   });
 
+  it('waits for a created event in the confirmed cache before selecting it', async () => {
+    const original = makeEvent(31);
+    await mount(original);
+    context.beginEventMutation.mockReturnValueOnce(vi.fn());
+    await click(button('+ Create New Event'));
+    await change(field<HTMLInputElement>('Event Name', dialog()), 'New event');
+    await submitEvent();
+    const created = makeEvent(913, { name: 'New event' });
+    await respond(request('/events', 'POST'), created);
+    expect(container.querySelector('dialog')).toBeNull();
+    expect(context.setSelectedEvent).not.toHaveBeenCalled();
+    expect(context.selectedEvent).toEqual(original);
+
+    const confirmed = { ...created, name: 'Latest confirmed name' };
+    context.events = [original, confirmed];
+    await render();
+    expect(context.setSelectedEvent).toHaveBeenCalledExactlyOnceWith(confirmed);
+    expect(context.selectedEvent).toEqual(confirmed);
+  });
+
   it.each([
     ['edit', 'success'],
     ['edit', 'failure'],
@@ -497,6 +520,8 @@ describe('EventsTab season catalog and event form', () => {
         name: 'Submitted event name',
         season_id: 509,
       });
+      expect(context.beginEventMutation).toHaveBeenCalledTimes(1);
+      expect(context.reconcileEvent).not.toHaveBeenCalled();
       await act(async () => root!.unmount());
       root = null;
       // The provider remains alive and may select another event after leaving this UI.
@@ -925,6 +950,8 @@ describe('EventsTab spectator placement dialog', () => {
       spectator_listing: 'archive',
       season_id: 701,
     });
+    expect(context.beginEventMutation).toHaveBeenCalledTimes(1);
+    expect(context.reconcileEvent).not.toHaveBeenCalled();
     await act(async () => root!.unmount());
     root = null;
     context.events = [original, other];

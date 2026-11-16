@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
@@ -59,7 +59,7 @@ export default function EventsTab() {
   const {
     events,
     refreshEvents,
-    reconcileEvent,
+    beginEventMutation,
     selectedEvent,
     setSelectedEvent,
   } = useEvent();
@@ -68,6 +68,7 @@ export default function EventsTab() {
   const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
+  const [createdEventId, setCreatedEventId] = useState<number | null>(null);
   const [formData, setFormData] = useState<EventFormData>(defaultFormData);
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
@@ -103,19 +104,29 @@ export default function EventsTab() {
   const { confirm, ConfirmDialog } = useConfirm();
   const toast = useToast();
 
-  const getCurrentAdminView = () => {
-    const rawView = searchParams.get('view');
-    return isAdminView(rawView) ? rawView : 'events';
-  };
+  const rawView = searchParams.get('view');
+  const currentAdminView = isAdminView(rawView) ? rawView : 'events';
 
-  const handleSelectEvent = (event: Event | null) => {
-    setSelectedEvent(event);
-    if (event) {
-      navigate(adminEventPath(event.id, getCurrentAdminView()));
-    } else {
-      navigate(adminEventsPath(getCurrentAdminView()));
-    }
-  };
+  const handleSelectEvent = useCallback(
+    (event: Event | null) => {
+      setCreatedEventId(null);
+      setSelectedEvent(event);
+      if (event) {
+        navigate(adminEventPath(event.id, currentAdminView));
+      } else {
+        navigate(adminEventsPath(currentAdminView));
+      }
+    },
+    [currentAdminView, navigate, setSelectedEvent],
+  );
+
+  useEffect(() => {
+    if (createdEventId === null) return;
+    // Reconciliation may defer to a refresh. Selecting an event before it is
+    // cached would make the provider and route guards treat it as deleted.
+    const created = events.find((event) => event.id === createdEventId);
+    if (created) handleSelectEvent(created);
+  }, [createdEventId, events, handleSelectEvent]);
 
   const filteredEvents = events.filter(
     (event) =>
@@ -145,6 +156,7 @@ export default function EventsTab() {
   );
 
   const handleCreateNew = () => {
+    setCreatedEventId(null);
     ++formSession.current;
     setFormError(null);
     setEditingEvent(null);
@@ -153,6 +165,7 @@ export default function EventsTab() {
   };
 
   const handleEdit = (event: Event) => {
+    setCreatedEventId(null);
     ++formSession.current;
     setFormError(null);
     setEditingEvent(event);
@@ -204,6 +217,7 @@ export default function EventsTab() {
       const url = editingEvent ? `/events/${editingEvent.id}` : '/events';
       const method = editingEvent ? 'PATCH' : 'POST';
 
+      const reconcileEvent = beginEventMutation();
       const savedEvent = await apiFetch<Event>(url, {
         method,
         body: {
@@ -226,7 +240,7 @@ export default function EventsTab() {
       toast.success(editingEvent ? 'Event updated!' : 'Event created!');
       formPending.current = false;
       handleCloseModal();
-      if (!editingEvent && savedEvent.id) handleSelectEvent(savedEvent);
+      if (!editingEvent && savedEvent.id) setCreatedEventId(savedEvent.id);
     } catch (error) {
       if (mounted.current && session === formSession.current) {
         setFormError(
@@ -1043,8 +1057,7 @@ export default function EventsTab() {
           event={placementEvent}
           catalog={catalog}
           onClose={() => setPlacementEvent(null)}
-          onPersisted={(saved) => {
-            reconcileEvent(saved);
+          onPersisted={() => {
             void refreshEvents({ background: true });
           }}
           onSaved={(saved) => {

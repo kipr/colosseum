@@ -18,7 +18,7 @@ interface EventContextType {
   loading: boolean;
   error: string | null;
   refreshEvents: (options?: { background?: boolean }) => Promise<Event[]>;
-  reconcileEvent: (event: Event) => void;
+  beginEventMutation: () => (event: Event) => void;
   setSelectedEvent: (event: Event | null) => void;
   selectEventById: (id: number | null) => void;
 }
@@ -36,6 +36,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const initialized = useRef(false);
   const hydrated = useRef(false);
   const requestSequence = useRef(0);
+  const cacheGeneration = useRef(0);
   // Retired scopes stay inactive, even if the same user later returns.
   const authScope = useMemo(
     () => ({ user, active: false }),
@@ -63,6 +64,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         });
         if (request !== requestSequence.current) return data;
 
+        ++cacheGeneration.current;
         hydrated.current = true;
         setEvents(data);
 
@@ -103,11 +105,22 @@ export function EventProvider({ children }: { children: ReactNode }) {
     [authScope],
   );
 
-  const reconcileEvent = useCallback(
-    (event: Event) => {
-      if (!authScope.active || !authScope.user) return;
+  // Capture freshness before sending a mutation, not when its response arrives.
+  // An intervening accepted read or save makes that response ambiguous; leave
+  // the confirmed cache intact and let the caller's post-save refresh resolve it.
+  const beginEventMutation = useCallback(() => {
+    const generation = cacheGeneration.current;
+    return (event: Event) => {
+      if (
+        !authScope.active ||
+        !authScope.user ||
+        generation !== cacheGeneration.current
+      ) {
+        return;
+      }
 
-      // A successful write supersedes reads started before it was saved.
+      ++cacheGeneration.current;
+      // An accepted write supersedes reads started before it was saved.
       ++requestSequence.current;
       setEvents((current) =>
         current.some((existing) => existing.id === event.id)
@@ -121,9 +134,8 @@ export function EventProvider({ children }: { children: ReactNode }) {
       );
       setError(null);
       setLoading(false);
-    },
-    [authScope],
-  );
+    };
+  }, [authScope]);
 
   // Set selected event and persist to localStorage
   const setSelectedEvent = useCallback((event: Event | null) => {
@@ -190,7 +202,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         refreshEvents,
-        reconcileEvent,
+        beginEventMutation,
         setSelectedEvent,
         selectEventById,
       }}
