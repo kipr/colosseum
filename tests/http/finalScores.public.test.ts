@@ -416,6 +416,66 @@ describe('Public Final Scores API (anonymous)', () => {
     );
   });
 
+  it('revalidates archive results after revoke, re-release, hide, and return to current', async () => {
+    const fixture = await createFixture(
+      { listing: 'archive', status: 'complete', released: true },
+      'Changing visibility sentinel',
+      101,
+    );
+    const admin = await seedUser(testDb.db, { is_admin: true });
+    const adminApp = createTestApp({ user: { id: admin.id, is_admin: true } });
+    adminApp.use('/events', eventsRoutes);
+    const adminServer = await startServer(adminApp);
+
+    try {
+      await expectFinalResults(fixture, true);
+      for (const [payload, listing, status, released] of [
+        [{ spectator_results_released: 0 }, 'archive', 'complete', false],
+        [{ spectator_results_released: 1 }, 'archive', 'complete', true],
+        [{ status: 'archived' }, 'archive', 'archived', false],
+        [{ spectator_listing: 'current' }, 'current', 'archived', false],
+      ] as const) {
+        const patch = await http.patch(
+          `${adminServer.baseUrl}/events/${fixture.event.id}`,
+          payload,
+        );
+        expect(patch.status).toBe(200);
+        expect(patch.json).toMatchObject({
+          status,
+          spectator_listing: listing,
+          spectator_results_released: released ? 1 : 0,
+          season_id: fixture.season.id,
+        });
+        const visible = status !== 'archived';
+        const metadata = {
+          ...fixture.metadata,
+          status,
+          spectator_listing: listing,
+          final_scores_available: released,
+        };
+        const detail = await http.get(
+          `${baseUrl}/events/${fixture.event.id}/public`,
+        );
+        expect(detail.status).toBe(visible ? 200 : 404);
+        expect(detail.json).toEqual(
+          visible ? metadata : { error: 'Event not found' },
+        );
+        for (const placement of ['current', 'archive'] as const) {
+          const list = await http.get(
+            `${baseUrl}/events/public?listing=${placement}`,
+          );
+          expect(list.status).toBe(200);
+          expect(list.json).toEqual(
+            visible && listing === placement ? [metadata] : [],
+          );
+        }
+        await expectFinalResults(fixture, released);
+      }
+    } finally {
+      await adminServer.close();
+    }
+  });
+
   it('preserves populated persistent state and released results across placement and season changes', async () => {
     const fixture = await createFixture(
       { listing: 'current', status: 'complete', released: true },
@@ -619,34 +679,48 @@ describe('Public Final Scores API (anonymous)', () => {
     },
   );
 
-  it.each(matrix.filter((row) => !isReleased(row)))(
-    'uses the bracket owning event despite a foreign released event URL/query: $listing / $status / released=$released',
+  it.each(matrix)(
+    'uses the bracket owning event despite foreign event IDs: $listing / $status / released=$released',
     async (visibility) => {
-      // Make event and bracket IDs differ so event-ID-based authorization cannot pass accidentally.
-      await seedEvent(testDb.db, { name: 'Unrelated event to offset IDs' });
-      const fixture = await createFixture(
-        visibility,
-        'Blocked bracket owner',
-        101,
+      const allowed = isReleased(visibility);
+      const foreignListing =
+        visibility.listing === 'current' ? 'archive' : 'current';
+      const foreignStatus = allowed ? 'archived' : 'complete';
+      // The bracket ID must collide with an event whose gate is the opposite of its owner's.
+      const collidingEvent = await seedEvent(testDb.db, {
+        name: 'Foreign event sharing the bracket ID',
+        status: foreignStatus,
+      });
+      const fixture = await createFixture(visibility, 'Bracket owner', 101);
+      await testDb.db.run(
+        `UPDATE events SET spectator_listing = ?, season_id = ?, spectator_results_released = 1
+         WHERE id = ?`,
+        [foreignListing, fixture.season.id, collidingEvent.id],
       );
       const other = await createFixture(
-        { listing: 'archive', status: 'complete', released: true },
-        'Released decoy',
+        { listing: foreignListing, status: foreignStatus, released: true },
+        'Foreign decoy',
         909,
       );
+      expect(fixture.bracket.id).toBe(collidingEvent.id);
       expect(fixture.bracket.id).not.toBe(fixture.event.id);
-      await expectFinalResults(other, true);
+      await expectFinalResults(other, !allowed);
       for (const query of [
+        '',
+        `?event_id=${collidingEvent.id}`,
         `?event_id=${other.event.id}`,
-        `?eventId=${other.event.id}&listing=archive&season_id=${other.season.id}`,
+        `?eventId=${other.event.id}&listing=${foreignListing}&season_id=${other.season.id}`,
         `?event_id=${other.event.id}&event_id=${fixture.event.id}&spectator_results_released=1`,
       ]) {
         const res = await http.get(
           `${baseUrl}/brackets/${fixture.bracket.id}/rankings/public${query}`,
         );
-        expect(res.status).toBe(404);
-        expect(res.json).toEqual({ error: 'Not found' });
+        expect(res.status, query).toBe(allowed ? 200 : 404);
+        expect(res.json, query).toEqual(
+          allowed ? fixture.rankings : { error: 'Not found' },
+        );
       }
+      // This nested URL is not a supported route, even when the owner is released.
       const foreignContext = await http.get(
         `${baseUrl}/events/${other.event.id}/brackets/${fixture.bracket.id}/rankings/public`,
       );
