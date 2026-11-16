@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { apiFetch } from '../../utils/api';
 import type { Season } from '../../utils/eventStatus';
 import type { SeasonCatalog } from '../../hooks/useSeasons';
@@ -94,6 +94,12 @@ export default function SeasonPicker({
     }
   };
 
+  const handleCreateKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    void createSeason();
+  };
+
   const unknownAssignment =
     value !== null && !catalog.seasons.some((season) => season.id === value);
 
@@ -167,6 +173,7 @@ export default function SeasonPicker({
             value={name}
             disabled={disabled || creating}
             onChange={(event) => setName(event.target.value)}
+            onKeyDown={handleCreateKeyDown}
             placeholder="e.g., 2026 or 2025–2026"
           />
           <label htmlFor={`${id}-order`}>Sort order</label>
@@ -180,6 +187,7 @@ export default function SeasonPicker({
             value={order}
             disabled={disabled || creating}
             onChange={(event) => setOrder(event.target.value)}
+            onKeyDown={handleCreateKeyDown}
           />
           <p>
             Higher sort orders appear first; ties show the newest season first.

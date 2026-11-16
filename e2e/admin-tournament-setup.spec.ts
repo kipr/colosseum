@@ -764,6 +764,80 @@ test.describe('Spectator archive admin controls', () => {
     });
   });
 
+  for (const field of ['Season name', 'Sort order']) {
+    test(`Enter in inline ${field} creates a season without submitting the event editor`, async ({
+      page,
+    }) => {
+      const originalSeason = await seedSeason();
+      const event = await seedEvent('Keyboard creation', {
+        listing: 'archive',
+        season: originalSeason,
+      });
+      const before = await storedEvent(event.id);
+      const dialog = await reopenEditor(page, event);
+      const editedName = `${prefix} Unsaved event edit`;
+      await dialog.getByLabel('Event Name', { exact: false }).fill(editedName);
+      const seasonSelect = dialog.getByLabel('Season', { exact: true });
+      await expect(seasonSelect).toHaveValue(String(originalSeason.id));
+      await dialog
+        .getByRole('button', { name: '+ Create Season', exact: true })
+        .click();
+
+      const writes: string[] = [];
+      page.on('request', (request) => {
+        const path = new URL(request.url()).pathname;
+        if (
+          request.method() !== 'GET' &&
+          (path === '/events/seasons' || path === `/events/${event.id}`)
+        ) {
+          writes.push(`${request.method()} ${path}`);
+        }
+      });
+
+      // Invalid input must stay within the season creator, too.
+      await dialog.getByLabel('Season name', { exact: true }).fill(' ');
+      await dialog.getByLabel(field, { exact: true }).press('Enter');
+      await expect(dialog.getByRole('alert')).toContainText('Season name');
+      expect(writes).toEqual([]);
+      expect(await storedEvent(event.id)).toEqual(before);
+
+      const seasonName = `${prefix} Keyboard season`;
+      await dialog.getByLabel('Season name', { exact: true }).fill(seasonName);
+      await dialog.getByLabel('Sort order', { exact: true }).fill('-7');
+      const created = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === '/events/seasons' &&
+          response.request().method() === 'POST',
+      );
+      await dialog.getByLabel(field, { exact: true }).press('Enter');
+      const response = await created;
+      expect(response.ok(), await response.text()).toBe(true);
+      const season = (await response.json()) as Season;
+      expect(season).toMatchObject({ name: seasonName, sort_order: -7 });
+      await expect(seasonSelect).toHaveValue(String(season.id));
+      await expect(dialog).toBeVisible();
+      await expect(
+        dialog.getByLabel('Event Name', { exact: false }),
+      ).toHaveValue(editedName);
+      await expect(
+        dialog.getByLabel('Season name', { exact: true }),
+      ).toHaveCount(0);
+      expect(writes).toEqual(['POST /events/seasons']);
+      expect(await storedEvent(event.id)).toEqual(before);
+
+      await submitEventForm(page, false);
+      expect(writes).toEqual([
+        'POST /events/seasons',
+        `PATCH /events/${event.id}`,
+      ]);
+      expect(await storedEvent(event.id)).toMatchObject({
+        name: editedName,
+        spectator_listing: 'archive',
+        season_id: season.id,
+      });
+    });
+  }
+
   for (const scenario of [
     { status: 'active', released: 0 },
     { status: 'complete', released: 0 },
