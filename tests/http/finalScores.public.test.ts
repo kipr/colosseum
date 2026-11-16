@@ -1,11 +1,8 @@
-/**
- * HTTP route tests for public final-score endpoints.
- * Verifies documentation scores, bracket rankings, and overall scores are
- * gated behind event completion + spectator_results_released.
- */
+/** Anonymous spectator reads: placement must never change lifecycle/release gates. */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createTestDb, TestDb } from '../sql/helpers/testDb';
 import { __setTestDatabaseAdapter } from '../../src/server/database/connection';
+import { resetAllRateLimiters } from '../../src/server/middleware/rateLimit';
 import {
   createTestApp,
   startServer,
@@ -17,20 +14,44 @@ import {
   seedUser,
   seedTeam,
   seedBracket,
+  seedBracketGame,
   seedDocumentationScore,
   seedDocumentationScoreCategory,
   seedDocumentationSubScore,
   seedSeedingScore,
+  seedDoubleSeedingMatch,
+  seedDoubleSeedingScore,
   seedEventAward,
   seedEventAwardRecipient,
+  seedEventAwardIndividualRecipient,
 } from './helpers/seed';
 import eventsRoutes from '../../src/server/routes/events';
 import bracketsRoutes from '../../src/server/routes/brackets';
 import docScoresRoutes from '../../src/server/routes/documentationScores';
 import seedingRoutes from '../../src/server/routes/seeding';
+import doubleSeedingRoutes from '../../src/server/routes/doubleSeeding';
 import awardsRoutes from '../../src/server/routes/awards';
+import teamsRoutes from '../../src/server/routes/teams';
 
-describe('Public Final Scores API', () => {
+type Listing = 'current' | 'archive';
+type Lifecycle = 'setup' | 'active' | 'complete' | 'archived';
+interface VisibilityCase {
+  listing: Listing;
+  status: Lifecycle;
+  released: boolean;
+}
+
+const matrix: VisibilityCase[] = (['current', 'archive'] as const).flatMap(
+  (listing) =>
+    (['setup', 'active', 'complete', 'archived'] as const).flatMap((status) =>
+      [false, true].map((released) => ({ listing, status, released })),
+    ),
+);
+
+const isReleased = ({ status, released }: VisibilityCase) =>
+  status === 'complete' && released;
+
+describe('Public Final Scores API (anonymous)', () => {
   let testDb: TestDb;
   let server: TestServerHandle;
   let baseUrl: string;
@@ -38,337 +59,804 @@ describe('Public Final Scores API', () => {
   beforeEach(async () => {
     testDb = await createTestDb();
     __setTestDatabaseAdapter(testDb.db);
-
-    const adminUser = await seedUser(testDb.db, { is_admin: true });
-    const app = createTestApp({ user: { id: adminUser.id, is_admin: true } });
+    resetAllRateLimiters();
+    const app = createTestApp();
     app.use('/events', eventsRoutes);
     app.use('/brackets', bracketsRoutes);
     app.use('/documentation-scores', docScoresRoutes);
     app.use('/seeding', seedingRoutes);
+    app.use('/double-seeding', doubleSeedingRoutes);
     app.use('/awards', awardsRoutes);
-
+    app.use('/teams', teamsRoutes);
     server = await startServer(app);
     baseUrl = server.baseUrl;
   });
 
   afterEach(async () => {
     await server.close();
+    resetAllRateLimiters();
     __setTestDatabaseAdapter(null);
     testDb.close();
   });
 
-  async function createReleasedEvent() {
+  async function createFixture(
+    visibility: VisibilityCase,
+    tag: string,
+    teamNumber: number,
+  ) {
+    const seasonResult = await testDb.db.run(
+      'INSERT INTO seasons (name, sort_order) VALUES (?, ?) RETURNING id',
+      [`${tag} season`, teamNumber],
+    );
+    const season = {
+      id: seasonResult.lastID!,
+      name: `${tag} season`,
+      sort_order: teamNumber,
+    };
     const event = await seedEvent(testDb.db, {
-      name: 'Released Event',
-      status: 'complete',
+      name: `${tag} event`,
+      status: visibility.status,
+      event_date: '2026-03-01',
+      location: `${tag} arena`,
+      double_seeding_rounds: 1,
+      description: `${tag} PRIVATE description`,
+      score_accept_mode: 'auto_accept_all',
+    });
+    // Direct SQL deliberately preserves stale release flags on setup/active/hidden events.
+    await testDb.db.run(
+      `UPDATE events SET spectator_listing = ?, season_id = ?, spectator_results_released = ?,
+       created_at = '2026-01-01 00:00:00' WHERE id = ?`,
+      [visibility.listing, season.id, visibility.released ? 1 : 0, event.id],
+    );
+    const team = await seedTeam(testDb.db, {
+      event_id: event.id,
+      team_number: teamNumber,
+      team_name: `${tag} team`,
+      display_name: `${tag} display`,
+    });
+    const identity = {
+      team_number: teamNumber,
+      team_name: `${tag} team`,
+      display_name: `${tag} display`,
+    };
+    const category = await seedDocumentationScoreCategory(testDb.db, {
+      event_id: event.id,
+      ordinal: 1,
+      name: `${tag} design`,
+      max_score: 100,
+    });
+    const doc = await seedDocumentationScore(testDb.db, {
+      event_id: event.id,
+      team_id: team.id,
+      overall_score: 0.5,
+    });
+    await seedDocumentationSubScore(testDb.db, {
+      documentation_score_id: doc.id,
+      category_id: category.id,
+      score: 50,
+    });
+    const seedingScore = await seedSeedingScore(testDb.db, {
+      team_id: team.id,
+      round_number: 1,
+      score: 100,
     });
     await testDb.db.run(
-      `UPDATE events SET spectator_results_released = 1 WHERE id = ?`,
-      [event.id],
+      'INSERT INTO seeding_rankings (team_id, seed_rank, raw_seed_score) VALUES (?, 1, 0.25)',
+      [team.id],
     );
-    return event;
-  }
-
-  async function createUnreleasedEvent() {
-    return seedEvent(testDb.db, {
-      name: 'Unreleased Event',
-      status: 'complete',
+    const doubleMatch = await seedDoubleSeedingMatch(testDb.db, {
+      event_id: event.id,
+      round_number: 1,
+      match_number: 1,
+      team1_id: team.id,
     });
-  }
-
-  describe('GET /events/public (final_scores_available)', () => {
-    it('returns final_scores_available=true for released complete events', async () => {
-      const event = await createReleasedEvent();
-      const res = await http.get<{ final_scores_available: boolean }[]>(
-        `${baseUrl}/events/public`,
-      );
-      expect(res.status).toBe(200);
-      const found = res.json.find(
-        (e: { final_scores_available: boolean } & { id?: number }) =>
-          (e as Record<string, unknown>).id === event.id,
-      );
-      expect(found).toBeDefined();
-      expect(found!.final_scores_available).toBe(true);
+    const doubleScore = await seedDoubleSeedingScore(testDb.db, {
+      event_id: event.id,
+      match_id: doubleMatch.id,
+      team_id: team.id,
+      round_number: 1,
+      side: 'team1',
+      score: 25,
     });
-
-    it('returns final_scores_available=false for unreleased complete events', async () => {
-      await createUnreleasedEvent();
-      const res = await http.get<Record<string, unknown>[]>(
-        `${baseUrl}/events/public`,
-      );
-      expect(res.status).toBe(200);
-      expect(res.json[0].final_scores_available).toBe(false);
+    await testDb.db.run(
+      'INSERT INTO double_seeding_rankings (team_id, seed_rank, raw_double_seed_score) VALUES (?, 1, 0.125)',
+      [team.id],
+    );
+    const bracket = await seedBracket(testDb.db, {
+      event_id: event.id,
+      name: `${tag} bracket`,
+      status: 'completed',
+      actual_team_count: 1,
     });
-
-    it('returns final_scores_available=false for active events even if released', async () => {
-      const event = await seedEvent(testDb.db, {
-        name: 'Active',
-        status: 'active',
-      });
-      await testDb.db.run(
-        `UPDATE events SET spectator_results_released = 1 WHERE id = ?`,
-        [event.id],
-      );
-      const res = await http.get<Record<string, unknown>[]>(
-        `${baseUrl}/events/public`,
-      );
-      expect(res.json[0].final_scores_available).toBe(false);
+    const entry = await testDb.db.run(
+      `INSERT INTO bracket_entries (
+         bracket_id, team_id, seed_position, initial_slot, is_bye,
+         final_rank, bracket_raw_score, weighted_bracket_raw_score
+       ) VALUES (?, ?, 1, 5, FALSE, 1, 1, 1) RETURNING id`,
+      [bracket.id, team.id],
+    );
+    const game = await seedBracketGame(testDb.db, {
+      bracket_id: bracket.id,
+      game_number: 1,
+      team1_id: team.id,
     });
-
-    it('does not expose the raw spectator_results_released field', async () => {
-      await createReleasedEvent();
-      const res = await http.get<Record<string, unknown>[]>(
-        `${baseUrl}/events/public`,
-      );
-      expect(res.json[0]).not.toHaveProperty('spectator_results_released');
+    const award = await seedEventAward(testDb.db, {
+      event_id: event.id,
+      name: `${tag} award`,
     });
-  });
-
-  describe('GET /documentation-scores/event/:eventId/public', () => {
-    it('returns 404 for unreleased complete event', async () => {
-      const event = await createUnreleasedEvent();
-      const res = await http.get(
-        `${baseUrl}/documentation-scores/event/${event.id}/public`,
-      );
-      expect(res.status).toBe(404);
+    await seedEventAwardRecipient(testDb.db, {
+      event_award_id: award.id,
+      team_id: team.id,
+    });
+    await seedEventAwardIndividualRecipient(testDb.db, {
+      event_award_id: award.id,
+      name: `${tag} mentor`,
+      team_id: team.id,
     });
 
-    it('returns 404 for active event', async () => {
-      const event = await seedEvent(testDb.db, { status: 'active' });
-      const res = await http.get(
-        `${baseUrl}/documentation-scores/event/${event.id}/public`,
-      );
-      expect(res.status).toBe(404);
-    });
-
-    it('returns categories and scores for released event', async () => {
-      const event = await createReleasedEvent();
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 1,
-      });
-      const cat = await seedDocumentationScoreCategory(testDb.db, {
-        event_id: event.id,
-        ordinal: 1,
-        name: 'Design',
-        max_score: 100,
-      });
-      const doc = await seedDocumentationScore(testDb.db, {
-        event_id: event.id,
-        team_id: team.id,
-        overall_score: 0.75,
-      });
-      await seedDocumentationSubScore(testDb.db, {
-        documentation_score_id: doc.id,
-        category_id: cat.id,
-        score: 75,
-      });
-
-      const res = await http.get<{
-        categories: { name: string }[];
-        scores: { team_number: number; sub_scores: { score: number }[] }[];
-      }>(`${baseUrl}/documentation-scores/event/${event.id}/public`);
-
-      expect(res.status).toBe(200);
-      expect(res.json.categories).toHaveLength(1);
-      expect(res.json.categories[0].name).toBe('Design');
-      expect(res.json.scores).toHaveLength(1);
-      expect(res.json.scores[0].team_number).toBe(1);
-      expect(res.json.scores[0].sub_scores).toHaveLength(1);
-    });
-
-    it('does not expose internal IDs or timestamps in scores', async () => {
-      const event = await createReleasedEvent();
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 1,
-      });
-      await seedDocumentationScore(testDb.db, {
-        event_id: event.id,
-        team_id: team.id,
-        overall_score: 0.5,
-      });
-
-      const res = await http.get<{ scores: Record<string, unknown>[] }>(
-        `${baseUrl}/documentation-scores/event/${event.id}/public`,
-      );
-      expect(res.status).toBe(200);
-      const score = res.json.scores[0];
-      expect(score).not.toHaveProperty('id');
-      expect(score).not.toHaveProperty('event_id');
-      expect(score).not.toHaveProperty('scored_by');
-      expect(score).not.toHaveProperty('created_at');
-      expect(score).not.toHaveProperty('updated_at');
-    });
-  });
-
-  describe('GET /brackets/:id/rankings/public', () => {
-    it('returns 404 for unreleased complete event', async () => {
-      const event = await createUnreleasedEvent();
-      const bracket = await seedBracket(testDb.db, {
-        event_id: event.id,
-        status: 'completed',
-      });
-      const res = await http.get(
-        `${baseUrl}/brackets/${bracket.id}/rankings/public`,
-      );
-      expect(res.status).toBe(404);
-    });
-
-    it('returns 404 for nonexistent bracket', async () => {
-      const res = await http.get(`${baseUrl}/brackets/99999/rankings/public`);
-      expect(res.status).toBe(404);
-    });
-
-    it('returns rankings with per-bracket overall fields for released event', async () => {
-      const event = await createReleasedEvent();
-      const bracket = await seedBracket(testDb.db, {
-        event_id: event.id,
-        status: 'completed',
-      });
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 7,
-        team_name: 'Ranked Team',
-      });
-      await testDb.db.run(
-        `INSERT INTO bracket_entries (
-          bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score
-        ) VALUES (?, ?, 1, FALSE, 1, 1.0, 1.0) RETURNING id`,
-        [bracket.id, team.id],
-      );
-
-      const res = await http.get<{
-        weight: number;
-        entries: {
-          team_id: number | null;
-          doc_score: number;
-          raw_seed_score: number;
-          weighted_bracket_raw_score: number | null;
-          total: number;
-        }[];
-      }>(`${baseUrl}/brackets/${bracket.id}/rankings/public`);
-
-      expect(res.status).toBe(200);
-      expect(res.json).toHaveProperty('weight');
-      expect(res.json).toHaveProperty('entries');
-      expect(res.json.entries).toHaveLength(1);
-      expect(res.json.entries[0].team_id).toBe(team.id);
-      expect(res.json.entries[0].doc_score).toBe(0);
-      expect(res.json.entries[0].raw_seed_score).toBe(0);
-      expect(res.json.entries[0].weighted_bracket_raw_score).toBe(1);
-      expect(res.json.entries[0].total).toBe(1);
-      expect(res.json.entries[0]).not.toHaveProperty('initial_slot');
-    });
-  });
-
-  describe('GET /events/:id/overall/public', () => {
-    it('returns 404 for unreleased complete event', async () => {
-      const event = await createUnreleasedEvent();
-      const res = await http.get(
-        `${baseUrl}/events/${event.id}/overall/public`,
-      );
-      expect(res.status).toBe(404);
-    });
-
-    it('returns 404 for active event', async () => {
-      const event = await seedEvent(testDb.db, { status: 'active' });
-      const res = await http.get(
-        `${baseUrl}/events/${event.id}/overall/public`,
-      );
-      expect(res.status).toBe(404);
-    });
-
-    it('returns overall scores for released event', async () => {
-      const event = await createReleasedEvent();
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 42,
-        team_name: 'Scorers',
-      });
-      await seedDocumentationScore(testDb.db, {
-        event_id: event.id,
-        team_id: team.id,
-        overall_score: 0.5,
-      });
-      await seedSeedingScore(testDb.db, {
-        team_id: team.id,
-        round_number: 1,
-        score: 100,
-      });
-      await testDb.db.run(
-        `INSERT INTO seeding_rankings (team_id, raw_seed_score) VALUES (?, ?) RETURNING id`,
-        [team.id, 0.8],
-      );
-
-      const res = await http.get<
+    return {
+      event,
+      season,
+      team,
+      bracket,
+      entryId: entry.lastID!,
+      game,
+      seedingScore,
+      doubleMatch,
+      doubleScore,
+      metadata: {
+        id: event.id,
+        name: `${tag} event`,
+        status: visibility.status,
+        event_date: '2026-03-01',
+        location: `${tag} arena`,
+        seeding_rounds: 3,
+        double_seeding_rounds: 1,
+        final_scores_available: isReleased(visibility),
+        spectator_listing: visibility.listing,
+        season_id: season.id,
+        season_name: season.name,
+        season_sort_order: season.sort_order,
+      },
+      documentation: {
+        categories: [
+          {
+            id: category.id,
+            name: `${tag} design`,
+            weight: 1,
+            max_score: 100,
+            ordinal: 1,
+          },
+        ],
+        scores: [
+          {
+            team_id: team.id,
+            overall_score: 0.5,
+            ...identity,
+            sub_scores: [
+              {
+                category_id: category.id,
+                category_name: `${tag} design`,
+                ordinal: 1,
+                max_score: 100,
+                weight: 1,
+                score: 50,
+              },
+            ],
+          },
+        ],
+      },
+      awards: {
+        manual: [
+          {
+            name: `${tag} award`,
+            description: null,
+            sort_order: 0,
+            recipients: [identity],
+            individual_recipients: [{ name: `${tag} mentor`, ...identity }],
+          },
+        ],
+        automatic: {
+          de: [
+            {
+              bracket_id: bracket.id,
+              bracket_name: `${tag} bracket`,
+              placements: [{ place: 1, medal: 'gold', recipients: [identity] }],
+            },
+          ],
+          perBracketOverall: [],
+          seeding: {
+            placements: [{ place: 1, medal: 'gold', recipients: [identity] }],
+          },
+          settings: {
+            de_top_n: 3,
+            per_bracket_overall_top_n: 3,
+            seeding_top_n: 3,
+            de_award_type: 'trophy',
+            per_bracket_overall_award_type: 'trophy',
+            seeding_award_type: 'trophy',
+          },
+        },
+      },
+      rankings: {
+        weight: 1,
+        entries: [
+          {
+            id: entry.lastID!,
+            bracket_id: bracket.id,
+            team_id: team.id,
+            seed_position: 1,
+            is_bye: false,
+            final_rank: 1,
+            bracket_raw_score: 1,
+            weighted_bracket_raw_score: 1,
+            doc_score: 0.5,
+            raw_seed_score: 0.25,
+            raw_double_seed_score: 0.125,
+            total: 1.875,
+            ...identity,
+          },
+        ],
+      },
+      overall: [
         {
-          team_number: number;
-          doc_score: number;
-          raw_seed_score: number;
-          total: number;
-        }[]
-      >(`${baseUrl}/events/${event.id}/overall/public`);
+          team_id: team.id,
+          ...identity,
+          doc_score: 0.5,
+          raw_seed_score: 0.25,
+          raw_double_seed_score: 0.125,
+          weighted_de_score: 1,
+          total: 1.875,
+        },
+      ],
+    };
+  }
 
-      expect(res.status).toBe(200);
-      expect(res.json).toHaveLength(1);
-      expect(res.json[0].team_number).toBe(42);
-      expect(res.json[0].doc_score).toBe(0.5);
-      expect(res.json[0].raw_seed_score).toBe(0.8);
-      expect(res.json[0].total).toBeCloseTo(1.3, 4);
+  type Fixture = Awaited<ReturnType<typeof createFixture>>;
+
+  function finalEndpoints(fixture: Fixture) {
+    return [
+      `/documentation-scores/event/${fixture.event.id}/public`,
+      `/awards/event/${fixture.event.id}/public`,
+      `/brackets/${fixture.bracket.id}/rankings/public`,
+      `/events/${fixture.event.id}/overall/public`,
+    ];
+  }
+
+  async function expectFinalResults(
+    fixture: Fixture,
+    allowed: boolean,
+    query = '',
+  ) {
+    const paths = finalEndpoints(fixture);
+    const responses = await Promise.all(
+      paths.map((path) => http.get(`${baseUrl}${path}${query}`)),
+    );
+    responses.forEach((response, i) => {
+      expect(response.status, paths[i]).toBe(allowed ? 200 : 404);
+      if (!allowed)
+        expect(response.json, paths[i]).toEqual({ error: 'Not found' });
     });
-  });
-
-  describe('GET /awards/event/:eventId/public', () => {
-    it('returns 404 for unreleased complete event', async () => {
-      const event = await createUnreleasedEvent();
-      const res = await http.get(`${baseUrl}/awards/event/${event.id}/public`);
-      expect(res.status).toBe(404);
-    });
-
-    it('returns awards for released event', async () => {
-      const event = await createReleasedEvent();
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 10,
-      });
-      const award = await seedEventAward(testDb.db, {
-        event_id: event.id,
-        name: 'Best Bot',
-      });
-      await seedEventAwardRecipient(testDb.db, {
-        event_award_id: award.id,
-        team_id: team.id,
-      });
-
-      const res = await http.get<{
-        manual: { name: string; recipients: { team_number: number }[] }[];
-      }>(`${baseUrl}/awards/event/${event.id}/public`);
-      expect(res.status).toBe(200);
-      expect(res.json.manual).toHaveLength(1);
-      expect(res.json.manual[0].name).toBe('Best Bot');
-      expect(res.json.manual[0].recipients).toHaveLength(1);
-    });
-  });
+    if (allowed) {
+      expect(responses[0].json).toEqual(fixture.documentation);
+      expect(responses[1].json).toEqual(fixture.awards);
+      expect(responses[2].json).toEqual(fixture.rankings);
+      expect(responses[3].json).toEqual(fixture.overall);
+    }
+  }
 
   describe('Auto-clear on reopen', () => {
-    it('clears spectator_results_released when status changes from complete', async () => {
-      const event = await createReleasedEvent();
+    it.each(['current', 'archive'] as const)(
+      'clears release when reopening a %s event without changing placement or season',
+      async (listing) => {
+        const fixture = await createFixture(
+          { listing, status: 'complete', released: true },
+          'Reopened sentinel',
+          101,
+        );
+        const admin = await seedUser(testDb.db, { is_admin: true });
+        const adminApp = createTestApp({
+          user: { id: admin.id, is_admin: true },
+        });
+        adminApp.use('/events', eventsRoutes);
+        const adminServer = await startServer(adminApp);
 
-      // Reopen the event (change status to active)
-      await http.patch(`${baseUrl}/events/${event.id}`, { status: 'active' });
+        try {
+          await expectFinalResults(fixture, true);
+          const readState = () =>
+            testDb.db.get(
+              `SELECT id, status, spectator_results_released, spectator_listing, season_id
+             FROM events WHERE id = ?`,
+              [fixture.event.id],
+            );
+          const before = await readState();
+          expect(before).toEqual({
+            id: fixture.event.id,
+            status: 'complete',
+            spectator_results_released: 1,
+            spectator_listing: listing,
+            season_id: fixture.season.id,
+          });
 
-      // Verify overall public is now blocked
+          const patch = await http.patch(
+            `${adminServer.baseUrl}/events/${fixture.event.id}`,
+            { status: 'active' },
+          );
+          expect(patch.status).toBe(200);
+          expect(await readState()).toEqual({
+            ...before,
+            status: 'active',
+            spectator_results_released: 0,
+          });
+
+          const metadata = {
+            ...fixture.metadata,
+            status: 'active',
+            final_scores_available: false,
+          };
+          const detail = await http.get(
+            `${baseUrl}/events/${fixture.event.id}/public`,
+          );
+          expect(detail.status).toBe(200);
+          expect(detail.json).toEqual(metadata);
+          for (const [query, placement] of [
+            ['', 'current'],
+            ['?listing=current', 'current'],
+            ['?listing=archive', 'archive'],
+          ] as const) {
+            const list = await http.get(`${baseUrl}/events/public${query}`);
+            expect(list.status).toBe(200);
+            expect(list.json).toEqual(placement === listing ? [metadata] : []);
+          }
+          await expectFinalResults(fixture, false);
+        } finally {
+          await adminServer.close();
+        }
+      },
+    );
+  });
+
+  it('revalidates archive results after revoke, re-release, hide, and return to current', async () => {
+    const fixture = await createFixture(
+      { listing: 'archive', status: 'complete', released: true },
+      'Changing visibility sentinel',
+      101,
+    );
+    const admin = await seedUser(testDb.db, { is_admin: true });
+    const adminApp = createTestApp({ user: { id: admin.id, is_admin: true } });
+    adminApp.use('/events', eventsRoutes);
+    const adminServer = await startServer(adminApp);
+
+    try {
+      await expectFinalResults(fixture, true);
+      for (const [payload, listing, status, released] of [
+        [{ spectator_results_released: 0 }, 'archive', 'complete', false],
+        [{ spectator_results_released: 1 }, 'archive', 'complete', true],
+        [{ status: 'archived' }, 'archive', 'archived', false],
+        [{ spectator_listing: 'current' }, 'current', 'archived', false],
+      ] as const) {
+        const patch = await http.patch(
+          `${adminServer.baseUrl}/events/${fixture.event.id}`,
+          payload,
+        );
+        expect(patch.status).toBe(200);
+        expect(patch.json).toMatchObject({
+          status,
+          spectator_listing: listing,
+          spectator_results_released: released ? 1 : 0,
+          season_id: fixture.season.id,
+        });
+        const visible = status !== 'archived';
+        const metadata = {
+          ...fixture.metadata,
+          status,
+          spectator_listing: listing,
+          final_scores_available: released,
+        };
+        const detail = await http.get(
+          `${baseUrl}/events/${fixture.event.id}/public`,
+        );
+        expect(detail.status).toBe(visible ? 200 : 404);
+        expect(detail.json).toEqual(
+          visible ? metadata : { error: 'Event not found' },
+        );
+        for (const placement of ['current', 'archive'] as const) {
+          const list = await http.get(
+            `${baseUrl}/events/public?listing=${placement}`,
+          );
+          expect(list.status).toBe(200);
+          expect(list.json).toEqual(
+            visible && listing === placement ? [metadata] : [],
+          );
+        }
+        await expectFinalResults(fixture, released);
+      }
+    } finally {
+      await adminServer.close();
+    }
+  });
+
+  it('preserves populated persistent state and released results across placement and season changes', async () => {
+    const fixture = await createFixture(
+      { listing: 'current', status: 'complete', released: true },
+      'Preserved sentinel',
+      101,
+    );
+    const [archiveSeason, nextSeason] = await testDb.db.all<{
+      id: number;
+      name: string;
+      sort_order: number;
+    }>(
+      `INSERT INTO seasons (name, sort_order) VALUES (?, 20), (?, 30)
+       RETURNING id, name, sort_order`,
+      ['First archive destination', 'Second archive destination'],
+    );
+    const admin = await seedUser(testDb.db, { is_admin: true });
+    const adminApp = createTestApp({ user: { id: admin.id, is_admin: true } });
+    adminApp.use('/events', eventsRoutes);
+    const adminServer = await startServer(adminApp);
+
+    try {
+      // Materialize lazy derived rows before measuring placement-only mutations.
+      await expectFinalResults(fixture, true);
+      const tables = await testDb.db.all<{ table_name: string }>(
+        `SELECT table_name FROM information_schema.tables
+         WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'
+           AND table_name NOT IN ('events', 'audit_log')
+         ORDER BY table_name`,
+      );
+      async function snapshotTables() {
+        const snapshot: Record<string, Record<string, unknown>[]> = {};
+        for (const { table_name } of tables) {
+          const quotedTable = `"${table_name.replace(/"/g, '""')}"`;
+          const rows = await testDb.db.all<{ row: Record<string, unknown> }>(
+            `SELECT to_jsonb(snapshot_row) AS row FROM ${quotedTable} AS snapshot_row
+             ORDER BY to_jsonb(snapshot_row)::text`,
+          );
+          snapshot[table_name] = rows.map(({ row }) => row);
+        }
+        return snapshot;
+      }
+      async function snapshotEvent() {
+        const row = await testDb.db.get<{ event: Record<string, unknown> }>(
+          `SELECT to_jsonb(e) - 'updated_at' AS event FROM events e WHERE id = ?`,
+          [fixture.event.id],
+        );
+        expect(row).toBeDefined();
+        return row!.event;
+      }
+      const baselineTables = await snapshotTables();
+      const baselineEvent = await snapshotEvent();
+      expect(baselineEvent).toMatchObject({
+        status: 'complete',
+        spectator_results_released: 1,
+        spectator_listing: 'current',
+        season_id: fixture.season.id,
+      });
+      for (const table of [
+        'teams',
+        'bracket_entries',
+        'bracket_games',
+        'documentation_scores',
+        'documentation_sub_scores',
+        'seeding_scores',
+        'seeding_rankings',
+        'double_seeding_matches',
+        'double_seeding_scores',
+        'double_seeding_rankings',
+        'event_awards',
+        'event_award_recipients',
+        'event_award_individual_recipients',
+      ]) {
+        expect(baselineTables[table], table).not.toHaveLength(0);
+      }
+
+      for (const [listing, season, payload] of [
+        [
+          'archive',
+          archiveSeason,
+          { spectator_listing: 'archive', season_id: archiveSeason.id },
+        ],
+        [
+          'archive',
+          nextSeason,
+          { spectator_listing: 'archive', season_id: nextSeason.id },
+        ],
+        ['current', nextSeason, { spectator_listing: 'current' }],
+      ] as const) {
+        const patch = await http.patch(
+          `${adminServer.baseUrl}/events/${fixture.event.id}`,
+          payload,
+        );
+        expect(patch.status).toBe(200);
+        const expectedEvent = {
+          ...baselineEvent,
+          spectator_listing: listing,
+          season_id: season.id,
+        };
+        expect(await snapshotEvent()).toEqual(expectedEvent);
+        expect(await snapshotTables()).toEqual(baselineTables);
+
+        const metadata = {
+          ...fixture.metadata,
+          spectator_listing: listing,
+          season_id: season.id,
+          season_name: season.name,
+          season_sort_order: season.sort_order,
+        };
+        const detail = await http.get(
+          `${baseUrl}/events/${fixture.event.id}/public`,
+        );
+        expect(detail.status).toBe(200);
+        expect(detail.json).toEqual(metadata);
+        await expectFinalResults(fixture, true);
+        for (const [query, placement] of [
+          ['', 'current'],
+          ['?listing=current', 'current'],
+          ['?listing=archive', 'archive'],
+        ] as const) {
+          const list = await http.get(`${baseUrl}/events/public${query}`);
+          expect(list.status).toBe(200);
+          expect(list.json).toEqual(placement === listing ? [metadata] : []);
+        }
+        expect(await snapshotEvent()).toEqual(expectedEvent);
+        expect(await snapshotTables()).toEqual(baselineTables);
+      }
+    } finally {
+      await adminServer.close();
+    }
+  });
+
+  it.each(matrix)(
+    'gates all four populated endpoints: $listing / $status / released=$released',
+    async (visibility) => {
+      const fixture = await createFixture(visibility, 'Target sentinel', 101);
+      const other = await createFixture(
+        {
+          listing: visibility.listing === 'current' ? 'archive' : 'current',
+          status: 'complete',
+          released: true,
+        },
+        'Foreign released sentinel',
+        909,
+      );
+      await expectFinalResults(other, true);
+      await expectFinalResults(fixture, isReleased(visibility));
+      await expectFinalResults(
+        fixture,
+        isReleased(visibility),
+        `?listing=archive&season_id=${other.season.id}&event_id=${other.event.id}&status=complete&spectator_results_released=1`,
+      );
+    },
+  );
+
+  it.each(matrix)(
+    'keeps metadata/list visibility consistent: $listing / $status / released=$released',
+    async (visibility) => {
+      const fixture = await createFixture(visibility, 'Target sentinel', 101);
+      const other = await createFixture(
+        {
+          listing: visibility.listing === 'current' ? 'archive' : 'current',
+          status: 'complete',
+          released: true,
+        },
+        'Foreign released sentinel',
+        909,
+      );
+      const visible = visibility.status !== 'archived';
+      for (const listing of ['current', 'archive'] as const) {
+        const expected =
+          listing === visibility.listing
+            ? visible
+              ? [fixture.metadata]
+              : []
+            : [other.metadata];
+        const res = await http.get(
+          `${baseUrl}/events/public?listing=${listing}`,
+        );
+        expect(res.status).toBe(200);
+        expect(res.json).toEqual(expected);
+        if (listing === 'current') {
+          const defaultList = await http.get(`${baseUrl}/events/public`);
+          expect(defaultList.status).toBe(200);
+          expect(defaultList.json).toEqual(expected);
+        }
+        const filtered = await http.get(
+          `${baseUrl}/events/public?listing=${listing}&season_id=${fixture.season.id}`,
+        );
+        expect(filtered.status).toBe(200);
+        expect(filtered.json).toEqual(
+          listing === visibility.listing && visible ? [fixture.metadata] : [],
+        );
+      }
+      const detail = await http.get(
+        `${baseUrl}/events/${fixture.event.id}/public?listing=archive`,
+      );
+      expect(detail.status).toBe(visible ? 200 : 404);
+      expect(detail.json).toEqual(
+        visible ? fixture.metadata : { error: 'Event not found' },
+      );
+    },
+  );
+
+  it.each(matrix)(
+    'uses the bracket owning event despite foreign event IDs: $listing / $status / released=$released',
+    async (visibility) => {
+      const allowed = isReleased(visibility);
+      const foreignListing =
+        visibility.listing === 'current' ? 'archive' : 'current';
+      const foreignStatus = allowed ? 'archived' : 'complete';
+      // The bracket ID must collide with an event whose gate is the opposite of its owner's.
+      const collidingEvent = await seedEvent(testDb.db, {
+        name: 'Foreign event sharing the bracket ID',
+        status: foreignStatus,
+      });
+      const fixture = await createFixture(visibility, 'Bracket owner', 101);
+      await testDb.db.run(
+        `UPDATE events SET spectator_listing = ?, season_id = ?, spectator_results_released = 1
+         WHERE id = ?`,
+        [foreignListing, fixture.season.id, collidingEvent.id],
+      );
+      const other = await createFixture(
+        { listing: foreignListing, status: foreignStatus, released: true },
+        'Foreign decoy',
+        909,
+      );
+      expect(fixture.bracket.id).toBe(collidingEvent.id);
+      expect(fixture.bracket.id).not.toBe(fixture.event.id);
+      await expectFinalResults(other, !allowed);
+      for (const query of [
+        '',
+        `?event_id=${collidingEvent.id}`,
+        `?event_id=${other.event.id}`,
+        `?eventId=${other.event.id}&listing=${foreignListing}&season_id=${other.season.id}`,
+        `?event_id=${other.event.id}&event_id=${fixture.event.id}&spectator_results_released=1`,
+      ]) {
+        const res = await http.get(
+          `${baseUrl}/brackets/${fixture.bracket.id}/rankings/public${query}`,
+        );
+        expect(res.status, query).toBe(allowed ? 200 : 404);
+        expect(res.json, query).toEqual(
+          allowed ? fixture.rankings : { error: 'Not found' },
+        );
+      }
+      // This nested URL is not a supported route, even when the owner is released.
+      const foreignContext = await http.get(
+        `${baseUrl}/events/${other.event.id}/brackets/${fixture.bracket.id}/rankings/public`,
+      );
+      expect(foreignContext.status).toBe(404);
+    },
+  );
+
+  it.each(matrix.filter((row) => row.status === 'archived'))(
+    'preserves existing hidden live-read restrictions: $listing / released=$released',
+    async (visibility) => {
+      const fixture = await createFixture(visibility, 'Hidden sentinel', 101);
+      const other = await createFixture(
+        { listing: 'archive', status: 'complete', released: true },
+        'Visible decoy',
+        909,
+      );
+      const paths = [
+        `/teams/event/${fixture.event.id}`,
+        `/seeding/scores/event/${fixture.event.id}`,
+        `/seeding/rankings/event/${fixture.event.id}`,
+        `/double-seeding/matches/event/${fixture.event.id}`,
+        `/double-seeding/scores/event/${fixture.event.id}`,
+        `/double-seeding/rankings/event/${fixture.event.id}`,
+        `/brackets/event/${fixture.event.id}`,
+        `/brackets/event/${fixture.event.id}/games`,
+        `/brackets/${fixture.bracket.id}`,
+      ];
+      for (const query of [
+        '',
+        `?listing=archive&season_id=${other.season.id}&event_id=${other.event.id}&status=active&spectator_results_released=1`,
+      ]) {
+        const responses = await Promise.all(
+          paths.map((path) => http.get(`${baseUrl}${path}${query}`)),
+        );
+        responses.forEach((response, i) => {
+          expect(response.status, paths[i]).toBe(404);
+          expect(response.json).toEqual({
+            error:
+              i === paths.length - 1 ? 'Bracket not found' : 'Event not found',
+          });
+        });
+      }
+    },
+  );
+
+  it.each(['current', 'archive'] as const)(
+    'keeps populated ordinary live reads available in %s without leaking final bracket fields',
+    async (listing) => {
+      const fixture = await createFixture(
+        { listing, status: 'active', released: true },
+        'Live sentinel',
+        101,
+      );
+      await createFixture(
+        {
+          listing: listing === 'current' ? 'archive' : 'current',
+          status: 'complete',
+          released: true,
+        },
+        'Foreign sentinel',
+        909,
+      );
+      const pathsAndIds = [
+        [`/teams/event/${fixture.event.id}`, fixture.team.id],
+        [`/seeding/scores/event/${fixture.event.id}`, fixture.seedingScore.id],
+        [`/seeding/rankings/event/${fixture.event.id}`, fixture.team.id],
+        [
+          `/double-seeding/matches/event/${fixture.event.id}`,
+          fixture.doubleMatch.id,
+        ],
+        [
+          `/double-seeding/scores/event/${fixture.event.id}`,
+          fixture.doubleScore.id,
+        ],
+        [`/double-seeding/rankings/event/${fixture.event.id}`, fixture.team.id],
+        [`/brackets/event/${fixture.event.id}`, fixture.bracket.id],
+        [`/brackets/event/${fixture.event.id}/games`, fixture.game.id],
+      ] as const;
+      for (const [path, id] of pathsAndIds) {
+        const res = await http.get<Record<string, unknown>[]>(
+          `${baseUrl}${path}?listing=archive`,
+        );
+        expect(res.status, path).toBe(200);
+        expect(
+          res.json.map((row) =>
+            path.includes('/rankings/') ? row.team_id : row.id,
+          ),
+          path,
+        ).toEqual([id]);
+      }
+      const bracket = await http.get<{
+        id: number;
+        entries: Record<string, unknown>[];
+        games: { id: number }[];
+      }>(`${baseUrl}/brackets/${fixture.bracket.id}?listing=archive`);
+      expect(bracket.status).toBe(200);
+      expect(bracket.json.id).toBe(fixture.bracket.id);
+      expect(bracket.json.entries).toEqual([
+        {
+          id: fixture.entryId,
+          bracket_id: fixture.bracket.id,
+          team_id: fixture.team.id,
+          seed_position: 1,
+          initial_slot: 5,
+          is_bye: false,
+          team_number: 101,
+          team_name: 'Live sentinel team',
+          display_name: 'Live sentinel display',
+        },
+      ]);
+      expect(bracket.json.games.map((game) => game.id)).toEqual([
+        fixture.game.id,
+      ]);
+      await expectFinalResults(fixture, false);
+    },
+  );
+
+  it('retains 404s for every missing final-result resource while released sentinels exist in both placements', async () => {
+    for (const listing of ['current', 'archive'] as const) {
+      await createFixture(
+        { listing, status: 'complete', released: true },
+        listing,
+        listing === 'current' ? 101 : 909,
+      );
+    }
+    for (const path of [
+      '/documentation-scores/event/99999/public',
+      '/awards/event/99999/public',
+      '/brackets/99999/rankings/public',
+      '/events/99999/overall/public',
+    ]) {
       const res = await http.get(
-        `${baseUrl}/events/${event.id}/overall/public`,
+        `${baseUrl}${path}?listing=archive&event_id=1`,
       );
-      expect(res.status).toBe(404);
-
-      // Verify public event payload shows final_scores_available=false
-      const pubRes = await http.get<Record<string, unknown>>(
-        `${baseUrl}/events/${event.id}/public`,
-      );
-      expect(pubRes.json.final_scores_available).toBe(false);
-    });
+      expect(res.status, path).toBe(404);
+      expect(res.json).toEqual({ error: 'Not found' });
+    }
   });
 });

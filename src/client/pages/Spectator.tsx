@@ -1,5 +1,10 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import { useEffect, useMemo, useCallback } from 'react';
+import {
+  Link,
+  useParams,
+  useSearchParams,
+  useNavigate,
+} from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import SeedingDisplay from '../components/seeding/SeedingDisplay';
 import BracketLikeView from '../components/bracket/BracketLikeView';
@@ -34,13 +39,16 @@ import {
 import {
   spectatorEventPath,
   spectatorBracketPath,
+  spectatorEventsPath,
+  spectatorArchivePath,
   isSpectatorView,
   isSpectatorBracketView,
   isBracketSide,
   paramToBracketSide,
   bracketSideToParam,
 } from '../utils/routes';
-import { apiFetch } from '../utils/api';
+import { ApiError, apiFetch } from '../utils/api';
+import type { PublicEvent } from '../utils/spectatorEvents';
 import { useScopedLoad } from '../hooks/useScopedLoad';
 import '../components/bracket/BracketDisplay.css';
 import SpectatorAutomaticAwards, {
@@ -52,15 +60,15 @@ import './Spectator.css';
 import './SpectatorTableLayout.css';
 import { UnifiedTableScrollAffordanceProvider } from '../components/table';
 
-interface PublicEvent {
-  id: number;
-  name: string;
-  status: string;
-  event_date: string | null;
-  location: string | null;
-  seeding_rounds: number;
-  double_seeding_rounds: number;
-  final_scores_available: boolean;
+interface EventResult {
+  event: PublicEvent | null;
+  failed: boolean;
+}
+
+function parseRouteId(value: string | undefined): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const id = Number(value);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
 interface PublicIndividualRecipient {
@@ -97,6 +105,13 @@ type EffectiveTab =
   | 'overall';
 
 export default function Spectator() {
+  const { eventId } = useParams();
+  // Bracket-scoped caches must also be discarded when the event changes,
+  // including when a bookmarked URL reuses the same bracket ID.
+  return <SpectatorDetail key={eventId} />;
+}
+
+function SpectatorDetail() {
   const navigate = useNavigate();
   const { eventId: eventIdParam, bracketId: bracketIdParam } = useParams<{
     eventId?: string;
@@ -104,11 +119,33 @@ export default function Spectator() {
   }>();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [events, setEvents] = useState<PublicEvent[]>([]);
-  const [eventsLoading, setEventsLoading] = useState(true);
-
-  const selectedEventId = eventIdParam ? Number(eventIdParam) : null;
-  const selectedBracketId = bracketIdParam ? Number(bracketIdParam) : null;
+  const selectedEventId = parseRouteId(eventIdParam);
+  const selectedBracketId = parseRouteId(bracketIdParam);
+  const {
+    data: { event: selectedEvent, failed: eventFailed },
+    loading: eventLoading,
+    reload: reloadEvent,
+  } = useScopedLoad<number, EventResult>(
+    selectedEventId,
+    async (eventId, signal) => {
+      try {
+        const event = await apiFetch<PublicEvent>(`/events/${eventId}/public`, {
+          signal,
+          fallbackError: 'Failed to fetch event',
+        });
+        return { event, failed: false };
+      } catch (error) {
+        return {
+          event: null,
+          failed: !(error instanceof ApiError && error.status === 404),
+        };
+      }
+    },
+    { initial: { event: null, failed: false } },
+  );
+  // Resolve public visibility before requesting or rendering any event data.
+  const eventDataId = selectedEvent?.id ?? null;
+  const bracketDataId = selectedEvent ? selectedBracketId : null;
 
   const viewParam = searchParams.get('view');
   const sideParam = searchParams.get('side');
@@ -139,11 +176,6 @@ export default function Spectator() {
     }
     return 'seeding';
   }, [bracketIdParam, viewParam]);
-
-  const selectedEvent = useMemo(
-    () => events.find((e) => e.id === selectedEventId) ?? null,
-    [events, selectedEventId],
-  );
 
   const finalScoresAvailable = selectedEvent?.final_scores_available ?? false;
 
@@ -184,38 +216,13 @@ export default function Spectator() {
     }
   }, [eventIdParam, navigate]);
 
-  // Load public events list (for the selected event metadata)
-  useEffect(() => {
-    (async () => {
-      try {
-        const data = await apiFetch<PublicEvent[]>('/events/public', {
-          fallbackError: 'Failed to fetch events',
-        });
-        setEvents(data);
-      } catch (error) {
-        console.error('Error loading events:', error);
-      } finally {
-        setEventsLoading(false);
-      }
-    })();
-  }, []);
-
-  // Redirect to /spectator if eventId is invalid after events load
-  useEffect(() => {
-    if (eventsLoading || !eventIdParam || events.length === 0) return;
-    const exists = events.find((e) => e.id === Number(eventIdParam));
-    if (!exists) {
-      navigate('/spectator', { replace: true });
-    }
-  }, [eventsLoading, eventIdParam, events, navigate]);
-
   const logError = (what: string) => (error: unknown) =>
     console.error(`Error loading ${what}:`, error);
 
   const {
     data: { teams, scores, rankings },
     loading: seedingLoading,
-  } = useScopedLoad(selectedEventId, loadSeeding, {
+  } = useScopedLoad(eventDataId, loadSeeding, {
     initial: { teams: [], scores: [], rankings: [] },
     onError: logError('seeding data'),
   });
@@ -223,14 +230,14 @@ export default function Spectator() {
   const {
     data: { scores: doubleSeedingScores, rankings: doubleSeedingRankings },
     loading: doubleSeedingLoading,
-  } = useScopedLoad(selectedEventId, loadDoubleSeeding, {
+  } = useScopedLoad(eventDataId, loadDoubleSeeding, {
     initial: { scores: [], rankings: [] },
     enabled: activeTab === 'double-seeding',
     onError: logError('double-seeding data'),
   });
 
   const { data: brackets } = useScopedLoad(
-    selectedEventId,
+    eventDataId,
     (eventId, signal) =>
       apiFetch<Bracket[]>(`/brackets/event/${eventId}`, {
         signal,
@@ -240,7 +247,7 @@ export default function Spectator() {
   );
 
   const { data: bracketGames, loading: bracketLoading } = useScopedLoad(
-    selectedBracketId,
+    bracketDataId,
     async (bracketId, signal) => {
       const data = await apiFetch<BracketDetail>(`/brackets/${bracketId}`, {
         signal,
@@ -255,7 +262,7 @@ export default function Spectator() {
     data: { categories: docCategories, scores: docScores },
     loading: docLoading,
   } = useScopedLoad(
-    selectedEventId,
+    eventDataId,
     (eventId, signal) =>
       apiFetch<{ categories: DocCategoryDisplay[]; scores: DocScoreDisplay[] }>(
         `/documentation-scores/event/${eventId}/public`,
@@ -272,7 +279,7 @@ export default function Spectator() {
     data: { manual: manualAwards, automatic: automaticAwards },
     loading: awardsLoading,
   } = useScopedLoad<number, PublicAwards>(
-    selectedEventId,
+    eventDataId,
     async (eventId, signal) => {
       const data = await apiFetch<{
         manual: PublicManualAward[];
@@ -296,7 +303,7 @@ export default function Spectator() {
 
   const { data: bracketRankingsData, loading: bracketRankingsLoading } =
     useScopedLoad<number, BracketRankings | null>(
-      selectedBracketId,
+      bracketDataId,
       (bracketId, signal) =>
         apiFetch<BracketRankings>(`/brackets/${bracketId}/rankings/public`, {
           signal,
@@ -309,7 +316,7 @@ export default function Spectator() {
     );
 
   const { data: overallRows, loading: overallLoading } = useScopedLoad(
-    selectedEventId,
+    eventDataId,
     (eventId, signal) =>
       apiFetch<OverallRow[]>(`/events/${eventId}/overall/public`, { signal }),
     {
@@ -383,23 +390,42 @@ export default function Spectator() {
             <p>View live seeding scores and bracket results.</p>
           </div>
 
-          {eventsLoading ? (
-            <p>Loading events...</p>
-          ) : events.length === 0 ? (
+          {eventLoading ? (
+            <p role="status">Loading event...</p>
+          ) : eventFailed ? (
+            <div className="card" role="alert">
+              <p>Unable to load this event. Please try again.</p>
+              <button
+                className="btn btn-primary"
+                onClick={() => void reloadEvent()}
+              >
+                Retry
+              </button>
+            </div>
+          ) : !selectedEvent ? (
             <div className="card">
               <p className="spectator-muted-message">
-                No events are currently available.
+                This event is unavailable.
               </p>
+              <Link className="spectator-back-btn" to={spectatorEventsPath()}>
+                ← Current Events
+              </Link>
             </div>
           ) : (
             <>
               <div className="spectator-event-info">
-                <button
+                <Link
                   className="spectator-back-btn"
-                  onClick={() => navigate('/spectator')}
+                  to={
+                    selectedEvent.spectator_listing === 'archive'
+                      ? spectatorArchivePath()
+                      : spectatorEventsPath()
+                  }
                 >
-                  ← All Events
-                </button>
+                  {selectedEvent.spectator_listing === 'archive'
+                    ? '← Back to Archive'
+                    : '← Current Events'}
+                </Link>
                 {selectedEvent && (
                   <div className="spectator-event-meta spectator-status-cluster">
                     <span

@@ -12,6 +12,46 @@
   margin: 0 0 0.25rem;
 }
 
+.spectator-listing-nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 2rem;
+}
+
+.spectator-listing-nav a {
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--border-color);
+  border-radius: 0.5rem;
+  color: var(--text-color);
+  text-decoration: none;
+}
+
+.spectator-listing-nav a[aria-current='page'] {
+  border-color: var(--primary-color);
+  font-weight: 700;
+}
+
+.spectator-listing-nav a:hover {
+  text-decoration: underline;
+}
+
+.spectator-listing-nav a:focus-visible {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+}
+
+.spectator-archive-season {
+  margin-bottom: 2rem;
+  min-width: 0;
+}
+
+.spectator-archive-season > h3 {
+  margin: 0 0 1rem;
+  overflow-wrap: anywhere;
+}
+
 .spectator-events-header p {
   color: var(--secondary-color);
   margin: 0;
@@ -21,7 +61,7 @@
 /* Event cards grid */
 .spectator-events-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(300px, 100%), 1fr));
   gap: 1.5rem;
 }
 
@@ -31,6 +71,8 @@
   flex-direction: column;
   justify-content: flex-start;
   width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font: inherit;
   color: inherit;
   text-align: left;
@@ -62,7 +104,8 @@
   margin-bottom: 0.75rem;
 }
 
-.spectator-event-card h3 {
+.spectator-event-card h3,
+.spectator-event-card h4 {
   font-size: 1.25rem;
   margin: 0 0 0.75rem;
   color: var(--text-color);
@@ -114,7 +157,8 @@
     border-radius: 0.75rem;
   }
 
-  .spectator-event-card h3 {
+  .spectator-event-card h3,
+  .spectator-event-card h4 {
     font-size: 1.1rem;
   }
 }
