@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { UnifiedTable } from '../table';
 import type { UnifiedColumnDef } from '../table';
@@ -15,6 +15,8 @@ import {
   Event,
   EventStatus,
   ScoreAcceptMode,
+  SpectatorListing,
+  getSpectatorListingLabel,
   getEventStatusClass,
   getEventStatusLabel,
   formatEventDate,
@@ -22,6 +24,9 @@ import {
 } from '../../utils/eventStatus';
 import { apiFetch } from '../../utils/api';
 import Modal from '../Modal';
+import SeasonPicker from './SeasonPicker';
+import SpectatorPlacementDialog from './SpectatorPlacementDialog';
+import { useSeasons } from '../../hooks/useSeasons';
 
 interface EventFormData {
   name: string;
@@ -31,6 +36,7 @@ interface EventFormData {
   seeding_rounds: number;
   min_rest_minutes: number;
   score_accept_mode: ScoreAcceptMode;
+  season_id: number | null;
 }
 
 const defaultFormData: EventFormData = {
@@ -41,10 +47,23 @@ const defaultFormData: EventFormData = {
   seeding_rounds: 3,
   min_rest_minutes: 3,
   score_accept_mode: 'manual',
+  season_id: null,
 };
 
+const adminStatusLabel = (status: EventStatus) =>
+  status === 'archived'
+    ? 'Hidden from Spectators'
+    : getEventStatusLabel(status);
+
 export default function EventsTab() {
-  const { events, refreshEvents, selectedEvent, setSelectedEvent } = useEvent();
+  const {
+    events,
+    refreshEvents,
+    reconcileEvent,
+    selectedEvent,
+    setSelectedEvent,
+  } = useEvent();
+  const catalog = useSeasons();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
@@ -52,6 +71,32 @@ export default function EventsTab() {
   const [formData, setFormData] = useState<EventFormData>(defaultFormData);
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
+  const [filterPlacement, setFilterPlacement] = useState<
+    SpectatorListing | 'all'
+  >('all');
+  const [placementEvent, setPlacementEvent] = useState<Event | null>(null);
+  const [creatingSeason, setCreatingSeason] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+  const formPending = useRef(false);
+  const formSession = useRef(0);
+  const mounted = useRef(false);
+  const placementTrigger = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (placementEvent || !placementTrigger.current) return;
+    const trigger = placementTrigger.current;
+    placementTrigger.current = null;
+    if (!trigger.isConnected && !document.querySelector('dialog[open]')) {
+      document.getElementById('placement-filter')?.focus();
+    }
+  }, [placementEvent]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const [togglingRelease, setTogglingRelease] = useState(false);
 
@@ -72,19 +117,44 @@ export default function EventsTab() {
     }
   };
 
-  // Filter events based on selected status
-  const filteredEvents =
-    filterStatus === 'all'
-      ? events
-      : events.filter((e) => e.status === filterStatus);
+  const filteredEvents = events.filter(
+    (event) =>
+      (filterStatus === 'all' || event.status === filterStatus) &&
+      (filterPlacement === 'all' ||
+        event.spectator_listing === filterPlacement),
+  );
+
+  const seasonLabel = (event: Event) =>
+    event.season_id === null
+      ? 'No season'
+      : (catalog.seasons.find((season) => season.id === event.season_id)
+          ?.name ?? `Season #${event.season_id}`);
+
+  const placementAction = (event: Event) => (
+    <button
+      className="btn btn-secondary"
+      onClick={(click) => {
+        placementTrigger.current = click.currentTarget;
+        setPlacementEvent(event);
+      }}
+    >
+      {event.spectator_listing === 'archive'
+        ? 'Return to Current Events'
+        : 'Move to Spectator Archive'}
+    </button>
+  );
 
   const handleCreateNew = () => {
+    ++formSession.current;
+    setFormError(null);
     setEditingEvent(null);
     setFormData(defaultFormData);
     setShowModal(true);
   };
 
   const handleEdit = (event: Event) => {
+    ++formSession.current;
+    setFormError(null);
     setEditingEvent(event);
     setFormData({
       name: event.name,
@@ -94,11 +164,16 @@ export default function EventsTab() {
       seeding_rounds: event.seeding_rounds,
       min_rest_minutes: event.min_rest_minutes,
       score_accept_mode: event.score_accept_mode ?? 'manual',
+      season_id: event.season_id,
     });
     setShowModal(true);
   };
 
   const handleCloseModal = () => {
+    if (formPending.current || creatingSeason) return;
+    ++formSession.current;
+    setSaving(false);
+    setFormError(null);
     setShowModal(false);
     setEditingEvent(null);
     setFormData(defaultFormData);
@@ -106,11 +181,24 @@ export default function EventsTab() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (formPending.current || creatingSeason) return;
     if (!formData.name.trim()) {
-      toast.error('Event name is required');
+      setFormError('Event name is required');
+      return;
+    }
+    if (
+      editingEvent?.spectator_listing === 'archive' &&
+      formData.season_id === null
+    ) {
+      setFormError(
+        'A season is required for an event in the Spectator Archive.',
+      );
       return;
     }
 
+    const session = formSession.current;
+    formPending.current = true;
+    setFormError(null);
     setSaving(true);
     try {
       const url = editingEvent ? `/events/${editingEvent.id}` : '/events';
@@ -126,34 +214,37 @@ export default function EventsTab() {
           seeding_rounds: formData.seeding_rounds,
           min_rest_minutes: formData.min_rest_minutes,
           score_accept_mode: formData.score_accept_mode,
+          ...(!editingEvent || formData.season_id !== editingEvent.season_id
+            ? { season_id: formData.season_id }
+            : {}),
         },
         fallbackError: 'Failed to save event',
       });
+      reconcileEvent(savedEvent);
+      void refreshEvents({ background: true });
+      if (!mounted.current || session !== formSession.current) return;
       toast.success(editingEvent ? 'Event updated!' : 'Event created!');
+      formPending.current = false;
       handleCloseModal();
-      await refreshEvents();
-
-      // If this is a new event, select it
-      if (!editingEvent && savedEvent.id) {
-        handleSelectEvent(savedEvent);
-      }
+      if (!editingEvent && savedEvent.id) handleSelectEvent(savedEvent);
     } catch (error) {
-      console.error('Error saving event:', error);
-      toast.error(
-        error instanceof Error ? error.message : 'Failed to save event',
-      );
+      if (mounted.current && session === formSession.current) {
+        setFormError(
+          `${error instanceof Error ? error.message : 'Failed to save event'}. Your changes are preserved. Retry, or sign in again as an admin.`,
+        );
+      }
     } finally {
-      setSaving(false);
+      formPending.current = false;
+      if (mounted.current && session === formSession.current) setSaving(false);
     }
   };
 
   const handleStatusChange = async (event: Event, newStatus: EventStatus) => {
-    // For archiving, show confirmation
     if (newStatus === 'archived') {
       const confirmed = await confirm({
-        title: 'Archive Event',
-        message: `Are you sure you want to archive "${event.name}"?`,
-        confirmText: 'Archive',
+        title: 'Hide from Spectators',
+        message: `Hide "${event.name}" from spectators? This sets its lifecycle status to hidden (archived), removes it from both spectator listings, and blocks public event details and final results. As with other status changes away from Complete, this clears the final-results release flag. This is not the publicly viewable Spectator Archive. No data is deleted.`,
+        confirmText: 'Hide from Spectators',
         confirmStyle: 'warning',
       });
       if (!confirmed) return;
@@ -166,7 +257,11 @@ export default function EventsTab() {
         fallbackError: 'Failed to update event status',
       });
 
-      toast.success(`Event ${getEventStatusLabel(newStatus).toLowerCase()}!`);
+      toast.success(
+        newStatus === 'archived'
+          ? 'Event hidden from spectators!'
+          : `Event ${getEventStatusLabel(newStatus).toLowerCase()}!`,
+      );
       await refreshEvents();
     } catch (error) {
       console.error('Error updating event status:', error);
@@ -271,7 +366,7 @@ export default function EventsTab() {
           className: 'btn-success',
         });
         actions.push({
-          label: 'Archive',
+          label: 'Hide from Spectators',
           status: 'archived',
           className: 'btn-warning',
         });
@@ -290,7 +385,7 @@ export default function EventsTab() {
         break;
       case 'complete':
         actions.push({
-          label: 'Archive',
+          label: 'Hide from Spectators',
           status: 'archived',
           className: 'btn-warning',
         });
@@ -365,9 +460,21 @@ export default function EventsTab() {
         <span
           className={`event-status-badge ${getEventStatusClass(event.status)}`}
         >
-          {getEventStatusLabel(event.status)}
+          {adminStatusLabel(event.status)}
         </span>
       ),
+    },
+    {
+      kind: 'data',
+      id: 'season',
+      header: { full: 'Season' },
+      renderCell: seasonLabel,
+    },
+    {
+      kind: 'data',
+      id: 'spectator_listing',
+      header: { full: 'Spectator Placement' },
+      renderCell: (event) => getSpectatorListingLabel(event.spectator_listing),
     },
     {
       kind: 'data',
@@ -423,6 +530,7 @@ export default function EventsTab() {
           >
             Delete
           </button>
+          {placementAction(event)}
           {getStatusActions(event).map((action) => (
             <button
               key={action.status}
@@ -514,6 +622,15 @@ export default function EventsTab() {
                   {selectedEvent.location || 'Not set'}
                 </span>
                 <span>
+                  <strong>Season:</strong> {seasonLabel(selectedEvent)}
+                </span>
+                <span>
+                  <strong>Spectator Placement:</strong>{' '}
+                  {getSpectatorListingLabel(selectedEvent.spectator_listing)}
+                  {selectedEvent.status === 'archived' &&
+                    ' (hidden from spectators)'}
+                </span>
+                <span>
                   <strong>Seeding Rounds:</strong>{' '}
                   {selectedEvent.seeding_rounds}
                 </span>
@@ -537,7 +654,7 @@ export default function EventsTab() {
                 className={`event-status-badge ${getEventStatusClass(selectedEvent.status)}`}
                 style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }}
               >
-                {getEventStatusLabel(selectedEvent.status)}
+                {adminStatusLabel(selectedEvent.status)}
               </span>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                 <button
@@ -552,6 +669,7 @@ export default function EventsTab() {
                 >
                   Delete
                 </button>
+                {placementAction(selectedEvent)}
                 {getStatusActions(selectedEvent).map((action) => (
                   <button
                     key={action.status}
@@ -625,13 +743,20 @@ export default function EventsTab() {
             Select a different event to work on, or create a new one.
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '1rem',
+            flexWrap: 'wrap',
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <label
               htmlFor="status-filter"
               style={{ color: 'var(--secondary-color)', fontSize: '0.9rem' }}
             >
-              Filter:
+              Lifecycle status
             </label>
             <select
               id="status-filter"
@@ -651,7 +776,24 @@ export default function EventsTab() {
               <option value="setup">Setup</option>
               <option value="active">Active</option>
               <option value="complete">Complete</option>
-              <option value="archived">Archived</option>
+              <option value="archived">Hidden from Spectators</option>
+            </select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <label htmlFor="placement-filter">Spectator placement</label>
+            <select
+              id="placement-filter"
+              className="field-input"
+              value={filterPlacement}
+              onChange={(event) =>
+                setFilterPlacement(
+                  event.target.value as SpectatorListing | 'all',
+                )
+              }
+            >
+              <option value="all">All Placements</option>
+              <option value="current">Current Events</option>
+              <option value="archive">Spectator Archive</option>
             </select>
           </div>
           <button className="btn btn-primary" onClick={handleCreateNew}>
@@ -666,9 +808,7 @@ export default function EventsTab() {
           <p style={{ color: 'var(--secondary-color)' }}>
             {events.length === 0
               ? 'No events created yet. Create your first event to get started!'
-              : filterStatus === 'all'
-                ? 'No other events available.'
-                : `No other ${filterStatus} events found.`}
+              : 'No other events match these filters. The selected event is shown above.'}
           </p>
         ) : (
           <UnifiedTable
@@ -682,7 +822,11 @@ export default function EventsTab() {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <Modal onClose={handleCloseModal} style={{ maxWidth: '600px' }}>
+        <Modal
+          onClose={handleCloseModal}
+          closeDisabled={saving || creatingSeason}
+          style={{ maxWidth: '600px', overflowWrap: 'anywhere' }}
+        >
           <h3>{editingEvent ? 'Edit Event' : 'Create New Event'}</h3>
           <p
             style={{
@@ -696,6 +840,8 @@ export default function EventsTab() {
           </p>
 
           <form onSubmit={handleSubmit}>
+            {formError && <p role="alert">{formError}</p>}
+            {saving && <p role="status">Saving event…</p>}
             <div className="form-group">
               <label htmlFor="event-name">Event Name *</label>
               <input
@@ -760,6 +906,19 @@ export default function EventsTab() {
                 />
               </div>
             </div>
+
+            <SeasonPicker
+              key={formSession.current}
+              id="event-season"
+              value={formData.season_id}
+              onChange={(season_id) =>
+                setFormData((current) => ({ ...current, season_id }))
+              }
+              catalog={catalog}
+              required={editingEvent?.spectator_listing === 'archive'}
+              disabled={saving}
+              onBusyChange={setCreatingSeason}
+            />
 
             <div className="form-group">
               <label htmlFor="seeding-rounds">Seeding Rounds</label>
@@ -858,14 +1017,14 @@ export default function EventsTab() {
                 type="button"
                 className="btn btn-secondary"
                 onClick={handleCloseModal}
-                disabled={saving}
+                disabled={saving || creatingSeason}
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 className="btn btn-primary"
-                disabled={saving}
+                disabled={saving || creatingSeason}
               >
                 {saving
                   ? 'Saving...'
@@ -876,6 +1035,27 @@ export default function EventsTab() {
             </div>
           </form>
         </Modal>
+      )}
+
+      {placementEvent && (
+        <SpectatorPlacementDialog
+          key={placementEvent.id}
+          event={placementEvent}
+          catalog={catalog}
+          onClose={() => setPlacementEvent(null)}
+          onPersisted={(saved) => {
+            reconcileEvent(saved);
+            void refreshEvents({ background: true });
+          }}
+          onSaved={(saved) => {
+            setPlacementEvent(null);
+            toast.success(
+              saved.spectator_listing === 'archive'
+                ? 'Event moved to Spectator Archive!'
+                : 'Event returned to Current Events!',
+            );
+          }}
+        />
       )}
 
       {ConfirmDialog}

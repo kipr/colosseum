@@ -233,7 +233,7 @@ Keep the first version to **manual, per-event moves and season grouping**. Defer
 
 ## Status
 
-Steps 1–2 are implemented: the schema runner adds seasons, event season assignment, and independent spectator placement on fresh installs and upgrades; the client model exposes separate lifecycle and placement concepts. Event APIs now support validated, audited placement/season writes, authenticated season listing/admin creation, and anonymous current/archive listings and event details with safe season metadata. Hidden lifecycle status and final-results release gates remain independent of placement. Steps 3–6, including the admin and spectator Archive UI, remain planned.
+Steps 1–3 are implemented: the schema runner adds seasons, event season assignment, and independent spectator placement on fresh installs and upgrades; the client model exposes separate lifecycle and placement concepts. Event APIs support validated, audited placement/season writes, authenticated season listing/admin creation, and anonymous current/archive listings and event details with safe season metadata. Admin event controls now support optional season assignment, inline season creation, explicit move/return dialogs, season/placement metadata, and independent lifecycle/placement filters. Hidden lifecycle status and final-results release gates remain independent of placement. Steps 4–6, including the spectator Archive browsing UI, remain planned.
 
 Step 1 validation:
 
@@ -252,6 +252,18 @@ Step 2 validation:
 - `npm run test:e2e -- --reporter=line`: all 97 existing browser tests passed.
 - `npm run pretty`, explicit Prettier checks of changed documentation/tests, `npm run lint`, targeted ESLint for changed tests, `npm run typecheck:client`, `npm run typecheck:server`, `npm run build`, and `git diff --check`: passed.
 - An additional standalone TypeScript check of the changed HTTP tests is blocked by three pre-existing errors in the unchanged `tests/http/helpers/seed.ts` (lines 343–345): `SeedScoreSubmissionData` lacks `result_type`, `disqualified_team_id`, and `result_note`. The normal application typechecks and runtime test suite pass; these unrelated helper types were not changed.
+
+Step 3 UI contracts and validation:
+
+- The admin list defaults to all placements, with independent lifecycle and placement filters. The selected event remains visible above the filtered list. Hidden lifecycle status is labeled **Hidden from Spectators** locally in event management, without changing the shared lifecycle helpers or backend status values.
+- Current-event forms allow no season; archive-event forms require a season. Unchanged season assignments are omitted from edit requests, including during slow or failed catalog loads. New season names are sent verbatim, with code-point length/common-whitespace validation and the server remaining authoritative for PostgreSQL locale-specific rules. Inline creation exposes the existing signed-32-bit sort order and explains descending order/ties.
+- Moving requires a season and changes only placement/season. Returning omits the season to retain its saved assignment. Neither action requires completion/release or unhides hidden events. **Hide from Spectators** retains the legacy status mutation, including the existing backend behavior of clearing the results-release flag when leaving Complete; the confirmation explains this distinction.
+- Mutation errors preserve inputs for retry, pending writes disable duplicate submission/dismissal, and created seasons survive assignment retries and overlapping catalog reads. Server-saved events reconcile into the authenticated event cache, including after browser-history navigation away from a pending dialog. Background refreshes preserve filters and focus; when a moved row leaves the filter, focus returns to the placement filter instead.
+- New component/state and browser regression tests were observed failing before implementation. Focused coverage now includes 88 tests in `tests/client/eventsTab.test.ts`, `tests/client/eventContext.test.ts`, and `tests/client/useSeasons.test.ts`, with controlled deferred responses for errors, retries, catalog/save races, unmounts, and auth-scope changes.
+- `npm run test:run`: all 1,782 tests passed across 106 files, including the existing PostgreSQL-backed authorization, visibility, audit, and populated-state preservation regressions from step 2.
+- `npm run test:e2e -- e2e/admin-tournament-setup.spec.ts --reporter=line`: all 22 tests passed. Added workflows cover persisted season assignment/creation/clearing, move/return across lifecycle/release states, fresh anonymous visibility checks, sentinel-data preservation, independent filters, editability, hiding, keyboard dismissal/focus, delayed background reads, and browser-history navigation during a save.
+- `npm run test:e2e -- --reporter=line`: all 111 browser tests passed.
+- `npm run pretty`, explicit Prettier/ESLint checks of changed tests, `npm run lint`, `npm run typecheck:client`, `npm run typecheck:server`, `npm run build`, and `git diff --check`: passed. The build still reports the existing unrelated `eval` warning in `src/client/components/scoresheetUtils.ts`.
 
 ### Pre-existing visibility gaps (outside step 2)
 
