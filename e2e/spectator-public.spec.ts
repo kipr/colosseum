@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { closeE2eDb, e2eDb } from './helpers/db';
 
 /* ------------------------------------------------------------------ */
@@ -730,5 +730,618 @@ test.describe('Spectator Public Views & Release Gating', () => {
         [releasedEventId],
       );
     }
+  });
+});
+
+type Listing = 'current' | 'archive';
+type ListingSeason = { id: number; name: string; sortOrder: number };
+type ListingEvent = {
+  id: number;
+  name: string;
+  status: 'setup' | 'active' | 'complete' | 'archived';
+  event_date: string | null;
+  location: string | null;
+  seeding_rounds: number;
+  double_seeding_rounds: number;
+  spectator_listing: Listing;
+  season_id: number | null;
+  season_name: string | null;
+  season_sort_order: number | null;
+  final_scores_available: boolean;
+};
+type ArchiveGroup = { season: ListingSeason; events: ListingEvent[] };
+
+function deferredListingResponse() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function expectListingShell(page: Page, listing: Listing) {
+  await expect(
+    page.getByRole('heading', { level: 1, name: /Colosseum/ }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole('main').getByRole('heading', { level: 2 }),
+  ).toHaveText(listing === 'archive' ? 'Spectator Archive' : 'Spectator');
+  const nav = page.getByRole('navigation', { name: 'Spectator listings' });
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole('link')).toHaveCount(2);
+  for (const [value, label, href] of [
+    ['current', 'Current Events', '/spectator'],
+    ['archive', 'Archive', '/spectator/archive'],
+  ]) {
+    const link = nav.getByRole('link', { name: label, exact: true });
+    await expect(link).toHaveAttribute('href', href);
+    if (listing === value) {
+      await expect(link).toHaveAttribute('aria-current', 'page');
+    } else {
+      await expect(link).not.toHaveAttribute('aria-current', 'page');
+    }
+  }
+  await expect(page.getByRole('main').getByRole('combobox')).toHaveCount(0);
+}
+
+async function expectListingCards(
+  page: Page,
+  events: ListingEvent[],
+  headingLevel: 3 | 4,
+) {
+  const cards = page.getByRole('main').locator('.spectator-event-card');
+  await expect(cards).toHaveCount(events.length);
+  for (const [index, event] of events.entries()) {
+    const card = cards.nth(index);
+    await expect(card).toHaveRole('link');
+    await expect(card).toHaveAttribute(
+      'href',
+      `/spectator/events/${event.id}?view=seeding`,
+    );
+    await expect(card.getByRole('heading', { level: headingLevel })).toHaveText(
+      event.name,
+    );
+    await expect(card).toHaveAccessibleName(
+      new RegExp(event.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+    );
+    const badge = card.locator('.spectator-event-card-badge');
+    await expect(badge).toHaveCount(event.final_scores_available ? 1 : 0);
+    if (event.final_scores_available) {
+      await expect(badge).toHaveText('Final results available');
+    }
+    await expect(card.locator('.spectator-event-card-detail')).toHaveCount(
+      Number(Boolean(event.event_date)) + Number(Boolean(event.location)),
+    );
+    if (event.event_date === EVENT_DATE) {
+      await expect(card).toContainText('Jun 15, 2026');
+    }
+    if (event.location) await expect(card).toContainText(event.location);
+  }
+}
+
+async function expectArchiveGroups(page: Page, groups: ArchiveGroup[]) {
+  const sections = page.locator('section.spectator-archive-season');
+  await expect(sections).toHaveCount(groups.length);
+  await expect(sections.getByRole('heading', { level: 3 })).toHaveText(
+    groups.map(({ season }) => season.name),
+  );
+  for (const [index, group] of groups.entries()) {
+    const section = sections.nth(index);
+    const heading = section.getByRole('heading', { level: 3 });
+    await expect(heading).toHaveAttribute('id', /.+/);
+    await expect(section).toHaveAttribute(
+      'aria-labelledby',
+      (await heading.getAttribute('id'))!,
+    );
+    await expect(section.getByRole('heading', { level: 4 })).toHaveText(
+      group.events.map((event) => event.name),
+    );
+  }
+  const headingIds = await sections
+    .getByRole('heading', { level: 3 })
+    .evaluateAll((headings) => headings.map((heading) => heading.id));
+  expect(new Set(headingIds).size).toBe(groups.length);
+  await expectListingCards(
+    page,
+    groups.flatMap((group) => group.events),
+    4,
+  );
+}
+
+test.describe('Spectator archive listings (step 4)', () => {
+  // Playwright creates a fresh anonymous context for every test; no admin shim.
+  test.use({ storageState: { cookies: [], origins: [] } });
+
+  const seasons: ListingSeason[] = [];
+  const seededEvents: ListingEvent[] = [];
+  let archiveGroups: ArchiveGroup[];
+  let currentEvents: ListingEvent[];
+  let publicRequests: string[];
+  let seasonCatalogRequests: string[];
+
+  test.beforeAll(async () => {
+    const db = e2eDb();
+    async function season(name: string, sortOrder: number) {
+      const inserted = await db.run(
+        'INSERT INTO seasons (name, sort_order) VALUES (?, ?) RETURNING id',
+        [name, sortOrder],
+      );
+      const row = { id: Number(inserted.lastID), name, sortOrder };
+      seasons.push(row);
+      return row;
+    }
+    async function event(
+      name: string,
+      assignedSeason: ListingSeason | null,
+      options: {
+        status?: ListingEvent['status'];
+        listing?: Listing;
+        date?: string | null;
+        location?: string | null;
+        released?: boolean;
+      } = {},
+    ) {
+      const {
+        status = 'active',
+        listing = 'archive',
+        date = EVENT_DATE,
+        location = EVENT_LOCATION,
+        released = false,
+      } = options;
+      const inserted = await db.run(
+        `INSERT INTO events (name, status, spectator_listing, season_id,
+          event_date, location, spectator_results_released)
+         VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+        [
+          name,
+          status,
+          listing,
+          assignedSeason?.id ?? null,
+          date,
+          location,
+          Number(released),
+        ],
+      );
+      const row: ListingEvent = {
+        id: Number(inserted.lastID),
+        name,
+        status,
+        event_date: date,
+        location,
+        seeding_rounds: 3,
+        double_seeding_rounds: 0,
+        spectator_listing: listing,
+        season_id: assignedSeason?.id ?? null,
+        season_name: assignedSeason?.name ?? null,
+        season_sort_order: assignedSeason?.sortOrder ?? null,
+        final_scores_available: status === 'complete' && released,
+      };
+      seededEvents.push(row);
+      return row;
+    }
+
+    // Names, dates and insertion order deliberately disagree with season priority.
+    const low = await season(`2099 E2E ${'長期Season'.repeat(10)}`, -20);
+    const high = await season(
+      '1998 E2E 高優先 <script>archiveSentinel()</script>',
+      80,
+    );
+    const tieOlder = await season('E2E Zulu tied season Ω', 40);
+    const tieNewer = await season('E2E Alpha tied season Ω', 40);
+    const hiddenOnly = await season('E2E Hidden-only season sentinel', 100);
+    await season('E2E Empty season sentinel', 200);
+
+    const future = await event(
+      `E2E ${'LongΩEvent'.repeat(12)} <script>archiveSentinel()</script>`,
+      low,
+      {
+        status: 'complete',
+        date: '2099-12-31',
+        released: true,
+        location: `E2E ${'LongArenaΩ'.repeat(20)}`,
+      },
+    );
+    const old = await event('E2E Archive active stale-release sentinel', high, {
+      date: '1990-01-01',
+      released: true,
+    });
+    const duplicateOlder = await event('E2E Duplicate Ω <b>Final</b>', high, {
+      status: 'complete',
+    });
+    const duplicateNewer = await event('E2E Duplicate Ω <b>Final</b>', high, {
+      status: 'setup',
+      released: true,
+    });
+    const undated = await event('E2E Archive undated released sentinel', high, {
+      status: 'complete',
+      date: null,
+      location: null,
+      released: true,
+    });
+    const tiedOlderEvent = await event(
+      'E2E Complete unreleased sentinel',
+      tieOlder,
+      { status: 'complete', date: '2027-01-01' },
+    );
+    const tiedNewerEvent = await event(
+      'E2E Cross-calendar membership sentinel',
+      tieNewer,
+      { date: '1980-01-01' },
+    );
+    const currentSetup = await event(
+      'E2E Current setup stale-release sentinel',
+      high,
+      {
+        listing: 'current',
+        status: 'setup',
+        date: '2030-01-01',
+        released: true,
+      },
+    );
+    const currentReleased = await event('E2E Current released sentinel', null, {
+      listing: 'current',
+      status: 'complete',
+      released: true,
+    });
+    const currentUndated = await event('E2E Current undated sentinel', low, {
+      listing: 'current',
+      date: null,
+      location: null,
+    });
+    await event('E2E Hidden current sentinel', high, {
+      listing: 'current',
+      status: 'archived',
+      released: true,
+    });
+    await event('E2E Hidden archive mixed-season sentinel', high, {
+      status: 'archived',
+      released: true,
+    });
+    await event('E2E Hidden archive only-season sentinel', hiddenOnly, {
+      status: 'archived',
+      released: true,
+    });
+
+    archiveGroups = [
+      { season: high, events: [duplicateNewer, duplicateOlder, old, undated] },
+      { season: tieNewer, events: [tiedNewerEvent] },
+      { season: tieOlder, events: [tiedOlderEvent] },
+      { season: low, events: [future] },
+    ];
+    currentEvents = [currentSetup, currentReleased, currentUndated];
+  });
+
+  test.afterAll(async () => {
+    try {
+      for (const event of seededEvents) {
+        await e2eDb().run('DELETE FROM events WHERE id = ?', [event.id]);
+      }
+      for (const season of seasons) {
+        await e2eDb().run('DELETE FROM seasons WHERE id = ?', [season.id]);
+      }
+    } finally {
+      await closeE2eDb();
+    }
+  });
+
+  test.beforeEach(async ({ context, page }) => {
+    expect(await context.cookies()).toEqual([]);
+    publicRequests = [];
+    seasonCatalogRequests = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/events/public') {
+        publicRequests.push(url.pathname + url.search);
+      }
+      if (url.pathname === '/events/seasons') {
+        seasonCatalogRequests.push(url.pathname + url.search);
+      }
+    });
+  });
+
+  test.afterEach(() => {
+    expect(seasonCatalogRequests).toEqual([]);
+    expect(
+      publicRequests.every((path) =>
+        ['/events/public', '/events/public?listing=archive'].includes(path),
+      ),
+    ).toBe(true);
+  });
+
+  test('anonymous direct archive entry and refresh show exact public season groups and shared cards', async ({
+    page,
+  }) => {
+    await page.goto('/spectator/archive');
+    await expectListingShell(page, 'archive');
+    await expectArchiveGroups(page, archiveGroups);
+    await page.reload();
+    await expectListingShell(page, 'archive');
+    await expectArchiveGroups(page, archiveGroups);
+    await expect(
+      page.locator('main script, .spectator-event-card b'),
+    ).toHaveCount(0);
+
+    await page
+      .getByRole('link', { name: 'Current Events', exact: true })
+      .click();
+    await expectListingShell(page, 'current');
+    await expect(
+      page.getByText('Select an event to view live scores and results.', {
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expectListingCards(page, currentEvents, 3);
+    await expect(page.locator('.spectator-archive-season')).toHaveCount(0);
+    expect(publicRequests).toContain('/events/public?listing=archive');
+    expect(publicRequests).toContain('/events/public');
+  });
+
+  test('shuffled mixed public rows sort independently and group by season ID, not duplicate labels or dates', async ({
+    page,
+  }) => {
+    const duplicateSeasonName = 'E2E Duplicate season Ω <b>literal</b>';
+    const tiedIds = archiveGroups.slice(1, 3).map((group) => group.season.id);
+    const rows = seededEvents.map((event) =>
+      tiedIds.includes(event.season_id ?? -1)
+        ? { ...event, season_name: duplicateSeasonName }
+        : event,
+    );
+    const expected = archiveGroups.map((group) =>
+      tiedIds.includes(group.season.id)
+        ? { ...group, season: { ...group.season, name: duplicateSeasonName } }
+        : group,
+    );
+    let reversed = true;
+    await page.route('**/events/public*', (route) =>
+      route.fulfill({
+        json: reversed
+          ? [...rows].reverse()
+          : [...rows.slice(4), ...rows.slice(0, 4)],
+      }),
+    );
+
+    await page.goto('/spectator/archive');
+    await expectArchiveGroups(page, expected);
+    reversed = false;
+    await page.reload();
+    await expectArchiveGroups(page, expected);
+    await expect(
+      page.locator('.spectator-archive-season h3 b, .spectator-event-card b'),
+    ).toHaveCount(0);
+    await page
+      .getByRole('link', { name: 'Current Events', exact: true })
+      .click();
+    await expectListingCards(page, currentEvents, 3);
+    await expect(
+      page.getByRole('main').getByRole('heading', { level: 4 }),
+    ).toHaveCount(0);
+  });
+
+  for (const listing of ['current', 'archive'] as const) {
+    test(`${listing} loading, network failure, 5xx and keyboard retry remain distinct from empty`, async ({
+      page,
+    }) => {
+      const gate = deferredListingResponse();
+      let outcome: 'network' | 'server' | 'success' = 'network';
+      const emptyText =
+        listing === 'archive'
+          ? 'No archived events are currently available.'
+          : 'No events are currently available.';
+      await page.route('**/events/public*', async (route) => {
+        await gate.promise;
+        if (outcome === 'network') await route.abort('failed');
+        else if (outcome === 'server')
+          await route.fulfill({
+            status: 503,
+            json: { error: 'E2E unavailable sentinel' },
+          });
+        else
+          await route.fulfill({
+            json:
+              listing === 'archive'
+                ? archiveGroups.flatMap((group) => group.events)
+                : currentEvents,
+          });
+      });
+      try {
+        await page.goto(
+          listing === 'archive' ? '/spectator/archive' : '/spectator',
+        );
+        await expectListingShell(page, listing);
+        await expect(page.getByRole('status')).toHaveText(
+          listing === 'archive' ? 'Loading archive...' : 'Loading events...',
+        );
+        await expect(page.getByText(emptyText, { exact: true })).toHaveCount(0);
+        gate.resolve();
+        const alert = page.getByRole('alert');
+        await expect(alert).toContainText(
+          listing === 'archive'
+            ? 'Could not load archive events.'
+            : 'Could not load current events.',
+        );
+        await expect(page.getByRole('status')).toHaveCount(0);
+        await expectListingShell(page, listing);
+        await expect(page.getByText(emptyText, { exact: true })).toHaveCount(0);
+
+        outcome = 'server';
+        const serverFailure = page.waitForResponse(
+          (response) =>
+            new URL(response.url()).pathname === '/events/public' &&
+            response.status() === 503,
+        );
+        await page.getByRole('button', { name: 'Retry', exact: true }).click();
+        await serverFailure;
+        await expect(alert).toBeVisible();
+        await expectListingShell(page, listing);
+        await expect(page.getByText(emptyText, { exact: true })).toHaveCount(0);
+
+        outcome = 'success';
+        await page.getByRole('button', { name: 'Retry', exact: true }).focus();
+        await page.keyboard.press('Enter');
+        if (listing === 'archive')
+          await expectArchiveGroups(page, archiveGroups);
+        else await expectListingCards(page, currentEvents, 3);
+        await expect(alert).toHaveCount(0);
+        await expect(page.getByRole('status')).toHaveCount(0);
+        await expectListingShell(page, listing);
+      } finally {
+        gate.resolve();
+      }
+    });
+  }
+
+  test('empty current, empty archive and both empty retain working listing navigation', async ({
+    page,
+  }) => {
+    let current: ListingEvent[] = [];
+    let archive: ListingEvent[] = [];
+    await page.route('**/events/public*', (route) =>
+      route.fulfill({
+        json:
+          new URL(route.request().url()).searchParams.get('listing') ===
+          'archive'
+            ? archive
+            : current,
+      }),
+    );
+    for (const state of [
+      { current: [], archive: archiveGroups.flatMap((group) => group.events) },
+      { current: currentEvents, archive: [] },
+      { current: [], archive: [] },
+    ]) {
+      ({ current, archive } = state);
+      await page.goto('/spectator');
+      await expectListingShell(page, 'current');
+      await expectListingCards(page, current, 3);
+      await expect(
+        page.getByText('No events are currently available.', { exact: true }),
+      ).toHaveCount(current.length ? 0 : 1);
+      await page.getByRole('link', { name: 'Archive', exact: true }).click();
+      await expectListingShell(page, 'archive');
+      await expectArchiveGroups(page, archive.length ? archiveGroups : []);
+      await expect(
+        page.getByText('No archived events are currently available.', {
+          exact: true,
+        }),
+      ).toHaveCount(archive.length ? 0 : 1);
+      await expect(page.getByRole('alert')).toHaveCount(0);
+      await page
+        .getByRole('link', { name: 'Current Events', exact: true })
+        .click();
+      await expectListingShell(page, 'current');
+      await expectListingCards(page, current, 3);
+    }
+  });
+
+  test('late current-list success or failure cannot replace archive data after navigation', async ({
+    page,
+  }) => {
+    for (const status of [200, 503]) {
+      const gate = deferredListingResponse();
+      const requested = deferredListingResponse();
+      const pending: Promise<void>[] = [];
+      await page.route('**/events/public*', async (route) => {
+        if (
+          new URL(route.request().url()).searchParams.get('listing') ===
+          'archive'
+        ) {
+          await route.fulfill({
+            json: archiveGroups.flatMap((group) => group.events),
+          });
+        } else {
+          const response = gate.promise.then(() =>
+            route.fulfill({
+              status,
+              json:
+                status === 200
+                  ? currentEvents
+                  : { error: 'E2E stale failure sentinel' },
+            }),
+          );
+          pending.push(response);
+          requested.resolve();
+          await response;
+        }
+      });
+      try {
+        await page.goto('/spectator');
+        await requested.promise;
+        await expect(page.getByRole('status')).toHaveText('Loading events...');
+        await page.getByRole('link', { name: 'Archive', exact: true }).click();
+        await expectArchiveGroups(page, archiveGroups);
+        gate.resolve();
+        await Promise.all(pending);
+        // Cross a browser render boundary after delivering the obsolete response.
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
+        );
+        await expectListingShell(page, 'archive');
+        await expectArchiveGroups(page, archiveGroups);
+        await expect(page.getByRole('alert')).toHaveCount(0);
+      } finally {
+        gate.resolve();
+        await page.unrouteAll({ behavior: 'wait' });
+      }
+    }
+  });
+
+  test('mobile long labels wrap and real listing/card links support keyboard and browser history', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 320, height: 740 });
+    await page.goto('/spectator/archive');
+    await expectListingShell(page, 'archive');
+    await expectArchiveGroups(page, archiveGroups);
+    const longGroup = archiveGroups[3];
+    for (const name of [longGroup.season.name, longGroup.events[0].name]) {
+      const heading = page.getByRole('heading', { name, exact: true });
+      const lines = await heading.evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        return range.getClientRects().length;
+      });
+      expect(lines).toBeGreaterThan(1);
+    }
+    const widths = await page.evaluate(() => ({
+      content: document.documentElement.scrollWidth,
+      viewport: document.documentElement.clientWidth,
+    }));
+    expect(widths.content).toBeLessThanOrEqual(widths.viewport);
+
+    await page
+      .getByRole('link', { name: 'Current Events', exact: true })
+      .focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/spectator$/);
+    await expectListingShell(page, 'current');
+    await expectListingCards(page, currentEvents, 3);
+    await page.goBack();
+    await expectListingShell(page, 'archive');
+    await expectArchiveGroups(page, archiveGroups);
+    await page.goForward();
+    await expectListingShell(page, 'current');
+    await page.getByRole('link', { name: 'Archive', exact: true }).focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(/\/spectator\/archive$/);
+    await expectArchiveGroups(page, archiveGroups);
+
+    const event = longGroup.events[0];
+    await page
+      .locator(
+        `a.spectator-event-card[href="/spectator/events/${event.id}?view=seeding"]`,
+      )
+      .focus();
+    await page.keyboard.press('Enter');
+    await expect(page).toHaveURL(
+      new RegExp(`/spectator/events/${event.id}\\?view=seeding$`),
+    );
+    // Archive detail metadata/back-link behavior belongs to step 5, not this UI change.
+    await page.goBack();
+    await expect(page).toHaveURL(/\/spectator\/archive$/);
+    await expectListingShell(page, 'archive');
+    await expectArchiveGroups(page, archiveGroups);
   });
 });

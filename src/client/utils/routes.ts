@@ -112,6 +112,14 @@ export function adminBracketPath(
   return `/admin/events/${eventId}/brackets/${bracketId}` + qs({ view, side });
 }
 
+export function spectatorEventsPath(): string {
+  return '/spectator';
+}
+
+export function spectatorArchivePath(): string {
+  return '/spectator/archive';
+}
+
 export function spectatorEventPath(
   eventId: number | string,
   view?: SpectatorView,
