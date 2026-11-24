@@ -442,7 +442,7 @@ describe('Scoresheet Templates Event Scope', () => {
     it('returns all templates when eventId omitted', async () => {
       const event = await seedEvent(testDb.db);
       const t1 = await seedScoresheetTemplate(testDb.db, { name: 'Sheet 1' });
-      const t2 = await seedScoresheetTemplate(testDb.db, { name: 'Sheet 2' });
+      await seedScoresheetTemplate(testDb.db, { name: 'Sheet 2' });
       await seedEventScoresheetTemplate(testDb.db, {
         event_id: event.id,
         template_id: t1.id,

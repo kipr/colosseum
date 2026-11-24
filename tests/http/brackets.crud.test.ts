@@ -84,28 +84,66 @@ describe('Brackets CRUD & Game Management', () => {
       expect(body.games).toHaveLength(1);
     });
 
-    it('does not expose ranking scores on public endpoint', async () => {
-      const event = await seedEvent(testDb.db);
-      const bracket = await seedBracket(testDb.db, { event_id: event.id });
-      const team = await seedTeam(testDb.db, {
-        event_id: event.id,
-        team_number: 1,
-      });
+    it.each(
+      (['current', 'archive'] as const).flatMap((listing) =>
+        [false, true].map((released) => ({ listing, released })),
+      ),
+    )(
+      'omits ranking scores from anonymous ordinary responses: $listing / released=$released',
+      async ({ listing, released }) => {
+        const event = await seedEvent(testDb.db, { status: 'complete' });
+        const season = await testDb.db.run(
+          'INSERT INTO seasons (name) VALUES (?) RETURNING id',
+          ['Privacy season'],
+        );
+        await testDb.db.run(
+          `UPDATE events SET spectator_listing = ?, season_id = ?, spectator_results_released = ?
+           WHERE id = ?`,
+          [listing, season.lastID!, released ? 1 : 0, event.id],
+        );
+        const bracket = await seedBracket(testDb.db, { event_id: event.id });
+        const team = await seedTeam(testDb.db, {
+          event_id: event.id,
+          team_number: 1,
+        });
 
-      await testDb.db.run(
-        `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, FALSE, 3, 0.75, 0.75) RETURNING id`,
-        [bracket.id, team.id],
-      );
+        await testDb.db.run(
+          `INSERT INTO bracket_entries (bracket_id, team_id, seed_position, is_bye, final_rank, bracket_raw_score, weighted_bracket_raw_score) VALUES (?, ?, 1, FALSE, 3, 0.75, 0.75) RETURNING id`,
+          [bracket.id, team.id],
+        );
 
-      const res = await http.get(`${baseUrl}/brackets/${bracket.id}`);
-      expect(res.status).toBe(200);
-
-      const body = res.json as { entries: Record<string, unknown>[] };
-      expect(body.entries).toHaveLength(1);
-      expect('final_rank' in body.entries[0]).toBe(false);
-      expect('bracket_raw_score' in body.entries[0]).toBe(false);
-      expect('weighted_bracket_raw_score' in body.entries[0]).toBe(false);
-    });
+        const app = createTestApp();
+        app.use('/brackets', bracketsRoutes);
+        const unauthServer = await startServer(app);
+        try {
+          const res = await http.get<{
+            event_id: number;
+            entries: Record<string, unknown>[];
+          }>(`${unauthServer.baseUrl}/brackets/${bracket.id}`);
+          expect(res.status).toBe(200);
+          expect(res.json.event_id).toBe(event.id);
+          expect(res.json.entries).toHaveLength(1);
+          expect(res.json.entries[0]).toMatchObject({
+            bracket_id: bracket.id,
+            team_id: team.id,
+            seed_position: 1,
+          });
+          for (const field of [
+            'final_rank',
+            'bracket_raw_score',
+            'weighted_bracket_raw_score',
+            'doc_score',
+            'raw_seed_score',
+            'raw_double_seed_score',
+            'total',
+          ]) {
+            expect(res.json.entries[0]).not.toHaveProperty(field);
+          }
+        } finally {
+          await unauthServer.close();
+        }
+      },
+    );
 
     it('exposes special-result metadata without private scoresheet data', async () => {
       const event = await seedEvent(testDb.db);
@@ -197,7 +235,7 @@ describe('Brackets CRUD & Game Management', () => {
         'UPDATE events SET double_seeding_rounds = 0 WHERE id = ?',
         [event.id],
       );
-      const disabled = await http.get(
+      const disabled = await http.get<typeof body>(
         `${baseUrl}/brackets/${bracket.id}/rankings`,
       );
       expect(disabled.json.entries[0].raw_double_seed_score).toBe(0);

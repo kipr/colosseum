@@ -46,6 +46,7 @@ import chatRoutes from '../../src/server/routes/chat';
 import documentationScoresRoutes from '../../src/server/routes/documentationScores';
 import doubleSeedingRoutes from '../../src/server/routes/doubleSeeding';
 import eventsRoutes from '../../src/server/routes/events';
+import seasonsRoutes from '../../src/server/routes/seasons';
 import fieldTemplatesRoutes from '../../src/server/routes/fieldTemplates';
 import queueRoutes from '../../src/server/routes/queue';
 import scoresRoutes from '../../src/server/routes/scores';
@@ -62,6 +63,8 @@ const MOUNTS: [string, Router][] = [
   ['/api', apiRoutes],
   ['/scores', scoresRoutes],
   ['/chat', chatRoutes],
+  // Enumerate the nested router separately so route inventory includes it.
+  ['/events/seasons', seasonsRoutes],
   ['/events', eventsRoutes],
   ['/teams', teamsRoutes],
   ['/seeding', seedingRoutes],
@@ -84,6 +87,7 @@ const EXEMPT: Record<string, string> = {
 
 /** Audited routes whose audit rows are asserted by dedicated test files. */
 const COVERED_ELSEWHERE: Record<string, string> = {
+  'POST /events/seasons': 'seasons.test.ts',
   'POST /api/scores/submit': 'apiScoresSubmit.test.ts',
   'POST /scores/event/:eventId/accept/bulk': 'scoresEventScoped.test.ts',
   'POST /scores/:id/accept-event': 'scoresEventScoped.test.ts',
@@ -168,6 +172,26 @@ const CASES: AuditCase[] = [
       return {
         path: `/events/${event.id}`,
         body: { name: 'Renamed' },
+        expect: {
+          action: 'event_updated',
+          entity_type: 'event',
+          entity_id: event.id,
+          event_id: event.id,
+        },
+      };
+    },
+  },
+  {
+    route: 'PATCH /events/:id',
+    variant: 'public archive placement and season',
+    arrange: async (db) => {
+      const event = await seedEvent(db, { status: 'complete' });
+      const season = await db.run(
+        "INSERT INTO seasons (name) VALUES ('Audit season') RETURNING id",
+      );
+      return {
+        path: `/events/${event.id}`,
+        body: { spectator_listing: 'archive', season_id: season.lastID },
         expect: {
           action: 'event_updated',
           entity_type: 'event',

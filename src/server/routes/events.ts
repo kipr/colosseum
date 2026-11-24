@@ -1,21 +1,25 @@
 import express, { Request, Response } from 'express';
 import { requireAuth, requireAdmin, AuthRequest } from '../middleware/auth';
 import { publicExpensiveReadLimiter } from '../middleware/rateLimit';
-import { getDatabase } from '../database/connection';
+import { getDatabase, Transaction } from '../database/connection';
 import { isCheckConstraintError } from '../database/constraintErrors';
-import {
-  isEventArchived,
-  areFinalScoresReleased,
-} from '../utils/eventVisibility';
+import { areFinalScoresReleased } from '../utils/eventVisibility';
 import { computeOverallScores } from '../services/overallScores';
 import { calculateEventBracketRankingsIfReady } from '../services/bracketRankings';
 import { markQueueDirty } from '../services/queueVersion';
 import { auditRequest } from './audit';
+import seasonsRoutes from './seasons';
 
-const PUBLIC_EVENT_FIELDS =
-  'id, name, status, event_date, location, seeding_rounds, double_seeding_rounds, spectator_results_released';
+const PUBLIC_EVENT_FIELDS = `e.id, e.name, e.status, e.event_date, e.location,
+  e.seeding_rounds, e.double_seeding_rounds, e.spectator_results_released,
+  e.spectator_listing, e.season_id, s.name AS season_name,
+  s.sort_order AS season_sort_order`;
+const PUBLIC_EVENT_FROM =
+  'FROM events e LEFT JOIN seasons s ON s.id = e.season_id';
 
 const router = express.Router();
+
+router.use('/seasons', seasonsRoutes);
 
 // Allowed fields for PATCH updates
 const ALLOWED_UPDATE_FIELDS = [
@@ -29,7 +33,81 @@ const ALLOWED_UPDATE_FIELDS = [
   'min_rest_minutes',
   'score_accept_mode',
   'spectator_results_released',
+  'spectator_listing',
+  'season_id',
 ];
+
+class EventValidationError extends Error {}
+
+function positiveInteger(value: unknown): number | undefined {
+  if (typeof value === 'string' && /^[1-9][0-9]*$/.test(value)) {
+    value = Number(value);
+  }
+  return typeof value === 'number' &&
+    Number.isInteger(value) &&
+    value > 0 &&
+    value <= 2147483647
+    ? value
+    : undefined;
+}
+
+function validatePlacementInput(body: Record<string, unknown>): void {
+  if (
+    Object.prototype.hasOwnProperty.call(body, 'spectator_listing') &&
+    body.spectator_listing !== 'current' &&
+    body.spectator_listing !== 'archive'
+  ) {
+    throw new EventValidationError(
+      'spectator_listing must be current or archive (not the hidden archived status)',
+    );
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(body, 'season_id') &&
+    body.season_id !== null &&
+    positiveInteger(body.season_id) === undefined
+  ) {
+    throw new EventValidationError(
+      'season_id must be null or a positive 32-bit integer (numeric strings must be canonical)',
+    );
+  }
+}
+
+async function validateResultingPlacement(
+  db: Pick<Transaction, 'get'>,
+  listing: string,
+  seasonId: number | null,
+): Promise<void> {
+  if (listing === 'archive' && seasonId === null) {
+    throw new EventValidationError(
+      'A season is required for archive placement',
+    );
+  }
+  if (
+    seasonId !== null &&
+    !(await db.get('SELECT id FROM seasons WHERE id = ?', [seasonId]))
+  ) {
+    throw new EventValidationError(
+      'season_id must reference an existing season',
+    );
+  }
+}
+
+function eventWriteError(error: unknown, res: Response): Response | undefined {
+  if (error instanceof EventValidationError) {
+    return res.status(400).json({ error: error.message });
+  }
+  // The FK also covers a season deleted between validation and persistence.
+  if (
+    (error as { constraint?: string })?.constraint === 'events_season_id_fkey'
+  ) {
+    return res
+      .status(400)
+      .json({ error: 'season_id must reference an existing season' });
+  }
+  if (isCheckConstraintError(error)) {
+    return res.status(400).json({ error: 'Invalid status value' });
+  }
+}
 
 // GET /events - List all events
 router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
@@ -51,41 +129,80 @@ router.get('/', requireAuth, async (req: AuthRequest, res: Response) => {
 });
 
 function toPublicEvent(row: Record<string, unknown>) {
-  const { spectator_results_released, ...rest } = row;
   return {
-    ...rest,
+    id: row.id,
+    name: row.name,
+    status: row.status,
+    event_date: row.event_date,
+    location: row.location,
+    seeding_rounds: row.seeding_rounds,
+    double_seeding_rounds: row.double_seeding_rounds,
+    spectator_listing: row.spectator_listing,
+    season_id: row.season_id,
+    season_name: row.season_name,
+    season_sort_order: row.season_sort_order,
     final_scores_available:
-      rest.status === 'complete' && !!spectator_results_released,
+      row.status === 'complete' && !!row.spectator_results_released,
   };
 }
 
-// GET /events/public - List non-archived events (public, for spectators)
+// GET /events/public - Current or public-archive events, never hidden events.
 router.get('/public', async (req: Request, res: Response) => {
+  if (
+    Object.keys(req.query).some((key) => /^(listing|season_id)\[/.test(key))
+  ) {
+    return res
+      .status(400)
+      .json({ error: 'listing and season_id must be single scalar selectors' });
+  }
+  const listing = req.query.listing ?? 'current';
+  if (listing !== 'current' && listing !== 'archive') {
+    return res
+      .status(400)
+      .json({ error: 'listing must be current or archive' });
+  }
+  const seasonId =
+    req.query.season_id === undefined
+      ? undefined
+      : positiveInteger(req.query.season_id);
+  if (req.query.season_id !== undefined && seasonId === undefined) {
+    return res.status(400).json({
+      error:
+        'season_id must be a positive 32-bit integer in canonical decimal form',
+    });
+  }
   const db = await getDatabase();
-  const events = await db.all(
-    `SELECT ${PUBLIC_EVENT_FIELDS} FROM events
-     WHERE status != 'archived'
-     ORDER BY event_date DESC, created_at DESC`,
-  );
-  res.setHeader('Cache-Control', 'public, max-age=30');
+  const params: (string | number)[] = [listing];
+  let query = `SELECT ${PUBLIC_EVENT_FIELDS} ${PUBLIC_EVENT_FROM}
+    WHERE e.status != 'archived' AND e.spectator_listing = ?`;
+  if (seasonId !== undefined) {
+    query += ' AND e.season_id = ?';
+    params.push(seasonId);
+  }
+  query += ' ORDER BY ';
+  if (listing === 'archive') {
+    query += 's.sort_order DESC, s.id DESC, ';
+  }
+  query += 'e.event_date DESC NULLS LAST, e.created_at DESC, e.id DESC';
+  const events = await db.all(query, params);
+  // A move changes both listings and the event's detail back link.
+  res.setHeader('Cache-Control', 'public, no-cache');
   res.json(events.map(toPublicEvent));
 });
 
 // GET /events/:id/public - Get single event public info (public, for spectators)
 router.get('/:id/public', async (req: Request, res: Response) => {
   const { id } = req.params;
-  if (await isEventArchived(id)) {
-    return res.status(404).json({ error: 'Event not found' });
-  }
   const db = await getDatabase();
   const event = await db.get(
-    `SELECT ${PUBLIC_EVENT_FIELDS} FROM events WHERE id = ?`,
+    `SELECT ${PUBLIC_EVENT_FIELDS} ${PUBLIC_EVENT_FROM}
+     WHERE e.id = ? AND e.status != 'archived'`,
     [id],
   );
+  res.setHeader('Cache-Control', 'public, no-cache');
   if (!event) {
     return res.status(404).json({ error: 'Event not found' });
   }
-  res.setHeader('Cache-Control', 'public, max-age=30');
   res.json(toPublicEvent(event));
 });
 
@@ -141,59 +258,71 @@ router.get('/:id', requireAuth, async (req: AuthRequest, res: Response) => {
 
 // POST /events - Create event (admin only)
 router.post('/', requireAdmin, async (req: AuthRequest, res: Response) => {
-  const {
-    name,
-    description,
-    event_date,
-    location,
-    status,
-    seeding_rounds,
-    min_rest_minutes,
-    score_accept_mode,
-  } = req.body;
-
-  if (!name) {
-    return res.status(400).json({ error: 'Event name is required' });
-  }
-
-  if (
-    min_rest_minutes !== undefined &&
-    (!Number.isInteger(min_rest_minutes) || min_rest_minutes < 0)
-  ) {
-    return res.status(400).json({
-      error: 'min_rest_minutes must be a non-negative integer',
-    });
-  }
-
-  const db = await getDatabase();
-
-  const result = await db.run(
-    `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, min_rest_minutes, score_accept_mode, created_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    [
+  try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'Request body must be an object' });
+    }
+    validatePlacementInput(req.body);
+    const {
       name,
-      description || null,
-      event_date || null,
-      location || null,
-      status || 'setup',
-      seeding_rounds ?? 3,
-      min_rest_minutes ?? 3,
-      score_accept_mode || 'manual',
-      req.user?.id || null,
-    ],
-  );
+      description,
+      event_date,
+      location,
+      status,
+      seeding_rounds,
+      min_rest_minutes,
+      score_accept_mode,
+      spectator_listing = 'current',
+      season_id = null,
+    } = req.body;
 
-  const event = await db.get('SELECT * FROM events WHERE id = ?', [
-    result.lastID,
-  ]);
-  await auditRequest(db, req, {
-    event_id: result.lastID,
-    action: 'event_created',
-    entity_type: 'event',
-    entity_id: result.lastID,
-    new_value: event,
-  });
-  res.status(201).json(event);
+    if (!name) {
+      return res.status(400).json({ error: 'Event name is required' });
+    }
+
+    if (
+      min_rest_minutes !== undefined &&
+      (!Number.isInteger(min_rest_minutes) || min_rest_minutes < 0)
+    ) {
+      return res.status(400).json({
+        error: 'min_rest_minutes must be a non-negative integer',
+      });
+    }
+
+    const db = await getDatabase();
+    const seasonId = season_id === null ? null : positiveInteger(season_id)!;
+    await validateResultingPlacement(db, spectator_listing, seasonId);
+
+    const event = await db.get(
+      `INSERT INTO events (name, description, event_date, location, status, seeding_rounds, min_rest_minutes, score_accept_mode, created_by, spectator_listing, season_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+      [
+        name,
+        description || null,
+        event_date || null,
+        location || null,
+        status || 'setup',
+        seeding_rounds ?? 3,
+        min_rest_minutes ?? 3,
+        score_accept_mode || 'manual',
+        req.user?.id || null,
+        spectator_listing,
+        seasonId,
+      ],
+    );
+
+    await auditRequest(db, req, {
+      event_id: event.id,
+      action: 'event_created',
+      entity_type: 'event',
+      entity_id: event.id,
+      new_value: event,
+    });
+    res.status(201).json(event);
+  } catch (error) {
+    if (eventWriteError(error, res)) return;
+    throw error;
+  }
 });
 
 // PATCH /events/:id - Update event (partial, admin only)
@@ -201,6 +330,10 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const db = await getDatabase();
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ error: 'Request body must be an object' });
+    }
+    validatePlacementInput(req.body);
 
     if (
       Object.prototype.hasOwnProperty.call(req.body, 'min_rest_minutes') &&
@@ -213,9 +346,17 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
     }
 
     // Filter to only allowed fields
-    const updates = Object.entries(req.body).filter(([key]) =>
-      ALLOWED_UPDATE_FIELDS.includes(key),
-    );
+    const updates = Object.entries(req.body)
+      .filter(([key]) => ALLOWED_UPDATE_FIELDS.includes(key))
+      .map(
+        ([key, value]) =>
+          [
+            key,
+            key === 'season_id' && value !== null
+              ? positiveInteger(value)!
+              : value,
+          ] as [string, unknown],
+      );
 
     if (updates.length === 0) {
       return res.status(400).json({ error: 'No valid fields to update' });
@@ -234,13 +375,30 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
     const setClause = updates.map(([key]) => `${key} = ?`).join(', ');
     const values = updates.map(([, value]) => value);
 
-    const oldEvent = await db.get('SELECT * FROM events WHERE id = ?', [id]);
-    const result = await db.run(`UPDATE events SET ${setClause} WHERE id = ?`, [
-      ...values,
-      id,
-    ]);
+    // Lock before merging omitted values: concurrent edits must validate the
+    // actual resulting row and audit its real before/after snapshots.
+    const result = await db.transaction(async (tx) => {
+      const oldEvent = await tx.get(
+        'SELECT * FROM events WHERE id = ? FOR UPDATE',
+        [id],
+      );
+      if (!oldEvent) return undefined;
+      const fields = Object.fromEntries(updates);
+      await validateResultingPlacement(
+        tx,
+        (fields.spectator_listing ?? oldEvent.spectator_listing) as string,
+        Object.prototype.hasOwnProperty.call(fields, 'season_id')
+          ? (fields.season_id as number | null)
+          : oldEvent.season_id,
+      );
+      const event = await tx.get(
+        `UPDATE events SET ${setClause} WHERE id = ? RETURNING *`,
+        [...values, id],
+      );
+      return { oldEvent, event };
+    });
 
-    if (result.changes === 0) {
+    if (!result) {
       return res.status(404).json({ error: 'Event not found' });
     }
 
@@ -249,7 +407,7 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
       await markQueueDirty(db, Number(id));
     }
 
-    const event = await db.get('SELECT * FROM events WHERE id = ?', [id]);
+    const { oldEvent, event } = result;
     await auditRequest(db, req, {
       event_id: Number(id),
       action: 'event_updated',
@@ -260,11 +418,8 @@ router.patch('/:id', requireAdmin, async (req: AuthRequest, res: Response) => {
     });
     res.json(event);
   } catch (error) {
+    if (eventWriteError(error, res)) return;
     console.error('Error updating event:', error);
-    // Check for constraint violations
-    if (isCheckConstraintError(error)) {
-      return res.status(400).json({ error: 'Invalid status value' });
-    }
     res.status(500).json({ error: 'Failed to update event' });
   }
 });

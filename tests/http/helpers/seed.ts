@@ -3,6 +3,7 @@
  * Provides functions to insert test data into the worker's Postgres schema.
  */
 import { Database } from '../../../src/server/database/connection';
+import type { BracketResultType } from '../../../src/shared/bracketResult';
 
 export interface SeedUserData {
   name?: string;
@@ -318,6 +319,9 @@ export interface SeedScoreSubmissionData {
   score_type?: string | null;
   game_queue_id?: number | null;
   double_seeding_match_id?: number | null;
+  result_type?: BracketResultType;
+  disqualified_team_id?: number | null;
+  result_note?: string | null;
 }
 
 export async function seedScoreSubmission(

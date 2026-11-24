@@ -4,6 +4,8 @@ import {
   useEffect,
   useState,
   useCallback,
+  useMemo,
+  useRef,
   ReactNode,
 } from 'react';
 import { useAuth } from './AuthContext';
@@ -15,7 +17,8 @@ interface EventContextType {
   events: Event[];
   loading: boolean;
   error: string | null;
-  refreshEvents: () => Promise<Event[]>;
+  refreshEvents: (options?: { background?: boolean }) => Promise<Event[]>;
+  beginEventMutation: () => (event: Event) => void;
   setSelectedEvent: (event: Event | null) => void;
   selectEventById: (id: number | null) => void;
 }
@@ -30,34 +33,109 @@ export function EventProvider({ children }: { children: ReactNode }) {
   const [selectedEvent, setSelectedEventState] = useState<Event | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [initialized, setInitialized] = useState(false);
+  const initialized = useRef(false);
+  const hydrated = useRef(false);
+  const requestSequence = useRef(0);
+  const cacheGeneration = useRef(0);
+  // Retired scopes stay inactive, even if the same user later returns.
+  const authScope = useMemo(
+    () => ({ user, active: false }),
+    [user, authLoading],
+  );
 
-  const refreshEvents = useCallback(async () => {
-    if (!user) {
-      setEvents([]);
-      setSelectedEventState(null);
-      setLoading(false);
-      return [];
-    }
+  const refreshEvents = useCallback(
+    async (options?: { background?: boolean }) => {
+      if (!authScope.active) return [];
 
-    try {
+      const request = ++requestSequence.current;
+      if (!authScope.user) {
+        setEvents([]);
+        setSelectedEventState(null);
+        setLoading(false);
+        initialized.current = false;
+        return [];
+      }
+
+      try {
+        setError(null);
+        setLoading(!options?.background || !hydrated.current);
+        const data = await apiFetch<Event[]>('/events', {
+          fallbackError: 'Failed to fetch events',
+        });
+        if (request !== requestSequence.current) return data;
+
+        ++cacheGeneration.current;
+        hydrated.current = true;
+        setEvents(data);
+
+        // Only an accepted response may initialize selection, even if the first
+        // refresh was superseded by another read or a saved event.
+        if (!initialized.current) {
+          const savedEventId = localStorage.getItem(LOCAL_STORAGE_KEY);
+          const savedEvent = savedEventId
+            ? data.find((event) => event.id === Number(savedEventId))
+            : undefined;
+          const nextEvent =
+            savedEvent ||
+            data.find((event) => isEventActive(event.status)) ||
+            data[0];
+          if (nextEvent) {
+            setSelectedEventState(nextEvent);
+            if (!savedEvent) {
+              localStorage.setItem(LOCAL_STORAGE_KEY, String(nextEvent.id));
+            }
+          }
+          initialized.current = true;
+        }
+
+        return data;
+      } catch (err) {
+        if (request === requestSequence.current) {
+          const message =
+            err instanceof Error ? err.message : 'Failed to fetch events';
+          setError(message);
+          initialized.current = true;
+          console.error('Error fetching events:', err);
+        }
+        return [];
+      } finally {
+        if (request === requestSequence.current) setLoading(false);
+      }
+    },
+    [authScope],
+  );
+
+  // Capture freshness before sending a mutation, not when its response arrives.
+  // An intervening accepted read or save makes that response ambiguous; leave
+  // the confirmed cache intact and let the caller's post-save refresh resolve it.
+  const beginEventMutation = useCallback(() => {
+    const generation = cacheGeneration.current;
+    return (event: Event) => {
+      if (
+        !authScope.active ||
+        !authScope.user ||
+        generation !== cacheGeneration.current
+      ) {
+        return;
+      }
+
+      ++cacheGeneration.current;
+      // An accepted write supersedes reads started before it was saved.
+      ++requestSequence.current;
+      setEvents((current) =>
+        current.some((existing) => existing.id === event.id)
+          ? current.map((existing) =>
+              existing.id === event.id ? event : existing,
+            )
+          : [...current, event],
+      );
+      setSelectedEventState((current) =>
+        current?.id === event.id ? event : current,
+      );
       setError(null);
-      setLoading(true);
-      const data = await apiFetch<Event[]>('/events', {
-        fallbackError: 'Failed to fetch events',
-      });
-      setEvents(data);
-      return data;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : 'Failed to fetch events';
-      setError(message);
-      console.error('Error fetching events:', err);
-      return [];
-    } finally {
       setLoading(false);
-    }
-  }, [user]);
+    };
+  }, [authScope]);
 
   // Set selected event and persist to localStorage
   const setSelectedEvent = useCallback((event: Event | null) => {
@@ -83,55 +161,22 @@ export function EventProvider({ children }: { children: ReactNode }) {
     [events, setSelectedEvent],
   );
 
-  // Initial load
+  // Initial load and auth changes define the lifetime of pending reads.
   useEffect(() => {
-    const initializeEvents = async () => {
-      if (authLoading) return;
+    authScope.active = !authLoading;
+    initialized.current = false;
+    hydrated.current = false;
+    if (!authLoading) void refreshEvents();
 
-      if (!user) {
-        setEvents([]);
-        setSelectedEventState(null);
-        setLoading(false);
-        setInitialized(false);
-        return;
-      }
-
-      const fetchedEvents = await refreshEvents();
-
-      // Try to restore last selected event from localStorage
-      const savedEventId = localStorage.getItem(LOCAL_STORAGE_KEY);
-      if (savedEventId && fetchedEvents.length > 0) {
-        const savedEvent = fetchedEvents.find(
-          (e: Event) => e.id === Number(savedEventId),
-        );
-        if (savedEvent) {
-          setSelectedEventState(savedEvent);
-        } else {
-          // Saved event no longer exists, prefer active/setup event then fallback.
-          const nextEvent =
-            fetchedEvents.find((event) => isEventActive(event.status)) ||
-            fetchedEvents[0];
-          setSelectedEventState(nextEvent);
-          localStorage.setItem(LOCAL_STORAGE_KEY, String(nextEvent.id));
-        }
-      } else if (fetchedEvents.length > 0) {
-        // No saved selection, prefer active/setup event then fallback.
-        const nextEvent =
-          fetchedEvents.find((event) => isEventActive(event.status)) ||
-          fetchedEvents[0];
-        setSelectedEventState(nextEvent);
-        localStorage.setItem(LOCAL_STORAGE_KEY, String(nextEvent.id));
-      }
-
-      setInitialized(true);
+    return () => {
+      authScope.active = false;
+      ++requestSequence.current;
     };
-
-    initializeEvents();
-  }, [authLoading, refreshEvents, user]);
+  }, [authLoading, authScope, refreshEvents]);
 
   // Update selectedEvent if it was edited/deleted
   useEffect(() => {
-    if (!initialized || !selectedEvent) return;
+    if (!initialized.current || !selectedEvent) return;
 
     const currentEvent = events.find((e) => e.id === selectedEvent.id);
     if (currentEvent) {
@@ -147,7 +192,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         setSelectedEvent(null);
       }
     }
-  }, [events, initialized, selectedEvent, setSelectedEvent]);
+  }, [events, selectedEvent, setSelectedEvent]);
 
   return (
     <EventContext.Provider
@@ -157,6 +202,7 @@ export function EventProvider({ children }: { children: ReactNode }) {
         loading,
         error,
         refreshEvents,
+        beginEventMutation,
         setSelectedEvent,
         selectEventById,
       }}

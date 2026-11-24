@@ -268,7 +268,7 @@ describe('Queue Routes', () => {
         event_id: event.id,
         team_number: 101,
       });
-      const team2 = await seedTeam(testDb.db, {
+      await seedTeam(testDb.db, {
         event_id: event.id,
         team_number: 102,
       });

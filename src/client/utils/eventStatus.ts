@@ -7,10 +7,19 @@ import { toDateOnlyString } from './dateUtils';
 
 export type EventStatus = 'setup' | 'active' | 'complete' | 'archived';
 
+/** Public spectator placement, independent of lifecycle status. */
+export type SpectatorListing = 'current' | 'archive';
+
 export type ScoreAcceptMode =
   | 'manual'
   | 'auto_accept_seeding'
   | 'auto_accept_all';
+
+export interface Season {
+  id: number;
+  name: string;
+  sort_order: number;
+}
 
 export interface Event {
   id: number;
@@ -19,6 +28,8 @@ export interface Event {
   event_date: string | null;
   location: string | null;
   status: EventStatus;
+  spectator_listing: SpectatorListing;
+  season_id: number | null;
   seeding_rounds: number;
   double_seeding_rounds: number;
   min_rest_minutes: number;
@@ -62,6 +73,22 @@ export function getEventStatusLabel(status: EventStatus | string): string {
       return 'Archived';
     default:
       return status;
+  }
+}
+
+/**
+ * Get a human-readable label for an event's spectator placement
+ */
+export function getSpectatorListingLabel(
+  listing: SpectatorListing | string,
+): string {
+  switch (listing) {
+    case 'current':
+      return 'Current Events';
+    case 'archive':
+      return 'Spectator Archive';
+    default:
+      return listing;
   }
 }
 

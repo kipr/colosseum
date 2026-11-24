@@ -14,7 +14,6 @@ import {
 } from './helpers/testServer';
 import {
   seedEvent,
-  seedTeam,
   seedScoresheetTemplate,
   seedEventScoresheetTemplate,
 } from './helpers/seed';

@@ -38,6 +38,7 @@ const EXPECTED_TABLES = [
   'score_team_initials',
   'scoresheet_field_templates',
   'scoresheet_templates',
+  'seasons',
   'seeding_rankings',
   'seeding_scores',
   'session',
