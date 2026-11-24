@@ -131,6 +131,7 @@ function SpectatorDetail() {
       try {
         const event = await apiFetch<PublicEvent>(`/events/${eventId}/public`, {
           signal,
+          cache: 'no-cache',
           fallbackError: 'Failed to fetch event',
         });
         return { event, failed: false };

@@ -1099,6 +1099,56 @@ test.describe('Spectator archive listings (step 4)', () => {
     expect(publicRequests).toContain('/events/public');
   });
 
+  test('moving an event revalidates both listings and the detail back link on navigation', async ({
+    page,
+  }) => {
+    const event = currentEvents[1];
+    const { season } = archiveGroups[0];
+    const eventHeading = page.getByRole('heading', {
+      name: event.name,
+      exact: true,
+    });
+    const eventCard = page.getByRole('link').filter({ has: eventHeading });
+    const currentBack = page.getByRole('link', { name: '← Current Events' });
+    const archiveBack = page.getByRole('link', { name: '← Back to Archive' });
+
+    // Warm all three metadata URLs with real browser requests; routing would disable the cache.
+    await page.goto('/spectator/archive');
+    await expectArchiveGroups(page, archiveGroups);
+    await page
+      .getByRole('link', { name: 'Current Events', exact: true })
+      .click();
+    await eventCard.click();
+    await expect(currentBack).toHaveAttribute('href', '/spectator');
+
+    const db = e2eDb();
+    try {
+      await db.run(
+        "UPDATE events SET spectator_listing = 'archive', season_id = ? WHERE id = ?",
+        [season.id, event.id],
+      );
+
+      await currentBack.click();
+      await expectListingCards(
+        page,
+        currentEvents.filter(({ id }) => id !== event.id),
+        3,
+      );
+      await page.getByRole('link', { name: 'Archive', exact: true }).click();
+      await expect(eventCard).toBeVisible();
+      await eventCard.click();
+      await expect(archiveBack).toHaveAttribute('href', '/spectator/archive');
+      await archiveBack.click();
+      await expect(page).toHaveURL(/\/spectator\/archive$/);
+      await expect(eventCard).toBeVisible();
+    } finally {
+      await db.run(
+        "UPDATE events SET spectator_listing = 'current', season_id = ? WHERE id = ?",
+        [event.season_id, event.id],
+      );
+    }
+  });
+
   test('shuffled mixed public rows sort independently and group by season ID, not duplicate labels or dates', async ({
     page,
   }) => {

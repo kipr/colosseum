@@ -35,7 +35,11 @@ export default function SpectatorEventListing({
           placement === 'archive'
             ? '/events/public?listing=archive'
             : '/events/public',
-          { signal, fallbackError: 'Failed to fetch events' },
+          {
+            signal,
+            cache: 'no-cache',
+            fallbackError: 'Failed to fetch events',
+          },
         );
         return { events, failed: false };
       } catch {

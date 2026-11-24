@@ -185,7 +185,8 @@ router.get('/public', async (req: Request, res: Response) => {
   }
   query += 'e.event_date DESC NULLS LAST, e.created_at DESC, e.id DESC';
   const events = await db.all(query, params);
-  res.setHeader('Cache-Control', 'public, max-age=30');
+  // A move changes both listings and the event's detail back link.
+  res.setHeader('Cache-Control', 'public, no-cache');
   res.json(events.map(toPublicEvent));
 });
 
@@ -198,10 +199,10 @@ router.get('/:id/public', async (req: Request, res: Response) => {
      WHERE e.id = ? AND e.status != 'archived'`,
     [id],
   );
+  res.setHeader('Cache-Control', 'public, no-cache');
   if (!event) {
     return res.status(404).json({ error: 'Event not found' });
   }
-  res.setHeader('Cache-Control', 'public, max-age=30');
   res.json(toPublicEvent(event));
 });
 
