@@ -477,6 +477,8 @@ describe('EventsTab season catalog and event form', () => {
     const original = makeEvent(31);
     await mount(original);
     context.beginEventMutation.mockReturnValueOnce(vi.fn());
+    const refresh = deferred<Event[]>();
+    context.refreshEvents.mockReturnValueOnce(refresh.promise);
     await click(button('+ Create New Event'));
     await change(field<HTMLInputElement>('Event Name', dialog()), 'New event');
     await submitEvent();
@@ -486,11 +488,71 @@ describe('EventsTab season catalog and event form', () => {
     expect(context.setSelectedEvent).not.toHaveBeenCalled();
     expect(context.selectedEvent).toEqual(original);
 
+    // The accepted post-save refresh commits the event as it settles.
     const confirmed = { ...created, name: 'Latest confirmed name' };
     context.events = [original, confirmed];
-    await render();
+    await act(async () => refresh.resolve(context.events));
     expect(context.setSelectedEvent).toHaveBeenCalledExactlyOnceWith(confirmed);
     expect(context.selectedEvent).toEqual(confirmed);
+  });
+
+  it.each(['resolves', 'rejects'])(
+    'drops the pending created selection when the post-save refresh %s without it',
+    async (outcome) => {
+      const original = makeEvent(31);
+      await mount(original);
+      context.beginEventMutation.mockReturnValueOnce(vi.fn());
+      const refresh = deferred<Event[]>();
+      context.refreshEvents.mockReturnValueOnce(refresh.promise);
+      await click(button('+ Create New Event'));
+      await change(
+        field<HTMLInputElement>('Event Name', dialog()),
+        'New event',
+      );
+      await submitEvent();
+      const created = makeEvent(913, { name: 'New event' });
+      await respond(request('/events', 'POST'), created);
+
+      // Failed or superseded: the confirmed cache still lacks the event.
+      await act(async () =>
+        outcome === 'resolves'
+          ? refresh.resolve([])
+          : refresh.reject(new TypeError('Refresh failed')),
+      );
+      expect(context.setSelectedEvent).not.toHaveBeenCalled();
+
+      // A much later, unrelated refresh finally includes the event.
+      context.events = [original, created];
+      await render();
+      expect(context.setSelectedEvent).not.toHaveBeenCalled();
+      expect(context.selectedEvent).toEqual(original);
+    },
+  );
+
+  it('does not navigate to a created event after the admin selects another event', async () => {
+    const original = makeEvent(31);
+    const other = makeEvent(47);
+    await mount(original);
+    context.events = [original, other];
+    await render();
+    context.beginEventMutation.mockReturnValueOnce(vi.fn());
+    const refresh = deferred<Event[]>();
+    context.refreshEvents.mockReturnValueOnce(refresh.promise);
+    await click(button('+ Create New Event'));
+    await change(field<HTMLInputElement>('Event Name', dialog()), 'New event');
+    await submitEvent();
+    const created = makeEvent(913, { name: 'New event' });
+    await respond(request('/events', 'POST'), created);
+
+    // Selection changes outside this tab, e.g. via the Navbar dropdown.
+    context.selectedEvent = other;
+    await render();
+
+    context.events = [original, other, created];
+    await act(async () => refresh.resolve(context.events));
+    await render();
+    expect(context.setSelectedEvent).not.toHaveBeenCalled();
+    expect(context.selectedEvent).toEqual(other);
   });
 
   it.each([

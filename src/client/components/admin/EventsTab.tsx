@@ -50,6 +50,14 @@ const defaultFormData: EventFormData = {
   season_id: null,
 };
 
+// A created event awaiting selection. Only the save and its own post-save
+// refresh may select it; the wait ends once that refresh settles.
+interface PendingCreatedSelection {
+  id: number;
+  refreshSettled: boolean;
+  fromSelectedId: number | null;
+}
+
 const adminStatusLabel = (status: EventStatus) =>
   status === 'archived'
     ? 'Hidden from Spectators'
@@ -68,7 +76,8 @@ export default function EventsTab() {
   const [searchParams] = useSearchParams();
   const [showModal, setShowModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<Event | null>(null);
-  const [createdEventId, setCreatedEventId] = useState<number | null>(null);
+  const [pendingCreated, setPendingCreated] =
+    useState<PendingCreatedSelection | null>(null);
   const [formData, setFormData] = useState<EventFormData>(defaultFormData);
   const [saving, setSaving] = useState(false);
   const [filterStatus, setFilterStatus] = useState<EventStatus | 'all'>('all');
@@ -109,7 +118,7 @@ export default function EventsTab() {
 
   const handleSelectEvent = useCallback(
     (event: Event | null) => {
-      setCreatedEventId(null);
+      setPendingCreated(null);
       setSelectedEvent(event);
       if (event) {
         navigate(adminEventPath(event.id, currentAdminView));
@@ -120,13 +129,23 @@ export default function EventsTab() {
     [currentAdminView, navigate, setSelectedEvent],
   );
 
+  const selectedEventId = selectedEvent?.id ?? null;
+
   useEffect(() => {
-    if (createdEventId === null) return;
+    if (!pendingCreated) return;
+    // The admin picked another event meanwhile (e.g. the Navbar); keep it.
+    if (selectedEventId !== pendingCreated.fromSelectedId) {
+      setPendingCreated(null);
+      return;
+    }
     // Reconciliation may defer to a refresh. Selecting an event before it is
     // cached would make the provider and route guards treat it as deleted.
-    const created = events.find((event) => event.id === createdEventId);
+    // The wait is bounded by the post-save refresh: once it settles without
+    // the event, a later unrelated refresh must not navigate to it.
+    const created = events.find((event) => event.id === pendingCreated.id);
     if (created) handleSelectEvent(created);
-  }, [createdEventId, events, handleSelectEvent]);
+    else if (pendingCreated.refreshSettled) setPendingCreated(null);
+  }, [pendingCreated, events, selectedEventId, handleSelectEvent]);
 
   const filteredEvents = events.filter(
     (event) =>
@@ -156,7 +175,7 @@ export default function EventsTab() {
   );
 
   const handleCreateNew = () => {
-    setCreatedEventId(null);
+    setPendingCreated(null);
     ++formSession.current;
     setFormError(null);
     setEditingEvent(null);
@@ -165,7 +184,7 @@ export default function EventsTab() {
   };
 
   const handleEdit = (event: Event) => {
-    setCreatedEventId(null);
+    setPendingCreated(null);
     ++formSession.current;
     setFormError(null);
     setEditingEvent(event);
@@ -210,6 +229,7 @@ export default function EventsTab() {
     }
 
     const session = formSession.current;
+    const submittedSelectionId = selectedEventId;
     formPending.current = true;
     setFormError(null);
     setSaving(true);
@@ -235,12 +255,28 @@ export default function EventsTab() {
         fallbackError: 'Failed to save event',
       });
       reconcileEvent(savedEvent);
-      void refreshEvents({ background: true });
+      const refreshed = refreshEvents({ background: true });
       if (!mounted.current || session !== formSession.current) return;
       toast.success(editingEvent ? 'Event updated!' : 'Event created!');
       formPending.current = false;
       handleCloseModal();
-      if (!editingEvent && savedEvent.id) setCreatedEventId(savedEvent.id);
+      if (!editingEvent && savedEvent.id) {
+        const id = savedEvent.id;
+        setPendingCreated({
+          id,
+          refreshSettled: false,
+          fromSelectedId: submittedSelectionId,
+        });
+        // Mark settled rather than clearing: an accepted refresh commits its
+        // events in the same render, so the effect can still select first.
+        const settle = () => {
+          if (!mounted.current) return;
+          setPendingCreated((current) =>
+            current?.id === id ? { ...current, refreshSettled: true } : current,
+          );
+        };
+        void refreshed.then(settle, settle);
+      }
     } catch (error) {
       if (mounted.current && session === formSession.current) {
         setFormError(
